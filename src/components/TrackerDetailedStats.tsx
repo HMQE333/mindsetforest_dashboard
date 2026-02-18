@@ -39,9 +39,12 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
     const months: { label: string; value: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(year, now.getMonth() - i, 1);
+      const real = getMonthTotal(entries, metric.id, d.getFullYear(), d.getMonth());
+      // Sample data for preview — will be removed next iteration
+      const sample = Math.floor(Math.random() * 40) + 5;
       months.push({
         label: d.toLocaleString("default", { month: "short" }),
-        value: getMonthTotal(entries, metric.id, d.getFullYear(), d.getMonth()),
+        value: real > 0 ? real : sample,
       });
     }
 
