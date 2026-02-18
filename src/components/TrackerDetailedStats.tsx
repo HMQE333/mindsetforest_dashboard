@@ -134,29 +134,32 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
                   12-Month Overview — {metric.label}
                   <span className="italic ml-2 text-muted-foreground/50">* sample data</span>
                 </div>
-                <div className="flex items-end gap-1.5 h-32">
+                <div className="flex items-end gap-2 h-44">
                   {stats.months.map((m, i) => {
-                    const height = m.value > 0 ? Math.max(10, (m.value / maxMonth) * 100) : 4;
-                    const intensity = m.value > 0 ? 0.5 + (m.value / maxMonth) * 0.5 : 0;
+                    const heightPct = m.value > 0 ? Math.max(8, (m.value / maxMonth) * 100) : 0;
                     return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-                        {/* Value label on hover */}
-                        <div className="text-[9px] font-mono font-bold text-foreground/0 group-hover:text-foreground/80 transition-colors">
-                          {m.value}
-                        </div>
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                        {/* Value label */}
                         <div
-                          className="w-full rounded-md transition-all duration-500 group-hover:scale-105 group-hover:brightness-125"
-                          style={{
-                            height: `${height}%`,
-                            background: m.value > 0
-                              ? `linear-gradient(to top, hsl(var(--${metric.colorVar}) / ${intensity * 0.6}), hsl(var(--${metric.colorVar}) / ${intensity}))`
-                              : "hsl(var(--muted) / 0.3)",
-                            boxShadow: m.value > 0
-                              ? `0 0 12px hsl(var(--${metric.colorVar}) / ${intensity * 0.3})`
-                              : "none",
-                          }}
-                          title={`${m.label}: ${m.value} ${metric.unit}`}
-                        />
+                          className="text-[10px] font-mono font-bold"
+                          style={{ color: m.value > 0 ? "#5AC7D7" : "transparent" }}
+                        >
+                          {m.value > 0 ? m.value : "–"}
+                        </div>
+                        {/* Bar container */}
+                        <div className="w-full flex items-end flex-1">
+                          <div
+                            className="w-full rounded-t-sm transition-all duration-300 hover:brightness-125"
+                            style={{
+                              height: m.value > 0 ? `${heightPct}%` : "2px",
+                              background: m.value > 0
+                                ? "linear-gradient(to top, #3a9aa8, #5AC7D7)"
+                                : "hsl(var(--muted) / 0.15)",
+                              boxShadow: m.value > 0 ? "0 0 8px rgba(90, 199, 215, 0.3)" : "none",
+                            }}
+                          />
+                        </div>
+                        {/* Month label */}
                         <span className="text-[9px] text-muted-foreground font-medium">{m.label.slice(0, 3)}</span>
                       </div>
                     );
