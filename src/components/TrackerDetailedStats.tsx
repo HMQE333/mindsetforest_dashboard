@@ -27,12 +27,6 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
   const now = new Date();
   const year = now.getFullYear();
 
-  // Stable sample data seeded by metric id
-  const sampleValues = useMemo(() => {
-    const seed = selectedMetricId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-    return Array.from({ length: 12 }, (_, i) => ((seed * (i + 1) * 7 + 13) % 40) + 5);
-  }, [selectedMetricId]);
-
   const stats = useMemo(() => {
     if (!metric) return null;
 
@@ -44,15 +38,14 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
     const months: { label: string; value: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(year, now.getMonth() - i, 1);
-      const real = getMonthTotal(entries, metric.id, d.getFullYear(), d.getMonth());
       months.push({
         label: d.toLocaleString("default", { month: "short" }),
-        value: real > 0 ? real : sampleValues[11 - i],
+        value: getMonthTotal(entries, metric.id, d.getFullYear(), d.getMonth()),
       });
     }
 
     return { weekTotal, yearTotal, dailyAvg, habit, months };
-  }, [entries, selectedMetricId, metric, year, sampleValues]);
+  }, [entries, selectedMetricId, metric, year]);
 
   const maxMonth = stats ? Math.max(1, ...stats.months.map((m) => m.value)) : 1;
 
@@ -132,7 +125,6 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
               <div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">
                   12-Month Overview — {metric.label}
-                  <span className="italic ml-2 text-muted-foreground/50">* sample data</span>
                 </div>
                 <div className="flex gap-2" style={{ height: "11rem" }}>
                   {stats.months.map((m, i) => {
