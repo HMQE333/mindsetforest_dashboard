@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { useAuth } from "@/hooks/useAuth";
 import { useTrackerEntries, getTodayTotal, getLast7DaysTotal, getAllTimeTotal, getStreakDays } from "@/hooks/useTrackerEntries";
+import { useIsWatch } from "@/hooks/useIsWatch";
 import TrackerStatCard from "@/components/TrackerStatCard";
 import TrackerInputModal from "@/components/TrackerInputModal";
 import TrackerOverviewBar from "@/components/TrackerOverviewBar";
@@ -11,11 +12,13 @@ import TrackerRecentLog from "@/components/TrackerRecentLog";
 import TrackerCalendar from "@/components/TrackerCalendar";
 import TrackerDetailedStats from "@/components/TrackerDetailedStats";
 import TrackerActivityPulse from "@/components/TrackerActivityPulse";
+import TrackerWatchView from "@/components/TrackerWatchView";
 
 export default function Tracker() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { entries, loading, addEntry } = useTrackerEntries();
+  const isWatch = useIsWatch();
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
 
@@ -50,6 +53,23 @@ export default function Tracker() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-muted-foreground animate-pulse">Loading...</div>
       </div>
+    );
+  }
+
+  if (isWatch) {
+    return (
+      <>
+        <TrackerWatchView entries={entries} streak={streak} onAdd={handleAdd} />
+        <AnimatePresence>
+          {activeMetric && (
+            <TrackerInputModal
+              metric={activeMetric}
+              onSubmit={handleSubmit}
+              onClose={() => setActiveMetricId(null)}
+            />
+          )}
+        </AnimatePresence>
+      </>
     );
   }
 
