@@ -134,22 +134,20 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
                   12-Month Overview — {metric.label}
                   <span className="italic ml-2 text-muted-foreground/50">* sample data</span>
                 </div>
-                <div className="flex items-end gap-2 h-44">
+                <div className="flex gap-2" style={{ height: "11rem" }}>
                   {stats.months.map((m, i) => {
                     const heightPct = m.value > 0 ? Math.max(8, (m.value / maxMonth) * 100) : 0;
                     return (
                       <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                        {/* Value label */}
                         <div
-                          className="text-[10px] font-mono font-bold"
+                          className="text-[10px] font-mono font-bold shrink-0"
                           style={{ color: m.value > 0 ? "#5AC7D7" : "transparent" }}
                         >
                           {m.value > 0 ? m.value : "–"}
                         </div>
-                        {/* Bar container */}
-                        <div className="w-full flex items-end flex-1">
+                        <div className="relative w-full flex-1 rounded-t-sm overflow-hidden">
                           <div
-                            className="w-full rounded-t-sm transition-all duration-300 hover:brightness-125"
+                            className="absolute bottom-0 left-0 w-full rounded-t-sm transition-all duration-300 hover:brightness-125"
                             style={{
                               height: m.value > 0 ? `${heightPct}%` : "2px",
                               background: m.value > 0
@@ -159,8 +157,7 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
                             }}
                           />
                         </div>
-                        {/* Month label */}
-                        <span className="text-[9px] text-muted-foreground font-medium">{m.label.slice(0, 3)}</span>
+                        <span className="text-[9px] text-muted-foreground font-medium shrink-0">{m.label.slice(0, 3)}</span>
                       </div>
                     );
                   })}
