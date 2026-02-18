@@ -1,23 +1,20 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "react-router-dom";
-import {
-  TRACKER_METRICS,
-  loadEntries,
-  addEntry,
-  getTodayTotal,
-  getAllTimeTotal,
-  getLast7DaysTotal,
-  getStreakDays,
-  TrackerEntry,
-} from "@/lib/tracker-data";
+import { Link, useNavigate } from "react-router-dom";
+import { TRACKER_METRICS } from "@/lib/tracker-data";
+import { useAuth } from "@/hooks/useAuth";
+import { useTrackerEntries, getTodayTotal, getLast7DaysTotal, getAllTimeTotal, getStreakDays } from "@/hooks/useTrackerEntries";
 import TrackerStatCard from "@/components/TrackerStatCard";
 import TrackerInputModal from "@/components/TrackerInputModal";
 import TrackerOverviewBar from "@/components/TrackerOverviewBar";
 import TrackerRecentLog from "@/components/TrackerRecentLog";
+import TrackerCalendar from "@/components/TrackerCalendar";
+import TrackerDetailedStats from "@/components/TrackerDetailedStats";
 
 export default function Tracker() {
-  const [entries, setEntries] = useState<TrackerEntry[]>(loadEntries);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { entries, loading, addEntry } = useTrackerEntries();
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
 
@@ -28,15 +25,17 @@ export default function Tracker() {
     setActiveMetricId(metricId);
   }, []);
 
-  const handleSubmit = useCallback((metricId: string, value: number) => {
-    const updated = addEntry(metricId, value);
-    setEntries([...updated]);
+  const handleSubmit = useCallback(async (metricId: string, value: number) => {
+    await addEntry(metricId, value);
     setActiveMetricId(null);
-
-    // Floating feedback
     setFloatingXP({ id: Date.now(), value, x: window.innerWidth / 2, y: window.innerHeight / 2 });
     setTimeout(() => setFloatingXP(null), 1500);
-  }, []);
+  }, [addEntry]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
 
   // Group metrics by category
   const grouped = TRACKER_METRICS.reduce<Record<string, typeof TRACKER_METRICS>>((acc, m) => {
@@ -44,6 +43,14 @@ export default function Tracker() {
     acc[m.categoryId].push(m);
     return acc;
   }, {});
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground animate-pulse">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -67,11 +74,22 @@ export default function Tracker() {
             ← Dashboard
           </Link>
           <h1 className="text-2xl font-bold text-gradient-purple">Stats Tracker</h1>
-          <div className="w-24" />
+          <button
+            onClick={handleSignOut}
+            className="glass-card px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+          >
+            Sign Out
+          </button>
         </motion.div>
 
         {/* Overview */}
         <TrackerOverviewBar entries={entries} streak={streak} />
+
+        {/* Calendar (click to expand) */}
+        <TrackerCalendar entries={entries} />
+
+        {/* Detailed Stats (click to expand) */}
+        <TrackerDetailedStats entries={entries} />
 
         {/* Category Sections */}
         {Object.entries(grouped).map(([catId, metrics], catIndex) => {
