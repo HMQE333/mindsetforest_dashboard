@@ -42,9 +42,15 @@ export default function TrackerCalendar({ entries }: TrackerCalendarProps) {
 
   const selectedEntries = useMemo(() => {
     if (!selectedDate) return [];
-    return entries
-      .filter((e) => e.date === selectedDate)
-      .map((e) => ({ ...e, metric: TRACKER_METRICS.find((m) => m.id === e.metricId) }));
+    const filtered = entries.filter((e) => e.date === selectedDate);
+    // Aggregate by metricId
+    const map = new Map<string, number>();
+    filtered.forEach((e) => map.set(e.metricId, (map.get(e.metricId) || 0) + e.value));
+    return Array.from(map.entries()).map(([metricId, value]) => ({
+      metricId,
+      value,
+      metric: TRACKER_METRICS.find((m) => m.id === metricId),
+    }));
   }, [entries, selectedDate]);
 
   return (
