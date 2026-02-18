@@ -27,6 +27,12 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
   const now = new Date();
   const year = now.getFullYear();
 
+  // Stable sample data seeded by metric id
+  const sampleValues = useMemo(() => {
+    const seed = selectedMetricId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+    return Array.from({ length: 12 }, (_, i) => ((seed * (i + 1) * 7 + 13) % 40) + 5);
+  }, [selectedMetricId]);
+
   const stats = useMemo(() => {
     if (!metric) return null;
 
@@ -35,21 +41,18 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
     const dailyAvg = getDailyAverage(entries, metric.id);
     const habit = getHabitScore(entries, metric.id);
 
-    // 12-month view
     const months: { label: string; value: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(year, now.getMonth() - i, 1);
       const real = getMonthTotal(entries, metric.id, d.getFullYear(), d.getMonth());
-      // Sample data for preview — will be removed next iteration
-      const sample = Math.floor(Math.random() * 40) + 5;
       months.push({
         label: d.toLocaleString("default", { month: "short" }),
-        value: real > 0 ? real : sample,
+        value: real > 0 ? real : sampleValues[11 - i],
       });
     }
 
     return { weekTotal, yearTotal, dailyAvg, habit, months };
-  }, [entries, selectedMetricId, metric, year]);
+  }, [entries, selectedMetricId, metric, year, sampleValues]);
 
   const maxMonth = stats ? Math.max(1, ...stats.months.map((m) => m.value)) : 1;
 
@@ -129,23 +132,32 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
               <div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">
                   12-Month Overview — {metric.label}
+                  <span className="italic ml-2 text-muted-foreground/50">* sample data</span>
                 </div>
-                <div className="flex items-end gap-1 h-24">
+                <div className="flex items-end gap-1.5 h-32">
                   {stats.months.map((m, i) => {
-                    const height = m.value > 0 ? Math.max(8, (m.value / maxMonth) * 100) : 4;
+                    const height = m.value > 0 ? Math.max(10, (m.value / maxMonth) * 100) : 4;
+                    const intensity = m.value > 0 ? 0.5 + (m.value / maxMonth) * 0.5 : 0;
                     return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
+                        {/* Value label on hover */}
+                        <div className="text-[9px] font-mono font-bold text-foreground/0 group-hover:text-foreground/80 transition-colors">
+                          {m.value}
+                        </div>
                         <div
-                          className="w-full rounded-t-sm transition-all duration-300"
+                          className="w-full rounded-md transition-all duration-500 group-hover:scale-105 group-hover:brightness-125"
                           style={{
                             height: `${height}%`,
-                            backgroundColor: m.value > 0
-                              ? `hsl(var(--${metric.colorVar}) / ${0.3 + (m.value / maxMonth) * 0.7})`
-                              : "hsl(var(--muted))",
+                            background: m.value > 0
+                              ? `linear-gradient(to top, hsl(var(--${metric.colorVar}) / ${intensity * 0.6}), hsl(var(--${metric.colorVar}) / ${intensity}))`
+                              : "hsl(var(--muted) / 0.3)",
+                            boxShadow: m.value > 0
+                              ? `0 0 12px hsl(var(--${metric.colorVar}) / ${intensity * 0.3})`
+                              : "none",
                           }}
                           title={`${m.label}: ${m.value} ${metric.unit}`}
                         />
-                        <span className="text-[8px] text-muted-foreground">{m.label.slice(0, 1)}</span>
+                        <span className="text-[9px] text-muted-foreground font-medium">{m.label.slice(0, 3)}</span>
                       </div>
                     );
                   })}
