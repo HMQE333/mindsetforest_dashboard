@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useIsWatch } from "@/hooks/useIsWatch";
 import { TrackerMetric } from "@/lib/tracker-data";
 
 interface TrackerInputModalProps {
@@ -45,7 +46,7 @@ const PRESETS: Record<string, number[]> = {
 
 export default function TrackerInputModal({ metric, onSubmit, onClose }: TrackerInputModalProps) {
   const [value, setValue] = useState("");
-
+  const isWatch = useIsWatch();
   if (!metric) return null;
 
   const presets = PRESETS[metric.id] || [1, 5, 10];
@@ -73,20 +74,22 @@ export default function TrackerInputModal({ metric, onSubmit, onClose }: Tracker
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          className="relative glass-card p-8 max-w-sm w-full mx-4 border-white/15"
+          className={`relative glass-card ${isWatch ? "p-4 max-w-[200px]" : "p-8 max-w-sm"} w-full mx-4 border-white/15`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-center mb-6">
-            <span className="text-5xl block mb-3">{metric.icon}</span>
-            <h2 className={`text-xl font-bold ${textColorMap[metric.colorVar] || "text-foreground"}`}>
+          <div className={`text-center ${isWatch ? "mb-3" : "mb-6"}`}>
+            <span className={`${isWatch ? "text-3xl" : "text-5xl"} block ${isWatch ? "mb-1" : "mb-3"}`}>{metric.icon}</span>
+            <h2 className={`${isWatch ? "text-sm" : "text-xl"} font-bold ${textColorMap[metric.colorVar] || "text-foreground"}`}>
               {metric.label}
             </h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              {metric.categoryIcon} {metric.categoryName}
-            </p>
+            {!isWatch && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {metric.categoryIcon} {metric.categoryName}
+              </p>
+            )}
           </div>
 
-          <div className="space-y-4">
+          <div className={`space-y-${isWatch ? "2" : "4"}`}>
             <div className="relative">
               <input
                 type="number"
@@ -98,38 +101,38 @@ export default function TrackerInputModal({ metric, onSubmit, onClose }: Tracker
                 max="10000"
                 step="any"
                 autoFocus
-                className={`w-full bg-secondary/50 border-2 rounded-xl px-4 py-4 text-center text-3xl font-bold font-mono text-foreground outline-none transition-colors ${borderColorMap[metric.colorVar] || "border-border"}`}
+                className={`w-full bg-secondary/50 border-2 rounded-xl px-4 ${isWatch ? "py-2 text-xl" : "py-4 text-3xl"} text-center font-bold font-mono text-foreground outline-none transition-colors ${borderColorMap[metric.colorVar] || "border-border"}`}
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              <span className={`absolute right-3 top-1/2 -translate-y-1/2 ${isWatch ? "text-[10px]" : "text-sm"} text-muted-foreground`}>
                 {metric.unit}
               </span>
             </div>
 
-            <div className="flex flex-wrap gap-2 justify-center">
+            <div className="flex flex-wrap gap-1.5 justify-center">
               {presets.map((p) => (
                 <button
                   key={p}
                   onClick={() => setValue(String(p))}
-                  className="px-3 py-1.5 text-sm font-mono font-semibold rounded-lg bg-secondary/80 border border-white/10 text-foreground/80 hover:bg-primary/20 hover:border-primary/30 transition-all duration-200"
+                  className={`${isWatch ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"} font-mono font-semibold rounded-lg bg-secondary/80 border border-white/10 text-foreground/80 hover:bg-primary/20 hover:border-primary/30 transition-all duration-200`}
                 >
                   {p}
                 </button>
               ))}
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className={`flex gap-2 ${isWatch ? "mt-3" : "mt-6"}`}>
               <button
                 onClick={onClose}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-secondary/80 border border-white/10 text-foreground/70 hover:bg-secondary transition-all"
+                className={`flex-1 ${isWatch ? "py-2 text-xs" : "py-3 text-sm"} rounded-xl font-semibold bg-secondary/80 border border-white/10 text-foreground/70 hover:bg-secondary transition-all`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={!value || parseFloat(value) <= 0}
-                className="flex-1 py-3 rounded-xl text-sm font-bold gradient-purple text-primary-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-all glow-sm"
+                className={`flex-1 ${isWatch ? "py-2 text-xs" : "py-3 text-sm"} rounded-xl font-bold gradient-purple text-primary-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-all glow-sm`}
               >
-                Log {metric.unit}
+                Log
               </button>
             </div>
           </div>
