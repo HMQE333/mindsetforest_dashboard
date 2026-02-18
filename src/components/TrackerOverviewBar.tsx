@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { TrackerEntry } from "@/lib/tracker-data";
+import { TrackerEntry } from "@/hooks/useTrackerEntries";
 
 interface TrackerOverviewBarProps {
   entries: TrackerEntry[];
