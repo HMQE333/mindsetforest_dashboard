@@ -10,6 +10,7 @@ import TrackerOverviewBar from "@/components/TrackerOverviewBar";
 import TrackerRecentLog from "@/components/TrackerRecentLog";
 import TrackerCalendar from "@/components/TrackerCalendar";
 import TrackerDetailedStats from "@/components/TrackerDetailedStats";
+import TrackerActivityPulse from "@/components/TrackerActivityPulse";
 
 export default function Tracker() {
   const { user, signOut } = useAuth();
@@ -90,6 +91,9 @@ export default function Tracker() {
 
         {/* Detailed Stats (click to expand) */}
         <TrackerDetailedStats entries={entries} />
+
+        {/* 12-Month Activity Pulse */}
+        <TrackerActivityPulse entries={entries} />
 
         {/* Category Sections */}
         {Object.entries(grouped).map(([catId, metrics], catIndex) => {
