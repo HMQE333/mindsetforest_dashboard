@@ -101,7 +101,7 @@ export default function Tracker() {
                 <span className="text-xl">{cat.categoryIcon}</span>
                 <h2 className="text-lg font-bold text-foreground/90">{cat.categoryName}</h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {metrics.map((metric, i) => (
                   <TrackerStatCard
                     key={metric.id}
