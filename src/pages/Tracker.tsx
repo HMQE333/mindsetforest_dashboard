@@ -86,15 +86,6 @@ export default function Tracker() {
         {/* Overview */}
         <TrackerOverviewBar entries={entries} streak={streak} />
 
-        {/* Calendar (click to expand) */}
-        <TrackerCalendar entries={entries} />
-
-        {/* Detailed Stats (click to expand) */}
-        <TrackerDetailedStats entries={entries} />
-
-        {/* 12-Month Activity Pulse */}
-        <TrackerActivityPulse entries={entries} />
-
         {/* Category Sections */}
         {Object.entries(grouped).map(([catId, metrics], catIndex) => {
           const cat = metrics[0];
@@ -126,6 +117,15 @@ export default function Tracker() {
             </motion.div>
           );
         })}
+
+        {/* Calendar (click to expand) */}
+        <TrackerCalendar entries={entries} />
+
+        {/* Detailed Stats (click to expand) */}
+        <TrackerDetailedStats entries={entries} />
+
+        {/* 12-Month Activity Pulse */}
+        <TrackerActivityPulse entries={entries} />
 
         {/* Recent Log */}
         <TrackerRecentLog entries={entries} />
