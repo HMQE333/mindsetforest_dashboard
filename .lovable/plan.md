@@ -1,33 +1,21 @@
 
 
-## Fix: Bars Not Rendering in 12-Month Overview
+## Final Touch: Better Desktop Layout Balance
 
 ### Problem
-The bar chart shows only numbers and month labels but no visible bars. This is a CSS issue: the bars use `height: ${heightPct}%` but their parent container uses `flex-1` (no explicit height), so the percentage resolves to nothing.
+Each category has only 2 metric cards, but the grid is set to 3 columns on large screens (`lg:grid-cols-3`). This leaves the right third of the screen consistently empty, making the layout feel unbalanced.
 
 ### Solution
-Restructure the bar chart so each column uses a fixed-height bar area with absolute positioning for the bar itself. This guarantees the percentage height works correctly.
+Switch the grid to a **2-column layout on desktop** so the cards fill the available width evenly. This means changing `lg:grid-cols-3` to `lg:grid-cols-2` in the category sections grid.
 
 ### Changes (1 file)
 
-**`src/components/TrackerDetailedStats.tsx`** -- lines 137-167 (the bar chart section)
+**`src/pages/Tracker.tsx`**
 
-Replace the current flex-based bar layout with:
-- A wrapper div with explicit `h-32` for the bar growth area
-- Each bar uses `absolute bottom-0` positioning inside a `relative h-full` container
-- The bar height as a percentage of the explicitly-sized parent will now render correctly
-- Keep the same `#5AC7D7` gradient, glow, hover effect, value labels, and month labels
+- Change the grid class on the metric cards container from:
+  `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`
+  to:
+  `grid grid-cols-1 sm:grid-cols-2`
 
-The key structural change per column:
-```
-<div class="flex-1 flex flex-col items-center gap-1">
-  <div class="text-[10px] ...">33</div>          <!-- value -->
-  <div class="relative w-full h-full">            <!-- fixed-height context -->
-    <div class="absolute bottom-0 w-full ..."     <!-- bar grows upward -->
-         style="height: 75%;" />
-  </div>
-  <span class="text-[9px] ...">Mar</span>         <!-- month -->
-</div>
-```
+This makes each card wider on desktop, filling the full container width with 2 evenly-sized cards per row -- no more empty right side.
 
-The outer container changes from `h-44` to a structure where the bar area explicitly gets height, ensuring CSS percentage heights resolve correctly.
