@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { Mission } from "@/lib/dashboard-data";
 
 export interface CustomCategory {
   id: string;
@@ -36,13 +37,24 @@ export function useOnboarding() {
     check();
   }, [user]);
 
-  const completeOnboarding = useCallback(async (categories?: CustomCategory[]) => {
+  const completeOnboarding = useCallback(async (categories?: CustomCategory[], customMissions?: Record<string, Mission[]>) => {
     if (!user) return;
+
+    // Save onboarding status + categories
     await (supabase.from("user_onboarding" as any) as any).upsert([{
       user_id: user.id,
       completed: true,
       custom_categories: categories || [],
     }], { onConflict: "user_id" });
+
+    // If custom missions were set, save them to dashboard_state
+    if (customMissions && Object.keys(customMissions).length > 0) {
+      await supabase.from("dashboard_state").upsert([{
+        user_id: user.id,
+        custom_missions: customMissions as unknown as Record<string, never>,
+      }], { onConflict: "user_id" });
+    }
+
     setNeedsOnboarding(false);
     if (categories) setCustomCategories(categories);
   }, [user]);

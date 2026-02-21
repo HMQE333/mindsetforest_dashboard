@@ -31,7 +31,7 @@ const Index = () => {
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {
-    return <OnboardingView onComplete={(cats) => completeOnboarding(cats)} />;
+    return <OnboardingView onComplete={(cats, missions) => completeOnboarding(cats, missions)} />;
   }
 
   const handleTabClick = (id: Tab) => {

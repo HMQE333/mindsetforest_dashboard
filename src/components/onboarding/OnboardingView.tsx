@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CATEGORIES } from "@/lib/dashboard-data";
+import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { CustomCategory } from "@/hooks/useOnboarding";
+import TaskCustomizationStep from "./TaskCustomizationStep";
 
 const DEFAULT_ICONS = ["🧠", "💪", "🎨", "🔭", "👑", "📊", "✨", "⚙️"];
 
 interface Props {
-  onComplete: (categories?: CustomCategory[]) => void;
+  onComplete: (categories?: CustomCategory[], customMissions?: Record<string, Mission[]>) => void;
 }
 
 export default function OnboardingView({ onComplete }: Props) {
-  const [step, setStep] = useState<"choice" | "custom">("choice");
+  const [step, setStep] = useState<"choice" | "custom" | "tasks">("choice");
   const [customs, setCustoms] = useState<CustomCategory[]>(
     CATEGORIES.map((c, i) => ({
       id: c.id,
@@ -19,6 +20,8 @@ export default function OnboardingView({ onComplete }: Props) {
       icon: DEFAULT_ICONS[i] || "📌",
     }))
   );
+  // Track whether user chose defaults or custom categories
+  const [useDefaults, setUseDefaults] = useState(false);
 
   const updateCustom = (index: number, field: keyof CustomCategory, value: string) => {
     setCustoms(prev => {
@@ -26,6 +29,27 @@ export default function OnboardingView({ onComplete }: Props) {
       next[index] = { ...next[index], [field]: value };
       return next;
     });
+  };
+
+  const getCategories = () => {
+    if (useDefaults) {
+      return CATEGORIES.map((c, i) => ({ id: c.id, name: c.name, icon: DEFAULT_ICONS[i] || "📌" }));
+    }
+    return customs.map(c => ({ id: c.id, name: c.name, icon: c.icon }));
+  };
+
+  const getDefaultMissions = (): Record<string, Mission[]> => {
+    const result: Record<string, Mission[]> = {};
+    CATEGORIES.forEach(c => { result[c.id] = c.missions; });
+    return result;
+  };
+
+  const handleTasksComplete = (customMissions: Record<string, Mission[]>) => {
+    const hasAny = Object.values(customMissions).some(m => m.length > 0);
+    onComplete(
+      useDefaults ? undefined : customs,
+      hasAny ? customMissions : undefined
+    );
   };
 
   return (
@@ -50,7 +74,7 @@ export default function OnboardingView({ onComplete }: Props) {
 
             <div className="space-y-4">
               <button
-                onClick={() => onComplete()}
+                onClick={() => { setUseDefaults(true); setStep("tasks"); }}
                 className="w-full glass-card p-5 border-white/15 hover:border-primary/40 transition-all text-left group"
               >
                 <div className="flex items-center gap-4">
@@ -76,7 +100,7 @@ export default function OnboardingView({ onComplete }: Props) {
               </button>
             </div>
           </motion.div>
-        ) : (
+        ) : step === "custom" ? (
           <motion.div
             key="custom"
             initial={{ opacity: 0, y: 20 }}
@@ -134,12 +158,20 @@ export default function OnboardingView({ onComplete }: Props) {
             </div>
 
             <button
-              onClick={() => onComplete(customs)}
+              onClick={() => { setUseDefaults(false); setStep("tasks"); }}
               className="w-full mt-6 py-3 rounded-xl text-sm font-bold gradient-purple text-primary-foreground hover:opacity-90 transition-all glow-sm"
             >
-              Start My Journey 🚀
+              Next: Customize Tasks →
             </button>
           </motion.div>
+        ) : (
+          <TaskCustomizationStep
+            key="tasks"
+            categories={getCategories()}
+            defaultMissions={getDefaultMissions()}
+            onComplete={handleTasksComplete}
+            onBack={() => setStep(useDefaults ? "choice" : "custom")}
+          />
         )}
       </AnimatePresence>
     </div>
