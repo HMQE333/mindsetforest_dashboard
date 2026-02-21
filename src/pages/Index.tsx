@@ -18,7 +18,7 @@ const Index = () => {
     <button
       key={id}
       onClick={onClick || (() => setActiveTab(id))}
-      className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
+      className={`px-3 py-2 text-xs md:px-5 md:py-2.5 md:text-sm whitespace-nowrap rounded-xl font-bold transition-all duration-300 ${
         activeTab === id
           ? "gradient-purple text-primary-foreground glow-sm"
           : "text-muted-foreground hover:text-foreground"
@@ -57,7 +57,7 @@ const Index = () => {
           <p className="text-lg text-muted-foreground mb-6">Track. Grind. Level Up.</p>
 
           {/* Tabs */}
-          <div className="inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10">
+          <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10 max-w-full overflow-x-auto scrollbar-hide">
             {tabButton("dashboard", "🎮 Dashboard")}
             {tabButton("tracker", "📊 Stats Tracker", () => {
               if (user) navigate("/tracker");

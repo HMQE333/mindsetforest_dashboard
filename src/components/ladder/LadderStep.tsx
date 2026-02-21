@@ -43,7 +43,7 @@ export default function LadderStep({ level, tasks, isComplete, isOdd, onAddTask,
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay: level * 0.1 }}
-      className={`flex items-start gap-6 relative z-[2] ${isOdd ? "flex-row" : "flex-row-reverse"}`}
+      className={`flex flex-col items-center md:items-start md:flex-row ${!isOdd ? "md:flex-row-reverse" : ""} gap-4 md:gap-6 relative z-[2]`}
     >
       {/* Node */}
       <div className={`flex-shrink-0 w-[70px] h-[70px] flex items-center justify-center rounded-full text-2xl font-bold border-2 ${levelInfo.colors.border} backdrop-blur-lg transition-all duration-300 hover:scale-110`}
@@ -59,7 +59,7 @@ export default function LadderStep({ level, tasks, isComplete, isOdd, onAddTask,
 
       {/* Card */}
       <div
-        className={`flex-1 min-w-0 max-w-[420px] glass-card p-5 relative transition-all duration-300 hover:border-white/20 ${isComplete ? "ring-1 ring-green-500/30" : ""} ${hasGlow ? "animate-ladder-glow" : ""}`}
+        className={`flex-1 min-w-0 w-full md:max-w-[420px] glass-card p-5 relative transition-all duration-300 hover:border-white/20 ${isComplete ? "ring-1 ring-green-500/30" : ""} ${hasGlow ? "animate-ladder-glow" : ""}`}
         style={hasGlow ? {
           boxShadow: isFullGlow
             ? `0 0 25px rgba(168,85,247,0.5), 0 0 50px rgba(168,85,247,0.25), 0 0 80px rgba(168,85,247,0.1)`
