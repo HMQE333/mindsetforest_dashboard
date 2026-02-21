@@ -3,10 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useOnboarding } from "@/hooks/useOnboarding";
 import DashboardView from "@/components/dashboard/DashboardView";
 import LadderView from "@/components/ladder/LadderView";
 import HabitLoopView from "@/components/habitloop/HabitLoopView";
 import OracleView from "@/components/oracle/OracleView";
+import OnboardingView from "@/components/onboarding/OnboardingView";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle";
 
@@ -22,8 +24,14 @@ const Index = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Show onboarding for new authenticated users
+  if (user && !onboardingLoading && needsOnboarding) {
+    return <OnboardingView onComplete={(cats) => completeOnboarding(cats)} />;
+  }
 
   const handleTabClick = (id: Tab) => {
     if (id === "tracker") {
