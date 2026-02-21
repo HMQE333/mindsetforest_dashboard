@@ -1,9 +1,30 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
+
+function getPasswordStrength(pw: string): { label: string; percent: number; color: string } {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+
+  if (score <= 1) return { label: "Weak", percent: 25, color: "bg-destructive" };
+  if (score === 2) return { label: "Fair", percent: 50, color: "bg-yellow-500" };
+  if (score === 3) return { label: "Good", percent: 75, color: "bg-emerald-400" };
+  return { label: "Strong", percent: 100, color: "bg-emerald-500" };
+}
+
+function getPasswordErrors(pw: string): string[] {
+  const errors: string[] = [];
+  if (pw.length < 8) errors.push("Min. 8 characters");
+  if (!/[A-Z]/.test(pw)) errors.push("1 uppercase letter");
+  if (!/[0-9]/.test(pw)) errors.push("1 digit");
+  return errors;
+}
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -14,15 +35,24 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const strength = useMemo(() => getPasswordStrength(password), [password]);
+  const passwordErrors = useMemo(() => getPasswordErrors(password), [password]);
+  const isPasswordValid = passwordErrors.length === 0;
+
   useEffect(() => {
-    if (user) navigate("/tracker");
+    if (user) navigate("/");
   }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
 
+    if (!isLogin && !isPasswordValid) {
+      setError("Password does not meet requirements");
+      return;
+    }
+
+    setLoading(true);
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -31,7 +61,7 @@ export default function Auth() {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
       }
-      navigate("/tracker");
+      navigate("/");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -68,15 +98,39 @@ export default function Auth() {
               required
               className="w-full bg-secondary/50 border-2 border-border rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
             />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              required
-              minLength={6}
-              className="w-full bg-secondary/50 border-2 border-border rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
-            />
+            <div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                required
+                minLength={6}
+                className="w-full bg-secondary/50 border-2 border-border rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
+              />
+
+              {/* Password strength indicator - signup only */}
+              {!isLogin && password.length > 0 && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-2 space-y-1.5">
+                  <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                    <motion.div
+                      className={`h-full rounded-full ${strength.color}`}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${strength.percent}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">{strength.label}</span>
+                    {passwordErrors.length > 0 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        Need: {passwordErrors.join(", ")}
+                      </span>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </div>
 
             {error && (
               <p className="text-xs text-destructive text-center">{error}</p>
@@ -84,7 +138,7 @@ export default function Auth() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (!isLogin && !isPasswordValid && password.length > 0)}
               className="w-full py-3 rounded-xl text-sm font-bold gradient-purple text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-all glow-sm"
             >
               {loading ? "..." : isLogin ? "Sign In" : "Sign Up"}

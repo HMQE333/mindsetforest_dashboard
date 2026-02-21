@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 
@@ -96,7 +97,8 @@ export function useDashboardState() {
       custom_missions: s.customMissions as unknown as Record<string, never>,
     };
 
-    await supabase.from("dashboard_state").upsert([payload], { onConflict: "user_id" });
+    const { error } = await supabase.from("dashboard_state").upsert([payload], { onConflict: "user_id" });
+    if (error) toast({ title: "Save failed", description: "Could not save dashboard state.", variant: "destructive" });
   }, [user]);
 
   const completeMission = useCallback((categoryId: string, missionIndex: number, xp: number) => {

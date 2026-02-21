@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
 import { AllHabitLoops, CategoryHabitLoops, HabitTask, HabitLoop, createEmptyHabitLoops, isLoopComplete } from "@/lib/habit-loop-data";
 
@@ -35,12 +36,13 @@ export function useHabitLoopState() {
 
   const persist = useCallback(async (categoryId: string, state: CategoryHabitLoops) => {
     if (!user) return;
-    await (supabase.from("habit_loops" as any) as any).upsert([{
+    const { error } = await (supabase.from("habit_loops" as any) as any).upsert([{
       user_id: user.id,
       category_id: categoryId,
       current_loop: state.currentLoop,
       loops: state.loops,
     }], { onConflict: "user_id,category_id" });
+    if (error) toast({ title: "Save failed", description: "Could not save habit loops.", variant: "destructive" });
   }, [user]);
 
   const changeCategory = useCallback((cat: string) => {

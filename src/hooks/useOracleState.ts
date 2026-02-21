@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
 
 interface PurchasedReward {
@@ -49,12 +50,13 @@ export function useOracleState() {
 
   const persist = useCallback(async (s: OracleState) => {
     if (!user) return;
-    await supabase.from("oracle_state").upsert([{
+    const { error } = await supabase.from("oracle_state").upsert([{
       user_id: user.id,
       oracle_xp: s.oracleXP,
       total_xp_sacrificed: s.totalXPSacrificed,
       rewards_purchased: s.rewardsPurchased as unknown as Record<string, never>,
     }], { onConflict: "user_id" });
+    if (error) toast({ title: "Save failed", description: "Could not save oracle state.", variant: "destructive" });
   }, [user]);
 
   const sacrificeXP = useCallback((amount: number): boolean => {
