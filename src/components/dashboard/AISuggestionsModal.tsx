@@ -3,11 +3,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { supabase } from "@/integrations/supabase/client";
 
+interface LadderContext {
+  activeCategory: string;
+  currentLevel: string;
+  completedTasks: string[];
+  totalCompleted: number;
+  totalTasks: number;
+}
+
 interface AISuggestionsModalProps {
   categoryId: string;
   currentMissions: Mission[];
   onApply: (categoryId: string, missions: Mission[]) => void;
   onClose: () => void;
+  ladderContext?: LadderContext | null;
 }
 
 interface Suggestion extends Mission {
@@ -18,12 +27,13 @@ interface Suggestion extends Mission {
 type ApplyMode = "replace" | "add" | "append";
 type AIMode = "focused" | "strategic" | "recovery";
 
-export default function AISuggestionsModal({ categoryId, currentMissions, onApply, onClose }: AISuggestionsModalProps) {
+export default function AISuggestionsModal({ categoryId, currentMissions, onApply, onClose, ladderContext }: AISuggestionsModalProps) {
   const category = CATEGORIES.find(c => c.id === categoryId)!;
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [applyMode, setApplyMode] = useState<ApplyMode>("replace");
   const [aiMode, setAIMode] = useState<AIMode>("focused");
+  const [useLadder, setUseLadder] = useState(false);
   const [generated, setGenerated] = useState(false);
 
   const selectedCount = suggestions.filter(s => s.selected).length;
@@ -31,15 +41,17 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
   const generate = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-mission-suggest", {
-        body: {
-          categoryId: category.id,
-          categoryName: category.name,
-          categoryTagline: category.tagline,
-          currentMissions: currentMissions.map(m => m.title),
-          aiMode,
-        },
-      });
+      const body: Record<string, unknown> = {
+        categoryId: category.id,
+        categoryName: category.name,
+        categoryTagline: category.tagline,
+        currentMissions: currentMissions.map(m => m.title),
+        aiMode,
+      };
+      if (useLadder && ladderContext) {
+        body.ladderContext = ladderContext;
+      }
+      const { data, error } = await supabase.functions.invoke("ai-mission-suggest", { body });
 
       if (error) throw error;
       const items = (data?.suggestions || []) as Array<{ title: string; description: string; duration: string; xp: number; reason?: string }>;
@@ -50,7 +62,7 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
     } finally {
       setLoading(false);
     }
-  }, [category, currentMissions, aiMode]);
+  }, [category, currentMissions, aiMode, useLadder, ladderContext]);
 
   const toggleSuggestion = (index: number) => {
     setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, selected: !s.selected } : s));
@@ -197,6 +209,24 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
                 ))}
               </div>
             </div>
+
+            {/* Ladder toggle */}
+            {ladderContext && (
+              <div className="p-3 rounded-2xl border border-white/10 bg-white/[0.04]">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-foreground/80 mb-2">Ladder Context</h3>
+                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  useLadder ? "border-primary/30 bg-primary/10" : "border-white/10 bg-white/[0.03] hover:border-white/18"
+                }`}>
+                  <input type="checkbox" checked={useLadder} onChange={e => setUseLadder(e.target.checked)} className="accent-primary" />
+                  <div>
+                    <strong className="text-sm text-foreground block">🪜 Generate from Ladder</strong>
+                    <small className="text-xs text-foreground/50">
+                      Use your {ladderContext.activeCategory} ladder progress ({ladderContext.totalCompleted}/{ladderContext.totalTasks} tasks) to generate smarter missions
+                    </small>
+                  </div>
+                </label>
+              </div>
+            )}
 
             <div className="p-3 rounded-2xl border border-white/10 bg-white/[0.04]">
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-foreground/80 mb-2">AI mode</h3>

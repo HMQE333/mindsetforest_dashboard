@@ -153,6 +153,15 @@
   animation: fire-flicker 1.5s infinite;
 }
 
+@keyframes ladder-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.08); }
+}
+
+.animate-ladder-glow {
+  animation: ladder-glow 2.5s ease-in-out infinite;
+}
+
 /* Jar animations */
 @keyframes waveMove {
   0% { transform: translateX(0) translateY(0); }

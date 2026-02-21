@@ -17,6 +17,11 @@ export default function LadderStep({ level, tasks, isComplete, isOdd, onAddTask,
   const [newTaskId, setNewTaskId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Glow effect based on completion ratio
+  const completedRatio = tasks.length > 0 ? tasks.filter(t => t.completed).length / tasks.length : 0;
+  const hasGlow = completedRatio >= 0.75;
+  const isFullGlow = completedRatio >= 1.0 && tasks.length > 0;
+
   useEffect(() => {
     if (newTaskId && inputRef.current) {
       inputRef.current.focus();
@@ -53,7 +58,15 @@ export default function LadderStep({ level, tasks, isComplete, isOdd, onAddTask,
       </div>
 
       {/* Card */}
-      <div className={`flex-1 min-w-0 max-w-[420px] glass-card p-5 relative transition-all duration-300 hover:border-white/20 ${isComplete ? "ring-1 ring-green-500/30" : ""}`}>
+      <div
+        className={`flex-1 min-w-0 max-w-[420px] glass-card p-5 relative transition-all duration-300 hover:border-white/20 ${isComplete ? "ring-1 ring-green-500/30" : ""} ${hasGlow ? "animate-ladder-glow" : ""}`}
+        style={hasGlow ? {
+          boxShadow: isFullGlow
+            ? `0 0 25px rgba(168,85,247,0.5), 0 0 50px rgba(168,85,247,0.25), 0 0 80px rgba(168,85,247,0.1)`
+            : `0 0 20px rgba(168,85,247,0.3), 0 0 40px rgba(168,85,247,0.15)`,
+          borderColor: isFullGlow ? "rgba(168,85,247,0.5)" : "rgba(168,85,247,0.3)",
+        } : {}}
+      >
         {/* Completion seal */}
         <AnimatePresence>
           {isComplete && (
