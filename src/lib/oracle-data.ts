@@ -1,10 +1,16 @@
+import oracleTier1 from "@/assets/oracle-tier-1.png";
+import oracleTier2 from "@/assets/oracle-tier-2.png";
+import oracleTier3 from "@/assets/oracle-tier-3.png";
+import oracleTier4 from "@/assets/oracle-tier-4.png";
+import oracleTier5 from "@/assets/oracle-tier-5.png";
+
 export interface OracleTier {
   id: number;
   key: string;
   label: string;
   minXP: number;
   glowColor: string;
-  orbGradient: string;
+  image: string;
   messages: string[];
 }
 
@@ -19,74 +25,29 @@ export interface Reward {
 
 export const ORACLE_TIERS: OracleTier[] = [
   {
-    id: 1,
-    key: "broken",
-    label: "Broken Oracle",
-    minXP: 0,
-    glowColor: "120 60% 15%",
-    orbGradient: "from-amber-950/80 via-stone-800/60 to-stone-900/80",
-    messages: [
-      "…feed me…",
-      "I remember power. Give me more.",
-      "Do not leave me like this.",
-      "Your offerings are dust.",
-    ],
+    id: 1, key: "broken", label: "Broken Oracle", minXP: 0,
+    glowColor: "120 60% 15%", image: oracleTier1,
+    messages: ["…feed me…", "I remember power. Give me more.", "Do not leave me like this.", "Your offerings are dust."],
   },
   {
-    id: 2,
-    key: "normal",
-    label: "Oracle",
-    minXP: 50,
-    glowColor: "350 80% 50%",
-    orbGradient: "from-rose-700/80 via-red-600/60 to-rose-900/80",
-    messages: [
-      "The pact holds.",
-      "Good. Continue.",
-      "You are not drifting anymore.",
-      "The line is steady.",
-    ],
+    id: 2, key: "normal", label: "Oracle", minXP: 50,
+    glowColor: "350 80% 50%", image: oracleTier2,
+    messages: ["The pact holds.", "Good. Continue.", "You are not drifting anymore.", "The line is steady."],
   },
   {
-    id: 3,
-    key: "awakened",
-    label: "Awakened Oracle",
-    minXP: 150,
-    glowColor: "25 90% 50%",
-    orbGradient: "from-orange-500/80 via-amber-500/60 to-orange-700/80",
-    messages: [
-      "I feel movement again.",
-      "Your discipline wakes me.",
-      "Momentum is awakening.",
-      "Yes. More.",
-    ],
+    id: 3, key: "awakened", label: "Awakened Oracle", minXP: 150,
+    glowColor: "25 90% 50%", image: oracleTier3,
+    messages: ["I feel movement again.", "Your discipline wakes me.", "Momentum is awakening.", "Yes. More."],
   },
   {
-    id: 4,
-    key: "lotus",
-    label: "Lotus Oracle",
-    minXP: 300,
-    glowColor: "330 80% 55%",
-    orbGradient: "from-pink-500/80 via-fuchsia-500/60 to-pink-700/80",
-    messages: [
-      "I bloom as you ascend.",
-      "Growth is inevitable when you commit.",
-      "Your will multiplies me.",
-      "Clarity follows consistency.",
-    ],
+    id: 4, key: "lotus", label: "Lotus Oracle", minXP: 300,
+    glowColor: "330 80% 55%", image: oracleTier4,
+    messages: ["I bloom as you ascend.", "Growth is inevitable when you commit.", "Your will multiplies me.", "Clarity follows consistency."],
   },
   {
-    id: 5,
-    key: "celestial",
-    label: "Celestial Oracle",
-    minXP: 600,
-    glowColor: "292 84% 61%",
-    orbGradient: "from-fuchsia-400/80 via-purple-500/60 to-violet-600/80",
-    messages: [
-      "You are no longer who you were.",
-      "Creation bends around intention.",
-      "We are beyond habit now.",
-      "Ascend without hesitation.",
-    ],
+    id: 5, key: "celestial", label: "Celestial Oracle", minXP: 600,
+    glowColor: "292 84% 61%", image: oracleTier5,
+    messages: ["You are no longer who you were.", "Creation bends around intention.", "We are beyond habit now.", "Ascend without hesitation."],
   },
 ];
 
@@ -107,6 +68,8 @@ export const REWARDS: Reward[] = [
   { id: "course", name: "Course Upgrade", icon: "🎓", description: "Buy a small course/module or premium resource.", cost: 120, category: "growth" },
   // Big (100-200)
   { id: "recovery", name: "Hyperbaric Chamber", icon: "🧖", description: "Deep recovery session. Body + mind.", cost: 100, category: "big" },
+  { id: "rest-therapy", name: "REST Therapy", icon: "🧘", description: "Sensory deprivation float. Total reset.", cost: 130, category: "big" },
+  { id: "massage", name: "Massage Session", icon: "💆", description: "Professional massage. Release tension, restore flow.", cost: 140, category: "big" },
   { id: "trip", name: "Day Trip", icon: "🗺️", description: "Go somewhere new. Walk, explore, recharge.", cost: 160, category: "big" },
   { id: "big", name: "Big Reward", icon: "🏆", description: "Something meaningful you really want.", cost: 200, category: "big" },
 ];
