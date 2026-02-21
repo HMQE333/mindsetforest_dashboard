@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      dashboard_state: {
+        Row: {
+          categories_engaged: string[]
+          completed_missions: string[]
+          created_at: string
+          current_level: number
+          current_xp: number
+          custom_missions: Json
+          day_key: string | null
+          id: string
+          last_completion_date: string | null
+          missions_completed: number
+          streak_days: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          categories_engaged?: string[]
+          completed_missions?: string[]
+          created_at?: string
+          current_level?: number
+          current_xp?: number
+          custom_missions?: Json
+          day_key?: string | null
+          id?: string
+          last_completion_date?: string | null
+          missions_completed?: number
+          streak_days?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          categories_engaged?: string[]
+          completed_missions?: string[]
+          created_at?: string
+          current_level?: number
+          current_xp?: number
+          custom_missions?: Json
+          day_key?: string | null
+          id?: string
+          last_completion_date?: string | null
+          missions_completed?: number
+          streak_days?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracker_entries: {
         Row: {
           created_at: string
