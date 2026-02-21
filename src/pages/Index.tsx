@@ -9,6 +9,7 @@ import LadderView from "@/components/ladder/LadderView";
 import HabitLoopView from "@/components/habitloop/HabitLoopView";
 import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
+import GuideSection from "@/components/landing/GuideSection";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle";
 
@@ -62,6 +63,7 @@ const Index = () => {
       <Link to="/auth" className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl gradient-purple text-primary-foreground font-bold text-lg glow-md hover:opacity-90 transition-all hover:-translate-y-1">
         🔐 Sign In
       </Link>
+      {activeTab === "dashboard" && <GuideSection />}
     </motion.div>
   );
 
