@@ -119,6 +119,36 @@ export type Database = {
         }
         Relationships: []
       }
+      oracle_state: {
+        Row: {
+          created_at: string
+          id: string
+          oracle_xp: number
+          rewards_purchased: Json
+          total_xp_sacrificed: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          oracle_xp?: number
+          rewards_purchased?: Json
+          total_xp_sacrificed?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          oracle_xp?: number
+          rewards_purchased?: Json
+          total_xp_sacrificed?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracker_entries: {
         Row: {
           created_at: string

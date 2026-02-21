@@ -190,6 +190,21 @@ export function useDashboardState() {
     });
   }, [persist]);
 
+  const spendXP = useCallback((amount: number) => {
+    setState(prev => {
+      if (prev.currentXP < amount) return prev;
+      const newXP = prev.currentXP - amount;
+      const newLevel = Math.floor(newXP / 100) + 1;
+      const next: DashboardState = {
+        ...prev,
+        currentXP: newXP,
+        currentLevel: newLevel,
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   return {
     state,
     loading,
@@ -197,6 +212,7 @@ export function useDashboardState() {
     resetDay,
     saveCustomMissions,
     splitMission,
+    spendXP,
     getMissions,
     getCompletedCount,
   };
