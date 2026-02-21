@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { categoryId, categoryName, categoryTagline, currentTasks, aiMode } = await req.json();
+    const { categoryId, categoryName, categoryTagline, currentTasks, aiMode, goal, constraints, focusLevels, tasksPerLevel, timeHorizon } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -21,13 +21,44 @@ serve(async (req) => {
       recovery: "Generate low-energy, approachable tasks. Easy wins that build momentum.",
     };
 
+    const activeLevels: number[] = Array.isArray(focusLevels) && focusLevels.length > 0
+      ? focusLevels.filter((l: number) => l >= 0 && l <= 5)
+      : [0, 1, 2, 3, 4, 5];
+
+    const taskCount = typeof tasksPerLevel === "number" && tasksPerLevel >= 1 && tasksPerLevel <= 4
+      ? tasksPerLevel
+      : 3;
+
     const existingStr = Object.entries(currentTasks || {})
       .map(([lvl, tasks]) => `Level ${lvl} (${levelNames[Number(lvl)]}): ${(tasks as string[]).join(", ") || "empty"}`)
       .join("\n");
 
-    const systemPrompt = `You are a mastery progression AI. Generate task suggestions for the "${categoryName}" category (${categoryTagline}) across a 6-level ladder system.
+    const levelsDescription = activeLevels
+      .map(l => `${l}: ${levelNames[l]}`)
+      .join("\n");
 
-The levels are:
+    // Build conditional prompt sections
+    let extraContext = "";
+    if (goal) {
+      extraContext += `\nUSER GOAL: "${goal}". Align all generated tasks toward achieving this goal.\n`;
+    }
+    if (constraints) {
+      extraContext += `\nUSER CONSTRAINTS: "${constraints}". Respect these constraints strictly when generating tasks.\n`;
+    }
+    if (timeHorizon === "week") {
+      extraContext += "\nTIME HORIZON: Generate tasks suitable for completion within one week. Focus on quick, actionable items.\n";
+    } else if (timeHorizon === "month") {
+      extraContext += "\nTIME HORIZON: Generate tasks suitable for completion within one month. Balance quick wins with deeper skill-building.\n";
+    } else if (timeHorizon === "longterm") {
+      extraContext += "\nTIME HORIZON: Generate long-term tasks. Focus on deep investments, projects, and mastery-level commitments.\n";
+    }
+
+    const systemPrompt = `You are a mastery progression AI. Generate task suggestions for the "${categoryName}" category (${categoryTagline}).
+
+Generate tasks ONLY for these levels:
+${levelsDescription}
+
+Level descriptions:
 0: Foundation - Core basics and fundamentals
 1: System - Building consistent processes
 2: Output - Creating tangible results
@@ -36,11 +67,11 @@ The levels are:
 5: Mastery - Teaching, leading, innovating
 
 ${modePrompts[aiMode] || modePrompts.focused}
-
+${extraContext}
 Current tasks the user already has:
 ${existingStr}
 
-Avoid duplicating existing tasks. Generate 2-4 NEW tasks per level that make sense for each progression stage.
+Avoid duplicating existing tasks. Generate exactly ${taskCount} NEW tasks per level.
 
 You MUST respond using the suggest_ladder tool.`;
 
@@ -70,7 +101,7 @@ You MUST respond using the suggest_ladder tool.`;
                     type: "object",
                     properties: {
                       level: { type: "number", description: "Level 0-5" },
-                      tasks: { type: "array", items: { type: "string" }, description: "2-4 task descriptions" },
+                      tasks: { type: "array", items: { type: "string" }, description: `Exactly ${taskCount} task descriptions` },
                     },
                     required: ["level", "tasks"],
                     additionalProperties: false,
@@ -110,7 +141,7 @@ You MUST respond using the suggest_ladder tool.`;
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
-        levels = parsed.levels || [];
+        levels = (parsed.levels || []).filter((l: { level: number }) => activeLevels.includes(l.level));
       } catch {
         console.error("Failed to parse tool call arguments");
       }
