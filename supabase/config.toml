@@ -1,1 +1,4 @@
 project_id = "ovqulpgcdddtadobwlan"
+
+[functions.ai-split-task]
+verify_jwt = false

@@ -174,12 +174,29 @@ export function useDashboardState() {
     return Array.from(state.completedMissions).filter(id => id.startsWith(categoryId + "-")).length;
   }, [state.completedMissions]);
 
+  const splitMission = useCallback((categoryId: string, missionIndex: number, subTasks: Mission[]) => {
+    setState(prev => {
+      const currentMissions = prev.customMissions[categoryId]
+        || CATEGORIES.find(c => c.id === categoryId)?.missions
+        || [];
+      const newMissions = [...currentMissions];
+      newMissions.splice(missionIndex, 1, ...subTasks);
+      const next: DashboardState = {
+        ...prev,
+        customMissions: { ...prev.customMissions, [categoryId]: newMissions },
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   return {
     state,
     loading,
     completeMission,
     resetDay,
     saveCustomMissions,
+    splitMission,
     getMissions,
     getCompletedCount,
   };

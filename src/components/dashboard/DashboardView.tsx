@@ -1,6 +1,8 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDashboardState } from "@/hooks/useDashboardState";
+import { useLadderState } from "@/hooks/useLadderState";
+import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
 import MissionView from "./MissionView";
@@ -9,7 +11,8 @@ import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, resetDay, saveCustomMissions, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, getMissions, getCompletedCount } = useDashboardState();
+  const { ladders, activeCategory: ladderCategory } = useLadderState();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -35,6 +38,26 @@ export default function DashboardView() {
     }, 100);
   }, [completeMission, state.currentLevel, state.currentXP]);
 
+  // Build ladder context for AI modal
+  const ladderContext = useMemo(() => {
+    const ladder = ladders[ladderCategory];
+    if (!ladder?.levels) return null;
+    let total = 0, completed = 0;
+    const completedTasks: string[] = [];
+    let currentLevel = LADDER_LEVELS[0].title;
+    for (let i = 0; i < 6; i++) {
+      const tasks: LadderTask[] = ladder.levels[i] || [];
+      tasks.forEach(t => {
+        total++;
+        if (t.completed) { completed++; completedTasks.push(t.text); }
+      });
+      const allDone = tasks.length > 0 && tasks.every(t => t.completed);
+      if (!allDone) { currentLevel = LADDER_LEVELS[i].title; }
+    }
+    if (total === 0) return null;
+    return { activeCategory: ladderCategory, currentLevel, completedTasks: completedTasks.filter(Boolean), totalCompleted: completed, totalTasks: total };
+  }, [ladders, ladderCategory]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -55,6 +78,7 @@ export default function DashboardView() {
             state={state}
             getMissions={getMissions}
             onComplete={handleComplete}
+            onSplit={splitMission}
             onBack={() => setSelectedCategory(null)}
             onEdit={() => setEditingCategory(selectedCategory)}
             onAI={() => setAICategory(selectedCategory)}
@@ -95,6 +119,7 @@ export default function DashboardView() {
             currentMissions={getMissions(aiCategory)}
             onApply={saveCustomMissions}
             onClose={() => setAICategory(null)}
+            ladderContext={ladderContext}
           />
         )}
       </AnimatePresence>

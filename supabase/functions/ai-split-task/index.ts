@@ -9,29 +9,24 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { categoryId, categoryName, categoryTagline, currentMissions, aiMode, ladderContext } = await req.json();
+    const { title, description, duration, xp } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const modePrompts: Record<string, string> = {
-      focused: "Generate concrete, execution-first tasks. Each should be actionable within a single session.",
-      strategic: "Identify bottleneck areas and generate tasks that unlock the most growth. Think about what's missing.",
-      recovery: "Generate low-energy, low-friction tasks. Easy wins that build momentum without overwhelm.",
-    };
+    const perTaskXP = Math.max(1, Math.round(xp / 3));
 
-    let ladderPrompt = "";
-    if (ladderContext) {
-      ladderPrompt = `\n\nIMPORTANT LADDER CONTEXT: The user is working on their "${ladderContext.activeCategory}" mastery ladder. They are currently at the "${ladderContext.currentLevel}" level. They have completed ${ladderContext.totalCompleted}/${ladderContext.totalTasks} total tasks. Completed tasks include: ${ladderContext.completedTasks?.join(", ") || "none"}.\n\nGenerate today's missions that specifically push the user toward completing their current ladder level. Align tasks with their progression stage.`;
-    }
+    const systemPrompt = `You are a productivity AI that breaks overwhelming tasks into 3 smaller, immediately actionable micro-tasks. Each micro-task should:
+- Take less time than the original
+- Feel easy to start (low activation energy)
+- Be concrete and specific
 
-    const systemPrompt = `You are a gamified productivity AI. Generate 3-5 mission/task suggestions for the "${categoryName}" category (${categoryTagline}).
+Example: "Train for 1h" (40 XP) becomes:
+1. "Get training clothes ready" (13 XP, 5 min)
+2. "Play your workout playlist" (13 XP, 2 min)  
+3. "Start first 20 min of training" (14 XP, 20 min)
 
-${modePrompts[aiMode] || modePrompts.focused}
-
-Current tasks the user already has: ${currentMissions?.join(", ") || "none"}
-Avoid duplicating existing tasks.${ladderPrompt}
-
-You MUST respond using the suggest_missions tool.`;
+Distribute ~${perTaskXP} XP per sub-task (total should equal ${xp}).
+You MUST respond using the split_task tool.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -43,18 +38,18 @@ You MUST respond using the suggest_missions tool.`;
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Generate mission suggestions for: ${categoryName} - ${categoryTagline}` },
+          { role: "user", content: `Split this task into 3 micro-tasks:\nTitle: ${title}\nDescription: ${description}\nDuration: ${duration}\nXP: ${xp}` },
         ],
         tools: [
           {
             type: "function",
             function: {
-              name: "suggest_missions",
-              description: "Return 3-5 mission suggestions",
+              name: "split_task",
+              description: "Return exactly 3 micro-tasks that replace the original task",
               parameters: {
                 type: "object",
                 properties: {
-                  suggestions: {
+                  subtasks: {
                     type: "array",
                     items: {
                       type: "object",
@@ -63,20 +58,19 @@ You MUST respond using the suggest_missions tool.`;
                         description: { type: "string" },
                         duration: { type: "string" },
                         xp: { type: "number" },
-                        reason: { type: "string" },
                       },
                       required: ["title", "description", "duration", "xp"],
                       additionalProperties: false,
                     },
                   },
                 },
-                required: ["suggestions"],
+                required: ["subtasks"],
                 additionalProperties: false,
               },
             },
           },
         ],
-        tool_choice: { type: "function", function: { name: "suggest_missions" } },
+        tool_choice: { type: "function", function: { name: "split_task" } },
       }),
     });
 
@@ -99,22 +93,22 @@ You MUST respond using the suggest_missions tool.`;
 
     const data = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    let suggestions = [];
+    let subtasks = [];
 
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
-        suggestions = parsed.suggestions || [];
+        subtasks = parsed.subtasks || [];
       } catch {
         console.error("Failed to parse tool call arguments");
       }
     }
 
-    return new Response(JSON.stringify({ suggestions }), {
+    return new Response(JSON.stringify({ subtasks }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("ai-mission-suggest error:", e);
+    console.error("ai-split-task error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

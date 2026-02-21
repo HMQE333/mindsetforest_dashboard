@@ -1,20 +1,42 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { DashboardState } from "@/hooks/useDashboardState";
+import { supabase } from "@/integrations/supabase/client";
 
 interface MissionViewProps {
   categoryId: string;
   state: DashboardState;
   getMissions: (categoryId: string) => Mission[];
   onComplete: (categoryId: string, index: number, xp: number) => void;
+  onSplit: (categoryId: string, index: number, subTasks: Mission[]) => void;
   onBack: () => void;
   onEdit: () => void;
   onAI: () => void;
 }
 
-export default function MissionView({ categoryId, state, getMissions, onComplete, onBack, onEdit, onAI }: MissionViewProps) {
+export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onBack, onEdit, onAI }: MissionViewProps) {
   const category = CATEGORIES.find(c => c.id === categoryId)!;
   const missions = getMissions(categoryId);
+  const [splittingIndex, setSplittingIndex] = useState<number | null>(null);
+
+  const handleSplit = async (index: number, mission: Mission) => {
+    setSplittingIndex(index);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-split-task", {
+        body: { title: mission.title, description: mission.description, duration: mission.duration, xp: mission.xp },
+      });
+      if (error) throw error;
+      const subtasks = (data?.subtasks || []) as Mission[];
+      if (subtasks.length > 0) {
+        onSplit(categoryId, index, subtasks);
+      }
+    } catch (e) {
+      console.error("Split failed:", e);
+    } finally {
+      setSplittingIndex(null);
+    }
+  };
 
   return (
     <motion.div
@@ -97,21 +119,37 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   </div>
                 </div>
 
-                <button
-                  onClick={() => !isCompleted && onComplete(categoryId, index, mission.xp)}
-                  className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-                    isCompleted
-                      ? "text-white text-xl font-bold"
-                      : "bg-white/5 hover:scale-110"
-                  }`}
-                  style={{
-                    borderColor: category.color,
-                    backgroundColor: isCompleted ? category.color : undefined,
-                  }}
-                  disabled={isCompleted}
-                >
-                  {isCompleted && "✓"}
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!isCompleted && (
+                    <button
+                      onClick={() => handleSplit(index, mission)}
+                      disabled={splittingIndex === index}
+                      className="w-8 h-8 rounded-lg border-2 border-white/15 bg-white/5 flex items-center justify-center hover:bg-primary/15 hover:border-primary/30 transition-all text-sm"
+                      title="Split into smaller tasks"
+                    >
+                      {splittingIndex === index ? (
+                        <span className="animate-spin text-xs">⏳</span>
+                      ) : (
+                        "✂️"
+                      )}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => !isCompleted && onComplete(categoryId, index, mission.xp)}
+                    className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                      isCompleted
+                        ? "text-white text-xl font-bold"
+                        : "bg-white/5 hover:scale-110"
+                    }`}
+                    style={{
+                      borderColor: category.color,
+                      backgroundColor: isCompleted ? category.color : undefined,
+                    }}
+                    disabled={isCompleted}
+                  >
+                    {isCompleted && "✓"}
+                  </button>
+                </div>
               </div>
             </motion.div>
           );
