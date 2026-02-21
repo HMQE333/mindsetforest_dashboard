@@ -1,72 +1,34 @@
-# Plan: Bezpieczenstwo, Error Handling, Personalizacja   
-
-&nbsp;
-
-Ważne: nie zmieniaj nic z domyslnego wygladu dashboardu i domyslnych tekstow dodaj jedynie personalizacje dla nowych kont w osobnym formularzu, nie dodawaj koniecznosci potwierdzenia email 
-
-## 1. KRYTYCZNY: Bezpieczenstwo
-
-### 1a. Walidacja sily hasla (frontend)
-
-Dodanie wizualnej walidacji hasla na stronie rejestracji w `src/pages/Auth.tsx`:
-
-- Min. 8 znakow, 1 wielka litera, 1 cyfra
-- Pasek sily hasla (slabe / srednie / silne) wyswietlany pod polem hasla
-- Walidacja tylko w trybie "Sign Up", nie w "Sign In"
-- &nbsp;
-
-## 2. WYSOKI: Error Handling
-
-### 2a. Global Error Boundary
-
-- Nowy komponent `src/components/ErrorBoundary.tsx` (React class component z `componentDidCatch`)
-- Wyswietla stylowy ekran bledu pasujacy do ciemnego motywu z przyciskiem "Try again"
-- Owinac cala aplikacje w `App.tsx` wewnatrz ErrorBoundary
-
-### 2b. NotFound page restyling
-
-- Zmiana `src/pages/NotFound.tsx`: zamiana `bg-muted` na `bg-background`, dodanie ciemnego motywu, animacji framer-motion, gradientow jak w reszcie aplikacji
-- Usunac `console.error`, zastapic normalnym renderem
-
-### 2c. Toast/feedback na bledy bazy danych
-
-- W hookach (`useDashboardState`, `useLadderState`, `useOracleState`, `useHabitLoopState`): dodanie `toast.error()` gdy operacje bazodanowe sie nie powioda (aktualnie bledy sa ciche)
-
-## 3. SREDNI: Personalizacja
-
-jak ktos tworzy nowe konto to daj mozliwosc uzyj domyslnych ustawien (wszystko to co mam) albo stworz wlasne (wypelnia caly formularz na bazie jego wlasnych 8 kafelkow zycia i co przez to rozumie)
-
-### 3c. Branding w index.html
-
-- Tytul strony: "MindsetForest" zamiast "Lovable App"
-- Meta description: "Gamified productivity tracker - Do. Track. Level Up."
-- og:title i twitter:title: "MindsetForest"
-- Usunac komentarze TODO
-
----
-
-## Pliki do modyfikacji
 
 
-| Plik                               | Zmiana                         |
-| ---------------------------------- | ------------------------------ |
-| `src/pages/Auth.tsx`               | &nbsp;                         |
-| `src/pages/ResetPassword.tsx`      | &nbsp;                         |
-| `src/App.tsx`                      | Dodanie ErrorBoundary,         |
-| `src/components/ErrorBoundary.tsx` | NOWY - globalny error boundary |
-| `src/pages/NotFound.tsx`           | Restyling na ciemny motyw      |
-| `src/hooks/useDashboardState.ts`   | Toast na bledy DB              |
-| `src/hooks/useLadderState.ts`      | Toast na bledy DB              |
-| `src/hooks/useOracleState.ts`      | Toast na bledy DB              |
-| `src/hooks/useHabitLoopState.ts`   | Toast na bledy DB              |
-| `src/lib/dashboard-data.ts`        | Uniwersalne domyslne misje     |
-| `src/lib/oracle-data.ts`           | &nbsp;                         |
-| `index.html`                       | Branding MindsetForest         |
+# Guide Section Below Sign In
 
+## What
+Add a visually appealing, scrollable guide/explainer section below the "Sign In" auth gate on the landing page. It will only show for **unauthenticated users** and explain how MindsetForest works in a clear, engaging way.
 
-## Kolejnosc implementacji
+## Content Structure
+The guide will be organized into themed cards with icons, each explaining a core feature:
 
-1. Bezpieczenstwo (Auth.tsx + ResetPassword + email verification)
-2. Error Boundary + NotFound restyling
-3. Toast errors w hookach
-4. Personalizacja danych (dashboard-data, oracle-data, index.html)
+1. **Your Life, Your Categories** -- Split your goals into 8 improvement areas. Each day, tackle 3 daily tasks per category. Reset anytime. Add more or split tasks as needed.
+2. **Built for the Restless Mind** -- Designed to boost dopamine for ADHD brains and reduce mental fatigue. No rigid routines -- if your mind rebels, the system adapts.
+3. **Turn Life Into an Adventure** -- Earn XP, level up, maintain streaks. Every completed task is progress in your personal RPG.
+4. **Stats: Track What Matters** -- Monitor objective metrics over time. See daily averages, weekly totals, and 12-month performance views.
+5. **Ladder and Habit Loops: The Big Picture** -- Break your long-term vision into actionable steps. Build momentum through repeatable habit cycles.
+6. **Oracle: Guilt-Free Rewards** -- Spend earned XP on real rewards. You worked for it -- enjoy it without guilt.
+
+## Design
+- Staggered fade-in animations using framer-motion
+- Glass-morphism cards (bg-card/30, backdrop-blur, border-white/10) matching existing theme
+- Emoji icons for each card
+- Gradient accent lines/borders
+- Responsive: 1 column on mobile, 2 columns on desktop
+- Subtle purple glow effects consistent with the app
+
+## Technical Details
+
+### Files to modify
+- `src/pages/Index.tsx` -- update `renderAuthGate` to include the guide section below the Sign In button
+
+### Implementation
+- Create the guide as part of `renderAuthGate` (or a separate `GuideSection` component rendered conditionally when `!user`)
+- Use `motion.div` with staggered `transition.delay` for each card
+- No new dependencies needed -- uses existing framer-motion and Tailwind classes
