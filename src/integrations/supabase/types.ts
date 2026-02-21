@@ -62,6 +62,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ladder_state: {
+        Row: {
+          active_category: string | null
+          created_at: string
+          id: string
+          ladders: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active_category?: string | null
+          created_at?: string
+          id?: string
+          ladders?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active_category?: string | null
+          created_at?: string
+          id?: string
+          ladders?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracker_entries: {
         Row: {
           created_at: string
