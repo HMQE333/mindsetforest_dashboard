@@ -153,6 +153,19 @@
   animation: fire-flicker 1.5s infinite;
 }
 
+/* Jar animations */
+@keyframes waveMove {
+  0% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-25px) translateY(5px); }
+  100% { transform: translateX(-50px) translateY(0); }
+}
+
+@keyframes bubbleUp {
+  0% { transform: translateY(0) scale(0.7); opacity: 0; }
+  20% { opacity: 0.8; }
+  100% { transform: translateY(-230px) scale(1); opacity: 0; }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
