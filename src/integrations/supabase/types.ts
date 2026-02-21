@@ -62,6 +62,36 @@ export type Database = {
         }
         Relationships: []
       }
+      habit_loops: {
+        Row: {
+          category_id: string
+          created_at: string
+          current_loop: number
+          id: string
+          loops: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category_id?: string
+          created_at?: string
+          current_loop?: number
+          id?: string
+          loops?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          current_loop?: number
+          id?: string
+          loops?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ladder_state: {
         Row: {
           active_category: string | null
