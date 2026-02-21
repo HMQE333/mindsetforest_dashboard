@@ -5,8 +5,9 @@ import { useAuth } from "@/hooks/useAuth";
 import DashboardView from "@/components/dashboard/DashboardView";
 import LadderView from "@/components/ladder/LadderView";
 import HabitLoopView from "@/components/habitloop/HabitLoopView";
+import OracleView from "@/components/oracle/OracleView";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle";
 
 const Index = () => {
   const { user } = useAuth();
@@ -64,6 +65,7 @@ const Index = () => {
             })}
             {tabButton("ladder", "🪜 Next Action Ladder")}
             {tabButton("habitloop", "🔄 Habit Loop")}
+            {tabButton("oracle", "🔮 Oracle")}
           </div>
         </motion.div>
 
@@ -71,6 +73,7 @@ const Index = () => {
         {activeTab === "dashboard" && (user ? <DashboardView /> : renderAuthGate("mission dashboard"))}
         {activeTab === "ladder" && (user ? <LadderView /> : renderAuthGate("mastery ladder"))}
         {activeTab === "habitloop" && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
+        {activeTab === "oracle" && (user ? <OracleView /> : renderAuthGate("oracle"))}
       </div>
     </div>
   );
