@@ -4,19 +4,19 @@ const GUIDE_CARDS = [
   {
     emoji: "🧩",
     title: "Your Life, Your Categories",
-    desc: "Split your goals into 8 areas of improvement. Each day, tackle 3 daily tasks per category. Reset anytime. Want more tasks or need to split one? Go ahead — it's your system.",
+    desc: "Split your goals into 8 areas of improvement. Each day, tackle 3 daily tasks per category. Reset anytime. Want more tasks or need to split one? Go ahead, it's your system.",
     glow: "from-primary/20",
   },
   {
     emoji: "🧠",
     title: "Built for the Restless Mind",
-    desc: "Designed to boost dopamine for ADHD brains and reduce mental fatigue. No rigid routines — if your mind rebels, the system adapts. Flexibility is the feature.",
+    desc: "Designed to boost dopamine for ADHD brains and reduce mental fatigue. No rigid routines. If your mind rebels, the system adapts. Flexibility is the feature.",
     glow: "from-cat-spirit/20",
   },
   {
     emoji: "⚔️",
     title: "Turn Life Into an Adventure",
-    desc: "Earn XP, level up, maintain streaks. Every completed task is progress in your personal RPG. Your real life — gamified.",
+    desc: "Earn XP, level up, maintain streaks. Every completed task is progress in your personal RPG. Your real life, gamified.",
     glow: "from-cat-creation/20",
   },
   {
@@ -34,7 +34,7 @@ const GUIDE_CARDS = [
   {
     emoji: "🔮",
     title: "Oracle: Guilt-Free Rewards",
-    desc: "Spend earned XP on real rewards. You worked for it — enjoy it without guilt. The Oracle says you deserve it.",
+    desc: "Spend earned XP on real rewards. You worked for it. Enjoy it without guilt. The Oracle says you deserve it.",
     glow: "from-cat-mind/20",
   },
 ];
