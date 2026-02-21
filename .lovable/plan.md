@@ -1,34 +1,55 @@
 
 
-# Guide Section Below Sign In
+# Onboarding: Customize Daily Tasks Per Category
 
-## What
-Add a visually appealing, scrollable guide/explainer section below the "Sign In" auth gate on the landing page. It will only show for **unauthenticated users** and explain how MindsetForest works in a clear, engaging way.
+## What Changes
+Add a new step to the onboarding flow (after category customization or as part of "Use defaults") where users can review and customize the 3 daily tasks inside each category. They can:
 
-## Content Structure
-The guide will be organized into themed cards with icons, each explaining a core feature:
+- **Edit** task titles, descriptions, durations, and XP values
+- **Enable/disable** individual tasks with toggle switches
+- **Add new tasks** or **remove** existing ones
+- Keep defaults with one click if they're happy
 
-1. **Your Life, Your Categories** -- Split your goals into 8 improvement areas. Each day, tackle 3 daily tasks per category. Reset anytime. Add more or split tasks as needed.
-2. **Built for the Restless Mind** -- Designed to boost dopamine for ADHD brains and reduce mental fatigue. No rigid routines -- if your mind rebels, the system adapts.
-3. **Turn Life Into an Adventure** -- Earn XP, level up, maintain streaks. Every completed task is progress in your personal RPG.
-4. **Stats: Track What Matters** -- Monitor objective metrics over time. See daily averages, weekly totals, and 12-month performance views.
-5. **Ladder and Habit Loops: The Big Picture** -- Break your long-term vision into actionable steps. Build momentum through repeatable habit cycles.
-6. **Oracle: Guilt-Free Rewards** -- Spend earned XP on real rewards. You worked for it -- enjoy it without guilt.
+## Flow
+
+1. **Step 1 (existing)**: "Use defaults" or "Customize my own" (categories)
+2. **Step 2 (existing, if custom)**: Edit category names, icons, taglines
+3. **Step 3 (NEW)**: Review and customize daily tasks per category
+   - Collapsible/accordion per category showing its 3 default tasks
+   - Each task has a toggle (enabled/disabled) and inline edit fields
+   - "Add task" button per category
+   - "Looks good, let's go!" button to finish
 
 ## Design
-- Staggered fade-in animations using framer-motion
-- Glass-morphism cards (bg-card/30, backdrop-blur, border-white/10) matching existing theme
-- Emoji icons for each card
-- Gradient accent lines/borders
-- Responsive: 1 column on mobile, 2 columns on desktop
-- Subtle purple glow effects consistent with the app
+- Accordion-style layout: each category is a collapsible section with its icon and name
+- Tasks inside each section shown as cards with toggle switches and editable fields
+- Glass-morphism styling matching existing onboarding theme
+- Staggered animations with framer-motion
+- Mobile-friendly single-column layout
 
 ## Technical Details
 
 ### Files to modify
-- `src/pages/Index.tsx` -- update `renderAuthGate` to include the guide section below the Sign In button
 
-### Implementation
-- Create the guide as part of `renderAuthGate` (or a separate `GuideSection` component rendered conditionally when `!user`)
-- Use `motion.div` with staggered `transition.delay` for each card
-- No new dependencies needed -- uses existing framer-motion and Tailwind classes
+| File | Change |
+|------|--------|
+| `src/components/onboarding/OnboardingView.tsx` | Add step 3 for task customization |
+| `src/hooks/useOnboarding.ts` | Pass custom missions to `completeOnboarding`, save to `dashboard_state.custom_missions` |
+| `src/hooks/useDashboardState.ts` | On first load, check if onboarding set custom missions and use them |
+
+### Data flow
+- When user finishes step 3, the customized missions (with disabled tasks filtered out) are saved as `custom_missions` in the `dashboard_state` table (which already supports this field as JSONB)
+- The `completeOnboarding` function will accept an optional `customMissions` parameter alongside categories
+- `useDashboardState` already reads `custom_missions` and uses them over defaults via `getMissions()`, so no dashboard changes needed
+
+### Step 3 UI structure
+- Each category rendered as a collapsible section (using Radix Accordion)
+- Inside: list of task cards with:
+  - Toggle switch (enabled/disabled)
+  - Title input (editable inline)
+  - Description textarea
+  - Duration + XP inputs (small inline fields)
+  - Delete button
+- "Add task" button at the bottom of each category
+- Footer with "Start My Journey" button
+
