@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
@@ -17,6 +17,7 @@ interface LevelSuggestion {
 }
 
 type AIMode = "focused" | "strategic" | "recovery";
+type TimeHorizon = "week" | "month" | "longterm";
 
 export default function AILadderModal({ categoryId, currentLadder, onApply, onClose }: AILadderModalProps) {
   const category = CATEGORIES.find(c => c.id === categoryId);
@@ -25,6 +26,20 @@ export default function AILadderModal({ categoryId, currentLadder, onApply, onCl
   const [aiMode, setAIMode] = useState<AIMode>("focused");
   const [generated, setGenerated] = useState(false);
   const [selectedLevels, setSelectedLevels] = useState<Set<number>>(new Set());
+
+  // New controls state
+  const [showControls, setShowControls] = useState(false);
+  const [goal, setGoal] = useState("");
+  const [constraints, setConstraints] = useState("");
+  const [focusLevels, setFocusLevels] = useState<number[]>([0, 1, 2, 3, 4, 5]);
+  const [tasksPerLevel, setTasksPerLevel] = useState(3);
+  const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>("week");
+
+  const toggleFocusLevel = (level: number) => {
+    setFocusLevels(prev =>
+      prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level].sort()
+    );
+  };
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -41,6 +56,11 @@ export default function AILadderModal({ categoryId, currentLadder, onApply, onCl
           categoryTagline: category?.tagline || "",
           currentTasks,
           aiMode,
+          goal: goal || undefined,
+          constraints: constraints || undefined,
+          focusLevels,
+          tasksPerLevel,
+          timeHorizon,
         },
       });
 
@@ -54,7 +74,7 @@ export default function AILadderModal({ categoryId, currentLadder, onApply, onCl
     } finally {
       setLoading(false);
     }
-  }, [categoryId, category, currentLadder, aiMode]);
+  }, [categoryId, category, currentLadder, aiMode, goal, constraints, focusLevels, tasksPerLevel, timeHorizon]);
 
   const toggleLevel = (level: number) => {
     setSelectedLevels(prev => {
@@ -130,6 +150,121 @@ export default function AILadderModal({ categoryId, currentLadder, onApply, onCl
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Context & Controls (collapsible) */}
+        <div className="border-b border-white/10">
+          <button
+            onClick={() => setShowControls(prev => !prev)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-white/[0.03] transition-colors"
+          >
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-foreground/80">Context & Controls</h3>
+            <span className={`text-foreground/50 text-sm transition-transform ${showControls ? "rotate-180" : ""}`}>▾</span>
+          </button>
+          <AnimatePresence>
+            {showControls && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-4 pb-4 space-y-3">
+                  {/* Goal */}
+                  <div>
+                    <label className="text-xs font-bold text-foreground/70 mb-1 block">Goal</label>
+                    <input
+                      value={goal}
+                      onChange={e => setGoal(e.target.value)}
+                      placeholder="e.g. Trade options profitably, Run a half marathon..."
+                      className="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/[0.04] text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-primary/40 transition-colors"
+                    />
+                  </div>
+
+                  {/* Constraints */}
+                  <div>
+                    <label className="text-xs font-bold text-foreground/70 mb-1 block">Constraints</label>
+                    <input
+                      value={constraints}
+                      onChange={e => setConstraints(e.target.value)}
+                      placeholder="e.g. No gym access, Max 30 min per task, Budget under $50..."
+                      className="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/[0.04] text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-primary/40 transition-colors"
+                    />
+                  </div>
+
+                  {/* Focus Levels */}
+                  <div>
+                    <label className="text-xs font-bold text-foreground/70 mb-1.5 block">Focus Levels</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {LADDER_LEVELS.map((lvl, i) => {
+                        const active = focusLevels.includes(i);
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => toggleFocusLevel(i)}
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              active
+                                ? "border-primary/30 bg-primary/15 text-foreground"
+                                : "border-white/10 bg-white/[0.03] text-foreground/40 hover:bg-white/[0.06]"
+                            }`}
+                          >
+                            {lvl.emoji} {lvl.title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    {/* Tasks Per Level */}
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-foreground/70 mb-1 block">Tasks / Level</label>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setTasksPerLevel(n)}
+                            className={`flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              tasksPerLevel === n
+                                ? "border-primary/30 bg-primary/15 text-foreground"
+                                : "border-white/10 bg-white/[0.03] text-foreground/40 hover:bg-white/[0.06]"
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Time Horizon */}
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-foreground/70 mb-1 block">Time Horizon</label>
+                      <div className="flex gap-1">
+                        {([
+                          { value: "week" as TimeHorizon, label: "Week" },
+                          { value: "month" as TimeHorizon, label: "Month" },
+                          { value: "longterm" as TimeHorizon, label: "Long" },
+                        ]).map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setTimeHorizon(opt.value)}
+                            className={`flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              timeHorizon === opt.value
+                                ? "border-primary/30 bg-primary/15 text-foreground"
+                                : "border-white/10 bg-white/[0.03] text-foreground/40 hover:bg-white/[0.06]"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Body */}
