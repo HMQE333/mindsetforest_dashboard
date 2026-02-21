@@ -71,7 +71,7 @@ export default function LadderView() {
           {/* Ladder */}
           <div className="relative flex flex-col gap-10 py-8">
             {/* Center line */}
-            <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-1 rounded-full z-[1]"
+            <div className="hidden md:block absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-1 rounded-full z-[1]"
               style={{ background: "linear-gradient(180deg, rgba(139,92,246,0.3) 0%, rgba(217,70,239,0.3) 25%, rgba(50,184,198,0.3) 50%, rgba(34,197,94,0.3) 75%, rgba(147,51,234,0.3) 100%)" }} />
 
             {[0, 1, 2, 3, 4, 5].map(level => (
