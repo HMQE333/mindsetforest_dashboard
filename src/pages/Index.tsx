@@ -11,9 +11,9 @@ import OracleView from "@/components/oracle/OracleView";
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle";
 
 const TAB_LABELS: Record<Tab, string> = {
-  dashboard: "🎮 Dashboard",
-  tracker: "📊 Stats Tracker",
-  ladder: "🪜 Next Action Ladder",
+  dashboard: "🎮 Home",
+  tracker: "📊 Stats",
+  ladder: "🪜 Ladder",
   habitloop: "🔄 Habit Loop",
   oracle: "🔮 Oracle",
 };
@@ -114,12 +114,12 @@ const Index = () => {
             </div>
           ) : (
             <div className="inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10">
-              {tabButton("dashboard", "🎮 Dashboard")}
-              {tabButton("tracker", "📊 Stats Tracker", () => {
+              {tabButton("dashboard", "🎮 Home")}
+              {tabButton("tracker", "📊 Stats", () => {
                 if (user) navigate("/tracker");
                 else navigate("/auth");
               })}
-              {tabButton("ladder", "🪜 Next Action Ladder")}
+              {tabButton("ladder", "🪜 Ladder")}
               {tabButton("habitloop", "🔄 Habit Loop")}
               {tabButton("oracle", "🔮 Oracle")}
             </div>
