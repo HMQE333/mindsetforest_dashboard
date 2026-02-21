@@ -1,47 +1,72 @@
+# Plan: Bezpieczenstwo, Error Handling, Personalizacja   
 
+&nbsp;
 
-# Mobile Optimization: Tab Selector and Mastery Ladder
+Ważne: nie zmieniaj nic z domyslnego wygladu dashboardu i domyslnych tekstow dodaj jedynie personalizacje dla nowych kont w osobnym formularzu, nie dodawaj koniecznosci potwierdzenia email 
 
-## Problem 1: Tab Selector Overflows on Mobile
+## 1. KRYTYCZNY: Bezpieczenstwo
 
-The current tab bar is an `inline-flex` with 5 buttons that doesn't wrap or scroll, causing horizontal overflow on small screens.
+### 1a. Walidacja sily hasla (frontend)
 
-### Solution
-- Make the tab container horizontally scrollable on mobile with `overflow-x-auto` and hide the scrollbar
-- Reduce padding and font size on small screens with responsive classes
-- Add `whitespace-nowrap` so buttons stay on one line and scroll naturally
+Dodanie wizualnej walidacji hasla na stronie rejestracji w `src/pages/Auth.tsx`:
 
-## Problem 2: Mastery Ladder Layout Breaks on Mobile
+- Min. 8 znakow, 1 wielka litera, 1 cyfra
+- Pasek sily hasla (slabe / srednie / silne) wyswietlany pod polem hasla
+- Walidacja tylko w trybie "Sign Up", nie w "Sign In"
+- &nbsp;
 
-The ladder uses alternating left/right positioning (`flex-row` / `flex-row-reverse`) with a center vertical line, which looks cramped and broken on narrow screens.
+## 2. WYSOKI: Error Handling
 
-### Solution
-- On mobile (below `md` breakpoint), switch to a single-column stacked layout: remove the alternating row direction, hide the center line, and stack the node above the card
-- The node (circle with emoji) becomes a small inline element above each card instead of floating beside it
-- Cards go full-width instead of `max-w-[420px]`
-- On desktop, keep the current alternating zigzag layout unchanged
+### 2a. Global Error Boundary
+
+- Nowy komponent `src/components/ErrorBoundary.tsx` (React class component z `componentDidCatch`)
+- Wyswietla stylowy ekran bledu pasujacy do ciemnego motywu z przyciskiem "Try again"
+- Owinac cala aplikacje w `App.tsx` wewnatrz ErrorBoundary
+
+### 2b. NotFound page restyling
+
+- Zmiana `src/pages/NotFound.tsx`: zamiana `bg-muted` na `bg-background`, dodanie ciemnego motywu, animacji framer-motion, gradientow jak w reszcie aplikacji
+- Usunac `console.error`, zastapic normalnym renderem
+
+### 2c. Toast/feedback na bledy bazy danych
+
+- W hookach (`useDashboardState`, `useLadderState`, `useOracleState`, `useHabitLoopState`): dodanie `toast.error()` gdy operacje bazodanowe sie nie powioda (aktualnie bledy sa ciche)
+
+## 3. SREDNI: Personalizacja
+
+jak ktos tworzy nowe konto to daj mozliwosc uzyj domyslnych ustawien (wszystko to co mam) albo stworz wlasne (wypelnia caly formularz na bazie jego wlasnych 8 kafelkow zycia i co przez to rozumie)
+
+### 3c. Branding w index.html
+
+- Tytul strony: "MindsetForest" zamiast "Lovable App"
+- Meta description: "Gamified productivity tracker - Do. Track. Level Up."
+- og:title i twitter:title: "MindsetForest"
+- Usunac komentarze TODO
 
 ---
 
-## Files Changed
+## Pliki do modyfikacji
 
-| File | Change |
-|------|--------|
-| `src/pages/Index.tsx` | Make tab bar scrollable on mobile, reduce button sizing on small screens |
-| `src/components/ladder/LadderView.tsx` | Hide center line on mobile, adjust ladder gap |
-| `src/components/ladder/LadderStep.tsx` | Stack node above card on mobile instead of side-by-side alternating layout, remove max-width constraint on mobile |
-| `src/index.css` | Add scrollbar-hide utility if not present |
 
-## Technical Details
+| Plik                               | Zmiana                         |
+| ---------------------------------- | ------------------------------ |
+| `src/pages/Auth.tsx`               | &nbsp;                         |
+| `src/pages/ResetPassword.tsx`      | &nbsp;                         |
+| `src/App.tsx`                      | Dodanie ErrorBoundary,         |
+| `src/components/ErrorBoundary.tsx` | NOWY - globalny error boundary |
+| `src/pages/NotFound.tsx`           | Restyling na ciemny motyw      |
+| `src/hooks/useDashboardState.ts`   | Toast na bledy DB              |
+| `src/hooks/useLadderState.ts`      | Toast na bledy DB              |
+| `src/hooks/useOracleState.ts`      | Toast na bledy DB              |
+| `src/hooks/useHabitLoopState.ts`   | Toast na bledy DB              |
+| `src/lib/dashboard-data.ts`        | Uniwersalne domyslne misje     |
+| `src/lib/oracle-data.ts`           | &nbsp;                         |
+| `index.html`                       | Branding MindsetForest         |
 
-**Tab bar (Index.tsx):**
-- Container: add `overflow-x-auto scrollbar-hide max-w-full` and `flex-nowrap`
-- Buttons: reduce to `px-3 py-2 text-xs md:px-5 md:py-2.5 md:text-sm` and add `whitespace-nowrap`
 
-**LadderStep.tsx:**
-- Change `flex items-start gap-6 relative z-[2] ${isOdd ? "flex-row" : "flex-row-reverse"}` to use responsive classes: on mobile always `flex-col items-center`, on `md+` use the existing alternating direction
-- Card: remove `max-w-[420px]` on mobile, keep it on `md+`
+## Kolejnosc implementacji
 
-**LadderView.tsx center line:**
-- Add `hidden md:block` to hide the vertical gradient line on mobile since the stacked layout doesn't need it
-
+1. Bezpieczenstwo (Auth.tsx + ResetPassword + email verification)
+2. Error Boundary + NotFound restyling
+3. Toast errors w hookach
+4. Personalizacja danych (dashboard-data, oracle-data, index.html)
