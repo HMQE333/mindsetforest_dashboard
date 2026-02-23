@@ -11,7 +11,7 @@ import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive";
 
 const TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
@@ -19,6 +19,7 @@ const TAB_LABELS: Record<Tab, string> = {
   ladder: "🪜 Ladder",
   habitloop: "🔄 Habit Loop",
   oracle: "🔮 Oracle",
+  archive: "📦 Archive",
 };
 
 const Index = () => {
@@ -132,6 +133,7 @@ const Index = () => {
               {tabButton("ladder", "🪜 Ladder")}
               {tabButton("habitloop", "🔄 Habit Loop")}
               {tabButton("oracle", "🔮 Oracle")}
+              {tabButton("archive", "📦 Archive")}
             </div>
           )}
         </motion.div>
@@ -141,6 +143,7 @@ const Index = () => {
         {activeTab === "ladder" && (user ? <LadderView /> : renderAuthGate("mastery ladder"))}
         {activeTab === "habitloop" && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
         {activeTab === "oracle" && (user ? <OracleView /> : renderAuthGate("oracle"))}
+        {activeTab === "archive" && (user ? <div className="text-center py-20 text-muted-foreground">Archive coming soon...</div> : renderAuthGate("archive"))}
       </div>
     </div>
   );
