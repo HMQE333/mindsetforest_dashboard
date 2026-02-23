@@ -1,164 +1,115 @@
 
 
-# Archive: Knowledge Base with AI Powers
+# Smarter Archive Inbox: Discord Cleanup + AI Split + Custom Prompt
 
-## Overview
-Build a full-featured "Archive" tab that serves as a personal knowledge base -- styled consistently with the existing dark gamified dashboard. Users can capture notes (blocks), organize them by pillar/direction tags, search and filter, and use AI to expand ideas or process multiple selected notes.
+## Problem
+Right now "AI Organize" expects items already separated by `---`. But when pasting messy Discord logs (with usernames, timestamps, embed previews, image placeholders), the raw text is one big blob. The AI needs to clean it first, then split it intelligently.
 
-## What Gets Built
+## What Changes
 
-### 1. Database Table: `archive_blocks`
-A new table to store knowledge blocks with:
-- `id` (uuid, PK)
-- `user_id` (uuid, NOT NULL)
-- `title` (text)
-- `content` (text)
-- `pillars` (text array) -- category tags matching dashboard categories (Body, Mind, Creation, etc.)
-- `directions` (text array) -- purpose tags (Direction, Goals, Wisdom, Freedom, etc.)
-- `tags` (text array) -- custom user tags
-- `source_url` (text, nullable) -- auto-detected URLs
-- `created_at`, `updated_at` (timestamps)
+### 1. New "AI Organize" behavior (clean + split, no save yet)
+Instead of immediately saving blocks, AI Organize will:
+- Take the **raw pasted text** (not pre-split by `---`)
+- Clean Discord artifacts: remove usernames like "HMQE -- 13/02/2026 01:49", strip embed preview text, remove empty image placeholders
+- Intelligently detect where one note/topic ends and another begins
+- Classify content types: links, YouTube videos, text notes, code snippets, credentials/sensitive data
+- Return the **cleaned and separated text** back into the textarea with `---` delimiters between items
+- User can then review the split, edit if needed, and hit "Quick Save" or the full "AI Organize + Tag" button
 
-RLS policies: users can only CRUD their own blocks.
+### 2. New button: "AI Organize + Tag" (the old behavior, enhanced)
+This button appears after items are split (when `---` delimiters exist). It:
+- Takes the already-split items
+- Auto-generates titles, pillar/direction tags, detects URLs
+- Saves all blocks to the library
+- Same as the current `ai-archive-process` function but with an improved prompt that also handles content type detection
 
-### 2. Three Sub-Views (Sidebar Navigation)
+### 3. New button: "AI by Prompt"
+- Opens a small input field/modal where user types custom instructions
+- Example: "Group by topic", "Remove all links", "Translate to English", "Extract only actionable items"
+- Sends raw text + user prompt to AI
+- Returns processed text back into the textarea (not saved automatically)
 
-**Inbox** (default)
-- Large textarea to paste/type content
-- "Paste" button, "AI Organize" button (AI auto-tags the content), "Process" button
-- Separates items by `---` delimiter, counts items
-- Processing creates blocks and moves them to Library
+### 3. New edge function: `ai-archive-clean`
+Dedicated function for the cleaning/splitting step with a smart prompt that:
+- Strips Discord message headers (username + date patterns like `USERNAME -- DD/MM/YYYY HH:MM`)
+- Removes link embed previews (the auto-generated title/description Discord adds below URLs)
+- Keeps the actual URLs but removes embed metadata
+- Removes empty lines from image-only messages
+- Groups related consecutive messages into single items
+- Separates genuinely different topics/notes with `---`
+- Identifies content types and adds a small prefix tag like `[link]`, `[video]`, `[note]`, `[code]`
 
-**Library**
-- Blocks grouped by pillar/direction tags (collapsible sections)
-- Each block card shows: title (truncated), content preview, tags, date
-- Search bar + sidebar filter by Pillars and Directions
-- Click to open "Edit Block" modal
+### 4. Updated Inbox UI flow
+Three buttons in the toolbar:
 
-**Map** (placeholder for now)
-- "Coming soon" placeholder matching dashboard style
+| Button | What it does |
+|--------|-------------|
+| **Quick Save** | Saves items as-is (split by `---`), no AI |
+| **AI Clean + Split** | Sends raw text to AI, returns cleaned text with `---` separators back into textarea |
+| **AI Organize + Save** | Takes split items, AI adds titles/tags, saves to library |
 
-### 3. Block Cards & Edit Modal
-Each block card has action buttons:
-- **Expand Idea** -- AI takes the note and generates an expanded version with deeper insights
-- **Shorten** -- AI condenses the content
-- **Organize** -- AI suggests better tags/pillars
-- **Summarize** -- AI creates a summary
+Plus a smaller "AI by Prompt" button that lets user type custom processing instructions.
 
-Edit modal (matching screenshot style):
-- Title input
-- Content textarea with AI action buttons (Shorten, Organize, Summarize)
-- Pillar tag selector (toggleable chips matching dashboard categories)
-- Direction tag selector (toggleable chips)
-- Custom tags input
-- Delete, Cancel, Save buttons
-
-### 4. Multi-Select + AI Prompt
-- Checkbox on each block card for multi-select
-- When 2+ blocks selected, a floating action bar appears at the bottom
-- "Run AI Prompt" button opens a modal where user types what they want to do with selected notes
-- AI processes all selected notes together (e.g., "find common themes", "create action plan", "merge into one")
-- Result displayed in a modal with option to save as new block
-
-### 5. AI Edge Functions
-
-**`ai-archive-process`** -- Processes raw inbox text:
-- Auto-generates title from content
-- Suggests pillar and direction tags
-- Detects URLs
-
-**`ai-archive-expand`** -- Expands/shortens/summarizes a single note:
-- Takes content + action type (expand/shorten/summarize/organize)
-- Returns transformed content or tag suggestions
-
-**`ai-archive-multi`** -- Processes multiple selected notes:
-- Takes array of note contents + user prompt
-- Returns AI response as new content
-
-### 6. Connection to Dashboard
-- The pillar tags in Archive match the 8 dashboard categories (Mind, Body, Creation, etc.)
-- Archive block count shown in the tab label or header
-- Direction tags provide a second dimension of organization (Goals, Wisdom, Freedom, Protection, Creation, Expression, Community)
+The preview section below updates live as `---` delimiters change.
 
 ---
 
 ## Technical Details
 
+### New Edge Function: `supabase/functions/ai-archive-clean/index.ts`
+
+Accepts `{ rawText: string, customPrompt?: string }` and returns `{ cleanedText: string }`.
+
+The system prompt will instruct the AI to:
+```
+You clean and organize raw pasted notes, especially from Discord chat logs.
+
+Rules:
+1. Remove Discord message headers (patterns like "USERNAME -- DD/MM/YYYY HH:MM")
+2. Remove link embed previews (auto-generated title + description that Discord shows below URLs) but KEEP the actual URLs
+3. Remove empty messages that were just images (no text content)
+4. Group related consecutive short messages into one note
+5. Separate genuinely different topics with ---
+6. For each separated item, add a content type tag at the start: [note], [link], [video], [code], [quote]
+7. Clean up excessive whitespace and empty lines
+8. Preserve the actual meaningful content -- don't summarize or change wording
+9. If a message is just a URL, keep it as a [link] item
+10. YouTube/video URLs get tagged as [video]
+```
+
+If `customPrompt` is provided, it replaces the default instructions (for the "AI by Prompt" feature).
+
+### Modified: `src/components/archive/ArchiveInbox.tsx`
+
+- Add `handleAIClean` function that calls `ai-archive-clean`, puts result back in textarea
+- Add `handleAIByPrompt` with a small inline input for custom instructions
+- Rename button labels for clarity
+- Show item count badge that updates as text changes
+- The "AI Organize + Save" button only appears when items are already split
+
+### Modified: `supabase/functions/ai-archive-process/index.ts`
+
+- Enhance the system prompt to better handle pre-cleaned content with type tags
+- Add content_type field to the tool schema (link, video, note, code, quote)
+
 ### Files to Create
 
 | File | Purpose |
 |------|---------|
-| `src/components/archive/ArchiveView.tsx` | Main archive component with sidebar + sub-views |
-| `src/components/archive/ArchiveInbox.tsx` | Inbox paste/process view |
-| `src/components/archive/ArchiveLibrary.tsx` | Library view with grouped blocks |
-| `src/components/archive/ArchiveBlockCard.tsx` | Individual block card with action buttons |
-| `src/components/archive/ArchiveEditModal.tsx` | Edit block modal |
-| `src/components/archive/ArchiveAIPromptModal.tsx` | Multi-select AI prompt modal |
-| `src/hooks/useArchiveState.ts` | Hook for CRUD operations on archive_blocks |
-| `src/lib/archive-data.ts` | Constants for pillars, directions, default tags |
-| `supabase/functions/ai-archive-process/index.ts` | AI inbox processing |
-| `supabase/functions/ai-archive-expand/index.ts` | AI expand/shorten/summarize |
-| `supabase/functions/ai-archive-multi/index.ts` | AI multi-note processing |
+| `supabase/functions/ai-archive-clean/index.ts` | New edge function for cleaning/splitting raw text |
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Replace "Archive coming soon" placeholder with `<ArchiveView />` |
+| `src/components/archive/ArchiveInbox.tsx` | Add new buttons, AI clean flow, custom prompt input |
+| `supabase/functions/ai-archive-process/index.ts` | Enhanced prompt for better content type handling |
+| `supabase/config.toml` | Register new `ai-archive-clean` function |
 
-### Database Migration
-```sql
-CREATE TABLE public.archive_blocks (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  title text NOT NULL DEFAULT '',
-  content text NOT NULL DEFAULT '',
-  pillars text[] NOT NULL DEFAULT '{}',
-  directions text[] NOT NULL DEFAULT '{}',
-  tags text[] NOT NULL DEFAULT '{}',
-  source_url text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.archive_blocks ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view own blocks" ON public.archive_blocks
-  FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own blocks" ON public.archive_blocks
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own blocks" ON public.archive_blocks
-  FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own blocks" ON public.archive_blocks
-  FOR DELETE USING (auth.uid() = user_id);
-```
-
-### UI Style
-- Same glass-card, gradient-purple, glow effects as existing dashboard
-- Sidebar with Inbox/Library/Map navigation (green accent for active item matching screenshots)
-- Block cards use `glass-card` with `border-white/10`
-- AI buttons use the same gradient-purple styling
-- Tag chips colored to match their respective category colors from `CATEGORIES`
-- Framer Motion animations consistent with existing views
-
-### Data Flow
+### Updated Button Layout
 ```text
-User pastes text in Inbox
-  --> clicks "Process" or "AI Organize"
-  --> Edge function auto-tags and splits
-  --> Blocks saved to archive_blocks table
-  --> Appear in Library grouped by pillar
-
-User clicks block card
-  --> Edit modal opens
-  --> Can use AI actions (expand, shorten, etc.)
-  --> Save updates the block
-
-User selects multiple blocks
-  --> Floating bar appears
-  --> "AI Prompt" opens modal
-  --> User types instruction
-  --> AI processes all selected notes
-  --> Result shown, can save as new block
+[  AI Clean + Split  ]  [  AI by Prompt...  ]  [  Quick Save  ]  [  AI Organize + Save  ]
 ```
+
+The "AI Organize + Save" button is highlighted/enabled only when items are properly split with `---`.
 
