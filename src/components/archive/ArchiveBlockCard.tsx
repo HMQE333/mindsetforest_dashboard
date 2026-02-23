@@ -5,6 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
+const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
+const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
+
 interface Props {
   block: ArchiveBlock;
   selected: boolean;
@@ -56,9 +59,36 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
         </button>
         <div className="flex-1 min-w-0" onClick={onEdit}>
           <h4 className="font-semibold text-sm truncate">{block.title || "Untitled"}</h4>
-          <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{block.content}</p>
+          <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
+            {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "Image block"}
+          </p>
         </div>
       </div>
+
+      {/* Image thumbnails */}
+      {(() => {
+        const imgs: string[] = [];
+        let m: RegExpExecArray | null;
+        const r1 = new RegExp(IMAGE_TAG_REGEX);
+        while ((m = r1.exec(block.content))) imgs.push(m[1]);
+        const r2 = new RegExp(BARE_IMG_REGEX);
+        while ((m = r2.exec(block.content))) { if (!imgs.includes(m[0])) imgs.push(m[0]); }
+        if (imgs.length === 0) return null;
+        return (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {imgs.slice(0, 4).map((url, i) => (
+              <div key={i} className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted/50 border border-white/10">
+                <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+              </div>
+            ))}
+            {imgs.length > 4 && (
+              <div className="shrink-0 w-16 h-16 rounded-lg bg-muted/50 border border-white/10 flex items-center justify-center text-xs text-muted-foreground">
+                +{imgs.length - 4}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Tags */}
       {(pillarColors.length > 0 || block.directions.length > 0) && (
