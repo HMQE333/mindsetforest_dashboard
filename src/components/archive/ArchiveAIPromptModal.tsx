@@ -10,13 +10,14 @@ interface Props {
   open: boolean;
   onClose: () => void;
   selectedBlocks: ArchiveBlock[];
-  onResult: (result: { title: string; content: string }) => Promise<void>;
+  onResult: (result: { title: string; content: string }) => Promise<ArchiveBlock | null>;
 }
 
 const ArchiveAIPromptModal = ({ open, onClose, selectedBlocks, onResult }: Props) => {
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleRun = async () => {
     if (!prompt.trim()) return;
@@ -37,11 +38,21 @@ const ArchiveAIPromptModal = ({ open, onClose, selectedBlocks, onResult }: Props
 
   const handleSave = async () => {
     if (!result) return;
-    await onResult({ title: `AI: ${prompt.slice(0, 50)}`, content: result });
-    toast.success("Saved as new block");
-    setPrompt("");
-    setResult(null);
-    onClose();
+    setSaving(true);
+    try {
+      const saved = await onResult({ title: `AI: ${prompt.slice(0, 50)}`, content: result });
+      if (saved) {
+        toast.success("Saved as new block ✅");
+        setPrompt("");
+        setResult(null);
+        onClose();
+      } else {
+        toast.error("Failed to save — please try again");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Save failed");
+    }
+    setSaving(false);
   };
 
   return (
@@ -68,8 +79,8 @@ const ArchiveAIPromptModal = ({ open, onClose, selectedBlocks, onResult }: Props
             <div className="p-4 rounded-xl bg-background/30 border border-white/10 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">
               {result}
             </div>
-            <Button onClick={handleSave} className="w-full gradient-purple text-primary-foreground font-bold">
-              💾 Save as New Block
+            <Button onClick={handleSave} disabled={saving} className="w-full gradient-purple text-primary-foreground font-bold">
+              {saving ? "⏳ Saving..." : "💾 Save as New Block"}
             </Button>
           </div>
         )}
