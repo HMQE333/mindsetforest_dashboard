@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import type { ArchiveBlock } from "@/lib/archive-data";
+
+const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
 interface Props {
   block: ArchiveBlock | null;
@@ -31,6 +34,17 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => 
       setTags(block.tags.join(", "));
     }
   }, [block]);
+
+  // Extract image URLs from content for preview
+  const imageUrls = useMemo(() => {
+    const urls: string[] = [];
+    let match;
+    const regex = new RegExp(IMAGE_TAG_REGEX.source, "g");
+    while ((match = regex.exec(content)) !== null) {
+      urls.push(match[1]);
+    }
+    return urls;
+  }, [content]);
 
   if (!block) return null;
 
@@ -66,6 +80,17 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => 
         <div className="space-y-4">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="bg-background/50 border-white/10" />
           <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Content" className="min-h-[120px] bg-background/50 border-white/10" />
+
+          {/* Image preview strip */}
+          {imageUrls.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {imageUrls.map((url, i) => (
+                <div key={i} className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-muted/50">
+                  <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+                </div>
+              ))}
+            </div>
+          )}
 
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-2">Pillars</p>
@@ -107,9 +132,27 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => 
           <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" />
 
           <div className="flex gap-3 pt-2">
-            <Button onClick={handleDelete} variant="destructive" className="font-bold">
-              🗑️ Delete
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="font-bold">
+                  🗑️ Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="glass-card border-white/10">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this block?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. The block "{block.title}" will be permanently removed.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <div className="flex-1" />
             <Button onClick={onClose} variant="outline" className="border-white/10 font-bold">
               Cancel

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { X, Download } from "lucide-react";
 import { PILLARS } from "@/lib/archive-data";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -40,7 +41,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
     setAiLoading(null);
   };
 
-  // Close lightbox on Escape
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") setLightboxUrl(null);
   }, []);
@@ -54,7 +54,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
 
   const pillarColors = block.pillars.map((p) => PILLARS.find((pl) => pl.id === p)).filter(Boolean);
 
-  // Clean title: if it's just "[image] <url>", show "Image block"
   const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(block.title?.trim() || "")
     ? "Image block"
     : block.title || "Untitled";
@@ -84,7 +83,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
           </div>
         </div>
 
-        {/* Image thumbnails - clickable */}
+        {/* Image thumbnails */}
         {(() => {
           const imgs: string[] = [];
           let m: RegExpExecArray | null;
@@ -153,7 +152,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
         </div>
       </motion.div>
 
-      {/* Lightbox overlay */}
+      {/* Lightbox overlay with close + download */}
       <AnimatePresence>
         {lightboxUrl && (
           <motion.div
@@ -163,6 +162,24 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
             onClick={() => setLightboxUrl(null)}
           >
+            {/* Close button */}
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            >
+              <X size={20} />
+            </button>
+            {/* Download button */}
+            <a
+              href={lightboxUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            >
+              <Download size={20} />
+            </a>
             <motion.img
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}

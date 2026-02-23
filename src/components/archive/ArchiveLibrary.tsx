@@ -15,24 +15,30 @@ interface Props {
   toggleSelect: (id: string) => void;
 }
 
+type SortMode = "newest" | "oldest" | "az";
+
 const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect }: Props) => {
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
   const [hideLinks, setHideLinks] = useState(false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
 
   const filtered = useMemo(() => {
-    return blocks.filter((b) => {
+    const list = blocks.filter((b) => {
       if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.content.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
       if (filterDirection && !b.directions.includes(filterDirection)) return false;
       if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
       return true;
     });
-  }, [blocks, search, filterPillar, filterDirection, hideLinks]);
+    if (sortMode === "oldest") return [...list].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    if (sortMode === "az") return [...list].sort((a, b) => a.title.localeCompare(b.title));
+    return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode]);
 
   if (loading) {
     return (
@@ -47,12 +53,31 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
     <div className="space-y-4">
       {/* Search & Filters */}
       <div className="glass-card p-4 space-y-3">
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="🔍 Search blocks..."
-          className="bg-background/50 border-white/10"
-        />
+        <div className="flex gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 Search blocks..."
+            className="bg-background/50 border-white/10 flex-1"
+          />
+          <div className="flex items-center gap-1">
+            {([
+              { id: "newest" as SortMode, label: "Newest" },
+              { id: "oldest" as SortMode, label: "Oldest" },
+              { id: "az" as SortMode, label: "A-Z" },
+            ]).map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSortMode(s.id)}
+                className={`text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap ${
+                  sortMode === s.id ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           <button
             onClick={() => setFilterPillar(null)}

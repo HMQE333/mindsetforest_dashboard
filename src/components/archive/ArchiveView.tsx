@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import ArchiveInbox from "./ArchiveInbox";
@@ -8,21 +8,49 @@ import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images" | "map";
+type SubView = "inbox" | "library" | "links" | "images";
 
-const NAV_ITEMS: { id: SubView; label: string; icon: string }[] = [
-  { id: "inbox", label: "Inbox", icon: "📥" },
-  { id: "library", label: "Library", icon: "📚" },
-  { id: "links", label: "Links", icon: "🔗" },
-  { id: "images", label: "Images", icon: "🖼️" },
-  { id: "map", label: "Map", icon: "🗺️" },
-];
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
+const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
+
+function countLinks(blocks: ArchiveBlock[]): number {
+  const urls = new Set<string>();
+  for (const b of blocks) {
+    const matches = b.content.match(URL_REGEX) || [];
+    matches.forEach((u) => urls.add(u));
+    if (b.source_url) urls.add(b.source_url);
+  }
+  return urls.size;
+}
+
+function countImages(blocks: ArchiveBlock[]): number {
+  const urls = new Set<string>();
+  for (const b of blocks) {
+    let m: RegExpExecArray | null;
+    const r1 = new RegExp(IMAGE_TAG_REGEX);
+    while ((m = r1.exec(b.content))) urls.add(m[1]);
+    const r2 = new RegExp(BARE_IMG_REGEX);
+    while ((m = r2.exec(b.content))) urls.add(m[0]);
+  }
+  return urls.size;
+}
 
 const ArchiveView = () => {
   const [subView, setSubView] = useState<SubView>("inbox");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const archive = useArchiveState();
+
+  const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
+  const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
+
+  const NAV_ITEMS: { id: SubView; label: string; icon: string; count?: number }[] = [
+    { id: "inbox", label: "Inbox", icon: "📥" },
+    { id: "library", label: "Library", icon: "📚", count: archive.blocks.length },
+    { id: "links", label: "Links", icon: "🔗", count: linkCount },
+    { id: "images", label: "Images", icon: "🖼️", count: imageCount },
+  ];
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -50,7 +78,7 @@ const ArchiveView = () => {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       {/* Sub-nav */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
@@ -62,11 +90,11 @@ const ArchiveView = () => {
             }`}
           >
             {item.icon} {item.label}
+            {item.count !== undefined && (
+              <span className="ml-1 opacity-70">({item.count})</span>
+            )}
           </button>
         ))}
-        <div className="ml-auto text-sm text-muted-foreground">
-          {archive.blocks.length} blocks
-        </div>
       </div>
 
       {/* Content */}
@@ -96,12 +124,6 @@ const ArchiveView = () => {
         {subView === "images" && (
           <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-          </motion.div>
-        )}
-        {subView === "map" && (
-          <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-20">
-            <span className="text-4xl mb-4 block">🗺️</span>
-            <p className="text-muted-foreground">Knowledge Map coming soon...</p>
           </motion.div>
         )}
       </AnimatePresence>
