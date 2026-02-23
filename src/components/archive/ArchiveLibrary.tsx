@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
+import { Link2Off } from "lucide-react";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
@@ -18,16 +19,20 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
+  const [hideLinks, setHideLinks] = useState(false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
+
+  const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
 
   const filtered = useMemo(() => {
     return blocks.filter((b) => {
       if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.content.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
       if (filterDirection && !b.directions.includes(filterDirection)) return false;
+      if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
       return true;
     });
-  }, [blocks, search, filterPillar, filterDirection]);
+  }, [blocks, search, filterPillar, filterDirection, hideLinks]);
 
   if (loading) {
     return (
@@ -69,7 +74,16 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setHideLinks(!hideLinks)}
+            className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 ${
+              hideLinks ? "gradient-purple text-primary-foreground glow-sm" : "bg-muted/40 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Link2Off size={12} /> Hide Links
+          </button>
+          <span className="w-px h-4 bg-white/10" />
           {DIRECTIONS.map((d) => (
             <button
               key={d.id}
