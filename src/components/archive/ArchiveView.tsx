@@ -3,14 +3,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import ArchiveInbox from "./ArchiveInbox";
 import ArchiveLibrary from "./ArchiveLibrary";
+import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "map";
+type SubView = "inbox" | "library" | "links" | "map";
 
 const NAV_ITEMS: { id: SubView; label: string; icon: string }[] = [
   { id: "inbox", label: "Inbox", icon: "📥" },
   { id: "library", label: "Library", icon: "📚" },
+  { id: "links", label: "Links", icon: "🔗" },
   { id: "map", label: "Map", icon: "🗺️" },
 ];
 
@@ -82,6 +84,11 @@ const ArchiveView = () => {
               selectedIds={selectedIds}
               toggleSelect={toggleSelect}
             />
+          </motion.div>
+        )}
+        {subView === "links" && (
+          <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} />
           </motion.div>
         )}
         {subView === "map" && (
