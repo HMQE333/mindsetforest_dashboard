@@ -4,15 +4,17 @@ import { useArchiveState } from "@/hooks/useArchiveState";
 import ArchiveInbox from "./ArchiveInbox";
 import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
+import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "map";
+type SubView = "inbox" | "library" | "links" | "images" | "map";
 
 const NAV_ITEMS: { id: SubView; label: string; icon: string }[] = [
   { id: "inbox", label: "Inbox", icon: "📥" },
   { id: "library", label: "Library", icon: "📚" },
   { id: "links", label: "Links", icon: "🔗" },
+  { id: "images", label: "Images", icon: "🖼️" },
   { id: "map", label: "Map", icon: "🗺️" },
 ];
 
@@ -89,6 +91,11 @@ const ArchiveView = () => {
         {subView === "links" && (
           <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          </motion.div>
+        )}
+        {subView === "images" && (
+          <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
           </motion.div>
         )}
         {subView === "map" && (
