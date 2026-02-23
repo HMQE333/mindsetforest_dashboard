@@ -5,23 +5,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const defaultSystemPrompt = `You clean and organize raw pasted notes, especially from Discord chat logs.
+
+Rules:
+1. Remove Discord message headers (patterns like "USERNAME — DD/MM/YYYY HH:MM" or "USERNAME -- DD/MM/YYYY HH:MM" or similar username + timestamp lines)
+2. Remove link embed previews (auto-generated title + description that Discord shows below URLs) but KEEP the actual URLs
+3. Remove empty messages that were just images (no text content)
+4. Group related consecutive short messages into one note
+5. Separate genuinely different topics with ---
+6. For each separated item, add a content type tag at the start: [note], [link], [video], [code], [quote]
+7. Clean up excessive whitespace and empty lines
+8. Preserve the actual meaningful content — don't summarize or change wording
+9. If a message is just a URL, keep it as a [link] item
+10. YouTube/video URLs get tagged as [video]
+11. If content looks like credentials or sensitive data (passwords, IPs, API keys), tag as [credentials]
+
+You MUST respond using the clean_text tool with the cleaned and separated text.`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { items } = await req.json();
+    const { rawText, customPrompt } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const systemPrompt = `You are a knowledge organization AI. For each note provided:
-1. Generate a concise, descriptive title
-2. Suggest relevant pillar categories (from: mind, body, creation, exploration, networking, trading, spirit, order)
-3. Suggest direction tags (from: direction, goals, wisdom, freedom, protection, creation, expression, community)
-4. Detect content type: note, link, video, code, quote, credentials
-5. Detect any URLs in the content
-6. Notes may have content type prefixes like [note], [link], [video] etc. — use these as hints but verify
-7. Preserve the actual content without modification
-You MUST respond using the organize_notes tool.`;
+    const systemPrompt = customPrompt
+      ? `You process raw pasted text according to the user's instructions. Apply the instructions to the text and return the result using the clean_text tool.\n\nUser instructions: ${customPrompt}`
+      : defaultSystemPrompt;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -33,40 +44,27 @@ You MUST respond using the organize_notes tool.`;
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Organize these ${items.length} notes:\n\n${items.map((t: string, i: number) => `--- Note ${i + 1} ---\n${t}`).join("\n\n")}` },
+          { role: "user", content: rawText },
         ],
         tools: [{
           type: "function",
           function: {
-            name: "organize_notes",
-            description: "Return organized notes with titles and tags",
+            name: "clean_text",
+            description: "Return the cleaned and organized text with --- separators between items",
             parameters: {
               type: "object",
               properties: {
-                blocks: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      title: { type: "string" },
-                      content: { type: "string" },
-                      pillars: { type: "array", items: { type: "string" } },
-                      directions: { type: "array", items: { type: "string" } },
-                      tags: { type: "array", items: { type: "string" } },
-                      source_url: { type: "string" },
-                      content_type: { type: "string", enum: ["note", "link", "video", "code", "quote", "credentials"] },
-                    },
-                    required: ["title", "content", "pillars", "directions"],
-                    additionalProperties: false,
-                  },
+                cleanedText: {
+                  type: "string",
+                  description: "The cleaned text with items separated by ---",
                 },
               },
-              required: ["blocks"],
+              required: ["cleanedText"],
               additionalProperties: false,
             },
           },
         }],
-        tool_choice: { type: "function", function: { name: "organize_notes" } },
+        tool_choice: { type: "function", function: { name: "clean_text" } },
       }),
     });
 
@@ -81,16 +79,18 @@ You MUST respond using the organize_notes tool.`;
 
     const data = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    let blocks: any[] = [];
+    let cleanedText = rawText;
     if (toolCall?.function?.arguments) {
-      try { blocks = JSON.parse(toolCall.function.arguments).blocks || []; } catch { /* */ }
+      try {
+        cleanedText = JSON.parse(toolCall.function.arguments).cleanedText || rawText;
+      } catch { /* fallback to raw */ }
     }
 
-    return new Response(JSON.stringify({ blocks }), {
+    return new Response(JSON.stringify({ cleanedText }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("ai-archive-process error:", e);
+    console.error("ai-archive-clean error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
