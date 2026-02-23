@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Upload, X, ImageIcon } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 interface Props {
@@ -241,9 +241,18 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
             {imageUrls.map((url, i) => (
               <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/10 group">
                 <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <ImageIcon size={14} className="text-white" />
-                </div>
+                <button
+                  onClick={() => {
+                    // Remove the [image] <url> line from text
+                    const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const lineRegex = new RegExp(`\\n?\\[image\\]\\s*${escaped}\\n?`, 'g');
+                    setText((prev) => prev.replace(lineRegex, '\n').trim());
+                    toast.success("Image removed");
+                  }}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive"
+                >
+                  <X size={12} />
+                </button>
               </div>
             ))}
           </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { PILLARS } from "@/lib/archive-data";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
@@ -34,7 +35,7 @@ function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
 }
 
 const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props) => {
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
 
@@ -44,21 +45,34 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
     ? allImages.filter((img) => img.block.pillars.includes(filterPillar))
     : allImages;
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") setLightboxUrl(null);
+  const lightboxUrl = lightboxIndex !== null ? filtered[lightboxIndex]?.url : null;
+
+  const goNext = useCallback(() => {
+    setLightboxIndex((i) => (i !== null && i < filtered.length - 1 ? i + 1 : i));
+  }, [filtered.length]);
+
+  const goPrev = useCallback(() => {
+    setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i));
   }, []);
 
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") setLightboxIndex(null);
+    if (e.key === "ArrowRight") goNext();
+    if (e.key === "ArrowLeft") goPrev();
+  }, [goNext, goPrev]);
+
   useEffect(() => {
-    if (lightboxUrl) {
+    if (lightboxIndex !== null) {
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }
-  }, [lightboxUrl, handleKeyDown]);
+  }, [lightboxIndex, handleKeyDown]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <span className="text-muted-foreground">Loading images...</span>
+      <div className="text-center py-12 text-muted-foreground">
+        <span className="text-2xl animate-pulse">🖼️</span>
+        <p className="mt-2">Loading images...</p>
       </div>
     );
   }
@@ -95,7 +109,7 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
         {filtered.length === 0 ? (
           <div className="text-center py-20">
             <span className="text-4xl mb-4 block">🖼️</span>
-            <p className="text-muted-foreground">No images found</p>
+            <p className="text-muted-foreground">{allImages.length === 0 ? "No images yet" : "No images match your filter"}</p>
           </div>
         ) : (
           <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
@@ -116,7 +130,7 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
                   className="break-inside-avoid glass-card overflow-hidden group"
                 >
                   <button
-                    onClick={() => setLightboxUrl(img.url)}
+                    onClick={() => setLightboxIndex(i)}
                     className="w-full block overflow-hidden"
                   >
                     <img
@@ -158,20 +172,61 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
         )}
       </div>
 
-      {/* Lightbox */}
+      {/* Lightbox with close / download / prev / next */}
       <AnimatePresence>
-        {lightboxUrl && (
+        {lightboxUrl && lightboxIndex !== null && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-            onClick={() => setLightboxUrl(null)}
+            onClick={() => setLightboxIndex(null)}
           >
+            {/* Close */}
+            <button
+              onClick={() => setLightboxIndex(null)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            >
+              <X size={20} />
+            </button>
+            {/* Download */}
+            <a
+              href={lightboxUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            >
+              <Download size={20} />
+            </a>
+            {/* Counter */}
+            <span className="absolute top-5 left-4 z-10 text-sm text-white/60 font-medium">
+              {lightboxIndex + 1} / {filtered.length}
+            </span>
+            {/* Prev */}
+            {lightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); goPrev(); }}
+                className="absolute left-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+              >
+                <ChevronLeft size={24} />
+              </button>
+            )}
+            {/* Next */}
+            {lightboxIndex < filtered.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); goNext(); }}
+                className="absolute right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+              >
+                <ChevronRight size={24} />
+              </button>
+            )}
             <motion.img
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
+              key={lightboxUrl}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
               src={lightboxUrl}
               alt=""
               className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl"
