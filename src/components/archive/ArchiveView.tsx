@@ -66,7 +66,7 @@ const ArchiveView = () => {
   const selectedBlocks = archive.blocks.filter((b) => selectedIds.has(b.id));
 
   const handleAIResult = async (result: { title: string; content: string }) => {
-    await archive.addBlock({
+    return await archive.addBlock({
       title: result.title,
       content: result.content,
       pillars: [],
