@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight } from "lucide-react";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 type LinkType = "all" | "link" | "video" | "image" | "other";
+type ViewMode = "list" | "grid" | "compact" | "domain";
 
 const LINK_FILTERS: { id: LinkType; label: string; icon: string }[] = [
   { id: "all", label: "All", icon: "🔗" },
@@ -18,8 +20,14 @@ const LINK_FILTERS: { id: LinkType; label: string; icon: string }[] = [
   { id: "other", label: "Other", icon: "📎" },
 ];
 
-const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+const VIEW_MODES: { id: ViewMode; icon: typeof LayoutList; label: string }[] = [
+  { id: "list", icon: LayoutList, label: "List" },
+  { id: "grid", icon: LayoutGrid, label: "Grid" },
+  { id: "compact", icon: AlignJustify, label: "Compact" },
+  { id: "domain", icon: FolderOpen, label: "By Domain" },
+];
 
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const VIDEO_DOMAINS = ["youtube.com", "youtu.be", "vimeo.com", "twitch.tv", "dailymotion.com"];
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"];
 
@@ -32,7 +40,14 @@ function classifyUrl(url: string): "video" | "image" | "link" {
   return "link";
 }
 
-function extractLinks(block: ArchiveBlock) {
+interface ExtractedLink {
+  url: string;
+  type: "video" | "image" | "link";
+  blockTitle: string;
+  blockId: string;
+}
+
+function extractLinks(block: ArchiveBlock): ExtractedLink[] {
   const urls = new Set<string>();
   const matches = block.content.match(URL_REGEX) || [];
   matches.forEach((u) => urls.add(u));
@@ -63,13 +78,177 @@ function getFavicon(url: string) {
   }
 }
 
+function getHostname(url: string) {
+  try { return new URL(url).hostname.replace("www.", ""); } catch { return ""; }
+}
+
+// ── Sub-renderers ──────────────────────────────────────────────
+
+function ListItem({ link }: { link: ExtractedLink }) {
+  const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
+  const favicon = getFavicon(link.url);
+  const hostname = getHostname(link.url);
+
+  return (
+    <a
+      href={link.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
+    >
+      {ytId && (
+        <div className="mb-3 rounded-lg overflow-hidden aspect-video bg-muted">
+          <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
+        </div>
+      )}
+      {link.type === "image" && (
+        <div className="mb-3 rounded-lg overflow-hidden max-h-48 bg-muted">
+          <img src={link.url} alt="Image preview" className="w-full h-full object-contain" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+        </div>
+      )}
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 w-5 h-5 rounded bg-muted/50 flex items-center justify-center overflow-hidden">
+          {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{link.url}</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10">
+              {link.type === "video" ? "🎬 Video" : link.type === "image" ? "🖼️ Image" : "🌐 Link"}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground truncate">from: {link.blockTitle}</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function GridCard({ link }: { link: ExtractedLink }) {
+  const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
+  const favicon = getFavicon(link.url);
+  const hostname = getHostname(link.url);
+
+  return (
+    <a
+      href={link.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="glass-card overflow-hidden hover:border-primary/30 border border-transparent transition-all group flex flex-col"
+    >
+      {/* Thumbnail area */}
+      {ytId ? (
+        <div className="aspect-video bg-muted">
+          <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
+        </div>
+      ) : link.type === "image" ? (
+        <div className="aspect-square bg-muted">
+          <img src={link.url} alt="Image preview" className="w-full h-full object-contain" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+        </div>
+      ) : (
+        <div className="aspect-video bg-muted/30 flex flex-col items-center justify-center gap-2">
+          {favicon ? <img src={favicon} alt="" className="w-12 h-12" loading="lazy" /> : <span className="text-3xl">🔗</span>}
+          <span className="text-xs text-muted-foreground font-medium">{hostname}</span>
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="p-2.5 flex-1 min-w-0">
+        <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
+        <div className="flex items-center gap-1.5 mt-1">
+          <Badge variant="outline" className="text-[9px] px-1 py-0 border-white/10">
+            {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
+          </Badge>
+          <span className="text-[9px] text-muted-foreground truncate">{link.blockTitle}</span>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function CompactRow({ link }: { link: ExtractedLink }) {
+  const favicon = getFavicon(link.url);
+  const hostname = getHostname(link.url);
+
+  return (
+    <a
+      href={link.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 px-3 py-1.5 glass-card hover:border-primary/30 border border-transparent transition-all group"
+    >
+      <div className="shrink-0 w-4 h-4 rounded overflow-hidden flex items-center justify-center">
+        {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-[10px]">🔗</span>}
+      </div>
+      <span className="text-xs font-semibold text-foreground w-28 truncate shrink-0 group-hover:text-primary transition-colors">{hostname}</span>
+      <span className="text-xs text-muted-foreground truncate flex-1">{link.url}</span>
+      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-white/10 shrink-0">
+        {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
+      </Badge>
+    </a>
+  );
+}
+
+function DomainGroupView({ links }: { links: ExtractedLink[] }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const grouped = useMemo(() => {
+    const map: Record<string, ExtractedLink[]> = {};
+    links.forEach((l) => {
+      const h = getHostname(l.url) || "unknown";
+      if (!map[h]) map[h] = [];
+      map[h].push(l);
+    });
+    return Object.entries(map).sort((a, b) => b[1].length - a[1].length);
+  }, [links]);
+
+  const toggle = (domain: string) => setExpanded((p) => ({ ...p, [domain]: !p[domain] }));
+
+  return (
+    <div className="space-y-2">
+      {grouped.map(([domain, domainLinks]) => {
+        const isOpen = expanded[domain] ?? false;
+        const favicon = getFavicon(domainLinks[0].url);
+        return (
+          <div key={domain}>
+            <button
+              onClick={() => toggle(domain)}
+              className="w-full glass-card p-3 flex items-center gap-3 hover:border-primary/30 border border-transparent transition-all"
+            >
+              <div className="shrink-0 w-5 h-5 rounded overflow-hidden flex items-center justify-center">
+                {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
+              </div>
+              <span className="text-sm font-semibold text-foreground">{domain}</span>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10 ml-1">
+                {domainLinks.length}
+              </Badge>
+              <div className="ml-auto text-muted-foreground">
+                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </div>
+            </button>
+            {isOpen && (
+              <div className="ml-4 mt-1 space-y-1">
+                {domainLinks.map((link, i) => (
+                  <CompactRow key={`${link.url}-${i}`} link={link} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────────
+
 const ArchiveLinksView = ({ blocks, loading }: Props) => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<LinkType>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
-  const allLinks = useMemo(() => {
-    return blocks.flatMap(extractLinks);
-  }, [blocks]);
+  const allLinks = useMemo(() => blocks.flatMap(extractLinks), [blocks]);
 
   const filtered = useMemo(() => {
     return allLinks.filter((link) => {
@@ -99,7 +278,7 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
 
   return (
     <div className="space-y-4">
-      {/* Search + type filters */}
+      {/* Search + type filters + view toggle */}
       <div className="glass-card p-4 space-y-3">
         <Input
           value={search}
@@ -107,7 +286,7 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
           placeholder="🔍 Search links or block titles..."
           className="bg-background/50 border-white/10"
         />
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {LINK_FILTERS.map((f) => (
             <button
               key={f.id}
@@ -122,87 +301,56 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
               <span className="ml-0.5 opacity-70">({counts[f.id]})</span>
             </button>
           ))}
+
+          {/* View mode toggle */}
+          <div className="ml-auto flex items-center gap-1">
+            {VIEW_MODES.map((vm) => {
+              const Icon = vm.icon;
+              return (
+                <button
+                  key={vm.id}
+                  onClick={() => setViewMode(vm.id)}
+                  title={vm.label}
+                  className={`p-1.5 rounded-md transition-all ${
+                    viewMode === vm.id
+                      ? "gradient-purple text-primary-foreground glow-sm"
+                      : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon size={14} />
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Links list */}
+      {/* Content */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <span className="text-3xl mb-2 block">🔗</span>
           <p>{allLinks.length === 0 ? "No links found in your blocks." : "No links match your filter."}</p>
         </div>
-      ) : (
+      ) : viewMode === "list" ? (
         <div className="space-y-2">
-          {filtered.map((link, i) => {
-            const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
-            const favicon = getFavicon(link.url);
-            let hostname = "";
-            try { hostname = new URL(link.url).hostname.replace("www.", ""); } catch {}
-
-            return (
-              <a
-                key={`${link.url}-${i}`}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
-              >
-                {/* YouTube embed preview */}
-                {ytId && (
-                  <div className="mb-3 rounded-lg overflow-hidden aspect-video bg-muted">
-                    <img
-                      src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
-                      alt="Video thumbnail"
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                )}
-
-                {/* Image preview */}
-                {link.type === "image" && (
-                  <div className="mb-3 rounded-lg overflow-hidden max-h-48 bg-muted">
-                    <img
-                      src={link.url}
-                      alt="Image preview"
-                      className="w-full h-full object-contain"
-                      loading="lazy"
-                      onError={(e) => (e.currentTarget.style.display = "none")}
-                    />
-                  </div>
-                )}
-
-                <div className="flex items-start gap-3">
-                  {/* Favicon */}
-                  <div className="mt-0.5 shrink-0 w-5 h-5 rounded bg-muted/50 flex items-center justify-center overflow-hidden">
-                    {favicon ? (
-                      <img src={favicon} alt="" className="w-4 h-4" loading="lazy" />
-                    ) : (
-                      <span className="text-xs">🔗</span>
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    {/* URL */}
-                    <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                      {hostname}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{link.url}</p>
-                    {/* Block source */}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10">
-                        {link.type === "video" ? "🎬 Video" : link.type === "image" ? "🖼️ Image" : "🌐 Link"}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground truncate">
-                        from: {link.blockTitle}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </a>
-            );
-          })}
+          {filtered.map((link, i) => (
+            <ListItem key={`${link.url}-${i}`} link={link} />
+          ))}
         </div>
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {filtered.map((link, i) => (
+            <GridCard key={`${link.url}-${i}`} link={link} />
+          ))}
+        </div>
+      ) : viewMode === "compact" ? (
+        <div className="space-y-1">
+          {filtered.map((link, i) => (
+            <CompactRow key={`${link.url}-${i}`} link={link} />
+          ))}
+        </div>
+      ) : (
+        <DomainGroupView links={filtered} />
       )}
     </div>
   );
