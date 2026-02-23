@@ -1,111 +1,67 @@
 
 
-# Image Paste in Inbox + Right-Click Context Menu on Links
+# Clickable Image Thumbnails + Images Tab
 
 ## Overview
-Two enhancements: (1) Allow pasting images directly into the Inbox textarea area, and (2) add a right-click context menu on link items across all view modes with options to edit notes, add tags, and manage the parent block.
+Two changes: (1) Make image thumbnails in Library block cards clickable to open a full-size lightbox, and (2) add a new "Images" tab to the Archive sub-nav that shows all images in a gallery grid.
 
----
+## Part 1: Clickable Thumbnails in Block Cards
 
-## 1. Image Paste in Inbox
+### ArchiveBlockCard.tsx
+- Wrap each thumbnail `<img>` in a clickable button/div that opens a lightbox overlay
+- Add local state `lightboxUrl: string | null` to track which image is being viewed
+- Render a fullscreen overlay (fixed, z-50, backdrop-blur, click-to-dismiss) showing the image at full size
+- Also fix the block title: when the title is just `[image] <url>`, show "Image block" instead of the raw URL
+- Stop `e.stopPropagation()` on thumbnail click so it doesn't trigger `onEdit`
 
-### What it does
-- Users can paste images (Ctrl+V / Cmd+V) or drag-and-drop images into the Inbox area
-- Pasted images get uploaded to Lovable Cloud file storage
-- The resulting public URL is inserted into the textarea as `[image] <url>`
-- Images also show as small thumbnails in a preview strip below the textarea
+### Lightbox behavior
+- Click thumbnail -> opens overlay with full-size image
+- Click backdrop or press Escape -> closes
+- Simple dark backdrop with centered image, max-w/max-h constrained
 
-### Implementation
+## Part 2: New "Images" Tab
 
-**Storage setup:**
-- Create a new storage bucket `archive-images` with public access for reading
-- Add RLS policy so only authenticated users can upload
+### ArchiveView.tsx
+- Add `"images"` to the `SubView` type union
+- Add `{ id: "images", label: "Images", icon: "🖼️" }` to NAV_ITEMS (between Links and Map)
+- Render new `ArchiveImagesView` component when `subView === "images"`
+- Pass `blocks`, `loading`, `updateBlock`, `deleteBlock`
 
-**Database migration:**
-- None needed -- images are stored as URLs in the block `content` field, which already exists
-
-**ArchiveInbox.tsx changes:**
-- Add `onPaste` handler on the textarea that intercepts `clipboardData.files` for image types
-- Add a hidden drop zone wrapper with `onDragOver` / `onDrop` handlers
-- When an image is detected: upload to `archive-images` bucket, get public URL, insert `[image] <public_url>` at cursor position in the textarea
-- Show a small thumbnail strip below textarea for any detected image URLs in the current text
-- Add a visual indicator (dashed border highlight) when dragging files over the area
-- Show upload progress with a small spinner/toast
-
----
-
-## 2. Right-Click Context Menu on Links
-
-### What it does
-- Right-clicking any link item (in any view mode: list, grid, compact, domain) opens a context menu
-- Menu options:
-  - **Open Link** -- opens URL in new tab (default behavior)
-  - **Copy URL** -- copies to clipboard
-  - **Edit Block** -- opens the ArchiveEditModal for the parent block (edit title, content, pillars, directions, tags)
-  - **Add Note** -- quick inline note that appends to the block's content
-  - **Edit Tags** -- quick tag editor (pillar + direction + custom tags) without opening full modal
-  - **Delete Link** -- removes just this URL from the block content (not the whole block)
-
-### Implementation
-
-**ArchiveLinksView.tsx changes:**
-
-- Extend `ExtractedLink` interface to include full block reference (pillars, directions, tags) instead of just `blockTitle`/`blockId`
-- Add `onContextMenu` handler to all link items (ListItem, GridCard, CompactRow, DomainGroupView rows)
-- Prevent default browser context menu
-- Render a custom positioned context menu using absolute positioning based on click coordinates
-- Close menu on outside click or Escape key
-
-**New props needed on ArchiveLinksView:**
-- `updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>` -- passed from ArchiveView
-- `deleteBlock: (id: string) => Promise<void>` -- passed from ArchiveView
-- Full `blocks` array already available for looking up parent block data
-
-**Context menu sub-features:**
-
-1. **Copy URL**: `navigator.clipboard.writeText(url)` + toast
-2. **Edit Block**: Open the existing `ArchiveEditModal` -- import and render it inside ArchiveLinksView, controlled by state
-3. **Add Note**: Small inline input that appears in the context menu; on submit, appends text to block.content via `updateBlock`
-4. **Edit Tags**: Inline pillar/direction/tag chips in a small popover; toggles update the block via `updateBlock`
-5. **Delete Link**: Remove the specific URL string from `block.content`, call `updateBlock` with cleaned content
-
-**ArchiveView.tsx changes:**
-- Pass `updateBlock` and `deleteBlock` to `ArchiveLinksView`
-
----
+### New file: `src/components/archive/ArchiveImagesView.tsx`
+- Scans all blocks for image URLs (same regex pattern as ArchiveBlockCard)
+- Displays a responsive masonry-style grid of all images
+- Each image card shows:
+  - The image (clickable, opens lightbox)
+  - Block title below
+  - Date
+  - Pillar tags
+- Search/filter bar for filtering by pillar
+- Clicking the block title opens `ArchiveEditModal` for that block
+- Count display: "X images"
 
 ## Technical Details
 
-### Files to Create
-| File | Purpose |
-|------|---------|
-| `src/components/archive/LinkContextMenu.tsx` | Reusable context menu component for link items |
-
-### Files to Modify
+### Files to modify
 | File | Change |
 |------|--------|
-| `src/components/archive/ArchiveInbox.tsx` | Add paste/drop image handlers, upload logic, thumbnail preview strip |
-| `src/components/archive/ArchiveLinksView.tsx` | Add context menu trigger on all link renderers, import LinkContextMenu, accept updateBlock/deleteBlock props |
-| `src/components/archive/ArchiveView.tsx` | Pass updateBlock + deleteBlock to ArchiveLinksView |
+| `src/components/archive/ArchiveBlockCard.tsx` | Add clickable thumbnails with lightbox overlay; fix raw URL in title |
+| `src/components/archive/ArchiveView.tsx` | Add "Images" to sub-nav, render ArchiveImagesView |
 
-### Storage Bucket
-- Bucket name: `archive-images`
-- Public: yes (for reading)
-- RLS: authenticated users can INSERT, owner can DELETE
-- File path pattern: `{user_id}/{timestamp}-{filename}`
+### Files to create
+| File | Purpose |
+|------|---------|
+| `src/components/archive/ArchiveImagesView.tsx` | Gallery grid view for all images across blocks |
 
-### Context Menu Structure
+### Image extraction logic (shared pattern)
 ```text
-+---------------------------+
-| Open Link            ->   |
-| Copy URL             📋   |
-|---------------------------|
-| Edit Block           ✏️   |
-| Add Note             📝   |
-| Edit Tags            🏷️   |
-|---------------------------|
-| Remove Link          🗑️   |
-+---------------------------+
+1. Match [image] <url> tags
+2. Match bare image URLs (.png, .jpg, .webp, etc.)
+3. Deduplicate
+4. Return array of { url, blockId, blockTitle, pillars }
 ```
 
-The menu renders as an absolutely-positioned div at the mouse coordinates, with a backdrop click listener to dismiss. Uses existing `glass-card` styling with `border-white/10`.
+### Lightbox component (inline in each file)
+- Fixed overlay, z-50, bg-black/80, backdrop-blur
+- Centered img with max-w-[90vw] max-h-[90vh] object-contain
+- Click backdrop to close, Escape key to close
+
