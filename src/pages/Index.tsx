@@ -10,6 +10,7 @@ import HabitLoopView from "@/components/habitloop/HabitLoopView";
 import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
+import ArchiveView from "@/components/archive/ArchiveView";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive";
 
@@ -143,7 +144,7 @@ const Index = () => {
         {activeTab === "ladder" && (user ? <LadderView /> : renderAuthGate("mastery ladder"))}
         {activeTab === "habitloop" && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
         {activeTab === "oracle" && (user ? <OracleView /> : renderAuthGate("oracle"))}
-        {activeTab === "archive" && (user ? <div className="text-center py-20 text-muted-foreground">Archive coming soon...</div> : renderAuthGate("archive"))}
+        {activeTab === "archive" && (user ? <ArchiveView /> : renderAuthGate("archive"))}
       </div>
     </div>
   );

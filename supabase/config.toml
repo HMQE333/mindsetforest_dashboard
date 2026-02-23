@@ -2,3 +2,12 @@ project_id = "ovqulpgcdddtadobwlan"
 
 [functions.ai-split-task]
 verify_jwt = false
+
+[functions.ai-archive-process]
+verify_jwt = false
+
+[functions.ai-archive-expand]
+verify_jwt = false
+
+[functions.ai-archive-multi]
+verify_jwt = false

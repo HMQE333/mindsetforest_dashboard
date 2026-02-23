@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      archive_blocks: {
+        Row: {
+          content: string
+          created_at: string
+          directions: string[]
+          id: string
+          pillars: string[]
+          source_url: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          directions?: string[]
+          id?: string
+          pillars?: string[]
+          source_url?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          directions?: string[]
+          id?: string
+          pillars?: string[]
+          source_url?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dashboard_state: {
         Row: {
           categories_engaged: string[]
