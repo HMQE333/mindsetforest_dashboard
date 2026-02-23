@@ -1,12 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight } from "lucide-react";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import ArchiveEditModal from "./ArchiveEditModal";
+import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
 
 interface Props {
   blocks: ArchiveBlock[];
   loading: boolean;
+  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
+  deleteBlock: (id: string) => Promise<void>;
 }
 
 type LinkType = "all" | "link" | "video" | "image" | "other";
@@ -45,6 +49,7 @@ interface ExtractedLink {
   type: "video" | "image" | "link";
   blockTitle: string;
   blockId: string;
+  block: ArchiveBlock;
 }
 
 function extractLinks(block: ArchiveBlock): ExtractedLink[] {
@@ -57,6 +62,7 @@ function extractLinks(block: ArchiveBlock): ExtractedLink[] {
     type: classifyUrl(url),
     blockTitle: block.title,
     blockId: block.id,
+    block,
   }));
 }
 
@@ -84,7 +90,7 @@ function getHostname(url: string) {
 
 // ── Sub-renderers ──────────────────────────────────────────────
 
-function ListItem({ link }: { link: ExtractedLink }) {
+function ListItem({ link, onContextMenu }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void }) {
   const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
@@ -94,6 +100,7 @@ function ListItem({ link }: { link: ExtractedLink }) {
       href={link.url}
       target="_blank"
       rel="noopener noreferrer"
+      onContextMenu={onContextMenu}
       className="block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
     >
       {ytId && (
@@ -125,7 +132,7 @@ function ListItem({ link }: { link: ExtractedLink }) {
   );
 }
 
-function GridCard({ link }: { link: ExtractedLink }) {
+function GridCard({ link, onContextMenu }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void }) {
   const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
@@ -135,9 +142,9 @@ function GridCard({ link }: { link: ExtractedLink }) {
       href={link.url}
       target="_blank"
       rel="noopener noreferrer"
+      onContextMenu={onContextMenu}
       className="glass-card overflow-hidden hover:border-primary/30 border border-transparent transition-all group flex flex-col"
     >
-      {/* Thumbnail area */}
       {ytId ? (
         <div className="aspect-video bg-muted">
           <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
@@ -152,8 +159,6 @@ function GridCard({ link }: { link: ExtractedLink }) {
           <span className="text-xs text-muted-foreground font-medium">{hostname}</span>
         </div>
       )}
-
-      {/* Info */}
       <div className="p-2.5 flex-1 min-w-0">
         <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
         <div className="flex items-center gap-1.5 mt-1">
@@ -167,7 +172,7 @@ function GridCard({ link }: { link: ExtractedLink }) {
   );
 }
 
-function CompactRow({ link }: { link: ExtractedLink }) {
+function CompactRow({ link, onContextMenu }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void }) {
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
@@ -176,6 +181,7 @@ function CompactRow({ link }: { link: ExtractedLink }) {
       href={link.url}
       target="_blank"
       rel="noopener noreferrer"
+      onContextMenu={onContextMenu}
       className="flex items-center gap-2 px-3 py-1.5 glass-card hover:border-primary/30 border border-transparent transition-all group"
     >
       <div className="shrink-0 w-4 h-4 rounded overflow-hidden flex items-center justify-center">
@@ -190,7 +196,7 @@ function CompactRow({ link }: { link: ExtractedLink }) {
   );
 }
 
-function DomainGroupView({ links }: { links: ExtractedLink[] }) {
+function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const grouped = useMemo(() => {
@@ -230,7 +236,7 @@ function DomainGroupView({ links }: { links: ExtractedLink[] }) {
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {domainLinks.map((link, i) => (
-                  <CompactRow key={`${link.url}-${i}`} link={link} />
+                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} />
                 ))}
               </div>
             )}
@@ -243,10 +249,13 @@ function DomainGroupView({ links }: { links: ExtractedLink[] }) {
 
 // ── Main Component ─────────────────────────────────────────────
 
-const ArchiveLinksView = ({ blocks, loading }: Props) => {
+const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<LinkType>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   const allLinks = useMemo(() => blocks.flatMap(extractLinks), [blocks]);
 
@@ -267,6 +276,17 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
     return c;
   }, [allLinks]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, link: ExtractedLink) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, url: link.url, block: link.block });
+  }, []);
+
+  const handleEditBlock = useCallback((block: ArchiveBlock) => {
+    setEditBlock(block);
+    setEditModalOpen(true);
+  }, []);
+
   if (loading) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -280,29 +300,20 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
     <div className="space-y-4">
       {/* Search + type filters + view toggle */}
       <div className="glass-card p-4 space-y-3">
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="🔍 Search links or block titles..."
-          className="bg-background/50 border-white/10"
-        />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Search links or block titles..." className="bg-background/50 border-white/10" />
         <div className="flex flex-wrap items-center gap-1.5">
           {LINK_FILTERS.map((f) => (
             <button
               key={f.id}
               onClick={() => setTypeFilter(f.id)}
               className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1 ${
-                typeFilter === f.id
-                  ? "gradient-purple text-primary-foreground glow-sm"
-                  : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                typeFilter === f.id ? "gradient-purple text-primary-foreground glow-sm" : "bg-muted/40 text-muted-foreground hover:text-foreground"
               }`}
             >
               {f.icon} {f.label}
               <span className="ml-0.5 opacity-70">({counts[f.id]})</span>
             </button>
           ))}
-
-          {/* View mode toggle */}
           <div className="ml-auto flex items-center gap-1">
             {VIEW_MODES.map((vm) => {
               const Icon = vm.icon;
@@ -312,9 +323,7 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
                   onClick={() => setViewMode(vm.id)}
                   title={vm.label}
                   className={`p-1.5 rounded-md transition-all ${
-                    viewMode === vm.id
-                      ? "gradient-purple text-primary-foreground glow-sm"
-                      : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                    viewMode === vm.id ? "gradient-purple text-primary-foreground glow-sm" : "bg-muted/40 text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <Icon size={14} />
@@ -334,24 +343,41 @@ const ArchiveLinksView = ({ blocks, loading }: Props) => {
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {filtered.map((link, i) => (
-            <ListItem key={`${link.url}-${i}`} link={link} />
+            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
           ))}
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {filtered.map((link, i) => (
-            <GridCard key={`${link.url}-${i}`} link={link} />
+            <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
           ))}
         </div>
       ) : viewMode === "compact" ? (
         <div className="space-y-1">
           {filtered.map((link, i) => (
-            <CompactRow key={`${link.url}-${i}`} link={link} />
+            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
           ))}
         </div>
       ) : (
-        <DomainGroupView links={filtered} />
+        <DomainGroupView links={filtered} onContextMenu={handleContextMenu} />
       )}
+
+      {/* Context menu */}
+      <LinkContextMenu
+        menu={contextMenu}
+        onClose={() => setContextMenu(null)}
+        onEditBlock={handleEditBlock}
+        updateBlock={updateBlock}
+      />
+
+      {/* Edit modal */}
+      <ArchiveEditModal
+        block={editBlock}
+        open={editModalOpen}
+        onClose={() => { setEditModalOpen(false); setEditBlock(null); }}
+        onSave={updateBlock}
+        onDelete={deleteBlock}
+      />
     </div>
   );
 };
