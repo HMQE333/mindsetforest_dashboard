@@ -88,7 +88,7 @@ const ArchiveView = () => {
         )}
         {subView === "links" && (
           <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} />
+            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
           </motion.div>
         )}
         {subView === "map" && (
