@@ -1,70 +1,70 @@
 
 
-# Archive Finishing Touches
+# Achievements Tab for Stats Tracker
 
-After reviewing all 7 archive components, here are the polish items grouped by priority.
+## What We're Building
 
-## 1. Empty States & Loading Consistency
+A new collapsible "Achievements" section at the bottom of the Stats page (after the Recent Log), displaying unlockable badges computed from the user's real tracker entries and dashboard state. Badges progress from locked → in-progress → unlocked with satisfying animations. No new database tables needed — all achievements are computed client-side from existing data.
 
-**Problem**: Each sub-view has a slightly different loading/empty state style. Images view says just "Loading images..." in plain text, while Library uses an animated emoji. The Map tab is a bare placeholder.
+## Achievement Definitions
 
-**Fix**: Standardize all loading states to use the animated emoji pattern + consistent "No X yet" messaging. Remove the Map tab entirely (or keep it but hide it from nav until implemented).
+Achievements will be grouped into tiers across these themes:
 
-## 2. Block Count per Tab
+**Consistency (streak-based)**
+- 🔥 First Spark — Log anything for 1 day
+- 🔥 Week Warrior — 7-day streak
+- 🔥 Monthly Machine — 30-day streak
+- 🔥 Century Club — 100-day streak
 
-**Problem**: The top bar only shows a single "X blocks" count. Users can't tell at a glance how many links or images they have without clicking into each tab.
+**Volume (total entries)**
+- 📝 First Log — Record 1 entry
+- 📝 Getting Started — 10 total entries
+- 📝 Dedicated — 100 total entries
+- 📝 Data Monster — 500 total entries
 
-**Fix**: Show contextual counts in the sub-nav buttons themselves — e.g., "📚 Library (12)", "🔗 Links (8)", "🖼️ Images (5)". Computed from the blocks array.
+**Category Coverage**
+- 🌈 Explorer — Log in 3 different categories
+- 🌈 Polymath — Log in all 6 categories
+- 🌈 Category King — 50+ entries in one category
 
-## 3. Lightbox Polish
+**Specific Milestones**
+- 💪 100 Club — 100 total push-ups
+- 📖 Bookworm — 500 pages read
+- ⏱️ Time Lord — 100 total hours logged (any hour metric)
+- 🎯 Sharpshooter — 50 good trade setups
 
-**Problem**: The lightbox in both ArchiveBlockCard and ArchiveImagesView is bare — no close button visible, no download option, no navigation between images.
+**Meta / Fun**
+- ⭐ Early Bird — Log before 8 AM (based on createdAt)
+- 🦉 Night Owl — Log after 11 PM
+- 🏆 Perfectionist — Habit score of 100% on any metric
 
-**Fix**:
-- Add an **X close button** in the top-right corner of the lightbox
-- Add a **download button** (anchor with `download` attribute)
-- In ArchiveImagesView, add **prev/next arrows** to navigate between images in the gallery without closing the lightbox
+## UI Design
 
-## 4. ArchiveEditModal — Content Preview for Images
+- Same collapsible pattern as "Detailed Stats" and "Calendar" (glass-card, chevron toggle)
+- Header: "🏆 Achievements" with count "X / Y unlocked"
+- Grid of badge cards (3 columns on desktop, 2 on mobile)
+- Each badge card shows:
+  - Emoji icon (greyed out if locked, full color if unlocked)
+  - Badge name
+  - Description
+  - Progress bar (e.g., "42 / 100 push-ups")
+  - Unlocked state: subtle glow + checkmark
+- Unlocked badges float to the top, in-progress next, locked last
 
-**Problem**: When editing a block with images, the raw `[image] https://...` text is shown in a plain textarea with no preview.
+## Technical Plan
 
-**Fix**: Below the textarea, render image thumbnails extracted from the content (same regex logic), so users can see what images are in the block while editing.
+### New file: `src/components/TrackerAchievements.tsx`
+- Receives `entries: TrackerEntry[]` as prop
+- Defines achievement definitions array with `id`, `icon`, `title`, `description`, `check` function, `progress` function
+- Each `check(entries)` returns boolean (unlocked or not)
+- Each `progress(entries)` returns `{ current: number, target: number }`
+- Renders collapsible card with badge grid
+- Uses framer-motion for staggered entrance animations
+- Uses existing `glass-card`, `bg-secondary/40`, and category color classes
 
-## 5. Inbox — Better Feedback for Image Upload
+### Modified file: `src/pages/Tracker.tsx`
+- Import and render `<TrackerAchievements entries={entries} />` after `<TrackerRecentLog>`
 
-**Problem**: The image thumbnail strip in Inbox doesn't have a way to remove an already-inserted image tag.
-
-**Fix**: Add a small **X button** on each image thumbnail in the Inbox preview strip that removes the corresponding `[image] <url>` line from the text.
-
-## 6. Library — Sort Options
-
-**Problem**: Blocks are always shown newest-first with no way to change order.
-
-**Fix**: Add a small sort toggle: **Newest** / **Oldest** / **A-Z** next to the search bar.
-
-## 7. Confirm Before Delete
-
-**Problem**: The delete button in ArchiveEditModal has no confirmation — one click and the block is gone.
-
-**Fix**: Add a confirmation step — either a "Are you sure?" inline toggle or use the existing AlertDialog component.
-
----
-
-## Technical Details
-
-### Files to modify
-
-| File | Changes |
-|------|---------|
-| `ArchiveView.tsx` | Add per-tab counts to nav buttons; optionally hide Map tab |
-| `ArchiveBlockCard.tsx` | Add close/download buttons to lightbox overlay |
-| `ArchiveImagesView.tsx` | Add close/download/prev-next to lightbox; standardize loading state |
-| `ArchiveEditModal.tsx` | Add image preview strip below textarea; add delete confirmation |
-| `ArchiveInbox.tsx` | Add remove button on image thumbnail strip |
-| `ArchiveLibrary.tsx` | Add sort toggle (newest/oldest/A-Z) |
-
-### No new files needed
-
-All changes are incremental polish to existing components. No new dependencies required — `AlertDialog` and `lucide-react` icons (X, Download, ChevronLeft, ChevronRight) are already available.
+### No database changes
+All computed from existing `tracker_entries` data passed as props.
 
