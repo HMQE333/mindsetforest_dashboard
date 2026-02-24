@@ -26,12 +26,16 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
   };
 
   const addRow = () => {
-    setBuffer(prev => [...prev, { title: "", description: "", duration: "", xp: 10 }]);
+    setBuffer(prev => [...prev, { title: "", description: "", duration: "", xp: 10, persistent: false }]);
+  };
+
+  const togglePersistent = (index: number) => {
+    setBuffer(prev => prev.map((m, i) => i === index ? { ...m, persistent: !m.persistent } : m));
   };
 
   const handleSave = () => {
     const cleaned = buffer
-      .map(m => ({ ...m, title: m.title.trim(), description: m.description.trim(), duration: m.duration.trim() || "—", xp: Number(m.xp) || 10 }))
+      .map(m => ({ ...m, title: m.title.trim(), description: m.description.trim(), duration: m.duration.trim() || "—", xp: Number(m.xp) || 10, persistent: !!m.persistent }))
       .filter(m => m.title.length > 0);
     onSave(categoryId, cleaned);
     onClose();
@@ -99,26 +103,38 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                   onChange={e => updateField(index, "description", e.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-[1.3fr_0.8fr_auto] gap-2 items-center">
-                <input
-                  className="w-full rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm outline-none"
-                  placeholder="Duration"
-                  value={mission.duration}
-                  onChange={e => updateField(index, "duration", e.target.value)}
-                />
-                <input
-                  type="number"
-                  className="w-full max-w-[80px] rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm text-center outline-none"
-                  value={mission.xp}
-                  min={1}
-                  max={500}
-                  onChange={e => updateField(index, "xp", Number(e.target.value) || 0)}
-                />
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-[1.3fr_0.8fr_auto] gap-2 items-center">
+                  <input
+                    className="w-full rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm outline-none"
+                    placeholder="Duration"
+                    value={mission.duration}
+                    onChange={e => updateField(index, "duration", e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    className="w-full max-w-[80px] rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm text-center outline-none"
+                    value={mission.xp}
+                    min={1}
+                    max={500}
+                    onChange={e => updateField(index, "xp", Number(e.target.value) || 0)}
+                  />
+                  <button
+                    onClick={() => deleteRow(index)}
+                    className="px-2 py-1.5 rounded-full border border-destructive/80 bg-destructive/20 text-destructive-foreground text-sm hover:bg-destructive/40 transition-colors"
+                  >
+                    🗑
+                  </button>
+                </div>
                 <button
-                  onClick={() => deleteRow(index)}
-                  className="px-2 py-1.5 rounded-full border border-red-400/80 bg-red-900/70 text-red-100 text-sm hover:bg-red-800/95 transition-colors"
+                  onClick={() => togglePersistent(index)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                    mission.persistent
+                      ? "border-primary/60 bg-primary/20 text-primary"
+                      : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
+                  }`}
                 >
-                  🗑
+                  {mission.persistent ? "🔒 Stays after reset" : "🔄 Resets daily"}
                 </button>
               </div>
             </div>
