@@ -13,6 +13,7 @@ import TrackerCalendar from "@/components/TrackerCalendar";
 import TrackerDetailedStats from "@/components/TrackerDetailedStats";
 import TrackerActivityPulse from "@/components/TrackerActivityPulse";
 import TrackerWatchView from "@/components/TrackerWatchView";
+import TrackerAchievements from "@/components/TrackerAchievements";
 
 export default function Tracker() {
   const { user, signOut } = useAuth();
@@ -149,6 +150,9 @@ export default function Tracker() {
 
         {/* Recent Log */}
         <TrackerRecentLog entries={entries} />
+
+        {/* Achievements */}
+        <TrackerAchievements entries={entries} />
       </div>
 
       {/* Input Modal */}
