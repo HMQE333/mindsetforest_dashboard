@@ -142,12 +142,21 @@ export function useDashboardState() {
 
   const resetDay = useCallback(() => {
     setState(prev => {
+      // Keep custom missions that are marked persistent, clear non-persistent ones
+      const newCustomMissions: Record<string, Mission[]> = {};
+      for (const [catId, missions] of Object.entries(prev.customMissions)) {
+        const persistentMissions = missions.filter(m => m.persistent);
+        if (persistentMissions.length > 0) {
+          newCustomMissions[catId] = persistentMissions;
+        }
+      }
+
       const next: DashboardState = {
         ...prev,
         missionsCompleted: 0,
         categoriesEngaged: new Set(),
         completedMissions: new Set(),
-        customMissions: {},
+        customMissions: newCustomMissions,
         dayKey: todayISO(),
       };
       persist(next);

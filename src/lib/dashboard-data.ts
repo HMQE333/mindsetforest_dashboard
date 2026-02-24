@@ -3,6 +3,7 @@ export interface Mission {
   description: string;
   duration: string;
   xp: number;
+  persistent?: boolean;
 }
 
 export interface Category {
