@@ -148,11 +148,11 @@ export default function Tracker() {
         {/* 12-Month Activity Pulse */}
         <TrackerActivityPulse entries={entries} />
 
-        {/* Recent Log */}
-        <TrackerRecentLog entries={entries} />
-
         {/* Achievements */}
         <TrackerAchievements entries={entries} />
+
+        {/* Recent Log */}
+        <TrackerRecentLog entries={entries} />
       </div>
 
       {/* Input Modal */}
