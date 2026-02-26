@@ -55,9 +55,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#FB923C",
     colorVar: "cat-creation",
     missions: [
-      { title: "Build One Feature", description: "Work on your side project or business. One complete feature or section.", duration: "45 min", xp: 50 },
-      { title: "Update Second Brain", description: "Add 500+ words to your notes, insights, or learning repository.", duration: "30 min", xp: 40 },
-      { title: "Design UI Element", description: "Create or improve one visual component. Beauty and function.", duration: "25 min", xp: 35 },
+      { title: "Deep Work Block", description: "2 hours of uninterrupted building. Phone off, one project, full immersion. Ship something real.", duration: "120 min", xp: 80 },
+      { title: "Build One Feature", description: "Pick one feature or section. Scope it tight, finish it clean. No half-builds.", duration: "45 min", xp: 50 },
+      { title: "Design + Polish Pass", description: "Improve one UI element or flow. Make it feel intentional — spacing, color, micro-interaction.", duration: "25 min", xp: 35 },
     ],
   },
   {
