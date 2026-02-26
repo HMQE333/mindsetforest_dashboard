@@ -27,9 +27,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#A78BFA",
     colorVar: "cat-mind",
     missions: [
-      { title: "Code 25-min Session", description: "JavaScript or PHP focused learning. Pick one concept, build or understand it.", duration: "25 min", xp: 35 },
-      { title: "Review Trading Pattern", description: "Study one chart pattern or trading concept. Take 2-3 notes.", duration: "15 min", xp: 25 },
-      { title: "Solve Logic Problem", description: "One coding challenge or mental math puzzle. Push boundaries slightly.", duration: "20 min", xp: 30 },
+      { title: "Memory Palace Practice", description: "Build/refresh a route and store 10-20 items. Speed + clarity.", duration: "15 min", xp: 25 },
+      { title: "Creative Writing Drill", description: "One prompt. Write fast, then rewrite 3 sentences for style.", duration: "20 min", xp: 30 },
+      { title: "Read 15 Pages", description: "Read with a pen: underline 3 insights + write 1 takeaway line.", duration: "20 min", xp: 25 },
     ],
   },
   {
@@ -41,9 +41,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#F87171",
     colorVar: "cat-body",
     missions: [
-      { title: "Wing Chun Training", description: "20-min focused session. Forms, drills, or combinations.", duration: "20 min", xp: 40 },
-      { title: "Nature Walk/Hike", description: "30+ minutes outdoors. Observe, breathe, reset mind.", duration: "30 min", xp: 35 },
-      { title: "Stretch & Breathe", description: "Mobility work and breathing exercises for clarity.", duration: "15 min", xp: 25 },
+      { title: "Push-ups + Warm-up", description: "Warm-up (joints + shoulders) then push-up sets (good form).", duration: "15 min", xp: 25 },
+      { title: "Wing Chun Practice", description: "Technique + basics + 1 focused combo. No rush, clean movement.", duration: "30 min", xp: 40 },
+      { title: "Fuel & Hydration Rule", description: "Hit protein + water baseline. Quick check-in, simple tracking.", duration: "5 min", xp: 15 },
     ],
   },
   {
@@ -56,8 +56,8 @@ export const CATEGORIES: Category[] = [
     colorVar: "cat-creation",
     missions: [
       { title: "Deep Work Block", description: "2 hours of uninterrupted building. Phone off, one project, full immersion. Ship something real.", duration: "120 min", xp: 80 },
-      { title: "Build One Feature", description: "Pick one feature or section. Scope it tight, finish it clean. No half-builds.", duration: "45 min", xp: 50 },
-      { title: "Design + Polish Pass", description: "Improve one UI element or flow. Make it feel intentional — spacing, color, micro-interaction.", duration: "25 min", xp: 35 },
+      { title: "Outreach / Customers / Ads Check", description: "Contact customers OR review ads briefly and note 1 improvement.", duration: "15 min", xp: 25 },
+      { title: "Draft One Idea", description: "Turn 1 idea into a rough draft: structure, bullets, next steps.", duration: "20 min", xp: 30 },
     ],
   },
   {
@@ -69,9 +69,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#22D3EE",
     colorVar: "cat-exploration",
     missions: [
-      { title: "Research New Topic", description: "Deep dive into trading, tech, or philosophy. Learn something new.", duration: "30 min", xp: 35 },
-      { title: "Educational Content", description: "Watch or listen to 20-30 min of high-quality educational material.", duration: "30 min", xp: 30 },
-      { title: "Explore New Tool", description: "Test one new platform, library, or framework. Document first impressions.", duration: "20 min", xp: 25 },
+      { title: "Curiosity Walk (Observe)", description: "Walk and notice details. Bonus: take 1 photo of something interesting.", duration: "10 min", xp: 20 },
+      { title: "Skill Block", description: "Pick one: language, coding lesson, or drawing practice.", duration: "20 min", xp: 30 },
+      { title: "Small Discovery Note", description: "Write 3 lines: what I noticed + what it might mean + question.", duration: "5 min", xp: 15 },
     ],
   },
   {
@@ -83,9 +83,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#FCD34D",
     colorVar: "cat-networking",
     missions: [
-      { title: "Network/Outreach", description: "One meaningful conversation with peer, client, or mentor.", duration: "20 min", xp: 35 },
-      { title: "Help Someone", description: "Share expertise or solve someone's problem. Add value.", duration: "15 min", xp: 30 },
-      { title: "Share Your Insight", description: "Document and share one lesson learned or breakthrough today.", duration: "10 min", xp: 20 },
+      { title: "Message 1", description: "Short, human opener. Curiosity + value, no selling.", duration: "10 min", xp: 25 },
+      { title: "Maintain 1 Contact", description: "Follow-up / check-in / voice note. Strengthen the bond.", duration: "10 min", xp: 25 },
+      { title: "New Networking Way", description: "Try a new channel: comment, group post, intro, community thread.", duration: "15 min", xp: 30 },
     ],
   },
   {
@@ -97,9 +97,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#818CF8",
     colorVar: "cat-trading",
     missions: [
-      { title: "Daily Review", description: "What worked? What didn't? 3-5 bullet points. Be honest.", duration: "15 min", xp: 25 },
-      { title: "Plan Tomorrow", description: "Set 5 priority tasks for tomorrow. Maximum 5. Clear and actionable.", duration: "10 min", xp: 20 },
-      { title: "Organize System", description: "Clean up notes, code, or workspace. One focused cleanup.", duration: "20 min", xp: 30 },
+      { title: "Quick Macro Check", description: "Scan economic situation: headline + calendar + sentiment.", duration: "10 min", xp: 20 },
+      { title: "Write 1 Trade Plan", description: "Levels + entry idea + invalidation + risk. Even if no trade.", duration: "10 min", xp: 20 },
+      { title: "Journal", description: "What I saw, what I did, emotion level, one improvement.", duration: "10 min", xp: 20 },
     ],
   },
   {
@@ -111,9 +111,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#E879F9",
     colorVar: "cat-spirit",
     missions: [
-      { title: "Philosophical Read", description: "Spend 15 min with philosophical text or deep ideas.", duration: "15 min", xp: 25 },
-      { title: "Journaling", description: "Write freely about purpose, meaning, or current challenges.", duration: "15 min", xp: 25 },
-      { title: "Contemplation", description: "Meditation or quiet reflection. 10 minutes minimum.", duration: "10 min", xp: 20 },
+      { title: "No Stimuli (Dark Focus)", description: "Close eyes, focus on the dark 'texture'. Train attention stability.", duration: "10 min", xp: 20 },
+      { title: "Watch 1 Philosophy Video", description: "One video only. Capture 1 quote + 1 takeaway.", duration: "20 min", xp: 25 },
+      { title: "Alignment Check", description: "Did I live by my rules today? 2-3 sentences, honest.", duration: "5 min", xp: 15 },
     ],
   },
   {
@@ -125,9 +125,9 @@ export const CATEGORIES: Category[] = [
     lightColor: "#D4D4D8",
     colorVar: "cat-order",
     missions: [
-      { title: "Organize Workspace", description: "Digital or physical. Make one space cleaner and more functional.", duration: "20 min", xp: 25 },
-      { title: "Update System", description: "Improve one process, template, or workflow. Document changes.", duration: "25 min", xp: 30 },
-      { title: "Archive & Clean", description: "Clear completed tasks, old notes, or clutter. One focused area.", duration: "15 min", xp: 20 },
+      { title: "Daily Reset Zone", description: "Fast cleanup: desk/room/clothes/kitchen/files/inbox. Restore clean baseline.", duration: "10 min", xp: 20 },
+      { title: "Plan Tomorrow", description: "Top 3 outcomes + first action for each. Keep it simple.", duration: "7 min", xp: 20 },
+      { title: "Close 1 Loop", description: "Finish one lingering task (admin, message, setup, cleanup).", duration: "15 min", xp: 30 },
     ],
   },
 ];
