@@ -10,12 +10,13 @@ interface MissionViewProps {
   getMissions: (categoryId: string) => Mission[];
   onComplete: (categoryId: string, index: number, xp: number) => void;
   onSplit: (categoryId: string, index: number, subTasks: Mission[]) => void;
+  onResetCategory: (categoryId: string) => void;
   onBack: () => void;
   onEdit: () => void;
   onAI: () => void;
 }
 
-export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onBack, onEdit, onAI }: MissionViewProps) {
+export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onBack, onEdit, onAI }: MissionViewProps) {
   const category = CATEGORIES.find(c => c.id === categoryId)!;
   const missions = getMissions(categoryId);
   const [splittingIndex, setSplittingIndex] = useState<number | null>(null);
@@ -82,6 +83,15 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
               AI
             </span>
           </button>
+          {state.customMissions[categoryId] && state.customMissions[categoryId].length > 0 && (
+            <button
+              onClick={() => onResetCategory(categoryId)}
+              className="px-4 py-2 rounded-full bg-white/[0.09] border border-white/25 text-accent-foreground text-sm flex items-center gap-1.5 hover:bg-destructive/20 hover:border-destructive/70 transition-all"
+              title="Revert to default missions"
+            >
+              ↩️ Reset defaults
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="px-4 py-2 rounded-full bg-white/[0.09] border border-white/25 text-accent-foreground text-sm flex items-center gap-1.5 hover:bg-primary/20 hover:border-primary/70 transition-all"
