@@ -11,7 +11,7 @@ import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
@@ -79,6 +79,7 @@ export default function DashboardView() {
             getMissions={getMissions}
             onComplete={handleComplete}
             onSplit={splitMission}
+            onResetCategory={resetCategory}
             onBack={() => setSelectedCategory(null)}
             onEdit={() => setEditingCategory(selectedCategory)}
             onAI={() => setAICategory(selectedCategory)}

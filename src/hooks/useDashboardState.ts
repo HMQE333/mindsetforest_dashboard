@@ -201,6 +201,24 @@ export function useDashboardState() {
     });
   }, [persist]);
 
+  const resetCategory = useCallback((categoryId: string) => {
+    setState(prev => {
+      const newCustom = { ...prev.customMissions };
+      delete newCustom[categoryId];
+      // Also clear completed missions for this category since indices changed
+      const newCompleted = new Set(
+        Array.from(prev.completedMissions).filter(id => !id.startsWith(categoryId + "-"))
+      );
+      const next: DashboardState = {
+        ...prev,
+        customMissions: newCustom,
+        completedMissions: newCompleted,
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const spendXP = useCallback((amount: number) => {
     setState(prev => {
       if (prev.currentXP < amount) return prev;
@@ -223,6 +241,7 @@ export function useDashboardState() {
     resetDay,
     saveCustomMissions,
     splitMission,
+    resetCategory,
     spendXP,
     getMissions,
     getCompletedCount,
