@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { categoryId, categoryName, categoryTagline, currentTasks, aiMode, goal, constraints, focusLevels, tasksPerLevel, timeHorizon } = await req.json();
+    const { categoryId, categoryName, categoryTagline, currentTasks, aiMode, goal, constraints, focusLevels, tasksPerLevel, timeHorizon, projectName } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -53,7 +53,11 @@ serve(async (req) => {
       extraContext += "\nTIME HORIZON: Generate long-term tasks. Focus on deep investments, projects, and mastery-level commitments.\n";
     }
 
-    const systemPrompt = `You are a mastery progression AI. Generate task suggestions for the "${categoryName}" category (${categoryTagline}).
+    const scopeDescription = projectName
+      ? `the project "${projectName}". Generate tasks specifically relevant to this project, not a broad life category.`
+      : `the "${categoryName}" category (${categoryTagline}).`;
+
+    const systemPrompt = `You are a mastery progression AI. Generate task suggestions for ${scopeDescription}
 
 Generate tasks ONLY for these levels:
 ${levelsDescription}
@@ -87,7 +91,7 @@ You MUST respond using the suggest_ladder tool.`;
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Generate mastery ladder tasks for: ${categoryName}` },
+          { role: "user", content: `Generate mastery ladder tasks for: ${projectName || categoryName}` },
         ],
         tools: [{
           type: "function",

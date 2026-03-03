@@ -9,6 +9,7 @@ interface AILadderModalProps {
   currentLadder: Record<number, LadderTask[]>;
   onApply: (level: number, tasks: LadderTask[]) => void;
   onClose: () => void;
+  projectName?: string;
 }
 
 interface LevelSuggestion {
@@ -19,8 +20,9 @@ interface LevelSuggestion {
 type AIMode = "focused" | "strategic" | "recovery";
 type TimeHorizon = "week" | "month" | "longterm";
 
-export default function AILadderModal({ categoryId, currentLadder, onApply, onClose }: AILadderModalProps) {
+export default function AILadderModal({ categoryId, currentLadder, onApply, onClose, projectName }: AILadderModalProps) {
   const category = CATEGORIES.find(c => c.id === categoryId);
+  const displayName = projectName || category?.name || categoryId;
   const [suggestions, setSuggestions] = useState<LevelSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [aiMode, setAIMode] = useState<AIMode>("focused");
@@ -52,9 +54,10 @@ export default function AILadderModal({ categoryId, currentLadder, onApply, onCl
       const { data, error } = await supabase.functions.invoke("ai-ladder-suggest", {
         body: {
           categoryId,
-          categoryName: category?.name || categoryId,
-          categoryTagline: category?.tagline || "",
+          categoryName: displayName,
+          categoryTagline: projectName ? "" : (category?.tagline || ""),
           currentTasks,
+          projectName: projectName || undefined,
           aiMode,
           goal: goal || undefined,
           constraints: constraints || undefined,
@@ -125,7 +128,7 @@ export default function AILadderModal({ categoryId, currentLadder, onApply, onCl
               🧠
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-foreground">AI Ladder Suggestions · {category?.name}</h2>
+              <h2 className="text-lg font-bold text-foreground">AI Ladder Suggestions · {displayName}</h2>
               <p className="text-xs text-foreground/60 truncate">Generate progression tasks for each level</p>
             </div>
           </div>

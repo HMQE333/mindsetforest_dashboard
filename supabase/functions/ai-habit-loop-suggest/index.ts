@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { categoryName, categoryTagline, aiMode, goal, constraints, timeHorizon } = await req.json();
+    const { categoryName, categoryTagline, aiMode, goal, constraints, timeHorizon, projectName } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -26,7 +26,11 @@ serve(async (req) => {
     else if (timeHorizon === "month") extraContext += "\nTIME HORIZON: Habits can be moderate effort, suitable for a monthly progression.\n";
     else if (timeHorizon === "longterm") extraContext += "\nTIME HORIZON: Habits can be deeper commitments for long-term mastery.\n";
 
-    const systemPrompt = `You are a habit-building AI. Generate 3 progressive habit loops for the "${categoryName}" category (${categoryTagline}).
+    const scopeDescription = projectName
+      ? `the project "${projectName}". Generate habits specifically relevant to this project, not a broad life category.`
+      : `the "${categoryName}" category (${categoryTagline}).`;
+
+    const systemPrompt = `You are a habit-building AI. Generate 3 progressive habit loops for ${scopeDescription}
 
 Each loop should have:
 - A name (e.g. "Foundation", "Building", "Mastery")
@@ -57,7 +61,7 @@ You MUST respond using the suggest_loops tool.`;
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Generate progressive habit loops for: ${categoryName}` },
+          { role: "user", content: `Generate progressive habit loops for: ${projectName || categoryName}` },
         ],
         tools: [{
           type: "function",
