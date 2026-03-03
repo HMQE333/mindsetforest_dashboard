@@ -8,6 +8,7 @@ interface AIHabitLoopModalProps {
   categoryId: string;
   onApply: (loops: HabitLoop[]) => void;
   onClose: () => void;
+  projectName?: string;
 }
 
 type AIMode = "focused" | "strategic" | "recovery";
@@ -19,8 +20,9 @@ interface LoopSuggestion {
   tasks: string[];
 }
 
-export default function AIHabitLoopModal({ categoryId, onApply, onClose }: AIHabitLoopModalProps) {
+export default function AIHabitLoopModal({ categoryId, onApply, onClose, projectName }: AIHabitLoopModalProps) {
   const category = CATEGORIES.find(c => c.id === categoryId);
+  const displayName = projectName || category?.name || categoryId;
   const [suggestions, setSuggestions] = useState<LoopSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [aiMode, setAIMode] = useState<AIMode>("focused");
@@ -37,9 +39,10 @@ export default function AIHabitLoopModal({ categoryId, onApply, onClose }: AIHab
       const { data, error } = await supabase.functions.invoke("ai-habit-loop-suggest", {
         body: {
           categoryId,
-          categoryName: category?.name || categoryId,
-          categoryTagline: category?.tagline || "",
+          categoryName: displayName,
+          categoryTagline: projectName ? "" : (category?.tagline || ""),
           aiMode,
+          projectName: projectName || undefined,
           goal: goal || undefined,
           constraints: constraints || undefined,
           timeHorizon,
@@ -93,7 +96,7 @@ export default function AIHabitLoopModal({ categoryId, onApply, onClose }: AIHab
               🔄
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-foreground">AI Habit Loops · {category?.name}</h2>
+              <h2 className="text-lg font-bold text-foreground">AI Habit Loops · {displayName}</h2>
               <p className="text-xs text-foreground/60 truncate">Generate progressive habit cycles</p>
             </div>
           </div>
