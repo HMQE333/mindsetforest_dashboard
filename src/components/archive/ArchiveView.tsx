@@ -6,6 +6,8 @@ import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
+import ArchiveSearchResults from "./ArchiveSearchResults";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -43,6 +45,7 @@ const ArchiveView = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
+  const [globalSearch, setGlobalSearch] = useState("");
   const archive = useArchiveState();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
@@ -87,7 +90,6 @@ const ArchiveView = () => {
   };
 
   const handleReplaceBlocks = async (blockIds: string[], result: { title: string; content: string }) => {
-    // Delete all selected except first, update first with result
     const [keepId, ...deleteIds] = blockIds;
     for (const id of deleteIds) {
       await archive.deleteBlock(id);
@@ -188,58 +190,89 @@ const ArchiveView = () => {
     setBulkLoading(null);
   };
 
+  const isSearching = globalSearch.trim().length >= 2;
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      {/* Sub-nav */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {NAV_ITEMS.map((item) => (
+      {/* Global search */}
+      <div className="relative">
+        <Input
+          value={globalSearch}
+          onChange={(e) => setGlobalSearch(e.target.value)}
+          placeholder="🔍 Search all blocks (title, content, tags)..."
+          className="bg-background/50 border-white/10 h-11"
+        />
+        {globalSearch && (
           <button
-            key={item.id}
-            onClick={() => { setSubView(item.id); clearSelection(); }}
-            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
-              subView === item.id
-                ? "gradient-purple text-primary-foreground glow-sm"
-                : "text-muted-foreground hover:text-foreground glass-card"
-            }`}
+            onClick={() => setGlobalSearch("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
           >
-            {item.icon} {item.label}
-            {item.count !== undefined && (
-              <span className="ml-1 opacity-70">({item.count})</span>
-            )}
+            ✕
           </button>
-        ))}
+        )}
       </div>
 
+      {/* Sub-nav */}
+      {!isSearching && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { setSubView(item.id); clearSelection(); }}
+              className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
+                subView === item.id
+                  ? "gradient-purple text-primary-foreground glow-sm"
+                  : "text-muted-foreground hover:text-foreground glass-card"
+              }`}
+            >
+              {item.icon} {item.label}
+              {item.count !== undefined && (
+                <span className="ml-1 opacity-70">({item.count})</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Content */}
-      <AnimatePresence mode="wait">
-        {subView === "inbox" && (
-          <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
-          </motion.div>
-        )}
-        {subView === "library" && (
-          <motion.div key="library" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveLibrary
-              blocks={archive.blocks}
-              loading={archive.loading}
-              updateBlock={archive.updateBlock}
-              deleteBlock={archive.deleteBlock}
-              selectedIds={selectedIds}
-              toggleSelect={toggleSelect}
-            />
-          </motion.div>
-        )}
-        {subView === "links" && (
-          <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-          </motion.div>
-        )}
-        {subView === "images" && (
-          <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isSearching ? (
+        <ArchiveSearchResults
+          blocks={archive.blocks}
+          query={globalSearch.trim()}
+          onNavigate={(view) => setSubView(view as SubView)}
+          onClearSearch={() => setGlobalSearch("")}
+        />
+      ) : (
+        <AnimatePresence mode="wait">
+          {subView === "inbox" && (
+            <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
+            </motion.div>
+          )}
+          {subView === "library" && (
+            <motion.div key="library" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ArchiveLibrary
+                blocks={archive.blocks}
+                loading={archive.loading}
+                updateBlock={archive.updateBlock}
+                deleteBlock={archive.deleteBlock}
+                selectedIds={selectedIds}
+                toggleSelect={toggleSelect}
+              />
+            </motion.div>
+          )}
+          {subView === "links" && (
+            <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+            </motion.div>
+          )}
+          {subView === "images" && (
+            <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* Multi-select floating bar */}
       <AnimatePresence>
@@ -252,40 +285,20 @@ const ArchiveView = () => {
           >
             <span className="text-sm font-semibold">{selectedIds.size} selected</span>
             <span className="w-px h-5 bg-white/15" />
-            <button
-              onClick={handleBulkMerge}
-              disabled={bulkLoading !== null}
-              className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40"
-            >
+            <button onClick={handleBulkMerge} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40">
               {bulkLoading === "merge" ? "⏳" : "🔗 Merge"}
             </button>
-            <button
-              onClick={handleBulkSummarize}
-              disabled={bulkLoading !== null}
-              className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40"
-            >
+            <button onClick={handleBulkSummarize} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40">
               {bulkLoading === "summarize" ? "⏳" : "📝 Summarize"}
             </button>
-            <button
-              onClick={handleBulkOrganize}
-              disabled={bulkLoading !== null}
-              className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40"
-            >
+            <button onClick={handleBulkOrganize} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40">
               {bulkLoading === "organize" ? "⏳" : "🏷️ Organize All"}
             </button>
-            <button
-              onClick={() => setAiPromptOpen(true)}
-              disabled={bulkLoading !== null}
-              className="px-3 py-1.5 rounded-xl gradient-purple text-primary-foreground text-[11px] font-bold glow-sm hover:opacity-90 transition-all disabled:opacity-40"
-            >
+            <button onClick={() => setAiPromptOpen(true)} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl gradient-purple text-primary-foreground text-[11px] font-bold glow-sm hover:opacity-90 transition-all disabled:opacity-40">
               🤖 AI Prompt
             </button>
             <span className="w-px h-5 bg-white/15" />
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkLoading !== null}
-              className="px-3 py-1.5 rounded-xl bg-destructive/20 border border-destructive/30 text-[11px] font-bold text-destructive hover:bg-destructive/30 transition-all disabled:opacity-40"
-            >
+            <button onClick={handleBulkDelete} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-destructive/20 border border-destructive/30 text-[11px] font-bold text-destructive hover:bg-destructive/30 transition-all disabled:opacity-40">
               {bulkLoading === "delete" ? "⏳" : "🗑️ Delete"}
             </button>
             <button onClick={clearSelection} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors ml-1">

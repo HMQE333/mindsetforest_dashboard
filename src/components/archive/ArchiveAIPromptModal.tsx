@@ -140,9 +140,12 @@ const ArchiveAIPromptModal = ({ open, onClose, selectedBlocks, onResult, onRepla
 
         {result && (
           <div className="space-y-3">
-            <div className="p-4 rounded-xl bg-background/30 border border-white/10 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">
-              {result}
-            </div>
+            <Textarea
+              value={result}
+              onChange={(e) => setResult(e.target.value)}
+              className="min-h-[150px] max-h-[300px] bg-background/30 border-white/10 text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground">✏️ You can edit the result above before saving.</p>
 
             {/* Save mode selector */}
             <div className="flex gap-2">
