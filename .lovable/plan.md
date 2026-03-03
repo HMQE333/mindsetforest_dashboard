@@ -1,70 +1,66 @@
 
 
-# Achievements Tab for Stats Tracker
+## Archive AI Improvements Plan
 
-## What We're Building
+### Problems Identified
 
-A new collapsible "Achievements" section at the bottom of the Stats page (after the Recent Log), displaying unlockable badges computed from the user's real tracker entries and dashboard state. Badges progress from locked → in-progress → unlocked with satisfying animations. No new database tables needed — all achievements are computed client-side from existing data.
+1. **Multi-select AI prompt** — Only offers a free-text prompt. No quick-action buttons (expand, summarize, merge, etc.). No ability to apply per-block actions to multiple blocks at once. Result is always saved as a new block with no option to replace originals or append.
 
-## Achievement Definitions
+2. **Single-block AI buttons** (Expand, Shorten, Summary, Organize) — Work but have UX gaps:
+   - No confirmation before overwriting content (Expand/Shorten/Summary all replace content in-place silently)
+   - No preview of AI result before applying
+   - No undo mechanism
+   - "Organize" only suggests tags but doesn't show what it plans to change before applying
 
-Achievements will be grouped into tiers across these themes:
+3. **Multi-select floating bar** — Only appears at 2+ selections, only has "AI Prompt" button. Missing bulk actions like bulk organize, bulk delete, merge into one block.
 
-**Consistency (streak-based)**
-- 🔥 First Spark — Log anything for 1 day
-- 🔥 Week Warrior — 7-day streak
-- 🔥 Monthly Machine — 30-day streak
-- 🔥 Century Club — 100-day streak
+---
 
-**Volume (total entries)**
-- 📝 First Log — Record 1 entry
-- 📝 Getting Started — 10 total entries
-- 📝 Dedicated — 100 total entries
-- 📝 Data Monster — 500 total entries
+### Plan
 
-**Category Coverage**
-- 🌈 Explorer — Log in 3 different categories
-- 🌈 Polymath — Log in all 6 categories
-- 🌈 Category King — 50+ entries in one category
+#### 1. Enhance multi-select floating bar with quick actions
+Add preset action buttons alongside the free-text prompt:
+- **🔗 Merge** — Combine selected blocks into one (AI merges content, keeps all tags)
+- **📝 Summarize All** — Create a summary block from all selected
+- **🏷️ Organize All** — Batch auto-tag all selected blocks (runs organize on each)
+- **🗑️ Delete Selected** — Bulk delete with confirmation
 
-**Specific Milestones**
-- 💪 100 Club — 100 total push-ups
-- 📖 Bookworm — 500 pages read
-- ⏱️ Time Lord — 100 total hours logged (any hour metric)
-- 🎯 Sharpshooter — 50 good trade setups
+These call the existing `ai-archive-multi` edge function with preset prompts, or run `ai-archive-expand` (organize action) in a loop for batch tagging.
 
-**Meta / Fun**
-- ⭐ Early Bird — Log before 8 AM (based on createdAt)
-- 🦉 Night Owl — Log after 11 PM
-- 🏆 Perfectionist — Habit score of 100% on any metric
+#### 2. Add preview step to single-block AI actions
+Before overwriting, show a diff/preview modal:
+- Display original vs AI-proposed content side by side
+- Buttons: **Accept**, **Reject**, **Edit then Accept**
+- Applies to Expand, Shorten, Summary actions
+- Organize already shows tag changes — add a confirmation step showing old vs new tags
 
-## UI Design
+Implementation: New `ArchiveAIPreviewModal.tsx` component. `ArchiveBlockCard` stores the pending AI result in state, opens the preview modal instead of immediately calling `onUpdate`.
 
-- Same collapsible pattern as "Detailed Stats" and "Calendar" (glass-card, chevron toggle)
-- Header: "🏆 Achievements" with count "X / Y unlocked"
-- Grid of badge cards (3 columns on desktop, 2 on mobile)
-- Each badge card shows:
-  - Emoji icon (greyed out if locked, full color if unlocked)
-  - Badge name
-  - Description
-  - Progress bar (e.g., "42 / 100 push-ups")
-  - Unlocked state: subtle glow + checkmark
-- Unlocked badges float to the top, in-progress next, locked last
+#### 3. Improve the multi-note AI prompt modal
+- Add preset prompt chips at the top: "Find common themes", "Create action plan", "Merge into one", "Compare & contrast"
+- Add option to **replace selected blocks** with the result (not just create new)
+- Add option to **append result** to an existing block
+- Show which blocks are included (titles list) with ability to remove from selection
 
-## Technical Plan
+#### 4. Align AI button purposes with app philosophy
+Refine the edge function prompts to match the life-system context:
+- **Expand**: "Deepen this insight — add actionable steps, connections to life pillars, and growth angles"
+- **Shorten**: "Distill to core actionable wisdom. Remove fluff, keep what moves you forward"
+- **Summary**: "Extract the key takeaway and one clear next action"
+- **Organize**: Keep as-is (tag suggestion)
 
-### New file: `src/components/TrackerAchievements.tsx`
-- Receives `entries: TrackerEntry[]` as prop
-- Defines achievement definitions array with `id`, `icon`, `title`, `description`, `check` function, `progress` function
-- Each `check(entries)` returns boolean (unlocked or not)
-- Each `progress(entries)` returns `{ current: number, target: number }`
-- Renders collapsible card with badge grid
-- Uses framer-motion for staggered entrance animations
-- Uses existing `glass-card`, `bg-secondary/40`, and category color classes
+Update the system prompts in `ai-archive-expand/index.ts` accordingly.
 
-### Modified file: `src/pages/Tracker.tsx`
-- Import and render `<TrackerAchievements entries={entries} />` after `<TrackerRecentLog>`
+---
 
-### No database changes
-All computed from existing `tracker_entries` data passed as props.
+### Files to change
+
+| File | Change |
+|------|--------|
+| `src/components/archive/ArchiveView.tsx` | Add bulk action handlers, pass new props to floating bar |
+| `src/components/archive/ArchiveBlockCard.tsx` | Preview flow instead of instant overwrite |
+| `src/components/archive/ArchiveAIPreviewModal.tsx` | **New** — preview modal for AI results |
+| `src/components/archive/ArchiveAIPromptModal.tsx` | Add preset chips, replace/append options, block list |
+| `supabase/functions/ai-archive-expand/index.ts` | Update system prompts for app alignment |
+| `supabase/functions/ai-archive-multi/index.ts` | Support preset action types alongside free prompt |
 
