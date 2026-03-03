@@ -26,6 +26,9 @@ Example: "Train for 1h" (40 XP) becomes:
 3. "Start first 20 min of training" (14 XP, 20 min)
 
 Distribute ~${perTaskXP} XP per sub-task (total should equal ${xp}).
+
+FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.
+
 You MUST respond using the split_task tool.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

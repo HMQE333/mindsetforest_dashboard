@@ -43,6 +43,8 @@ Each subsequent loop should evolve the habits (longer duration, harder variation
 ${modePrompts[aiMode] || modePrompts.focused}
 ${extraContext}
 
+FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.
+
 You MUST respond using the suggest_loops tool.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

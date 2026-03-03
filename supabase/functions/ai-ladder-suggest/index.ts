@@ -73,6 +73,8 @@ ${existingStr}
 
 Avoid duplicating existing tasks. Generate exactly ${taskCount} NEW tasks per level.
 
+FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.
+
 You MUST respond using the suggest_ladder tool.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

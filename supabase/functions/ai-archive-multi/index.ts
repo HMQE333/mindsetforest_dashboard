@@ -32,7 +32,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: "You are a life-system knowledge synthesis AI. Process the provided notes with a focus on personal growth, actionable wisdom, and clear structure. Return well-organized output." },
+          { role: "system", content: "You are a life-system knowledge synthesis AI. Process the provided notes with a focus on personal growth, actionable wisdom, and clear structure. Return well-organized output.\n\nFORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, `, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text." },
           { role: "user", content: `Here are ${notes.length} notes:\n\n${notesText}\n\nInstruction: ${finalPrompt}` },
         ],
       }),
