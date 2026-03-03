@@ -9,11 +9,22 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { notes, prompt } = await req.json();
+    const { notes, prompt, preset } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const notesText = notes.map((n: any, i: number) => `--- Note ${i + 1}: ${n.title} ---\n${n.content}`).join("\n\n");
+
+    // Preset action prompts for quick actions
+    const presetPrompts: Record<string, string> = {
+      merge: "Merge these notes into a single cohesive block. Combine overlapping ideas, remove redundancy, and create a unified narrative. Keep all unique insights and actionable items. Output a single merged note.",
+      summarize: "Create a concise summary that captures the key takeaways from all these notes. Focus on actionable wisdom and core insights. Structure it clearly.",
+      themes: "Analyze these notes and identify common themes, patterns, and connections. Group related ideas together and highlight how they connect to personal growth.",
+      action_plan: "Create a clear action plan from these notes. Extract all actionable items, prioritize them, and organize into next steps.",
+      compare: "Compare and contrast the ideas in these notes. Highlight agreements, contradictions, complementary perspectives, and synthesis opportunities.",
+    };
+
+    const finalPrompt = preset && presetPrompts[preset] ? presetPrompts[preset] : prompt;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -21,8 +32,8 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: "You are a knowledge synthesis AI. Process the provided notes according to the user's instruction. Return clear, well-structured output." },
-          { role: "user", content: `Here are ${notes.length} notes:\n\n${notesText}\n\nInstruction: ${prompt}` },
+          { role: "system", content: "You are a life-system knowledge synthesis AI. Process the provided notes with a focus on personal growth, actionable wisdom, and clear structure. Return well-organized output." },
+          { role: "user", content: `Here are ${notes.length} notes:\n\n${notesText}\n\nInstruction: ${finalPrompt}` },
         ],
       }),
     });

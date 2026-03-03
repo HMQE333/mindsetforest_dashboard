@@ -5,6 +5,7 @@ import { PILLARS } from "@/lib/archive-data";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import ArchiveAIPreviewModal from "./ArchiveAIPreviewModal";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
@@ -20,6 +21,11 @@ interface Props {
 const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }: Props) => {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<{
+    action: string;
+    original: { title: string; content: string; pillars?: string[]; directions?: string[]; tags?: string[] };
+    proposed: { title?: string; content?: string; pillars?: string[]; directions?: string[]; tags?: string[] };
+  } | null>(null);
 
   const handleAIAction = async (action: string) => {
     setAiLoading(action);
@@ -28,17 +34,37 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
         body: { content: block.content, title: block.title, action, pillars: block.pillars, directions: block.directions },
       });
       if (error) throw error;
+
+      // Show preview instead of instant overwrite
       if (action === "organize" && data?.pillars) {
-        await onUpdate(block.id, { pillars: data.pillars, directions: data.directions || block.directions, tags: data.tags || block.tags });
-        toast.success("Tags updated by AI");
+        setPreviewData({
+          action,
+          original: { title: block.title, content: block.content, pillars: block.pillars, directions: block.directions, tags: block.tags },
+          proposed: { pillars: data.pillars, directions: data.directions || [], tags: data.tags || [] },
+        });
       } else if (data?.content) {
-        await onUpdate(block.id, { content: data.content, title: data.title || block.title });
-        toast.success(`Block ${action}ed`);
+        setPreviewData({
+          action,
+          original: { title: block.title, content: block.content },
+          proposed: { title: data.title, content: data.content },
+        });
       }
     } catch (e: any) {
       toast.error(e?.message || "AI action failed");
     }
     setAiLoading(null);
+  };
+
+  const handlePreviewAccept = async (proposed: Record<string, any>) => {
+    const updates: Partial<ArchiveBlock> = {};
+    if (proposed.content) updates.content = proposed.content;
+    if (proposed.title) updates.title = proposed.title;
+    if (proposed.pillars) updates.pillars = proposed.pillars;
+    if (proposed.directions) updates.directions = proposed.directions;
+    if (proposed.tags) updates.tags = proposed.tags;
+    await onUpdate(block.id, updates);
+    toast.success(`Block updated ✅`);
+    setPreviewData(null);
   };
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -152,7 +178,15 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
         </div>
       </motion.div>
 
-      {/* Lightbox overlay with close + download */}
+      {/* AI Preview Modal */}
+      <ArchiveAIPreviewModal
+        open={previewData !== null}
+        data={previewData}
+        onAccept={handlePreviewAccept}
+        onReject={() => setPreviewData(null)}
+      />
+
+      {/* Lightbox overlay */}
       <AnimatePresence>
         {lightboxUrl && (
           <motion.div
@@ -162,33 +196,13 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
             onClick={() => setLightboxUrl(null)}
           >
-            {/* Close button */}
-            <button
-              onClick={() => setLightboxUrl(null)}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-            >
+            <button onClick={() => setLightboxUrl(null)} className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
               <X size={20} />
             </button>
-            {/* Download button */}
-            <a
-              href={lightboxUrl}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-            >
+            <a href={lightboxUrl} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
               <Download size={20} />
             </a>
-            <motion.img
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
-              src={lightboxUrl}
-              alt=""
-              className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <motion.img initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} src={lightboxUrl} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl" onClick={(e) => e.stopPropagation()} />
           </motion.div>
         )}
       </AnimatePresence>

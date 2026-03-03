@@ -14,9 +14,9 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const actionPrompts: Record<string, string> = {
-      expand: "Expand this note with deeper insights, connections, and actionable ideas. Keep the original meaning but make it richer and more detailed.",
-      shorten: "Condense this note to its essential points. Be concise but preserve all key information.",
-      summarize: "Create a clear summary of this note highlighting the main points and takeaways.",
+      expand: "Deepen this insight — add actionable steps, connections to life pillars (mind, body, creation, exploration, networking, trading, spirit, order), and growth angles. Make it richer with practical wisdom the user can act on.",
+      shorten: "Distill to core actionable wisdom. Remove fluff, keep what moves the user forward. Every sentence should earn its place.",
+      summarize: "Extract the key takeaway and one clear next action. Be direct — what matters here and what should the user do about it?",
       organize: "Suggest the best pillar categories (from: mind, body, creation, exploration, networking, trading, spirit, order) and direction tags (from: direction, goals, wisdom, freedom, protection, creation, expression, community) for this note.",
     };
 
