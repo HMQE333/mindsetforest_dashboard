@@ -1,66 +1,91 @@
 
 
-## Archive AI Improvements Plan
+## Archive: MVP to Final — Improvement Plan
 
-### Problems Identified
+### Current State Summary
+The Archive has solid bones: Inbox with AI clean/split, Library with filters/sort, Links with 4 view modes, Images with gallery/lightbox, multi-select with bulk actions, AI preview modal, and context menus. But several areas feel unfinished.
 
-1. **Multi-select AI prompt** — Only offers a free-text prompt. No quick-action buttons (expand, summarize, merge, etc.). No ability to apply per-block actions to multiple blocks at once. Result is always saved as a new block with no option to replace originals or append.
+### Gaps to Address
 
-2. **Single-block AI buttons** (Expand, Shorten, Summary, Organize) — Work but have UX gaps:
-   - No confirmation before overwriting content (Expand/Shorten/Summary all replace content in-place silently)
-   - No preview of AI result before applying
-   - No undo mechanism
-   - "Organize" only suggests tags but doesn't show what it plans to change before applying
+**1. Search is weak — no full-text search, no cross-tab search**
+- Library search only filters visible blocks by title/content substring match
+- Links tab has separate search, Images tab has none
+- No global search across all sub-views
 
-3. **Multi-select floating bar** — Only appears at 2+ selections, only has "AI Prompt" button. Missing bulk actions like bulk organize, bulk delete, merge into one block.
+**2. No pagination or virtual scrolling**
+- All blocks render at once. 100+ blocks will lag
+- Images gallery loads every image simultaneously
 
----
+**3. No "Select All" / "Deselect All" in Library**
+- Multi-select requires clicking each block individually
+- No way to quickly select filtered results
 
-### Plan
+**4. Inbox has no drafts — paste is lost on navigation**
+- If you switch tabs mid-paste, text is gone
+- No auto-save or draft persistence
 
-#### 1. Enhance multi-select floating bar with quick actions
-Add preset action buttons alongside the free-text prompt:
-- **🔗 Merge** — Combine selected blocks into one (AI merges content, keeps all tags)
-- **📝 Summarize All** — Create a summary block from all selected
-- **🏷️ Organize All** — Batch auto-tag all selected blocks (runs organize on each)
-- **🗑️ Delete Selected** — Bulk delete with confirmation
+**5. Block ordering / pinning**
+- No way to pin important blocks to top
+- No manual reordering
 
-These call the existing `ai-archive-multi` edge function with preset prompts, or run `ai-archive-expand` (organize action) in a loop for batch tagging.
+**6. No export**
+- Can't export blocks as markdown, JSON, or text file
+- No backup mechanism
 
-#### 2. Add preview step to single-block AI actions
-Before overwriting, show a diff/preview modal:
-- Display original vs AI-proposed content side by side
-- Buttons: **Accept**, **Reject**, **Edit then Accept**
-- Applies to Expand, Shorten, Summary actions
-- Organize already shows tag changes — add a confirmation step showing old vs new tags
+**7. Empty states are basic**
+- Just emoji + one line of text, no guidance
 
-Implementation: New `ArchiveAIPreviewModal.tsx` component. `ArchiveBlockCard` stores the pending AI result in state, opens the preview modal instead of immediately calling `onUpdate`.
+**8. AI result from multi-note prompt can't be edited before saving**
+- Single-block preview modal has "Edit then Accept" but multi-note AI prompt modal shows raw text with no editing
 
-#### 3. Improve the multi-note AI prompt modal
-- Add preset prompt chips at the top: "Find common themes", "Create action plan", "Merge into one", "Compare & contrast"
-- Add option to **replace selected blocks** with the result (not just create new)
-- Add option to **append result** to an existing block
-- Show which blocks are included (titles list) with ability to remove from selection
+**9. No tag management**
+- Can't see all tags at a glance, rename, or merge tags
+- Custom tags are freeform with no autocomplete
 
-#### 4. Align AI button purposes with app philosophy
-Refine the edge function prompts to match the life-system context:
-- **Expand**: "Deepen this insight — add actionable steps, connections to life pillars, and growth angles"
-- **Shorten**: "Distill to core actionable wisdom. Remove fluff, keep what moves you forward"
-- **Summary**: "Extract the key takeaway and one clear next action"
-- **Organize**: Keep as-is (tag suggestion)
-
-Update the system prompts in `ai-archive-expand/index.ts` accordingly.
+**10. Mobile UX**
+- Floating bar may overlap content on small screens
+- Block cards don't have swipe actions
 
 ---
 
-### Files to change
+### Prioritized Plan (highest impact first)
 
-| File | Change |
-|------|--------|
-| `src/components/archive/ArchiveView.tsx` | Add bulk action handlers, pass new props to floating bar |
-| `src/components/archive/ArchiveBlockCard.tsx` | Preview flow instead of instant overwrite |
-| `src/components/archive/ArchiveAIPreviewModal.tsx` | **New** — preview modal for AI results |
-| `src/components/archive/ArchiveAIPromptModal.tsx` | Add preset chips, replace/append options, block list |
-| `supabase/functions/ai-archive-expand/index.ts` | Update system prompts for app alignment |
-| `supabase/functions/ai-archive-multi/index.ts` | Support preset action types alongside free prompt |
+#### Phase 1 — Core polish
+
+| Change | Files |
+|--------|-------|
+| **Global search bar** at top of Archive that searches across all blocks (title, content, tags), with results showing which sub-view the block belongs to | `ArchiveView.tsx`, new `ArchiveSearchResults.tsx` |
+| **Select All / Deselect All** button in Library filter bar when in multi-select mode | `ArchiveLibrary.tsx` |
+| **Editable AI result in prompt modal** — make the result textarea editable before saving, like the single-block preview | `ArchiveAIPromptModal.tsx` |
+| **Inbox draft auto-save** — persist textarea content to localStorage so it survives tab switches | `ArchiveInbox.tsx` |
+| **Pin blocks** — add `is_pinned` boolean column, pinned blocks sort to top regardless of sort mode | DB migration, `useArchiveState.ts`, `ArchiveLibrary.tsx`, `ArchiveBlockCard.tsx` |
+
+#### Phase 2 — Scale & export
+
+| Change | Files |
+|--------|-------|
+| **Lazy loading / pagination** — load blocks in batches of 50 with "Load more" or infinite scroll | `useArchiveState.ts`, `ArchiveLibrary.tsx` |
+| **Export** — "Export All" and "Export Selected" buttons that download as `.md` or `.json` | `ArchiveView.tsx` or new `ArchiveExport.tsx` |
+| **Tag autocomplete** — when editing tags in EditModal, show existing tags as suggestions | `ArchiveEditModal.tsx` |
+
+#### Phase 3 — Refinement
+
+| Change | Files |
+|--------|-------|
+| **Better empty states** with contextual guidance (e.g., "Paste Discord logs in Inbox to get started") | All sub-view components |
+| **Mobile floating bar** — reposition to bottom sheet on small screens, add swipe-to-select on block cards | `ArchiveView.tsx`, `ArchiveBlockCard.tsx` |
+| **Keyboard shortcuts** — `Ctrl+A` select all, `Escape` clear selection, `Ctrl+K` open search | `ArchiveView.tsx` |
+
+---
+
+### Database Change
+One migration needed for pinning:
+```sql
+ALTER TABLE archive_blocks ADD COLUMN is_pinned boolean NOT NULL DEFAULT false;
+```
+
+No RLS changes needed — existing policies already cover all CRUD by `user_id`.
+
+### Recommendation
+Start with **Phase 1** — it's 5 changes that make the archive feel complete and usable daily. Phase 2 is for when block count grows. Phase 3 is polish.
 
