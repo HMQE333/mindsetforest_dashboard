@@ -20,6 +20,8 @@ Rules:
 10. YouTube/video URLs get tagged as [video]
 11. If content looks like credentials or sensitive data (passwords, IPs, API keys), tag as [credentials]
 
+FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.
+
 You MUST respond using the clean_text tool with the cleaned and separated text.`;
 
 serve(async (req) => {

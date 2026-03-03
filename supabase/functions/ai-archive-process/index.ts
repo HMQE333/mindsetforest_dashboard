@@ -21,6 +21,9 @@ serve(async (req) => {
 5. Detect any URLs in the content
 6. Notes may have content type prefixes like [note], [link], [video] etc. — use these as hints but verify
 7. Preserve the actual content without modification
+
+FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.
+
 You MUST respond using the organize_notes tool.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

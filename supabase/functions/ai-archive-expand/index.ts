@@ -13,10 +13,12 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
+    const plainTextRule = "\n\nFORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, `, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.";
+
     const actionPrompts: Record<string, string> = {
-      expand: "Deepen this insight — add actionable steps, connections to life pillars (mind, body, creation, exploration, networking, trading, spirit, order), and growth angles. Make it richer with practical wisdom the user can act on.",
-      shorten: "Distill to core actionable wisdom. Remove fluff, keep what moves the user forward. Every sentence should earn its place.",
-      summarize: "Extract the key takeaway and one clear next action. Be direct — what matters here and what should the user do about it?",
+      expand: "Deepen this insight — add actionable steps, connections to life pillars (mind, body, creation, exploration, networking, trading, spirit, order), and growth angles. Make it richer with practical wisdom the user can act on." + plainTextRule,
+      shorten: "Distill to core actionable wisdom. Remove fluff, keep what moves the user forward. Every sentence should earn its place." + plainTextRule,
+      summarize: "Extract the key takeaway and one clear next action. Be direct — what matters here and what should the user do about it?" + plainTextRule,
       organize: "Suggest the best pillar categories (from: mind, body, creation, exploration, networking, trading, spirit, order) and direction tags (from: direction, goals, wisdom, freedom, protection, creation, expression, community) for this note.",
     };
 
