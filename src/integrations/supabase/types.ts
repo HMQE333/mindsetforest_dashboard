@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           directions: string[]
           id: string
+          is_pinned: boolean
           pillars: string[]
           source_url: string | null
           tags: string[]
@@ -32,6 +33,7 @@ export type Database = {
           created_at?: string
           directions?: string[]
           id?: string
+          is_pinned?: boolean
           pillars?: string[]
           source_url?: string | null
           tags?: string[]
@@ -44,6 +46,7 @@ export type Database = {
           created_at?: string
           directions?: string[]
           id?: string
+          is_pinned?: boolean
           pillars?: string[]
           source_url?: string | null
           tags?: string[]

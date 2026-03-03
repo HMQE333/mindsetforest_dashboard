@@ -90,7 +90,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
         layout
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`glass-card-hover p-4 space-y-3 cursor-pointer ${selected ? "border-primary/60 glow-sm" : ""}`}
+        className={`glass-card-hover p-4 space-y-3 cursor-pointer group ${selected ? "border-primary/60 glow-sm" : ""} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
       >
         <div className="flex items-start gap-3">
           <button
@@ -102,11 +102,21 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }:
             {selected && <span className="text-xs">✓</span>}
           </button>
           <div className="flex-1 min-w-0" onClick={onEdit}>
-            <h4 className="font-semibold text-sm truncate">{displayTitle}</h4>
+            <div className="flex items-center gap-1.5">
+              {block.is_pinned && <span className="text-xs">📌</span>}
+              <h4 className="font-semibold text-sm truncate">{displayTitle}</h4>
+            </div>
             <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
               {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "Image block"}
             </p>
           </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdate(block.id, { is_pinned: !block.is_pinned }); }}
+            className={`mt-1 text-sm transition-opacity ${block.is_pinned ? "opacity-100" : "opacity-0 group-hover:opacity-50 hover:!opacity-100"}`}
+            title={block.is_pinned ? "Unpin" : "Pin"}
+          >
+            📌
+          </button>
         </div>
 
         {/* Image thumbnails */}

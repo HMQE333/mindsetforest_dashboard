@@ -35,9 +35,13 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
       if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
       return true;
     });
-    if (sortMode === "oldest") return [...list].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    if (sortMode === "az") return [...list].sort((a, b) => a.title.localeCompare(b.title));
-    return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const sorted = (() => {
+      if (sortMode === "oldest") return [...list].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      if (sortMode === "az") return [...list].sort((a, b) => a.title.localeCompare(b.title));
+      return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    })();
+    // Pinned blocks always on top
+    return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
   }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode]);
 
   if (loading) {
@@ -75,8 +79,26 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
               >
                 {s.label}
               </button>
-            ))}
+          ))}
           </div>
+          {/* Select All / Deselect All */}
+          {selectedIds.size > 0 || filtered.length > 0 ? (
+            <div className="flex items-center gap-1 ml-auto">
+              <button
+                onClick={() => {
+                  const allSelected = filtered.every((b) => selectedIds.has(b.id));
+                  if (allSelected) {
+                    filtered.forEach((b) => toggleSelect(b.id));
+                  } else {
+                    filtered.forEach((b) => { if (!selectedIds.has(b.id)) toggleSelect(b.id); });
+                  }
+                }}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg font-semibold bg-muted/40 text-muted-foreground hover:text-foreground transition-all"
+              >
+                {filtered.every((b) => selectedIds.has(b.id)) && filtered.length > 0 ? "☐ Deselect All" : "☑ Select All"}
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-1.5">
           <button

@@ -15,9 +15,13 @@ interface Props {
 
 const IMAGE_URL_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
+const DRAFT_KEY = "archive-inbox-draft";
+
 const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
   const { user } = useAuth();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => {
+    try { return localStorage.getItem(DRAFT_KEY) || ""; } catch { return ""; }
+  });
   const [processing, setProcessing] = useState(false);
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
@@ -27,6 +31,17 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
 
   const items = text.trim() ? text.split("---").map((s) => s.trim()).filter(Boolean) : [];
   const hasSplitItems = items.length > 1;
+
+  // Auto-save draft to localStorage
+  const updateText = (val: string) => {
+    setText(val);
+    try { localStorage.setItem(DRAFT_KEY, val); } catch {}
+  };
+
+  const clearDraft = () => {
+    setText("");
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  };
 
   // Extract image URLs from text for thumbnail preview
   const imageUrls = useMemo(() => {
@@ -82,9 +97,9 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
       const after = text.slice(start);
       const prefix = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
       const suffix = after.length > 0 && !after.startsWith("\n") ? "\n" : "";
-      setText(before + prefix + tag + suffix + after);
+      updateText(before + prefix + tag + suffix + after);
     } else {
-      setText((prev) => (prev ? prev + "\n" + tag : tag));
+      updateText(text ? text + "\n" + tag : tag);
     }
     toast.success("Image added");
   }, [text]);
@@ -131,7 +146,7 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
       }));
       await addBlocks(blocks);
       toast.success(`${blocks.length} block(s) saved`);
-      setText("");
+      clearDraft();
     } catch {
       toast.error("Save failed");
     }
@@ -149,7 +164,7 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
       if (error) throw error;
       const cleaned = data?.cleanedText;
       if (cleaned) {
-        setText(cleaned);
+        updateText(cleaned);
         toast.success("Text cleaned & split — review below, then save");
       } else {
         toast.error("AI returned no result");
@@ -182,7 +197,7 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
       if (processed.length > 0) {
         await addBlocks(processed);
         toast.success(`${processed.length} block(s) organized & saved`);
-        setText("");
+        clearDraft();
       } else {
         toast.error("AI returned no results");
       }
@@ -228,7 +243,7 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
           <Textarea
             ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => updateText(e.target.value)}
             onPaste={handlePaste}
             placeholder="Paste notes, Discord logs, ideas, links, or images here...&#10;&#10;Use AI Clean + Split to auto-separate messy text, or manually separate with ---&#10;Paste images with Ctrl+V or drag & drop them here"
             className="min-h-[200px] bg-background/50 border-white/10 text-sm"
@@ -246,7 +261,7 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
                     // Remove the [image] <url> line from text
                     const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const lineRegex = new RegExp(`\\n?\\[image\\]\\s*${escaped}\\n?`, 'g');
-                    setText((prev) => prev.replace(lineRegex, '\n').trim());
+                    updateText(text.replace(lineRegex, '\n').trim());
                     toast.success("Image removed");
                   }}
                   className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive"

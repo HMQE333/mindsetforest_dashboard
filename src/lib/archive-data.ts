@@ -28,6 +28,7 @@ export type ArchiveBlock = {
   directions: string[];
   tags: string[];
   source_url: string | null;
+  is_pinned: boolean;
   created_at: string;
   updated_at: string;
 };
