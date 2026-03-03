@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import ArchiveInbox from "./ArchiveInbox";
@@ -6,6 +6,8 @@ import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 type SubView = "inbox" | "library" | "links" | "images";
@@ -40,6 +42,7 @@ const ArchiveView = () => {
   const [subView, setSubView] = useState<SubView>("inbox");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState<string | null>(null);
   const archive = useArchiveState();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
@@ -61,6 +64,14 @@ const ArchiveView = () => {
     });
   };
 
+  const removeFromSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
   const clearSelection = () => setSelectedIds(new Set());
 
   const selectedBlocks = archive.blocks.filter((b) => selectedIds.has(b.id));
@@ -73,6 +84,108 @@ const ArchiveView = () => {
       directions: [],
       tags: ["ai-generated"],
     });
+  };
+
+  const handleReplaceBlocks = async (blockIds: string[], result: { title: string; content: string }) => {
+    // Delete all selected except first, update first with result
+    const [keepId, ...deleteIds] = blockIds;
+    for (const id of deleteIds) {
+      await archive.deleteBlock(id);
+    }
+    await archive.updateBlock(keepId, {
+      title: result.title,
+      content: result.content,
+      tags: ["ai-generated"],
+    });
+    clearSelection();
+  };
+
+  const handleBulkMerge = async () => {
+    if (selectedBlocks.length < 2) return;
+    setBulkLoading("merge");
+    try {
+      const notes = selectedBlocks.map((b) => ({ title: b.title, content: b.content }));
+      const { data, error } = await supabase.functions.invoke("ai-archive-multi", {
+        body: { notes, preset: "merge" },
+      });
+      if (error) throw error;
+      const merged = await archive.addBlock({
+        title: `Merged (${selectedBlocks.length} notes)`,
+        content: data?.content || "",
+        pillars: [...new Set(selectedBlocks.flatMap((b) => b.pillars))],
+        directions: [...new Set(selectedBlocks.flatMap((b) => b.directions))],
+        tags: ["ai-merged"],
+      });
+      if (merged) {
+        toast.success("Merged into new block ✅");
+        clearSelection();
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Merge failed");
+    }
+    setBulkLoading(null);
+  };
+
+  const handleBulkSummarize = async () => {
+    if (selectedBlocks.length < 2) return;
+    setBulkLoading("summarize");
+    try {
+      const notes = selectedBlocks.map((b) => ({ title: b.title, content: b.content }));
+      const { data, error } = await supabase.functions.invoke("ai-archive-multi", {
+        body: { notes, preset: "summarize" },
+      });
+      if (error) throw error;
+      await archive.addBlock({
+        title: `Summary (${selectedBlocks.length} notes)`,
+        content: data?.content || "",
+        pillars: [],
+        directions: [],
+        tags: ["ai-summary"],
+      });
+      toast.success("Summary block created ✅");
+      clearSelection();
+    } catch (e: any) {
+      toast.error(e?.message || "Summarize failed");
+    }
+    setBulkLoading(null);
+  };
+
+  const handleBulkOrganize = async () => {
+    if (selectedBlocks.length < 1) return;
+    setBulkLoading("organize");
+    let count = 0;
+    for (const block of selectedBlocks) {
+      try {
+        const { data, error } = await supabase.functions.invoke("ai-archive-expand", {
+          body: { content: block.content, title: block.title, action: "organize" },
+        });
+        if (error) throw error;
+        if (data?.pillars) {
+          await archive.updateBlock(block.id, {
+            pillars: data.pillars,
+            directions: data.directions || block.directions,
+            tags: data.tags || block.tags,
+          });
+          count++;
+        }
+      } catch {
+        // continue with others
+      }
+    }
+    toast.success(`Organized ${count}/${selectedBlocks.length} blocks ✅`);
+    clearSelection();
+    setBulkLoading(null);
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedIds.size} blocks? This cannot be undone.`)) return;
+    setBulkLoading("delete");
+    for (const id of selectedIds) {
+      await archive.deleteBlock(id);
+    }
+    toast.success(`Deleted ${selectedIds.size} blocks`);
+    clearSelection();
+    setBulkLoading(null);
   };
 
   return (
@@ -135,16 +248,47 @@ const ArchiveView = () => {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-2xl glass-card border border-white/20 glow-md"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl glass-card border border-white/20 glow-md flex-wrap justify-center"
           >
             <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+            <span className="w-px h-5 bg-white/15" />
+            <button
+              onClick={handleBulkMerge}
+              disabled={bulkLoading !== null}
+              className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40"
+            >
+              {bulkLoading === "merge" ? "⏳" : "🔗 Merge"}
+            </button>
+            <button
+              onClick={handleBulkSummarize}
+              disabled={bulkLoading !== null}
+              className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40"
+            >
+              {bulkLoading === "summarize" ? "⏳" : "📝 Summarize"}
+            </button>
+            <button
+              onClick={handleBulkOrganize}
+              disabled={bulkLoading !== null}
+              className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40"
+            >
+              {bulkLoading === "organize" ? "⏳" : "🏷️ Organize All"}
+            </button>
             <button
               onClick={() => setAiPromptOpen(true)}
-              className="px-4 py-2 rounded-xl gradient-purple text-primary-foreground text-sm font-bold glow-sm hover:opacity-90 transition-all"
+              disabled={bulkLoading !== null}
+              className="px-3 py-1.5 rounded-xl gradient-purple text-primary-foreground text-[11px] font-bold glow-sm hover:opacity-90 transition-all disabled:opacity-40"
             >
               🤖 AI Prompt
             </button>
-            <button onClick={clearSelection} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <span className="w-px h-5 bg-white/15" />
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkLoading !== null}
+              className="px-3 py-1.5 rounded-xl bg-destructive/20 border border-destructive/30 text-[11px] font-bold text-destructive hover:bg-destructive/30 transition-all disabled:opacity-40"
+            >
+              {bulkLoading === "delete" ? "⏳" : "🗑️ Delete"}
+            </button>
+            <button onClick={clearSelection} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors ml-1">
               Clear
             </button>
           </motion.div>
@@ -156,6 +300,8 @@ const ArchiveView = () => {
         onClose={() => setAiPromptOpen(false)}
         selectedBlocks={selectedBlocks}
         onResult={handleAIResult}
+        onReplaceBlocks={handleReplaceBlocks}
+        onRemoveFromSelection={removeFromSelection}
       />
     </motion.div>
   );
