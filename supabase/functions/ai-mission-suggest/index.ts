@@ -32,7 +32,7 @@ serve(async (req) => {
 
 ${modePrompts[aiMode] || modePrompts.focused}
 
-XP GUIDELINES: Keep XP values low and proportional to effort. Use 10-15 XP for quick tasks (5-10 min), 15-25 XP for medium tasks (15-30 min), and 25-40 XP max for long/deep tasks (60+ min). Never exceed 40 XP for a single task.
+XP GUIDELINES: Keep XP values low and proportional to effort. Use 10-15 XP for quick tasks (5-10 min), 15-25 XP for medium tasks (15-30 min), and 25-40 XP for longer tasks (60+ min). Only rarely — for exceptionally demanding, multi-hour deep work — go up to 60-80 XP. Most tasks should stay in the 15-30 XP range.
 
 Current tasks the user already has: ${currentMissions?.join(", ") || "none"}
 Avoid duplicating existing tasks.${ladderPrompt}
