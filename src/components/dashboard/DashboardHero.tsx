@@ -4,9 +4,10 @@ import { DashboardState } from "@/hooks/useDashboardState";
 interface DashboardHeroProps {
   state: DashboardState;
   onResetDay: () => void;
+  onShowShortcuts: () => void;
 }
 
-export default function DashboardHero({ state, onResetDay }: DashboardHeroProps) {
+export default function DashboardHero({ state, onResetDay, onShowShortcuts }: DashboardHeroProps) {
   const xpForLevel = state.currentXP % 100;
 
   return (
@@ -66,14 +67,22 @@ export default function DashboardHero({ state, onResetDay }: DashboardHeroProps)
         ))}
       </div>
 
-      {/* Reset Day */}
-      <button
-        onClick={onResetDay}
-        className="glass-card px-6 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
-        title="Click to reset today's progress"
-      >
-        🔄 Reset Day
-      </button>
+      <div className="flex items-center justify-center gap-3">
+        <button
+          onClick={onResetDay}
+          className="glass-card px-6 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+          title="Click to reset today's progress"
+        >
+          🔄 Reset Day
+        </button>
+        <button
+          onClick={onShowShortcuts}
+          className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+          title="Keyboard shortcuts (?)"
+        >
+          ⌨️
+        </button>
+      </div>
     </motion.div>
   );
 }

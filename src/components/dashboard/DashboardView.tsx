@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useDashboardState } from "@/hooks/useDashboardState";
 import { useLadderState } from "@/hooks/useLadderState";
 import { useUserProjects } from "@/hooks/useUserProjects";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
@@ -11,6 +12,7 @@ import ProjectsListView from "./ProjectsListView";
 import EditMissionsModal from "./EditMissionsModal";
 import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
+import ShortcutsPanel from "./ShortcutsPanel";
 
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
@@ -21,6 +23,7 @@ export default function DashboardView() {
   const [aiCategory, setAICategory] = useState<string | null>(null);
   const [levelUpTrigger, setLevelUpTrigger] = useState<{ level: number; key: number } | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; xp: number } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const prevLevel = useRef(state.currentLevel);
 
   const handleComplete = useCallback((categoryId: string, index: number, xp: number) => {
@@ -40,6 +43,37 @@ export default function DashboardView() {
       }
     }, 100);
   }, [completeMission, state.currentLevel, state.currentXP]);
+
+  // Keyboard shortcuts
+  const shortcutContext = selectedCategory === null ? "grid" as const
+    : selectedCategory === "__projects__" ? "projects" as const
+    : "mission" as const;
+
+  const missions = selectedCategory && selectedCategory !== "__projects__" ? getMissions(selectedCategory) : [];
+
+  useKeyboardShortcuts({
+    context: shortcutContext,
+    selectCategory: setSelectedCategory,
+    completeMission: shortcutContext === "mission" && selectedCategory ? (index: number) => {
+      const m = missions[index];
+      if (m && !state.completedMissions.has(`${selectedCategory}-${index}`)) {
+        handleComplete(selectedCategory, index, m.xp);
+      }
+    } : undefined,
+    editTasks: selectedCategory && selectedCategory !== "__projects__" ? () => setEditingCategory(selectedCategory) : undefined,
+    aiSuggestions: selectedCategory && selectedCategory !== "__projects__" ? () => setAICategory(selectedCategory) : undefined,
+    resetDefaults: selectedCategory && selectedCategory !== "__projects__" ? () => resetCategory(selectedCategory) : undefined,
+    resetDay: resetDay,
+    goBack: selectedCategory ? () => setSelectedCategory(selectedCategory === "__projects__" ? null : selectedCategory.startsWith("project-") ? "__projects__" : null) : undefined,
+    selectProject: shortcutContext === "projects" ? (index: number) => {
+      if (index < projects.length) {
+        setSelectedCategory(`project-${projects[index].id}`);
+      }
+    } : undefined,
+    toggleShortcutsPanel: () => setShowShortcuts(prev => !prev),
+    missionCount: missions.length,
+    projectCount: projects.length,
+  });
 
   // Build ladder context for AI modal
   const ladderContext = useMemo(() => {
@@ -71,8 +105,14 @@ export default function DashboardView() {
 
   return (
     <div className="relative">
-      <DashboardHero state={state} onResetDay={resetDay} />
+      <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} />
 
+      {/* Shortcuts Panel */}
+      <AnimatePresence>
+        {showShortcuts && (
+          <ShortcutsPanel context={shortcutContext} onClose={() => setShowShortcuts(false)} />
+        )}
+      </AnimatePresence>
       <AnimatePresence mode="wait">
         {selectedCategory === "__projects__" ? (
           <ProjectsListView
