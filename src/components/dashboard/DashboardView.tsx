@@ -7,6 +7,7 @@ import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
 import MissionView from "./MissionView";
+import ProjectsListView from "./ProjectsListView";
 import EditMissionsModal from "./EditMissionsModal";
 import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
@@ -73,7 +74,16 @@ export default function DashboardView() {
       <DashboardHero state={state} onResetDay={resetDay} />
 
       <AnimatePresence mode="wait">
-        {selectedCategory ? (
+        {selectedCategory === "__projects__" ? (
+          <ProjectsListView
+            key="projects-list"
+            projects={projects}
+            getMissions={getMissions}
+            getCompletedCount={getCompletedCount}
+            onSelectProject={setSelectedCategory}
+            onBack={() => setSelectedCategory(null)}
+          />
+        ) : selectedCategory ? (
           <MissionView
             key={selectedCategory}
             categoryId={selectedCategory}
@@ -82,7 +92,7 @@ export default function DashboardView() {
             onComplete={handleComplete}
             onSplit={splitMission}
             onResetCategory={resetCategory}
-            onBack={() => setSelectedCategory(null)}
+            onBack={() => setSelectedCategory(selectedCategory.startsWith("project-") ? "__projects__" : null)}
             onEdit={() => setEditingCategory(selectedCategory)}
             onAI={() => setAICategory(selectedCategory)}
             projectInfo={selectedCategory.startsWith("project-") ? (() => {
@@ -101,7 +111,7 @@ export default function DashboardView() {
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
               onSelectCategory={setSelectedCategory}
-              projects={projects}
+              projectCount={projects.length}
             />
           </motion.div>
         )}
