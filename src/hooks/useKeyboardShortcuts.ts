@@ -47,7 +47,7 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
         return;
       }
 
-      if (key === "escape" && actions.goBack) {
+      if ((key === "escape" || key === "backspace") && actions.goBack) {
         e.preventDefault();
         actions.goBack();
         return;
