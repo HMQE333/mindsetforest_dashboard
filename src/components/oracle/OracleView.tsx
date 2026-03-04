@@ -141,12 +141,6 @@ export default function OracleView() {
         >
           Sacrifice to Oracle
         </button>
-        <button
-          onClick={handleSpeak}
-          className="glass-card px-5 py-2.5 text-sm font-semibold text-foreground/80 hover:text-foreground transition-colors"
-        >
-          Speak
-        </button>
       </div>
 
       {/* Rewards Grid */}
