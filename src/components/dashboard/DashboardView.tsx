@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDashboardState } from "@/hooks/useDashboardState";
 import { useLadderState } from "@/hooks/useLadderState";
+import { useUserProjects } from "@/hooks/useUserProjects";
 import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
@@ -13,6 +14,7 @@ import LevelUpModal from "./LevelUpModal";
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
   const { ladders, activeCategory: ladderCategory } = useLadderState();
+  const { projects, getProjectFromKey } = useUserProjects();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -83,6 +85,10 @@ export default function DashboardView() {
             onBack={() => setSelectedCategory(null)}
             onEdit={() => setEditingCategory(selectedCategory)}
             onAI={() => setAICategory(selectedCategory)}
+            projectInfo={selectedCategory.startsWith("project-") ? (() => {
+              const p = getProjectFromKey(selectedCategory);
+              return p ? { name: p.name, emoji: p.emoji } : null;
+            })() : null}
           />
         ) : (
           <motion.div
@@ -95,6 +101,7 @@ export default function DashboardView() {
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
               onSelectCategory={setSelectedCategory}
+              projects={projects}
             />
           </motion.div>
         )}
@@ -121,6 +128,7 @@ export default function DashboardView() {
             onApply={saveCustomMissions}
             onClose={() => setAICategory(null)}
             ladderContext={ladderContext}
+            projectName={aiCategory.startsWith("project-") ? getProjectFromKey(aiCategory)?.name : undefined}
           />
         )}
       </AnimatePresence>

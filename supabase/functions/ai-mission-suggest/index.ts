@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { categoryId, categoryName, categoryTagline, currentMissions, aiMode, ladderContext } = await req.json();
+    const { categoryId, categoryName, categoryTagline, currentMissions, aiMode, ladderContext, projectName } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -24,7 +24,11 @@ serve(async (req) => {
       ladderPrompt = `\n\nIMPORTANT LADDER CONTEXT: The user is working on their "${ladderContext.activeCategory}" mastery ladder. They are currently at the "${ladderContext.currentLevel}" level. They have completed ${ladderContext.totalCompleted}/${ladderContext.totalTasks} total tasks. Completed tasks include: ${ladderContext.completedTasks?.join(", ") || "none"}.\n\nGenerate today's missions that specifically push the user toward completing their current ladder level. Align tasks with their progression stage.`;
     }
 
-    const systemPrompt = `You are a gamified productivity AI. Generate 3-5 mission/task suggestions for the "${categoryName}" category (${categoryTagline}).
+    const scopeDesc = projectName
+      ? `the user's project "${projectName}". This is a custom project — generate tasks specific to this project's goals and domain.`
+      : `the "${categoryName}" category (${categoryTagline}).`;
+
+    const systemPrompt = `You are a gamified productivity AI. Generate 3-5 mission/task suggestions for ${scopeDesc}
 
 ${modePrompts[aiMode] || modePrompts.focused}
 

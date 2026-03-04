@@ -4,6 +4,11 @@ import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { DashboardState } from "@/hooks/useDashboardState";
 import { supabase } from "@/integrations/supabase/client";
 
+interface ProjectInfo {
+  name: string;
+  emoji: string;
+}
+
 interface MissionViewProps {
   categoryId: string;
   state: DashboardState;
@@ -14,10 +19,15 @@ interface MissionViewProps {
   onBack: () => void;
   onEdit: () => void;
   onAI: () => void;
+  projectInfo?: ProjectInfo | null;
 }
 
-export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onBack, onEdit, onAI }: MissionViewProps) {
-  const category = CATEGORIES.find(c => c.id === categoryId)!;
+export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
+  const category = CATEGORIES.find(c => c.id === categoryId);
+  const displayName = projectInfo?.name || category?.name || categoryId;
+  const displayIcon = projectInfo?.emoji || category?.icon || "📁";
+  const displayColor = category?.color || "#8B5CF6";
+  const displayTagline = projectInfo ? "Project" : category?.tagline || "";
   const missions = getMissions(categoryId);
   const [splittingIndex, setSplittingIndex] = useState<number | null>(null);
 
@@ -49,7 +59,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
       {/* Header */}
       <div
         className="glass-card p-6 mb-6 flex items-center gap-5 flex-wrap justify-between"
-        style={{ borderColor: category.color, borderWidth: 2 }}
+        style={{ borderColor: displayColor, borderWidth: 2 }}
       >
         <div className="flex items-center gap-3 flex-wrap">
           <button
@@ -60,15 +70,15 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
           </button>
           <span
             className="text-4xl"
-            style={{ filter: `drop-shadow(0 0 15px ${category.color})` }}
+            style={{ filter: `drop-shadow(0 0 15px ${displayColor})` }}
           >
-            {category.icon}
+            {displayIcon}
           </span>
           <div>
-            <h2 className="text-2xl font-bold" style={{ color: category.color }}>
-              {category.name}
+            <h2 className="text-2xl font-bold" style={{ color: displayColor }}>
+              {displayName}
             </h2>
-            <p className="text-sm text-foreground/70">{category.tagline}</p>
+            <p className="text-sm text-foreground/70">{displayTagline}</p>
           </div>
         </div>
 
@@ -115,7 +125,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   ? "opacity-60 border-white/10"
                   : "hover:border-white/20 hover:translate-x-2 hover:shadow-lg"
               }`}
-              style={isCompleted ? { borderColor: category.color, background: `linear-gradient(135deg, ${category.color}15, transparent)` } : {}}
+              style={isCompleted ? { borderColor: displayColor, background: `linear-gradient(135deg, ${displayColor}15, transparent)` } : {}}
             >
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1">
@@ -123,7 +133,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   <p className="text-sm text-foreground/70 mb-3 leading-relaxed">{mission.description}</p>
                   <div className="flex gap-4 text-sm">
                     <span className="text-foreground/60 flex items-center gap-1">⏱️ {mission.duration}</span>
-                    <span className="font-bold flex items-center gap-1" style={{ color: category.color }}>
+                    <span className="font-bold flex items-center gap-1" style={{ color: displayColor }}>
                       ⭐ +{mission.xp} XP
                     </span>
                   </div>
@@ -152,8 +162,8 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                         : "bg-white/5 hover:scale-110"
                     }`}
                     style={{
-                      borderColor: category.color,
-                      backgroundColor: isCompleted ? category.color : undefined,
+                      borderColor: displayColor,
+                      backgroundColor: isCompleted ? displayColor : undefined,
                     }}
                     disabled={isCompleted}
                   >

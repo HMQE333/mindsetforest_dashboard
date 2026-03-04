@@ -17,6 +17,7 @@ interface AISuggestionsModalProps {
   onApply: (categoryId: string, missions: Mission[]) => void;
   onClose: () => void;
   ladderContext?: LadderContext | null;
+  projectName?: string;
 }
 
 interface Suggestion extends Mission {
@@ -27,8 +28,11 @@ interface Suggestion extends Mission {
 type ApplyMode = "replace" | "add" | "append";
 type AIMode = "focused" | "strategic" | "recovery";
 
-export default function AISuggestionsModal({ categoryId, currentMissions, onApply, onClose, ladderContext }: AISuggestionsModalProps) {
-  const category = CATEGORIES.find(c => c.id === categoryId)!;
+export default function AISuggestionsModal({ categoryId, currentMissions, onApply, onClose, ladderContext, projectName }: AISuggestionsModalProps) {
+  const category = CATEGORIES.find(c => c.id === categoryId);
+  const displayName = projectName || category?.name || categoryId;
+  const displayTagline = projectName ? "Project" : category?.tagline || "";
+
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [applyMode, setApplyMode] = useState<ApplyMode>("replace");
@@ -42,11 +46,12 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
     setLoading(true);
     try {
       const body: Record<string, unknown> = {
-        categoryId: category.id,
-        categoryName: category.name,
-        categoryTagline: category.tagline,
+        categoryId: category?.id || categoryId,
+        categoryName: displayName,
+        categoryTagline: displayTagline,
         currentMissions: currentMissions.map(m => m.title),
         aiMode,
+        ...(projectName ? { projectName } : {}),
       };
       if (useLadder && ladderContext) {
         body.ladderContext = ladderContext;
@@ -62,7 +67,7 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
     } finally {
       setLoading(false);
     }
-  }, [category, currentMissions, aiMode, useLadder, ladderContext]);
+  }, [category, displayName, displayTagline, projectName, currentMissions, aiMode, useLadder, ladderContext]);
 
   const toggleSuggestion = (index: number) => {
     setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, selected: !s.selected } : s));
@@ -116,8 +121,8 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
               🧠
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-foreground">AI Suggestions · {category.name}</h2>
-              <p className="text-xs text-foreground/60 truncate">Generated for today · {category.tagline}</p>
+              <h2 className="text-lg font-bold text-foreground">AI Suggestions · {displayName}</h2>
+              <p className="text-xs text-foreground/60 truncate">Generated for today · {displayTagline}</p>
             </div>
           </div>
           <button onClick={onClose} className="w-10 h-9 rounded-xl border border-white/12 bg-white/5 text-foreground/80 hover:bg-white/12 transition-colors">
