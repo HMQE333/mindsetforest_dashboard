@@ -131,7 +131,15 @@ export default function DashboardView() {
       <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} />
 
       {/* Weekly Progress */}
-      <WeeklyProgress history={weeklyHistory} />
+      <WeeklyProgress
+        history={weeklyHistory}
+        dashboardState={{
+          currentXP: state.currentXP,
+          currentLevel: state.currentLevel,
+          streakDays: state.streakDays,
+          missionsCompleted: state.missionsCompleted,
+        }}
+      />
 
       {/* Shortcuts Panel */}
       <AnimatePresence>
