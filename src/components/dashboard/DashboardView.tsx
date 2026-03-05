@@ -130,16 +130,7 @@ export default function DashboardView() {
     <div className="relative">
       <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} />
 
-      {/* Weekly Progress */}
-      <WeeklyProgress
-        history={weeklyHistory}
-        dashboardState={{
-          currentXP: state.currentXP,
-          currentLevel: state.currentLevel,
-          streakDays: state.streakDays,
-          missionsCompleted: state.missionsCompleted,
-        }}
-      />
+      {/* Weekly Progress - moved to bottom */}
 
       {/* Shortcuts Panel */}
       <AnimatePresence>
@@ -190,6 +181,17 @@ export default function DashboardView() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Weekly Progress */}
+      <WeeklyProgress
+        history={weeklyHistory}
+        dashboardState={{
+          currentXP: state.currentXP,
+          currentLevel: state.currentLevel,
+          streakDays: state.streakDays,
+          missionsCompleted: state.missionsCompleted,
+        }}
+      />
 
       {/* Edit Modal */}
       <AnimatePresence>
