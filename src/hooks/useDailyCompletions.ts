@@ -92,5 +92,15 @@ export function useDailyCompletions() {
     });
   }, [user]);
 
-  return { history, loading, saveDailySnapshot, last7Days };
+  const fetchAllHistory = useCallback(async (): Promise<DailyCompletion[]> => {
+    if (!user) return [];
+    const { data, error } = await (supabase.from("daily_completions" as any) as any)
+      .select("date, missions_completed, xp_earned, categories_engaged, completed_mission_titles")
+      .eq("user_id", user.id)
+      .order("date", { ascending: true });
+    if (data && !error) return data as DailyCompletion[];
+    return [];
+  }, [user]);
+
+  return { history, loading, saveDailySnapshot, fetchAllHistory, last7Days };
 }

@@ -20,7 +20,7 @@ export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
-  const { history: weeklyHistory, saveDailySnapshot } = useDailyCompletions();
+  const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -191,6 +191,7 @@ export default function DashboardView() {
           streakDays: state.streakDays,
           missionsCompleted: state.missionsCompleted,
         }}
+        onExportAll={fetchAllHistory}
       />
 
       {/* Edit Modal */}
