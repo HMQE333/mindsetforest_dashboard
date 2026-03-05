@@ -11,11 +11,13 @@ interface WeeklyProgressProps {
     streakDays: number;
     missionsCompleted: number;
   };
+  onExportAll?: () => Promise<DailyCompletion[]>;
 }
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function exportProgressCSV(history: DailyCompletion[], dashboardState?: WeeklyProgressProps["dashboardState"]) {
+async function exportProgressCSV(dashboardState?: WeeklyProgressProps["dashboardState"], onExportAll?: () => Promise<DailyCompletion[]>) {
+  const allHistory = onExportAll ? await onExportAll() : [];
   const lines: string[] = [];
 
   // Summary section
@@ -28,10 +30,10 @@ function exportProgressCSV(history: DailyCompletion[], dashboardState?: WeeklyPr
     lines.push("");
   }
 
-  // Weekly history
-  lines.push("=== Weekly Progress ===");
+  // Full history
+  lines.push("=== Full Progress History ===");
   lines.push("Date,Missions Completed,XP Earned,Categories Engaged,Completed Missions");
-  for (const day of history) {
+  for (const day of allHistory) {
     lines.push([
       day.date,
       day.missions_completed,
@@ -50,7 +52,7 @@ function exportProgressCSV(history: DailyCompletion[], dashboardState?: WeeklyPr
   URL.revokeObjectURL(url);
 }
 
-export default function WeeklyProgress({ history, dashboardState }: WeeklyProgressProps) {
+export default function WeeklyProgress({ history, dashboardState, onExportAll }: WeeklyProgressProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   if (history.length === 0) return null;
@@ -65,7 +67,7 @@ export default function WeeklyProgress({ history, dashboardState }: WeeklyProgre
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3, duration: 0.5 }}
-      className="glass-card p-6 mb-8"
+      className="glass-card p-6 mb-8 mt-8"
     >
       <div className="flex items-center justify-between mb-1">
         <button
@@ -84,7 +86,7 @@ export default function WeeklyProgress({ history, dashboardState }: WeeklyProgre
             </div>
           )}
           <button
-            onClick={() => exportProgressCSV(history, dashboardState)}
+            onClick={() => exportProgressCSV(dashboardState, onExportAll)}
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
             title="Download progress as CSV"
           >
