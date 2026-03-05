@@ -56,6 +56,39 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_completions: {
+        Row: {
+          categories_engaged: string[]
+          completed_mission_titles: string[]
+          created_at: string
+          date: string
+          id: string
+          missions_completed: number
+          user_id: string
+          xp_earned: number
+        }
+        Insert: {
+          categories_engaged?: string[]
+          completed_mission_titles?: string[]
+          created_at?: string
+          date: string
+          id?: string
+          missions_completed?: number
+          user_id: string
+          xp_earned?: number
+        }
+        Update: {
+          categories_engaged?: string[]
+          completed_mission_titles?: string[]
+          created_at?: string
+          date?: string
+          id?: string
+          missions_completed?: number
+          user_id?: string
+          xp_earned?: number
+        }
+        Relationships: []
+      }
       dashboard_state: {
         Row: {
           categories_engaged: string[]

@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDashboardState } from "@/hooks/useDashboardState";
 import { useLadderState } from "@/hooks/useLadderState";
 import { useUserProjects } from "@/hooks/useUserProjects";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useDailyCompletions } from "@/hooks/useDailyCompletions";
 import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
@@ -13,11 +14,13 @@ import EditMissionsModal from "./EditMissionsModal";
 import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 import ShortcutsPanel from "./ShortcutsPanel";
+import WeeklyProgress from "./WeeklyProgress";
 
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
+  const { history: weeklyHistory, saveDailySnapshot } = useDailyCompletions();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -25,6 +28,26 @@ export default function DashboardView() {
   const [floatingXP, setFloatingXP] = useState<{ id: number; xp: number } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const prevLevel = useRef(state.currentLevel);
+
+  // Save daily snapshot whenever missions are completed
+  useEffect(() => {
+    if (state.missionsCompleted > 0) {
+      // Collect completed mission titles
+      const titles: string[] = [];
+      for (const missionId of state.completedMissions) {
+        const [catId, idxStr] = [missionId.substring(0, missionId.lastIndexOf("-")), missionId.substring(missionId.lastIndexOf("-") + 1)];
+        const missions = getMissions(catId);
+        const idx = parseInt(idxStr);
+        if (missions[idx]) titles.push(missions[idx].title);
+      }
+      saveDailySnapshot(
+        state.missionsCompleted,
+        state.currentXP,
+        Array.from(state.categoriesEngaged),
+        titles,
+      );
+    }
+  }, [state.missionsCompleted, state.completedMissions]);
 
   const handleComplete = useCallback((categoryId: string, index: number, xp: number) => {
     const prevLvl = state.currentLevel;
@@ -106,6 +129,9 @@ export default function DashboardView() {
   return (
     <div className="relative">
       <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} />
+
+      {/* Weekly Progress */}
+      <WeeklyProgress history={weeklyHistory} />
 
       {/* Shortcuts Panel */}
       <AnimatePresence>
