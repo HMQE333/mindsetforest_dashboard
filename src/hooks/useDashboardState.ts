@@ -142,12 +142,17 @@ export function useDashboardState() {
 
   const resetDay = useCallback(() => {
     setState(prev => {
-      // Keep custom missions that are marked persistent, clear non-persistent ones
+      // Keep custom missions that are persistent OR match a default mission (by title)
       const newCustomMissions: Record<string, Mission[]> = {};
       for (const [catId, missions] of Object.entries(prev.customMissions)) {
-        const persistentMissions = missions.filter(m => m.persistent);
-        if (persistentMissions.length > 0) {
-          newCustomMissions[catId] = persistentMissions;
+        const defaultCategory = CATEGORIES.find(c => c.id === catId);
+        const defaultTitles = new Set((defaultCategory?.missions || []).map(m => m.title));
+
+        const survivingMissions = missions.filter(m =>
+          m.persistent || defaultTitles.has(m.title)
+        );
+        if (survivingMissions.length > 0) {
+          newCustomMissions[catId] = survivingMissions;
         }
       }
 
