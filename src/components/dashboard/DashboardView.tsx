@@ -32,17 +32,21 @@ export default function DashboardView() {
   // Save daily snapshot whenever missions are completed
   useEffect(() => {
     if (state.missionsCompleted > 0) {
-      // Collect completed mission titles
+      // Collect completed mission titles and compute today's XP
       const titles: string[] = [];
+      let todayXP = 0;
       for (const missionId of state.completedMissions) {
         const [catId, idxStr] = [missionId.substring(0, missionId.lastIndexOf("-")), missionId.substring(missionId.lastIndexOf("-") + 1)];
         const missions = getMissions(catId);
         const idx = parseInt(idxStr);
-        if (missions[idx]) titles.push(missions[idx].title);
+        if (missions[idx]) {
+          titles.push(missions[idx].title);
+          todayXP += missions[idx].xp;
+        }
       }
       saveDailySnapshot(
         state.missionsCompleted,
-        state.currentXP,
+        todayXP,
         Array.from(state.categoriesEngaged),
         titles,
       );
