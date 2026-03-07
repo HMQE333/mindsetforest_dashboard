@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Link2Off } from "lucide-react";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
@@ -13,21 +13,51 @@ interface Props {
   deleteBlock: (id: string) => Promise<void>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
+  semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
+  embedAll: () => Promise<any>;
 }
 
 type SortMode = "newest" | "oldest" | "az";
 
-const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect }: Props) => {
+const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
   const [hideLinks, setHideLinks] = useState(false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("newest");
+  const [smartSearch, setSmartSearch] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
 
+  // Semantic search debounce
+  useEffect(() => {
+    if (!smartSearch || search.trim().length < 2) {
+      setSemanticResults(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSemanticLoading(true);
+      const results = await semanticSearch(search.trim());
+      setSemanticResults(results);
+      setSemanticLoading(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [search, smartSearch, semanticSearch]);
+
   const filtered = useMemo(() => {
+    // If smart search is active and we have results, use those instead
+    if (smartSearch && semanticResults !== null) {
+      let list = semanticResults;
+      if (filterPillar) list = list.filter((b) => b.pillars.includes(filterPillar));
+      if (filterDirection) list = list.filter((b) => b.directions.includes(filterDirection));
+      if (hideLinks) list = list.filter((b) => !URL_REGEX.test(b.content) && !b.source_url);
+      // Pinned on top
+      return [...list.filter((b) => b.is_pinned), ...list.filter((b) => !b.is_pinned)];
+    }
+
     const list = blocks.filter((b) => {
       if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.content.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
@@ -42,7 +72,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
     })();
     // Pinned blocks always on top
     return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
-  }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode]);
+  }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode, smartSearch, semanticResults]);
 
   if (loading) {
     return (
@@ -58,12 +88,22 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
       {/* Search & Filters */}
       <div className="glass-card p-4 space-y-3">
         <div className="flex gap-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="🔍 Search blocks..."
-            className="bg-background/50 border-white/10 flex-1"
-          />
+          <div className="relative flex-1">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={smartSearch ? "🧠 Search blocks by meaning..." : "🔍 Search blocks..."}
+              className="bg-background/50 border-white/10"
+            />
+            {search && (
+              <button
+                onClick={() => { setSearch(""); setSemanticResults(null); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             {([
               { id: "newest" as SortMode, label: "Newest" },
@@ -100,7 +140,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 items-center">
           <button
             onClick={() => setFilterPillar(null)}
             className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all ${!filterPillar ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground"}`}
@@ -142,6 +182,27 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
               {d.icon} {d.label}
             </button>
           ))}
+          <span className="w-px h-4 bg-white/10" />
+          <button
+            onClick={() => { setSmartSearch(!smartSearch); setSemanticResults(null); }}
+            className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition-all ${
+              smartSearch
+                ? "gradient-purple text-primary-foreground glow-sm"
+                : "bg-muted/40 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            🧠 Smart Search {smartSearch ? "ON" : "OFF"}
+          </button>
+          <button
+            onClick={() => embedAll()}
+            className="text-[11px] px-2.5 py-1 rounded-full font-bold bg-muted/40 text-muted-foreground hover:text-foreground transition-all"
+            title="Generate embeddings for all unembedded blocks"
+          >
+            🔄 Re-index
+          </button>
+          {semanticLoading && (
+            <span className="text-[11px] text-muted-foreground animate-pulse ml-1">Searching...</span>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import ArchiveInbox from "./ArchiveInbox";
@@ -6,8 +6,6 @@ import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
-import ArchiveSearchResults from "./ArchiveSearchResults";
-import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -45,10 +43,6 @@ const ArchiveView = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
-  const [globalSearch, setGlobalSearch] = useState("");
-  const [smartSearch, setSmartSearch] = useState(false);
-  const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
-  const [semanticLoading, setSemanticLoading] = useState(false);
   const archive = useArchiveState();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
@@ -193,138 +187,60 @@ const ArchiveView = () => {
     setBulkLoading(null);
   };
 
-  // Semantic search debounce
-  useEffect(() => {
-    if (!smartSearch || globalSearch.trim().length < 2) {
-      setSemanticResults(null);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      setSemanticLoading(true);
-      const results = await archive.semanticSearch(globalSearch.trim());
-      setSemanticResults(results);
-      setSemanticLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [globalSearch, smartSearch, archive.semanticSearch]);
-
-  const isSearching = globalSearch.trim().length >= 2;
-
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      {/* Global search */}
-      <div className="space-y-2">
-        <div className="relative">
-          <Input
-            value={globalSearch}
-            onChange={(e) => setGlobalSearch(e.target.value)}
-            placeholder={smartSearch ? "🧠 Semantic search (meaning-based)..." : "🔍 Search all blocks (title, content, tags)..."}
-            className="bg-background/50 border-white/10 h-11"
-          />
-          {globalSearch && (
-            <button
-              onClick={() => setGlobalSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
+      {/* Sub-nav */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {NAV_ITEMS.map((item) => (
           <button
-            onClick={() => { setSmartSearch(!smartSearch); setSemanticResults(null); }}
-            className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all ${
-              smartSearch
+            key={item.id}
+            onClick={() => { setSubView(item.id); clearSelection(); }}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
+              subView === item.id
                 ? "gradient-purple text-primary-foreground glow-sm"
-                : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground glass-card"
             }`}
           >
-            🧠 Smart Search {smartSearch ? "ON" : "OFF"}
+            {item.icon} {item.label}
+            {item.count !== undefined && (
+              <span className="ml-1 opacity-70">({item.count})</span>
+            )}
           </button>
-          {semanticLoading && (
-            <span className="text-[11px] text-muted-foreground animate-pulse">Searching by meaning...</span>
-          )}
-          <button
-            onClick={() => archive.embedAll()}
-            className="text-[11px] px-3 py-1.5 rounded-lg font-bold bg-muted/40 text-muted-foreground hover:text-foreground transition-all ml-auto"
-            title="Generate embeddings for all unembedded blocks"
-          >
-            🔄 Re-index All
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Sub-nav */}
-      {!isSearching && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => { setSubView(item.id); clearSelection(); }}
-              className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
-                subView === item.id
-                  ? "gradient-purple text-primary-foreground glow-sm"
-                  : "text-muted-foreground hover:text-foreground glass-card"
-              }`}
-            >
-              {item.icon} {item.label}
-              {item.count !== undefined && (
-                <span className="ml-1 opacity-70">({item.count})</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Content */}
-      {isSearching ? (
-        smartSearch && semanticResults !== null ? (
-          <ArchiveSearchResults
-            blocks={semanticResults}
-            query={globalSearch.trim()}
-            onNavigate={(view) => setSubView(view as SubView)}
-            onClearSearch={() => { setGlobalSearch(""); setSemanticResults(null); }}
-            skipFilter
-          />
-        ) : (
-          <ArchiveSearchResults
-            blocks={archive.blocks}
-            query={globalSearch.trim()}
-            onNavigate={(view) => setSubView(view as SubView)}
-            onClearSearch={() => setGlobalSearch("")}
-          />
-        )
-      ) : (
-        <AnimatePresence mode="wait">
-          {subView === "inbox" && (
-            <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
-            </motion.div>
-          )}
-          {subView === "library" && (
-            <motion.div key="library" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ArchiveLibrary
-                blocks={archive.blocks}
-                loading={archive.loading}
-                updateBlock={archive.updateBlock}
-                deleteBlock={archive.deleteBlock}
-                selectedIds={selectedIds}
-                toggleSelect={toggleSelect}
-              />
-            </motion.div>
-          )}
-          {subView === "links" && (
-            <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-            </motion.div>
-          )}
-          {subView === "images" && (
-            <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      )}
+      <AnimatePresence mode="wait">
+        {subView === "inbox" && (
+          <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
+          </motion.div>
+        )}
+        {subView === "library" && (
+          <motion.div key="library" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveLibrary
+              blocks={archive.blocks}
+              loading={archive.loading}
+              updateBlock={archive.updateBlock}
+              deleteBlock={archive.deleteBlock}
+              selectedIds={selectedIds}
+              toggleSelect={toggleSelect}
+              semanticSearch={archive.semanticSearch}
+              embedAll={archive.embedAll}
+            />
+          </motion.div>
+        )}
+        {subView === "links" && (
+          <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          </motion.div>
+        )}
+        {subView === "images" && (
+          <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Multi-select floating bar */}
       <AnimatePresence>
