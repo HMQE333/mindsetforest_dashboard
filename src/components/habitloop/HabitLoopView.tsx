@@ -4,6 +4,7 @@ import { useHabitLoopState } from "@/hooks/useHabitLoopState";
 import { isLoopComplete } from "@/lib/habit-loop-data";
 import HabitLoopCard from "./HabitLoopCard";
 import AIHabitLoopModal from "./AIHabitLoopModal";
+import ManualHabitLoopModal from "./ManualHabitLoopModal";
 import MasteryOverlay from "@/components/ladder/MasteryOverlay";
 import CategoryProjectSelector from "@/components/shared/CategoryProjectSelector";
 import { useUserProjects } from "@/hooks/useUserProjects";
