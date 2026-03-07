@@ -37,11 +37,18 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   useEffect(() => {
     if (!smartSearch || search.trim().length < 2) {
       setSemanticResults(null);
+      setSimilarityScores({});
       return;
     }
     const timer = setTimeout(async () => {
       setSemanticLoading(true);
       const results = await semanticSearch(search.trim());
+      // Extract similarity scores before setting results
+      const scores: Record<string, number> = {};
+      for (const r of results as any[]) {
+        if (r.similarity !== undefined) scores[r.id] = r.similarity;
+      }
+      setSimilarityScores(scores);
       setSemanticResults(results);
       setSemanticLoading(false);
     }, 500);
