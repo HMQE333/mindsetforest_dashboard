@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { Link2Off } from "lucide-react";
-import { Link2Off } from "lucide-react";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
