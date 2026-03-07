@@ -10,7 +10,7 @@ import CategoryProjectSelector from "@/components/shared/CategoryProjectSelector
 import { useUserProjects } from "@/hooks/useUserProjects";
 
 export default function HabitLoopView() {
-  const { currentState, activeCategory, loading, changeCategory, logRep, addTask, deleteTask, setLoops, resetLoop } = useHabitLoopState();
+  const { currentState, activeCategory, loading, changeCategory, logRep, addTask, deleteTask, setLoops, addLoops, resetLoop } = useHabitLoopState();
   const { getProjectFromKey, isProjectKey } = useUserProjects();
   const [showAI, setShowAI] = useState(false);
   const [showMastery, setShowMastery] = useState(false);
