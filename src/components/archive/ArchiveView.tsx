@@ -6,8 +6,6 @@ import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
-import ArchiveSearchResults from "./ArchiveSearchResults";
-import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
