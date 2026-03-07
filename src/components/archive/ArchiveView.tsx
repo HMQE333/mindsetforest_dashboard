@@ -278,12 +278,22 @@ const ArchiveView = () => {
 
       {/* Content */}
       {isSearching ? (
-        <ArchiveSearchResults
-          blocks={archive.blocks}
-          query={globalSearch.trim()}
-          onNavigate={(view) => setSubView(view as SubView)}
-          onClearSearch={() => setGlobalSearch("")}
-        />
+        smartSearch && semanticResults !== null ? (
+          <ArchiveSearchResults
+            blocks={semanticResults}
+            query={globalSearch.trim()}
+            onNavigate={(view) => setSubView(view as SubView)}
+            onClearSearch={() => { setGlobalSearch(""); setSemanticResults(null); }}
+            skipFilter
+          />
+        ) : (
+          <ArchiveSearchResults
+            blocks={archive.blocks}
+            query={globalSearch.trim()}
+            onNavigate={(view) => setSubView(view as SubView)}
+            onClearSearch={() => setGlobalSearch("")}
+          />
+        )
       ) : (
         <AnimatePresence mode="wait">
           {subView === "inbox" && (
