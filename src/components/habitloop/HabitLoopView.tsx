@@ -54,6 +54,12 @@ export default function HabitLoopView() {
             </button>
           )}
           <button
+            onClick={() => setShowManual(true)}
+            className="px-4 py-2.5 rounded-xl border border-white/14 bg-white/5 text-foreground text-sm hover:bg-white/10 transition-all"
+          >
+            ➕ Create
+          </button>
+          <button
             onClick={() => setShowAI(true)}
             className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold glow-sm hover:-translate-y-0.5 transition-all"
           >
