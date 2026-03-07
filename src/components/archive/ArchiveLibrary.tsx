@@ -28,6 +28,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [smartSearch, setSmartSearch] = useState(false);
   const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
+  const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
