@@ -13,6 +13,7 @@ export default function HabitLoopView() {
   const { currentState, activeCategory, loading, changeCategory, logRep, addTask, deleteTask, setLoops, addLoops, resetLoop } = useHabitLoopState();
   const { getProjectFromKey, isProjectKey } = useUserProjects();
   const [showAI, setShowAI] = useState(false);
+  const [showManual, setShowManual] = useState(false);
   const [showMastery, setShowMastery] = useState(false);
   const [masteryKey, setMasteryKey] = useState(0);
   const prevAllComplete = useRef(false);
