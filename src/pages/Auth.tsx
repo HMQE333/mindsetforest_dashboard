@@ -81,7 +81,7 @@ export default function Auth() {
       >
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gradient-purple mb-2">MindsetForest</h1>
-          <p className="text-sm text-muted-foreground">Track. Grind. Level Up.</p>
+          <p className="text-sm text-muted-foreground">Your Life. Your Quest.</p>
         </div>
 
         <div className="glass-card p-8 border-white/15">
