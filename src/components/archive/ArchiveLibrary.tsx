@@ -230,6 +230,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
               onToggleSelect={() => toggleSelect(block.id)}
               onEdit={() => setEditBlock(block)}
               onUpdate={updateBlock}
+              similarityScore={smartSearch && semanticResults !== null ? similarityScores[block.id] : undefined}
             />
           ))}
         </div>
