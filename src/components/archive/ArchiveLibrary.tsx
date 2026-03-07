@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { Input } from "@/components/ui/input";
 import { Link2Off } from "lucide-react";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
@@ -18,7 +17,6 @@ interface Props {
 type SortMode = "newest" | "oldest" | "az";
 
 const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect }: Props) => {
-  const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
   const [hideLinks, setHideLinks] = useState(false);
@@ -29,7 +27,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
 
   const filtered = useMemo(() => {
     const list = blocks.filter((b) => {
-      if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.content.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
       if (filterDirection && !b.directions.includes(filterDirection)) return false;
       if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
@@ -42,7 +39,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
     })();
     // Pinned blocks always on top
     return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
-  }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode]);
+  }, [blocks, filterPillar, filterDirection, hideLinks, sortMode]);
 
   if (loading) {
     return (
@@ -58,12 +55,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
       {/* Search & Filters */}
       <div className="glass-card p-4 space-y-3">
         <div className="flex gap-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="🔍 Search blocks..."
-            className="bg-background/50 border-white/10 flex-1"
-          />
           <div className="flex items-center gap-1">
             {([
               { id: "newest" as SortMode, label: "Newest" },
