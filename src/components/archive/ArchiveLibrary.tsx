@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Input } from "@/components/ui/input";
+import { Link2Off } from "lucide-react";
 import { Link2Off } from "lucide-react";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
