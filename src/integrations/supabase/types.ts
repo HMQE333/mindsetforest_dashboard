@@ -19,6 +19,7 @@ export type Database = {
           content: string
           created_at: string
           directions: string[]
+          embedding: string | null
           id: string
           is_pinned: boolean
           pillars: string[]
@@ -32,6 +33,7 @@ export type Database = {
           content?: string
           created_at?: string
           directions?: string[]
+          embedding?: string | null
           id?: string
           is_pinned?: boolean
           pillars?: string[]
@@ -45,6 +47,7 @@ export type Database = {
           content?: string
           created_at?: string
           directions?: string[]
+          embedding?: string | null
           id?: string
           is_pinned?: boolean
           pillars?: string[]
@@ -307,7 +310,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      search_archive_blocks: {
+        Args: {
+          match_count?: number
+          match_threshold?: number
+          match_user_id: string
+          query_embedding: string
+        }
+        Returns: {
+          content: string
+          created_at: string
+          directions: string[]
+          id: string
+          is_pinned: boolean
+          pillars: string[]
+          similarity: number
+          source_url: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.ai-archive-clean]
 verify_jwt = false
+
+[functions.ai-embed-block]
+verify_jwt = false

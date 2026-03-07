@@ -16,10 +16,12 @@ interface Props {
   query: string;
   onNavigate: (view: string) => void;
   onClearSearch: () => void;
+  skipFilter?: boolean;
 }
 
-const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch }: Props) => {
+const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch, skipFilter }: Props) => {
   const results = useMemo(() => {
+    if (skipFilter) return blocks;
     const q = query.toLowerCase();
     return blocks.filter(
       (b) =>

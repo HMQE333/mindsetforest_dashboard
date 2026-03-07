@@ -4,6 +4,18 @@ import { useAuth } from "@/hooks/useAuth";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { toast } from "sonner";
 
+async function embedBlock(blockId: string) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await supabase.functions.invoke("ai-embed-block", {
+      body: { action: "embed", blockId },
+    });
+  } catch (e) {
+    console.error("Embedding failed for block:", blockId, e);
+  }
+}
+
 export function useArchiveState() {
   const { user } = useAuth();
   const [blocks, setBlocks] = useState<ArchiveBlock[]>([]);
@@ -42,6 +54,8 @@ export function useArchiveState() {
       return null;
     }
     setBlocks((prev) => [(data as any), ...prev]);
+    // Fire-and-forget embedding
+    embedBlock((data as any).id);
     return data as any as ArchiveBlock;
   };
 
@@ -57,6 +71,10 @@ export function useArchiveState() {
       return;
     }
     setBlocks((prev) => [...((data as any) || []), ...prev]);
+    // Fire-and-forget embed all new blocks
+    for (const d of (data as any) || []) {
+      embedBlock(d.id);
+    }
   };
 
   const updateBlock = async (id: string, updates: Partial<ArchiveBlock>) => {
@@ -71,6 +89,10 @@ export function useArchiveState() {
     setBlocks((prev) =>
       prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
     );
+    // Re-embed if title or content changed
+    if (updates.title !== undefined || updates.content !== undefined) {
+      embedBlock(id);
+    }
   };
 
   const deleteBlock = async (id: string) => {
@@ -85,5 +107,31 @@ export function useArchiveState() {
     setBlocks((prev) => prev.filter((b) => b.id !== id));
   };
 
-  return { blocks, loading, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock };
+  const semanticSearch = useCallback(async (query: string): Promise<ArchiveBlock[]> => {
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-embed-block", {
+        body: { action: "search", query },
+      });
+      if (error) throw error;
+      return (data?.results || []) as ArchiveBlock[];
+    } catch (e) {
+      console.error("Semantic search error:", e);
+      return [];
+    }
+  }, []);
+
+  const embedAll = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-embed-block", {
+        body: { action: "embed-all" },
+      });
+      if (error) throw error;
+      toast.success(`Embedded ${data?.embedded || 0} blocks`);
+      return data;
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to embed blocks");
+    }
+  }, []);
+
+  return { blocks, loading, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, embedAll };
 }
