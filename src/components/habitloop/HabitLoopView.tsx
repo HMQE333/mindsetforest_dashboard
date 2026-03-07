@@ -4,14 +4,16 @@ import { useHabitLoopState } from "@/hooks/useHabitLoopState";
 import { isLoopComplete } from "@/lib/habit-loop-data";
 import HabitLoopCard from "./HabitLoopCard";
 import AIHabitLoopModal from "./AIHabitLoopModal";
+import ManualHabitLoopModal from "./ManualHabitLoopModal";
 import MasteryOverlay from "@/components/ladder/MasteryOverlay";
 import CategoryProjectSelector from "@/components/shared/CategoryProjectSelector";
 import { useUserProjects } from "@/hooks/useUserProjects";
 
 export default function HabitLoopView() {
-  const { currentState, activeCategory, loading, changeCategory, logRep, addTask, deleteTask, setLoops, resetLoop } = useHabitLoopState();
+  const { currentState, activeCategory, loading, changeCategory, logRep, addTask, deleteTask, setLoops, addLoops, resetLoop } = useHabitLoopState();
   const { getProjectFromKey, isProjectKey } = useUserProjects();
   const [showAI, setShowAI] = useState(false);
+  const [showManual, setShowManual] = useState(false);
   const [showMastery, setShowMastery] = useState(false);
   const [masteryKey, setMasteryKey] = useState(0);
   const prevAllComplete = useRef(false);
@@ -51,6 +53,12 @@ export default function HabitLoopView() {
               ↺ Reset
             </button>
           )}
+          <button
+            onClick={() => setShowManual(true)}
+            className="px-4 py-2.5 rounded-xl border border-white/14 bg-white/5 text-foreground text-sm hover:bg-white/10 transition-all"
+          >
+            ➕ Create
+          </button>
           <button
             onClick={() => setShowAI(true)}
             className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold glow-sm hover:-translate-y-0.5 transition-all"
@@ -100,6 +108,15 @@ export default function HabitLoopView() {
             onApply={setLoops}
             onClose={() => setShowAI(false)}
             projectName={aiContextName}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showManual && (
+          <ManualHabitLoopModal
+            onApply={addLoops}
+            onClose={() => setShowManual(false)}
           />
         )}
       </AnimatePresence>

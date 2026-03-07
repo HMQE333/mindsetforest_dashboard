@@ -1,25 +1,61 @@
 
 
-## Plan: Add Manual Habit Loop Creation
+## Plan: Keyboard Shortcuts System for Dashboard
 
-Currently the only way to create habit loops is via the AI Generate button. We'll add a "Create Manually" option that lets users define their own loops with a simple modal form.
+### Concept
 
-### Changes
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-**1. Create `src/components/habitloop/ManualHabitLoopModal.tsx`**
-- Modal with a form to define a loop: name (text input), reps required (number input), and a dynamic list of tasks (add/remove task text inputs)
-- "Add Loop" button appends the new loop; user can add multiple loops before applying
-- Shows a preview list of loops being created
-- "Apply" button calls `onApply` with the new loops array, same as AI modal does
-- Glassmorphic styling consistent with AI modal
+### Shortcut Map
 
-**2. Update `src/components/habitloop/HabitLoopView.tsx`**
-- Add a "➕ Create Manually" button next to the "🧠 AI Generate" button
-- New state `showManual` to toggle the manual modal
-- When loops already exist, the manual creation should append new loops rather than replace (add an `addLoops` callback)
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-**3. Update `src/hooks/useHabitLoopState.ts`**
-- Add an `addLoops` function that appends new loops to existing ones (vs `setLoops` which replaces all)
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-This gives users full control to hand-craft their habit loops without AI.
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
+
+**Global:**
+- `?` or `K` → open shortcuts reference panel
+
+### Implementation
+
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
+
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
+
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
+
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
+
+### File Summary
+
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

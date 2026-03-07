@@ -107,6 +107,16 @@ export function useHabitLoopState() {
     });
   }, [activeCategory, persist]);
 
+  const addLoops = useCallback((newLoops: HabitLoop[]) => {
+    setAllLoops(prev => {
+      const next = structuredClone(prev);
+      const cat = next[activeCategory] || { currentLoop: 0, loops: [] };
+      cat.loops = [...cat.loops, ...newLoops];
+      next[activeCategory] = cat;
+      persist(activeCategory, cat);
+      return next;
+    });
+  }, [activeCategory, persist]);
   const resetLoop = useCallback(() => {
     setAllLoops(prev => {
       const next = structuredClone(prev);
@@ -131,6 +141,7 @@ export function useHabitLoopState() {
     addTask,
     deleteTask,
     setLoops,
+    addLoops,
     resetLoop,
   };
 }
