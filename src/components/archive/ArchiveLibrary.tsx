@@ -40,7 +40,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
     })();
     // Pinned blocks always on top
     return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
-  }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode]);
+  }, [blocks, filterPillar, filterDirection, hideLinks, sortMode]);
 
   if (loading) {
     return (
