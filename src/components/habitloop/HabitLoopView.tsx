@@ -112,6 +112,15 @@ export default function HabitLoopView() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showManual && (
+          <ManualHabitLoopModal
+            onApply={addLoops}
+            onClose={() => setShowManual(false)}
+          />
+        )}
+      </AnimatePresence>
+
       <MasteryOverlay key={masteryKey} show={showMastery} />
     </div>
   );

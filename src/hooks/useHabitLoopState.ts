@@ -141,6 +141,7 @@ export function useHabitLoopState() {
     addTask,
     deleteTask,
     setLoops,
+    addLoops,
     resetLoop,
   };
 }
