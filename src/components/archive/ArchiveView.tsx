@@ -193,26 +193,65 @@ const ArchiveView = () => {
     setBulkLoading(null);
   };
 
+  // Semantic search debounce
+  useEffect(() => {
+    if (!smartSearch || globalSearch.trim().length < 2) {
+      setSemanticResults(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSemanticLoading(true);
+      const results = await archive.semanticSearch(globalSearch.trim());
+      setSemanticResults(results);
+      setSemanticLoading(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [globalSearch, smartSearch, archive.semanticSearch]);
+
   const isSearching = globalSearch.trim().length >= 2;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       {/* Global search */}
-      <div className="relative">
-        <Input
-          value={globalSearch}
-          onChange={(e) => setGlobalSearch(e.target.value)}
-          placeholder="🔍 Search all blocks (title, content, tags)..."
-          className="bg-background/50 border-white/10 h-11"
-        />
-        {globalSearch && (
+      <div className="space-y-2">
+        <div className="relative">
+          <Input
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder={smartSearch ? "🧠 Semantic search (meaning-based)..." : "🔍 Search all blocks (title, content, tags)..."}
+            className="bg-background/50 border-white/10 h-11"
+          />
+          {globalSearch && (
+            <button
+              onClick={() => setGlobalSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setGlobalSearch("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
+            onClick={() => { setSmartSearch(!smartSearch); setSemanticResults(null); }}
+            className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all ${
+              smartSearch
+                ? "gradient-purple text-primary-foreground glow-sm"
+                : "bg-muted/40 text-muted-foreground hover:text-foreground"
+            }`}
           >
-            ✕
+            🧠 Smart Search {smartSearch ? "ON" : "OFF"}
           </button>
-        )}
+          {semanticLoading && (
+            <span className="text-[11px] text-muted-foreground animate-pulse">Searching by meaning...</span>
+          )}
+          <button
+            onClick={() => archive.embedAll()}
+            className="text-[11px] px-3 py-1.5 rounded-lg font-bold bg-muted/40 text-muted-foreground hover:text-foreground transition-all ml-auto"
+            title="Generate embeddings for all unembedded blocks"
+          >
+            🔄 Re-index All
+          </button>
+        </div>
       </div>
 
       {/* Sub-nav */}
