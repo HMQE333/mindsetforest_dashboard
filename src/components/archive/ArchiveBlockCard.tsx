@@ -16,9 +16,10 @@ interface Props {
   onToggleSelect: () => void;
   onEdit: () => void;
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
+  similarityScore?: number;
 }
 
-const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate }: Props) => {
+const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore }: Props) => {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{
