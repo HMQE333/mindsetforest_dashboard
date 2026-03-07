@@ -13,6 +13,8 @@ interface Props {
   deleteBlock: (id: string) => Promise<void>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
+  semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
+  embedAll: () => Promise<any>;
 }
 
 type SortMode = "newest" | "oldest" | "az";
