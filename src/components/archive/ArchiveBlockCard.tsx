@@ -106,6 +106,11 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             <div className="flex items-center gap-1.5">
               {block.is_pinned && <span className="text-xs">📌</span>}
               <h4 className="font-semibold text-sm truncate">{displayTitle}</h4>
+              {similarityScore !== undefined && (
+                <span className="ml-auto flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">
+                  {Math.round(similarityScore * 100)}%
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
               {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "Image block"}
