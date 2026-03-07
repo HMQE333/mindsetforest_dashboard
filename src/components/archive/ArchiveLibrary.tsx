@@ -18,7 +18,6 @@ interface Props {
 type SortMode = "newest" | "oldest" | "az";
 
 const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect }: Props) => {
-  const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
   const [hideLinks, setHideLinks] = useState(false);
@@ -29,7 +28,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
 
   const filtered = useMemo(() => {
     const list = blocks.filter((b) => {
-      if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.content.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
       if (filterDirection && !b.directions.includes(filterDirection)) return false;
       if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
