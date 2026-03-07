@@ -86,7 +86,7 @@ const Index = () => {
           </div>
 
           <h1 className="mb-2 text-4xl font-bold text-gradient-purple">MindsetForest</h1>
-          <p className="text-lg text-muted-foreground mb-6">Track. Grind. Level Up.</p>
+          <p className="text-lg text-muted-foreground mb-6">Your Life. Your Quest.</p>
 
           {/* Tabs - Desktop: inline row, Mobile: tap-to-expand */}
           {isMobile ? (
