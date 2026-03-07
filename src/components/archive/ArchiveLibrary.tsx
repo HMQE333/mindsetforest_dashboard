@@ -28,6 +28,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [smartSearch, setSmartSearch] = useState(false);
   const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
+  const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
@@ -36,11 +37,18 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   useEffect(() => {
     if (!smartSearch || search.trim().length < 2) {
       setSemanticResults(null);
+      setSimilarityScores({});
       return;
     }
     const timer = setTimeout(async () => {
       setSemanticLoading(true);
       const results = await semanticSearch(search.trim());
+      // Extract similarity scores before setting results
+      const scores: Record<string, number> = {};
+      for (const r of results as any[]) {
+        if (r.similarity !== undefined) scores[r.id] = r.similarity;
+      }
+      setSimilarityScores(scores);
       setSemanticResults(results);
       setSemanticLoading(false);
     }, 500);
@@ -222,6 +230,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
               onToggleSelect={() => toggleSelect(block.id)}
               onEdit={() => setEditBlock(block)}
               onUpdate={updateBlock}
+              similarityScore={smartSearch && semanticResults !== null ? similarityScores[block.id] : undefined}
             />
           ))}
         </div>
