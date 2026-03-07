@@ -46,6 +46,9 @@ const ArchiveView = () => {
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [smartSearch, setSmartSearch] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
   const archive = useArchiveState();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
