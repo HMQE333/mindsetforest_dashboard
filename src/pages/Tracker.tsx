@@ -46,7 +46,7 @@ export default function Tracker() {
   };
 
   // Group metrics by category
-  const grouped = TRACKER_METRICS.reduce<Record<string, typeof TRACKER_METRICS>>((acc, m) => {
+  const grouped = metrics.reduce<Record<string, typeof metrics>>((acc, m) => {
     if (!acc[m.categoryId]) acc[m.categoryId] = [];
     acc[m.categoryId].push(m);
     return acc;
