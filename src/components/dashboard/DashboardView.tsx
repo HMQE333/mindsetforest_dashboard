@@ -184,7 +184,7 @@ export default function DashboardView() {
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
               onSelectCategory={setSelectedCategory}
-              projectCount={projects.length}
+              projectCount={showProjects ? projects.length : 0}
               categories={categories}
             />
           </motion.div>
