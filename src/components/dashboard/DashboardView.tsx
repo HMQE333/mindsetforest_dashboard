@@ -144,7 +144,7 @@ export default function DashboardView() {
       {/* Shortcuts Panel */}
       <AnimatePresence>
         {showShortcuts && (
-          <ShortcutsPanel context={shortcutContext} onClose={() => setShowShortcuts(false)} />
+          <ShortcutsPanel context={shortcutContext} onClose={() => setShowShortcuts(false)} customKeybinds={preferences.customKeybinds} />
         )}
       </AnimatePresence>
       <AnimatePresence mode="wait">
