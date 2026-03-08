@@ -17,7 +17,7 @@ function KeyCapture({
   currentValue: string; 
   label: string; 
   onChange: (key: string, value: string) => void;
-  allValues: Record<string, string>;
+  allValues: KeybindMap;
 }) {
   const [capturing, setCapturing] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
