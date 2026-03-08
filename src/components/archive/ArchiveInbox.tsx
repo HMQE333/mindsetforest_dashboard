@@ -278,7 +278,7 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
           <Button onClick={() => handleAIClean()} disabled={!text.trim() || processing} className="gradient-purple text-primary-foreground font-bold glow-sm">
             {processing ? "⏳ Processing..." : "🧹 AI Clean + Split"}
           </Button>
-          <Button onClick={() => setShowPromptInput(!showPromptInput)} disabled={!text.trim() || processing} variant="outline" className="border-white/10 font-bold">
+          <Button onClick={() => setShowPromptInput(!showPromptInput)} disabled={!text.trim() || processing} variant="outline" className="border-white/10 font-bold hover:border-primary/50 hover:bg-primary/10 hover:shadow-[0_0_12px_hsl(var(--primary)/0.3)] transition-all duration-200">
             🤖 AI by Prompt
           </Button>
           <div className="ml-auto">
