@@ -5,10 +5,12 @@ import { useUserSettings } from "@/hooks/useUserSettings";
 import CategoriesTab from "./CategoriesTab";
 import MetricsTab from "./MetricsTab";
 import RewardsTab from "./RewardsTab";
+import ModulesTab from "./ModulesTab";
 
-type SettingsTab = "categories" | "metrics" | "rewards";
+type SettingsTab = "modules" | "categories" | "metrics" | "rewards";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "modules", label: "Modules", icon: "🧩" },
   { id: "categories", label: "Pillars", icon: "🏛️" },
   { id: "metrics", label: "Metrics", icon: "📊" },
   { id: "rewards", label: "Rewards", icon: "🎁" },
@@ -20,7 +22,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("categories");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("modules");
   const settings = useUserSettings();
 
   if (!open) return null;
@@ -54,12 +56,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 px-5 pt-3">
+            <div className="flex gap-1 px-5 pt-3 overflow-x-auto">
               {TABS.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                  className={`px-3 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
                     activeTab === tab.id
                       ? "gradient-purple text-primary-foreground glow-sm"
                       : "text-muted-foreground hover:text-foreground hover:bg-white/5"
@@ -76,6 +78,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <div className="text-center py-10 text-muted-foreground animate-pulse">Loading...</div>
               ) : (
                 <>
+                  {activeTab === "modules" && (
+                    <ModulesTab
+                      enabledModules={settings.preferences.enabledModules}
+                      onSave={settings.saveEnabledModules}
+                    />
+                  )}
                   {activeTab === "categories" && (
                     <CategoriesTab
                       customCategories={settings.customCategories}

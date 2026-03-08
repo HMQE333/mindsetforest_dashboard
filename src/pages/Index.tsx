@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useQuickCapture } from "@/hooks/useQuickCapture";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import DashboardView from "@/components/dashboard/DashboardView";
 import LadderView from "@/components/ladder/LadderView";
 import HabitLoopView from "@/components/habitloop/HabitLoopView";
@@ -18,7 +19,7 @@ import SettingsModal from "@/components/settings/SettingsModal";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive";
 
-const TAB_LABELS: Record<Tab, string> = {
+const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
   tracker: "📊 Stats",
   ladder: "🪜 Ladder",
@@ -27,15 +28,22 @@ const TAB_LABELS: Record<Tab, string> = {
   archive: "📦 Archive",
 };
 
+const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive"];
+
 const Index = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
   const quickCapture = useQuickCapture();
+  const { preferences } = useUserSettings();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Filter tabs based on enabled modules
+  const enabledModules = new Set(preferences.enabledModules);
+  const visibleTabs = TAB_ORDER.filter(t => enabledModules.has(t));
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {
@@ -105,13 +113,14 @@ const Index = () => {
           <h1 className="mb-2 text-4xl font-bold text-gradient-purple">MindsetForest</h1>
           <p className="text-lg text-muted-foreground mb-6">Your Life. Your Quest.</p>
 
+          {/* Tabs - Desktop: inline row, Mobile: tap-to-expand */}
           {isMobile ? (
             <div className="relative inline-block">
               <button
                 onClick={() => setMenuOpen(prev => !prev)}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10 font-bold text-sm transition-all"
               >
-                <span>{TAB_LABELS[activeTab]}</span>
+                <span>{ALL_TAB_LABELS[activeTab]}</span>
                 <span className={`transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}>▾</span>
               </button>
               <AnimatePresence>
@@ -123,7 +132,7 @@ const Index = () => {
                     transition={{ duration: 0.15 }}
                     className="absolute left-1/2 -translate-x-1/2 mt-2 w-56 py-2 rounded-2xl bg-card/90 backdrop-blur-xl border border-white/10 shadow-lg z-50"
                   >
-                    {(Object.keys(TAB_LABELS) as Tab[]).map(id => (
+                    {visibleTabs.map(id => (
                       <button
                         key={id}
                         onClick={() => handleTabClick(id)}
@@ -133,7 +142,7 @@ const Index = () => {
                             : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                         }`}
                       >
-                        {TAB_LABELS[id]}
+                        {ALL_TAB_LABELS[id]}
                       </button>
                     ))}
                   </motion.div>
@@ -142,25 +151,25 @@ const Index = () => {
             </div>
           ) : (
             <div className="inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10">
-              {tabButton("dashboard", "🎮 Home")}
-              {tabButton("tracker", "📊 Stats", () => {
-                if (user) navigate("/tracker");
-                else navigate("/auth");
+              {visibleTabs.map(id => {
+                if (id === "tracker") {
+                  return tabButton(id, ALL_TAB_LABELS[id], () => {
+                    if (user) navigate("/tracker");
+                    else navigate("/auth");
+                  });
+                }
+                return tabButton(id, ALL_TAB_LABELS[id]);
               })}
-              {tabButton("ladder", "🪜 Ladder")}
-              {tabButton("habitloop", "🔄 Habit Loop")}
-              {tabButton("oracle", "🔮 Oracle")}
-              {tabButton("archive", "📦 Archive")}
             </div>
           )}
         </motion.div>
 
         {/* Tab Content */}
         {activeTab === "dashboard" && (user ? <DashboardView /> : renderAuthGate("mission dashboard"))}
-        {activeTab === "ladder" && (user ? <LadderView /> : renderAuthGate("mastery ladder"))}
-        {activeTab === "habitloop" && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
-        {activeTab === "oracle" && (user ? <OracleView /> : renderAuthGate("oracle"))}
-        {activeTab === "archive" && (user ? <ArchiveView /> : renderAuthGate("archive"))}
+        {activeTab === "ladder" && enabledModules.has("ladder") && (user ? <LadderView /> : renderAuthGate("mastery ladder"))}
+        {activeTab === "habitloop" && enabledModules.has("habitloop") && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
+        {activeTab === "oracle" && enabledModules.has("oracle") && (user ? <OracleView /> : renderAuthGate("oracle"))}
+        {activeTab === "archive" && enabledModules.has("archive") && (user ? <ArchiveView /> : renderAuthGate("archive"))}
       </div>
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
