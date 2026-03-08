@@ -20,6 +20,8 @@ export default function Tracker() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { entries, loading, addEntry } = useTrackerEntries();
+  const { getMetrics } = useUserSettings();
+  const metrics = getMetrics();
   const isWatch = useIsWatch();
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
