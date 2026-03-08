@@ -65,6 +65,10 @@ export function useUserSettings() {
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
           setPreferences(prefs);
         }
+        // Apply saved theme on load
+        if (prefs.theme || prefs.accentColor) {
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple");
+        }
       }
 
       // Load custom metrics
