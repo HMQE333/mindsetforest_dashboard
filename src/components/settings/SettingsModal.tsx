@@ -102,6 +102,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       customKeybinds={settings.preferences.customKeybinds}
                       onSave={settings.saveKeybinds}
                     />
+                  )}
                   {activeTab === "categories" && (
                     <CategoriesTab
                       customCategories={settings.customCategories}
