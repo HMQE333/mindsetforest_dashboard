@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Link2Off } from "lucide-react";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
