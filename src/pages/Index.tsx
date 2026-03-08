@@ -149,6 +149,9 @@ const Index = () => {
         {activeTab === "oracle" && (user ? <OracleView /> : renderAuthGate("oracle"))}
         {activeTab === "archive" && (user ? <ArchiveView /> : renderAuthGate("archive"))}
       </div>
+
+      {/* Global Quick Capture — Ctrl/Cmd+N */}
+      {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
     </div>
   );
 };

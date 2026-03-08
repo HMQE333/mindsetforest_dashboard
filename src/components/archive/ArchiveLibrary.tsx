@@ -242,6 +242,8 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
         onClose={() => setEditBlock(null)}
         onSave={updateBlock}
         onDelete={deleteBlock}
+        semanticSearch={semanticSearch}
+        onEditBlock={(b) => setEditBlock(b)}
       />
     </div>
   );

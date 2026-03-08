@@ -252,6 +252,11 @@ const ArchiveView = () => {
             <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
           </motion.div>
         )}
+        {subView === "digest" && (
+          <motion.div key="digest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveDigestView blocks={archive.blocks} />
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* Multi-select floating bar */}
