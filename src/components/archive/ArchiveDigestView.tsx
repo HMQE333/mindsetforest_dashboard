@@ -93,9 +93,6 @@ const ArchiveDigestView = ({ blocks }: Props) => {
       <div className="text-center py-20">
         <span className="text-4xl mb-4 block">🧘</span>
         <p className="text-muted-foreground font-semibold">Nothing to review today</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Come back tomorrow — your blocks resurface on a spaced schedule.
-        </p>
       </div>
     );
   }
