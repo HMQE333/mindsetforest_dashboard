@@ -20,13 +20,16 @@ interface Props {
   onEditBlock?: (block: ArchiveBlock) => void;
 }
 
-const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => {
+const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSearch, onEditBlock }: Props) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
   const [directions, setDirections] = useState<string[]>([]);
   const [tags, setTags] = useState("");
   const [saving, setSaving] = useState(false);
+  const [relatedOpen, setRelatedOpen] = useState(false);
+  const [relatedBlocks, setRelatedBlocks] = useState<ArchiveBlock[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (block) {
