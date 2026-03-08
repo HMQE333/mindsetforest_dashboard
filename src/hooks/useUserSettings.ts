@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { applyThemePreview } from "@/components/settings/ThemeTab";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
@@ -25,8 +26,13 @@ export interface UserMetric {
   sortOrder: number;
 }
 
+export type ThemeMode = "dark" | "light" | "oled" | "midnight";
+export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
+
 export interface UserPreferences {
   enabledModules: string[];
+  theme?: ThemeMode;
+  accentColor?: AccentColor;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects"];
@@ -58,6 +64,10 @@ export function useUserSettings() {
         const prefs = onb.preferences as unknown as UserPreferences;
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
           setPreferences(prefs);
+        }
+        // Apply saved theme on load
+        if (prefs.theme || prefs.accentColor) {
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple");
         }
       }
 
@@ -231,9 +241,14 @@ export function useUserSettings() {
   }, [user, customCategories]);
 
   const saveEnabledModules = useCallback(async (modules: string[]) => {
-    const newPrefs = { enabledModules: modules };
+    await savePreferences({ ...preferences, enabledModules: modules });
+  }, [savePreferences, preferences]);
+
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor) => {
+    const newPrefs = { ...preferences, theme, accentColor };
     await savePreferences(newPrefs);
-  }, [savePreferences]);
+    applyThemePreview(theme, accentColor);
+  }, [savePreferences, preferences]);
 
   return {
     loading,
@@ -248,6 +263,7 @@ export function useUserSettings() {
     saveMetrics,
     saveRewards,
     saveEnabledModules,
+    saveTheme,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };
