@@ -4,6 +4,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
@@ -15,6 +16,8 @@ interface Props {
   onClose: () => void;
   onSave: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  semanticSearch?: (query: string) => Promise<ArchiveBlock[]>;
+  onEditBlock?: (block: ArchiveBlock) => void;
 }
 
 const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => {
