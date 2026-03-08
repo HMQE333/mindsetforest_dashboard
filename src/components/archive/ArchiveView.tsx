@@ -49,15 +49,7 @@ const ArchiveView = () => {
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
   const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
 
-  const digestCount = useMemo(() => {
-    const now = Date.now();
-    const INTERVALS = [1, 3, 7, 14, 30, 60, 90];
-    const TOL = 86400000;
-    return archive.blocks.filter((b) => {
-      const age = now - new Date(b.created_at).getTime();
-      return INTERVALS.some((d) => Math.abs(age - d * 86400000) <= TOL);
-    }).length;
-  }, [archive.blocks]);
+  // Digest count is now shown dynamically from the component itself
 
   const NAV_ITEMS: { id: SubView; label: string; icon: string; count?: number }[] = [
     { id: "inbox", label: "Inbox", icon: "📥" },
