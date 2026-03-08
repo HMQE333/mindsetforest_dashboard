@@ -252,6 +252,11 @@ export function useUserSettings() {
     applyThemePreview(theme, accentColor);
   }, [savePreferences, preferences]);
 
+  const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
+    const newPrefs = { ...preferences, customKeybinds: keybinds || undefined };
+    await savePreferences(newPrefs);
+  }, [savePreferences, preferences]);
+
   return {
     loading,
     customCategories,
