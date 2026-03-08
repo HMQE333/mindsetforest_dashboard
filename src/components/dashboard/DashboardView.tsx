@@ -22,8 +22,9 @@ export default function DashboardView() {
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
-  const { getCategories } = useUserSettings();
+  const { getCategories, preferences } = useUserSettings();
   const categories = getCategories();
+  const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
