@@ -354,24 +354,30 @@ export type Database = {
       }
       user_projects: {
         Row: {
+          color_var: string
           created_at: string
           emoji: string
+          icon: string
           id: string
           name: string
           parent_category: string | null
           user_id: string
         }
         Insert: {
+          color_var?: string
           created_at?: string
           emoji?: string
+          icon?: string
           id?: string
           name: string
           parent_category?: string | null
           user_id: string
         }
         Update: {
+          color_var?: string
           created_at?: string
           emoji?: string
+          icon?: string
           id?: string
           name?: string
           parent_category?: string | null
