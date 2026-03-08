@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off } from "lucide-react";
+import { Link2Off, Download } from "lucide-react";
+import { toast } from "sonner";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
