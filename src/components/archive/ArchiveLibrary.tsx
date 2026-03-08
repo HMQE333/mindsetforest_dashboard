@@ -295,9 +295,18 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       {/* Scroll sentinel */}
       <div ref={sentinelRef} className="h-1" />
 
-      {/* Export button — visible at bottom */}
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={onFileSelected}
+      />
+
+      {/* Export & Import buttons — visible at bottom */}
       <div
-        className={`flex justify-center transition-all duration-500 ${
+        className={`flex justify-center gap-3 transition-all duration-500 ${
           showExport && blocks.length > 0
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-4 pointer-events-none"
@@ -308,7 +317,14 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
           className="glass-card px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
         >
           <Download size={16} />
-          💾 Export Archive
+          💾 Export
+        </button>
+        <button
+          onClick={handleImport}
+          className="glass-card px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
+        >
+          <Upload size={16} />
+          📂 Import
         </button>
       </div>
 
