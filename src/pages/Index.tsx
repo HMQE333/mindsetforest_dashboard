@@ -35,6 +35,7 @@ const Index = () => {
   const quickCapture = useQuickCapture();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {
