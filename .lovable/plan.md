@@ -1,61 +1,52 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+# Archive Enhancement Plan
 
-### Concept
+## 3 Features to Add
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+### 1. Global Quick-Capture Shortcut (`Ctrl+N` / `Cmd+N`)
+A floating modal accessible from any tab (Home, Stats, Ladder, etc.) that lets you paste text and save it as an archive block instantly.
 
-### Shortcut Map
+**Changes:**
+- Create `src/components/archive/QuickCaptureModal.tsx` — a minimal modal with a textarea and Save button. On save, calls `addBlock` via a shared hook and closes.
+- Create `src/hooks/useQuickCapture.ts` — manages open/close state and listens for `Ctrl+N` / `Cmd+N` globally.
+- Mount the modal + hook in `src/pages/Index.tsx` (top-level) so it works from any tab.
+- Add the keyboard shortcut to the shortcuts reference panel.
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+### 2. "Related Blocks" on Block Edit Modal (Minimalistic)
+When editing a block, show a small collapsible "Related" section at the bottom of `ArchiveEditModal` — a subtle link that expands to show 3-5 semantically similar blocks. Does not clutter the default view.
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+**Changes:**
+- In `src/components/archive/ArchiveEditModal.tsx`, add a collapsible "🔗 Related" toggle at the bottom.
+- On expand, call `semanticSearch` with the block's title+content as the query.
+- Display results as compact clickable cards (title + similarity %). Clicking opens that block for editing.
+- Thread `semanticSearch` prop down from `ArchiveView` → `ArchiveLibrary` → `ArchiveEditModal`.
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+### 3. New "Digest" Tab with Spaced Repetition Flashcards
+A new tab in the Archive sub-nav that surfaces old blocks as flashcards using a simple spaced repetition algorithm based on creation date.
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
+**Spaced repetition logic** (client-side, no new DB tables needed initially):
+- Intervals: blocks created 1 day ago, 3 days, 7 days, 14 days, 30 days, 60 days, 90 days ago (±1 day tolerance).
+- Blocks matching any interval appear in the digest. Random order, shown one at a time as a flashcard.
 
-### Implementation
+**Changes:**
+- Create `src/components/archive/ArchiveDigestView.tsx`:
+  - Filters `blocks` by spaced repetition intervals.
+  - Shows one block at a time as a "flashcard" card (title hidden initially, tap/click to reveal content).
+  - Next/Previous navigation buttons + progress indicator ("3 of 12").
+  - If no blocks match today, show "Nothing to review today — come back tomorrow."
+- Add `"digest"` to the `SubView` type in `ArchiveView.tsx`.
+- Add a new nav item: `{ id: "digest", label: "Digest", icon: "🔁" }` with count of due blocks.
+- Render `ArchiveDigestView` in the content area.
 
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
+### Summary of Files
 
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
-
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
-
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
-
-### File Summary
-
-| File | Change |
+| File | Action |
 |------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
-
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+| `src/components/archive/QuickCaptureModal.tsx` | Create |
+| `src/hooks/useQuickCapture.ts` | Create |
+| `src/pages/Index.tsx` | Edit — mount QuickCapture |
+| `src/components/archive/ArchiveEditModal.tsx` | Edit — add Related section |
+| `src/components/archive/ArchiveDigestView.tsx` | Create |
+| `src/components/archive/ArchiveView.tsx` | Edit — add Digest tab + pass semanticSearch |
 
