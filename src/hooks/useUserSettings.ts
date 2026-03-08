@@ -216,17 +216,37 @@ export function useUserSettings() {
     toast.success("Rewards reset to defaults");
   }, [saveRewards]);
 
+  // Save preferences (modules, etc.)
+  const savePreferences = useCallback(async (prefs: UserPreferences) => {
+    if (!user) return;
+    setPreferences(prefs);
+    const { error } = await (supabase.from("user_onboarding") as any).upsert([{
+      user_id: user.id,
+      completed: true,
+      custom_categories: customCategories,
+      preferences: prefs,
+    }], { onConflict: "user_id" });
+    if (error) toast.error("Failed to save preferences");
+    else toast.success("Preferences saved");
+  }, [user, customCategories]);
+
+  const saveEnabledModules = useCallback(async (modules: string[]) => {
+    await savePreferences({ ...preferences, enabledModules: modules });
+  }, [preferences, savePreferences]);
+
   return {
     loading,
     customCategories,
     userMetrics,
     customRewards,
+    preferences,
     getCategories,
     getMetrics,
     getRewards,
     saveCategories,
     saveMetrics,
     saveRewards,
+    saveEnabledModules,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };
