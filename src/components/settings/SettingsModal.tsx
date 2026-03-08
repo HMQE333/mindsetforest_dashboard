@@ -8,12 +8,14 @@ import RewardsTab from "./RewardsTab";
 import ModulesTab from "./ModulesTab";
 import ProjectsTab from "./ProjectsTab";
 import ThemeTab from "./ThemeTab";
+import KeybindsTab from "./KeybindsTab";
 
-type SettingsTab = "modules" | "theme" | "categories" | "projects" | "metrics" | "rewards";
+type SettingsTab = "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "modules", label: "Modules", icon: "🧩" },
   { id: "theme", label: "Theme", icon: "🎨" },
+  { id: "keybinds", label: "Keybinds", icon: "⌨️" },
   { id: "categories", label: "Pillars", icon: "🏛️" },
   { id: "projects", label: "Projects", icon: "📂" },
   { id: "metrics", label: "Metrics", icon: "📊" },
@@ -93,6 +95,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentTheme={settings.preferences.theme || "dark"}
                       currentAccent={settings.preferences.accentColor || "purple"}
                       onSave={settings.saveTheme}
+                    />
+                  )}
+                  {activeTab === "keybinds" && (
+                    <KeybindsTab
+                      customKeybinds={settings.preferences.customKeybinds}
+                      onSave={settings.saveKeybinds}
                     />
                   )}
                   {activeTab === "categories" && (

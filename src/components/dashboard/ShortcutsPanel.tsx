@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
+import { getKeybinds, KeybindMap, KEYBIND_LABELS } from "@/hooks/useKeyboardShortcuts";
 
 interface ShortcutsPanelProps {
   context: "grid" | "projects" | "mission";
   onClose: () => void;
+  customKeybinds?: Partial<KeybindMap>;
 }
 
 interface ShortcutEntry {
@@ -10,35 +12,35 @@ interface ShortcutEntry {
   label: string;
 }
 
-const GRID_SHORTCUTS: ShortcutEntry[] = [
-  { key: "M", label: "Mind" },
-  { key: "B", label: "Body" },
-  { key: "C", label: "Creation" },
-  { key: "X", label: "Exploration" },
-  { key: "N", label: "Networking" },
-  { key: "T", label: "Trading" },
-  { key: "S", label: "Spirit" },
-  { key: "O", label: "Order" },
-  { key: "P", label: "Projects" },
-  { key: "R", label: "Reset Day" },
-];
-
-const MISSION_SHORTCUTS: ShortcutEntry[] = [
-  { key: "1-9", label: "Complete mission" },
-  { key: "E", label: "Edit tasks" },
-  { key: "A", label: "AI suggestions" },
-  { key: "D", label: "Reset defaults" },
-  { key: "Esc", label: "Back" },
-];
-
-const PROJECT_SHORTCUTS: ShortcutEntry[] = [
-  { key: "1-9", label: "Select project" },
-  { key: "Esc", label: "Back to grid" },
-];
-
-const GLOBAL_SHORTCUTS: ShortcutEntry[] = [
-  { key: "?", label: "Toggle this panel" },
-];
+function buildShortcuts(binds: KeybindMap, context: "grid" | "projects" | "mission") {
+  if (context === "grid") {
+    return [
+      { key: binds.mind.toUpperCase(), label: "Mind" },
+      { key: binds.body.toUpperCase(), label: "Body" },
+      { key: binds.creation.toUpperCase(), label: "Creation" },
+      { key: binds.exploration.toUpperCase(), label: "Exploration" },
+      { key: binds.networking.toUpperCase(), label: "Networking" },
+      { key: binds.trading.toUpperCase(), label: "Trading" },
+      { key: binds.spirit.toUpperCase(), label: "Spirit" },
+      { key: binds.order.toUpperCase(), label: "Order" },
+      { key: binds.projects.toUpperCase(), label: "Projects" },
+      { key: binds.resetDay.toUpperCase(), label: "Reset Day" },
+    ];
+  }
+  if (context === "projects") {
+    return [
+      { key: "1-9", label: "Select project" },
+      { key: "Esc", label: "Back to grid" },
+    ];
+  }
+  return [
+    { key: "1-9", label: "Complete mission" },
+    { key: binds.editTasks.toUpperCase(), label: "Edit tasks" },
+    { key: binds.aiSuggestions.toUpperCase(), label: "AI suggestions" },
+    { key: binds.resetDefaults.toUpperCase(), label: "Reset defaults" },
+    { key: "Esc", label: "Back" },
+  ];
+}
 
 function ShortcutGroup({ title, shortcuts }: { title: string; shortcuts: ShortcutEntry[] }) {
   return (
@@ -58,9 +60,14 @@ function ShortcutGroup({ title, shortcuts }: { title: string; shortcuts: Shortcu
   );
 }
 
-export default function ShortcutsPanel({ context, onClose }: ShortcutsPanelProps) {
-  const contextShortcuts = context === "grid" ? GRID_SHORTCUTS : context === "projects" ? PROJECT_SHORTCUTS : MISSION_SHORTCUTS;
+export default function ShortcutsPanel({ context, onClose, customKeybinds }: ShortcutsPanelProps) {
+  const binds = getKeybinds(customKeybinds);
+  const contextShortcuts = buildShortcuts(binds, context);
   const contextTitle = context === "grid" ? "Category Grid" : context === "projects" ? "Projects List" : "Mission View";
+
+  const globalShortcuts = [
+    { key: binds.toggleShortcuts.toUpperCase(), label: "Toggle this panel" },
+  ];
 
   return (
     <motion.div
@@ -88,7 +95,7 @@ export default function ShortcutsPanel({ context, onClose }: ShortcutsPanelProps
         </div>
 
         <ShortcutGroup title={`Current: ${contextTitle}`} shortcuts={contextShortcuts} />
-        <ShortcutGroup title="Global" shortcuts={GLOBAL_SHORTCUTS} />
+        <ShortcutGroup title="Global" shortcuts={globalShortcuts} />
       </motion.div>
     </motion.div>
   );

@@ -104,6 +104,7 @@ export default function DashboardView() {
     toggleShortcutsPanel: () => setShowShortcuts(prev => !prev),
     missionCount: missions.length,
     projectCount: projects.length,
+    customKeybinds: preferences.customKeybinds,
   });
 
   // Build ladder context for AI modal
@@ -143,7 +144,7 @@ export default function DashboardView() {
       {/* Shortcuts Panel */}
       <AnimatePresence>
         {showShortcuts && (
-          <ShortcutsPanel context={shortcutContext} onClose={() => setShowShortcuts(false)} />
+          <ShortcutsPanel context={shortcutContext} onClose={() => setShowShortcuts(false)} customKeybinds={preferences.customKeybinds} />
         )}
       </AnimatePresence>
       <AnimatePresence mode="wait">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { applyThemePreview } from "@/components/settings/ThemeTab";
+import { KeybindMap } from "@/hooks/useKeyboardShortcuts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
@@ -33,6 +34,7 @@ export interface UserPreferences {
   enabledModules: string[];
   theme?: ThemeMode;
   accentColor?: AccentColor;
+  customKeybinds?: Partial<KeybindMap>;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects"];
@@ -250,6 +252,11 @@ export function useUserSettings() {
     applyThemePreview(theme, accentColor);
   }, [savePreferences, preferences]);
 
+  const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
+    const newPrefs = { ...preferences, customKeybinds: keybinds || undefined };
+    await savePreferences(newPrefs);
+  }, [savePreferences, preferences]);
+
   return {
     loading,
     customCategories,
@@ -264,6 +271,7 @@ export function useUserSettings() {
     saveRewards,
     saveEnabledModules,
     saveTheme,
+    saveKeybinds,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };
