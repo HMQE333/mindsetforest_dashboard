@@ -21,7 +21,7 @@ interface Props {
 
 type SortMode = "newest" | "oldest" | "az";
 
-const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
+const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
