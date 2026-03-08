@@ -2,6 +2,57 @@ import { useEffect } from "react";
 
 type ShortcutContext = "grid" | "projects" | "mission";
 
+export interface KeybindMap {
+  mind: string;
+  body: string;
+  creation: string;
+  exploration: string;
+  networking: string;
+  trading: string;
+  spirit: string;
+  order: string;
+  projects: string;
+  resetDay: string;
+  editTasks: string;
+  aiSuggestions: string;
+  resetDefaults: string;
+  toggleShortcuts: string;
+}
+
+export const DEFAULT_KEYBINDS: KeybindMap = {
+  mind: "m",
+  body: "b",
+  creation: "c",
+  exploration: "x",
+  networking: "n",
+  trading: "t",
+  spirit: "s",
+  order: "o",
+  projects: "p",
+  resetDay: "r",
+  editTasks: "e",
+  aiSuggestions: "a",
+  resetDefaults: "d",
+  toggleShortcuts: "?",
+};
+
+export const KEYBIND_LABELS: Record<keyof KeybindMap, string> = {
+  mind: "Mind",
+  body: "Body",
+  creation: "Creation",
+  exploration: "Exploration",
+  networking: "Networking",
+  trading: "Trading",
+  spirit: "Spirit",
+  order: "Order",
+  projects: "Projects",
+  resetDay: "Reset Day",
+  editTasks: "Edit Tasks",
+  aiSuggestions: "AI Suggestions",
+  resetDefaults: "Reset Defaults",
+  toggleShortcuts: "Toggle Shortcuts",
+};
+
 interface ShortcutActions {
   context: ShortcutContext;
   selectCategory: (id: string) => void;
@@ -15,33 +66,36 @@ interface ShortcutActions {
   toggleShortcutsPanel: () => void;
   missionCount?: number;
   projectCount?: number;
+  customKeybinds?: Partial<KeybindMap>;
 }
 
-const GRID_KEYS: Record<string, string> = {
-  m: "mind",
-  b: "body",
-  c: "creation",
-  x: "exploration",
-  n: "networking",
-  t: "trading",
-  s: "spirit",
-  o: "order",
-  p: "__projects__",
-};
+export function getKeybinds(custom?: Partial<KeybindMap>): KeybindMap {
+  return { ...DEFAULT_KEYBINDS, ...(custom || {}) };
+}
+
+const CATEGORY_KEYS: (keyof KeybindMap)[] = ["mind", "body", "creation", "exploration", "networking", "trading", "spirit", "order"];
 
 export function useKeyboardShortcuts(actions: ShortcutActions) {
   useEffect(() => {
+    const binds = getKeybinds(actions.customKeybinds);
+
+    // Build reverse map for grid: key -> categoryId
+    const gridKeyMap: Record<string, string> = {};
+    for (const catKey of CATEGORY_KEYS) {
+      gridKeyMap[binds[catKey].toLowerCase()] = catKey;
+    }
+    gridKeyMap[binds.projects.toLowerCase()] = "__projects__";
+
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
-      // Ignore if any modal/dialog is open (check for radix overlays)
       if (document.querySelector("[data-radix-portal]")) return;
 
       const key = e.key.toLowerCase();
 
       // Global
-      if (key === "?" || key === "k") {
+      if (key === binds.toggleShortcuts.toLowerCase() || key === "k") {
         e.preventDefault();
         actions.toggleShortcutsPanel();
         return;
@@ -54,12 +108,12 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
       }
 
       if (actions.context === "grid") {
-        if (key === "r") {
+        if (key === binds.resetDay.toLowerCase()) {
           e.preventDefault();
           actions.resetDay();
           return;
         }
-        const categoryId = GRID_KEYS[key];
+        const categoryId = gridKeyMap[key];
         if (categoryId) {
           e.preventDefault();
           actions.selectCategory(categoryId);
@@ -81,15 +135,15 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
           actions.completeMission(num - 1);
           return;
         }
-        if (key === "e" && actions.editTasks) {
+        if (key === binds.editTasks.toLowerCase() && actions.editTasks) {
           e.preventDefault();
           actions.editTasks();
         }
-        if (key === "a" && actions.aiSuggestions) {
+        if (key === binds.aiSuggestions.toLowerCase() && actions.aiSuggestions) {
           e.preventDefault();
           actions.aiSuggestions();
         }
-        if (key === "d" && actions.resetDefaults) {
+        if (key === binds.resetDefaults.toLowerCase() && actions.resetDefaults) {
           e.preventDefault();
           actions.resetDefaults();
         }
