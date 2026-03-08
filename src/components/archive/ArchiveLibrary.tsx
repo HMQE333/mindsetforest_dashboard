@@ -121,10 +121,20 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   }, [blocks]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importConfirm, setImportConfirm] = useState<{ parsed: any[]; dupes: number; total: number } | null>(null);
+  const [filterDupes, setFilterDupes] = useState(true);
 
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  const findDuplicates = useCallback((incoming: any[]) => {
+    return incoming.filter((item) =>
+      blocks.some(
+        (b) => b.title === item.title && b.content === item.content
+      )
+    ).length;
+  }, [blocks]);
 
   const onFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -136,16 +146,31 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         toast.error("Invalid file: expected an array of blocks");
         return;
       }
-      // Strip ids and user_id so they get fresh ones on insert
       const cleaned = parsed.map(({ id, user_id, embedding, ...rest }: any) => rest);
-      await addBlocks(cleaned);
-      toast.success(`Imported ${cleaned.length} blocks`);
+      const dupes = findDuplicates(cleaned);
+      setImportConfirm({ parsed: cleaned, dupes, total: cleaned.length });
     } catch {
       toast.error("Failed to parse file — make sure it's a valid archive JSON");
     }
-    // Reset so the same file can be re-imported
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [addBlocks]);
+  }, [findDuplicates]);
+
+  const confirmImport = useCallback(async () => {
+    if (!importConfirm) return;
+    let toImport = importConfirm.parsed;
+    if (filterDupes) {
+      toImport = toImport.filter(
+        (item) => !blocks.some((b) => b.title === item.title && b.content === item.content)
+      );
+    }
+    if (toImport.length === 0) {
+      toast.info("All blocks are duplicates — nothing to import");
+    } else {
+      await addBlocks(toImport);
+      toast.success(`Imported ${toImport.length} blocks`);
+    }
+    setImportConfirm(null);
+  }, [importConfirm, filterDupes, blocks, addBlocks]);
 
   if (loading) {
     return (
