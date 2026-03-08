@@ -34,6 +34,7 @@ export interface UserPreferences {
   enabledModules: string[];
   theme?: ThemeMode;
   accentColor?: AccentColor;
+  customKeybinds?: Partial<KeybindMap>;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects"];
