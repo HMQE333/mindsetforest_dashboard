@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { useAuth } from "@/hooks/useAuth";
 import { useTrackerEntries, getTodayTotal, getLast7DaysTotal, getAllTimeTotal, getStreakDays } from "@/hooks/useTrackerEntries";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { useIsWatch } from "@/hooks/useIsWatch";
 import TrackerStatCard from "@/components/TrackerStatCard";
 import TrackerInputModal from "@/components/TrackerInputModal";
