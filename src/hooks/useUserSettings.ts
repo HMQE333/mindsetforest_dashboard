@@ -25,11 +25,18 @@ export interface UserMetric {
   sortOrder: number;
 }
 
+export interface UserPreferences {
+  enabledModules: string[];
+}
+
+const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive"];
+
 export function useUserSettings() {
   const { user } = useAuth();
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [userMetrics, setUserMetrics] = useState<UserMetric[]>([]);
   const [customRewards, setCustomRewards] = useState<Reward[] | null>(null);
+  const [preferences, setPreferences] = useState<UserPreferences>({ enabledModules: DEFAULT_MODULES });
   const [loading, setLoading] = useState(true);
 
   // Load all settings
@@ -37,15 +44,21 @@ export function useUserSettings() {
     if (!user) { setLoading(false); return; }
 
     const load = async () => {
-      // Load categories from onboarding
+      // Load categories + preferences from onboarding
       const { data: onb } = await supabase
         .from("user_onboarding")
-        .select("custom_categories")
+        .select("custom_categories, preferences")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (onb?.custom_categories) {
         setCustomCategories(onb.custom_categories as unknown as CustomCategory[]);
+      }
+      if (onb?.preferences) {
+        const prefs = onb.preferences as unknown as UserPreferences;
+        if (prefs.enabledModules && prefs.enabledModules.length > 0) {
+          setPreferences(prefs);
+        }
       }
 
       // Load custom metrics
