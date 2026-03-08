@@ -8,8 +8,9 @@ import RewardsTab from "./RewardsTab";
 import ModulesTab from "./ModulesTab";
 import ProjectsTab from "./ProjectsTab";
 import ThemeTab from "./ThemeTab";
+import KeybindsTab from "./KeybindsTab";
 
-type SettingsTab = "modules" | "theme" | "categories" | "projects" | "metrics" | "rewards";
+type SettingsTab = "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "modules", label: "Modules", icon: "🧩" },
