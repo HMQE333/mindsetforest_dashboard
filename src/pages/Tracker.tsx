@@ -27,7 +27,7 @@ export default function Tracker() {
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
 
   const streak = getStreakDays(entries);
-  const activeMetric = activeMetricId ? TRACKER_METRICS.find((m) => m.id === activeMetricId) || null : null;
+  const activeMetric = activeMetricId ? metrics.find((m) => m.id === activeMetricId) || null : null;
 
   const handleAdd = useCallback((metricId: string) => {
     setActiveMetricId(metricId);
