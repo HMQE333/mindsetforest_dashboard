@@ -241,9 +241,14 @@ export function useUserSettings() {
   }, [user, customCategories]);
 
   const saveEnabledModules = useCallback(async (modules: string[]) => {
-    const newPrefs = { enabledModules: modules };
+    await savePreferences({ ...preferences, enabledModules: modules });
+  }, [savePreferences, preferences]);
+
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor) => {
+    const newPrefs = { ...preferences, theme, accentColor };
     await savePreferences(newPrefs);
-  }, [savePreferences]);
+    applyThemePreview(theme, accentColor);
+  }, [savePreferences, preferences]);
 
   return {
     loading,
