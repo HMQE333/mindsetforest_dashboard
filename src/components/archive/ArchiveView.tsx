@@ -6,11 +6,12 @@ import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
+import ArchiveDigestView from "./ArchiveDigestView";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images";
+type SubView = "inbox" | "library" | "links" | "images" | "digest";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
@@ -48,11 +49,22 @@ const ArchiveView = () => {
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
   const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
 
+  const digestCount = useMemo(() => {
+    const now = Date.now();
+    const INTERVALS = [1, 3, 7, 14, 30, 60, 90];
+    const TOL = 86400000;
+    return archive.blocks.filter((b) => {
+      const age = now - new Date(b.created_at).getTime();
+      return INTERVALS.some((d) => Math.abs(age - d * 86400000) <= TOL);
+    }).length;
+  }, [archive.blocks]);
+
   const NAV_ITEMS: { id: SubView; label: string; icon: string; count?: number }[] = [
     { id: "inbox", label: "Inbox", icon: "📥" },
     { id: "library", label: "Library", icon: "📚", count: archive.blocks.length },
     { id: "links", label: "Links", icon: "🔗", count: linkCount },
     { id: "images", label: "Images", icon: "🖼️", count: imageCount },
+    { id: "digest", label: "Digest", icon: "🔁", count: digestCount },
   ];
 
   const toggleSelect = (id: string) => {
@@ -238,6 +250,11 @@ const ArchiveView = () => {
         {subView === "images" && (
           <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          </motion.div>
+        )}
+        {subView === "digest" && (
+          <motion.div key="digest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveDigestView blocks={archive.blocks} />
           </motion.div>
         )}
       </AnimatePresence>

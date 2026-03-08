@@ -4,6 +4,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
@@ -15,15 +16,20 @@ interface Props {
   onClose: () => void;
   onSave: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  semanticSearch?: (query: string) => Promise<ArchiveBlock[]>;
+  onEditBlock?: (block: ArchiveBlock) => void;
 }
 
-const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => {
+const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSearch, onEditBlock }: Props) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
   const [directions, setDirections] = useState<string[]>([]);
   const [tags, setTags] = useState("");
   const [saving, setSaving] = useState(false);
+  const [relatedOpen, setRelatedOpen] = useState(false);
+  const [relatedBlocks, setRelatedBlocks] = useState<ArchiveBlock[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (block) {
@@ -130,6 +136,45 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete }: Props) => 
           </div>
 
           <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" />
+
+          {/* Related Blocks */}
+          {semanticSearch && (
+            <Collapsible open={relatedOpen} onOpenChange={async (isOpen) => {
+              setRelatedOpen(isOpen);
+              if (isOpen && relatedBlocks.length === 0 && block) {
+                setRelatedLoading(true);
+                const query = `${block.title} ${block.content}`.slice(0, 300);
+                const results = await semanticSearch(query);
+                setRelatedBlocks(results.filter((r) => r.id !== block.id).slice(0, 5));
+                setRelatedLoading(false);
+              }
+            }}>
+              <CollapsibleTrigger className="text-[11px] text-muted-foreground hover:text-foreground font-semibold transition-colors flex items-center gap-1">
+                🔗 Related {relatedOpen ? "▾" : "▸"}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 space-y-1.5">
+                {relatedLoading ? (
+                  <p className="text-[11px] text-muted-foreground animate-pulse">Finding related blocks...</p>
+                ) : relatedBlocks.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">No related blocks found.</p>
+                ) : (
+                  relatedBlocks.map((rb) => (
+                    <button
+                      key={rb.id}
+                      onClick={() => onEditBlock?.(rb)}
+                      className="w-full text-left px-3 py-2 rounded-lg bg-muted/30 border border-white/5 hover:border-primary/30 transition-all"
+                    >
+                      <p className="text-xs font-semibold text-foreground truncate">{rb.title || "Untitled"}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{rb.content.slice(0, 80)}</p>
+                      {(rb as any).similarity !== undefined && (
+                        <span className="text-[9px] text-primary font-bold">{Math.round((rb as any).similarity * 100)}%</span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
           <div className="flex gap-3 pt-2">
             <AlertDialog>

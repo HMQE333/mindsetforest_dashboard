@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboarding } from "@/hooks/useOnboarding";
+import { useQuickCapture } from "@/hooks/useQuickCapture";
 import DashboardView from "@/components/dashboard/DashboardView";
 import LadderView from "@/components/ladder/LadderView";
 import HabitLoopView from "@/components/habitloop/HabitLoopView";
@@ -11,6 +12,7 @@ import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
 import ArchiveView from "@/components/archive/ArchiveView";
+import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive";
 
@@ -28,6 +30,7 @@ const Index = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
+  const quickCapture = useQuickCapture();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -146,6 +149,9 @@ const Index = () => {
         {activeTab === "oracle" && (user ? <OracleView /> : renderAuthGate("oracle"))}
         {activeTab === "archive" && (user ? <ArchiveView /> : renderAuthGate("archive"))}
       </div>
+
+      {/* Global Quick Capture — Ctrl/Cmd+N */}
+      {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
     </div>
   );
 };
