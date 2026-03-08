@@ -88,6 +88,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onSave={settings.saveEnabledModules}
                     />
                   )}
+                  {activeTab === "theme" && (
+                    <ThemeTab
+                      currentTheme={settings.preferences.theme || "dark"}
+                      currentAccent={settings.preferences.accentColor || "purple"}
+                      onSave={settings.saveTheme}
+                    />
                   {activeTab === "categories" && (
                     <CategoriesTab
                       customCategories={settings.customCategories}
