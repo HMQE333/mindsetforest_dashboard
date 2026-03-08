@@ -231,8 +231,9 @@ export function useUserSettings() {
   }, [user, customCategories]);
 
   const saveEnabledModules = useCallback(async (modules: string[]) => {
-    await savePreferences({ ...preferences, enabledModules: modules });
-  }, [preferences, savePreferences]);
+    const newPrefs = { enabledModules: modules };
+    await savePreferences(newPrefs);
+  }, [savePreferences]);
 
   return {
     loading,
