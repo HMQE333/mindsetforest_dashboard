@@ -6,11 +6,12 @@ import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
+import ArchiveDigestView from "./ArchiveDigestView";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images";
+type SubView = "inbox" | "library" | "links" | "images" | "digest";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
