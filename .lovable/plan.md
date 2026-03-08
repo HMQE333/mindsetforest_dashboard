@@ -1,52 +1,61 @@
 
 
-## Current State
+## Plan: Keyboard Shortcuts System for Dashboard
 
-The Digest feature filters archive blocks by **spaced repetition intervals** (1, 3, 7, 14, 30, 60, 90 days from creation, ±1 day tolerance). Matching blocks are shuffled and shown as flashcards — tap to reveal content, prev/next to navigate. No state is persisted; no review tracking.
+### Concept
 
-**Weaknesses:**
-- No tracking of what you've reviewed — refreshing resets progress
-- Creation-date-only intervals mean most blocks rarely surface (only if you happen to check on the right day)
-- No interaction beyond "reveal" — no way to rate, skip, or act on a block
-- Cards feel static — just title → content, no richness
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
----
+### Shortcut Map
 
-## Improvement Plan
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-### 1. Review Tracking with Database
-Add a `block_reviews` table to persist when a block was last reviewed and a simple quality rating (1-3: forgot / vague / remembered). Use this to drive smarter resurfacing instead of creation-date-only intervals.
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-**DB migration:**
-- Create `block_reviews` table: `id`, `user_id`, `block_id`, `rating` (int), `reviewed_at` (timestamptz), with RLS policies
-- The spaced repetition algorithm shifts to: next review = last_review + interval based on rating (forgot=1d, vague=3d, remembered=interval×2)
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-### 2. Swipe-Style Rating UX
-Replace prev/next with a **3-action card interaction**:
-- **"Forgot" (left)** — reschedule soon (red tint flash)
-- **"Vague" (down)** — reschedule medium (yellow)  
-- **"Got it" (right)** — push further out (green flash)
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-Each action auto-advances to next card with a satisfying animation. Progress bar fills as you complete reviews.
+### Implementation
 
-### 3. Session Summary
-When all due cards are reviewed, show a **completion screen**:
-- Total reviewed count
-- Streak indicator (consecutive days with reviews)
-- "You reviewed 8 blocks — 5 remembered, 2 vague, 1 forgot"
-- Motivational message
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-### 4. Richer Card Display
-- Show block **type icon** (📝 note, 🔗 link, 🖼️ image) and **source URL** if it's a link
-- Add a subtle **interval badge** ("Review #3 · 14d interval") so users understand the system
-- Keyboard nav: `1/2/3` keys for rating, `Space` to reveal
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-### Files
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
 
-| File | Action |
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
+
+### File Summary
+
+| File | Change |
 |------|--------|
-| `block_reviews` table | Create via migration |
-| `src/hooks/useDigestState.ts` | Create — fetch reviews, compute due blocks, save ratings |
-| `src/components/archive/ArchiveDigestView.tsx` | Rewrite — swipe rating UI, session summary, richer cards |
-| `src/components/archive/ArchiveView.tsx` | Edit — pass new hook data to Digest |
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

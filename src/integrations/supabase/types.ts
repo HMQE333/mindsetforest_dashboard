@@ -59,6 +59,38 @@ export type Database = {
         }
         Relationships: []
       }
+      block_reviews: {
+        Row: {
+          block_id: string
+          id: string
+          rating: number
+          reviewed_at: string
+          user_id: string
+        }
+        Insert: {
+          block_id: string
+          id?: string
+          rating?: number
+          reviewed_at?: string
+          user_id: string
+        }
+        Update: {
+          block_id?: string
+          id?: string
+          rating?: number
+          reviewed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "block_reviews_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "archive_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_completions: {
         Row: {
           categories_engaged: string[]
