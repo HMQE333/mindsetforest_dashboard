@@ -94,6 +94,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentAccent={settings.preferences.accentColor || "purple"}
                       onSave={settings.saveTheme}
                     />
+                  )}
                   {activeTab === "categories" && (
                     <CategoriesTab
                       customCategories={settings.customCategories}
