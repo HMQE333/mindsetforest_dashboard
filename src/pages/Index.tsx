@@ -30,6 +30,7 @@ const Index = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
+  const quickCapture = useQuickCapture();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
 
