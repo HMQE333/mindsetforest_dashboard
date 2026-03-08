@@ -25,8 +25,13 @@ export interface UserMetric {
   sortOrder: number;
 }
 
+export type ThemeMode = "dark" | "light" | "oled" | "midnight";
+export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
+
 export interface UserPreferences {
   enabledModules: string[];
+  theme?: ThemeMode;
+  accentColor?: AccentColor;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects"];
