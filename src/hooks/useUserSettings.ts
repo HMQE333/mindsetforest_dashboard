@@ -263,6 +263,7 @@ export function useUserSettings() {
     saveMetrics,
     saveRewards,
     saveEnabledModules,
+    saveTheme,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };
