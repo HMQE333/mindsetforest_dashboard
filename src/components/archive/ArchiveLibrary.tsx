@@ -371,6 +371,42 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         semanticSearch={semanticSearch}
         onEditBlock={(b) => setEditBlock(b)}
       />
+
+      {/* Import confirmation dialog */}
+      <Dialog open={importConfirm !== null} onOpenChange={(open) => { if (!open) setImportConfirm(null); }}>
+        <DialogContent className="glass-card border-white/10">
+          <DialogHeader>
+            <DialogTitle>Import Archive</DialogTitle>
+            <DialogDescription>
+              Found <span className="font-bold text-foreground">{importConfirm?.total ?? 0}</span> blocks in the file.
+              {(importConfirm?.dupes ?? 0) > 0 && (
+                <span className="block mt-1 text-yellow-400">
+                  ⚠️ {importConfirm?.dupes} potential duplicate{importConfirm?.dupes === 1 ? "" : "s"} detected (same title &amp; content).
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {(importConfirm?.dupes ?? 0) > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer px-1">
+              <input
+                type="checkbox"
+                checked={filterDupes}
+                onChange={(e) => setFilterDupes(e.target.checked)}
+                className="rounded border-white/20 bg-background/50 accent-primary"
+              />
+              <span className="text-sm text-muted-foreground">Skip duplicates</span>
+            </label>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setImportConfirm(null)}>Cancel</Button>
+            <Button onClick={confirmImport} className="gradient-purple text-primary-foreground">
+              Import {filterDupes && importConfirm ? importConfirm.total - importConfirm.dupes : importConfirm?.total ?? 0} blocks
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
