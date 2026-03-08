@@ -1,6 +1,7 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off } from "lucide-react";
+import { Link2Off, Download } from "lucide-react";
+import { toast } from "sonner";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
@@ -30,6 +31,8 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
   const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
 
@@ -81,6 +84,31 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
     // Pinned blocks always on top
     return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
   }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode, smartSearch, semanticResults]);
+
+  // Scroll-to-bottom detection
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowExport(entry.isIntersecting),
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [filtered]);
+
+  const handleExport = useCallback(() => {
+    const exportData = blocks.map(({ embedding, ...rest }: any) => rest);
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `archive-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${blocks.length} blocks`);
+  }, [blocks]);
 
   if (loading) {
     return (
@@ -235,6 +263,26 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
           ))}
         </div>
       )}
+
+      {/* Scroll sentinel */}
+      <div ref={sentinelRef} className="h-1" />
+
+      {/* Export button — visible at bottom */}
+      <div
+        className={`flex justify-center transition-all duration-500 ${
+          showExport && blocks.length > 0
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 translate-y-4 pointer-events-none"
+        }`}
+      >
+        <button
+          onClick={handleExport}
+          className="glass-card px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
+        >
+          <Download size={16} />
+          💾 Export Archive
+        </button>
+      </div>
 
       <ArchiveEditModal
         block={editBlock}
