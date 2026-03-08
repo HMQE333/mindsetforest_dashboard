@@ -147,10 +147,11 @@ export function useUserSettings() {
       user_id: user.id,
       completed: true,
       custom_categories: cats,
+      preferences: preferences,
     }], { onConflict: "user_id" });
     if (error) toast.error("Failed to save categories");
     else toast.success("Categories saved");
-  }, [user]);
+  }, [user, preferences]);
 
   // Save metrics (full replace)
   const saveMetrics = useCallback(async (metrics: Omit<UserMetric, "id">[]) => {
