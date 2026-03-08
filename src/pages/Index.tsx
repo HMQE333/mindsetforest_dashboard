@@ -165,6 +165,7 @@ const Index = () => {
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
       {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
+      {user && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 };
