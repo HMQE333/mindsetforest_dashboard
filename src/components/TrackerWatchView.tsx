@@ -35,7 +35,7 @@ export default function TrackerWatchView({ entries, streak, onAdd, metrics }: Tr
 
       {/* Circle grid */}
       <div className="grid grid-cols-3 gap-2 w-full max-w-[220px]">
-        {TRACKER_METRICS.map((metric, i) => {
+        {displayMetrics.map((metric, i) => {
           const todayVal = getTodayTotal(entries, metric.id);
           return (
             <motion.button
