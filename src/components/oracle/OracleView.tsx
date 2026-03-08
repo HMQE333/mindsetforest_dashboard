@@ -11,6 +11,8 @@ import { toast } from "sonner";
 export default function OracleView() {
   const { state: oracle, loading, sacrificeXP, purchaseReward } = useOracleState();
   const { state: dashboard, spendXP } = useDashboardState();
+  const { getRewards } = useUserSettings();
+  const rewards = getRewards();
   const [dialogText, setDialogText] = useState<string | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [shaking, setShaking] = useState(false);
