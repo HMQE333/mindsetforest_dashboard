@@ -99,6 +99,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onReset={settings.resetMetricsToDefaults}
                     />
                   )}
+                  {activeTab === "projects" && (
+                    <ProjectsTab />
+                  )}
                   {activeTab === "rewards" && (
                     <RewardsTab
                       customRewards={settings.customRewards}
