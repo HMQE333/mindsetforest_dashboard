@@ -104,6 +104,7 @@ export default function DashboardView() {
     toggleShortcutsPanel: () => setShowShortcuts(prev => !prev),
     missionCount: missions.length,
     projectCount: projects.length,
+    customKeybinds: preferences.customKeybinds,
   });
 
   // Build ladder context for AI modal
