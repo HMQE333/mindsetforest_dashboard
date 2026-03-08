@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { useAuth } from "@/hooks/useAuth";
 import { useTrackerEntries, getTodayTotal, getLast7DaysTotal, getAllTimeTotal, getStreakDays } from "@/hooks/useTrackerEntries";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { useIsWatch } from "@/hooks/useIsWatch";
 import TrackerStatCard from "@/components/TrackerStatCard";
 import TrackerInputModal from "@/components/TrackerInputModal";
@@ -19,12 +20,14 @@ export default function Tracker() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { entries, loading, addEntry } = useTrackerEntries();
+  const { getMetrics } = useUserSettings();
+  const metrics = getMetrics();
   const isWatch = useIsWatch();
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
 
   const streak = getStreakDays(entries);
-  const activeMetric = activeMetricId ? TRACKER_METRICS.find((m) => m.id === activeMetricId) || null : null;
+  const activeMetric = activeMetricId ? metrics.find((m) => m.id === activeMetricId) || null : null;
 
   const handleAdd = useCallback((metricId: string) => {
     setActiveMetricId(metricId);
@@ -43,7 +46,7 @@ export default function Tracker() {
   };
 
   // Group metrics by category
-  const grouped = TRACKER_METRICS.reduce<Record<string, typeof TRACKER_METRICS>>((acc, m) => {
+  const grouped = metrics.reduce<Record<string, typeof metrics>>((acc, m) => {
     if (!acc[m.categoryId]) acc[m.categoryId] = [];
     acc[m.categoryId].push(m);
     return acc;
@@ -60,7 +63,7 @@ export default function Tracker() {
   if (isWatch) {
     return (
       <>
-        <TrackerWatchView entries={entries} streak={streak} onAdd={handleAdd} />
+        <TrackerWatchView entries={entries} streak={streak} onAdd={handleAdd} metrics={metrics} />
         <AnimatePresence>
           {activeMetric && (
             <TrackerInputModal

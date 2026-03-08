@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboarding } from "@/hooks/useOnboarding";
@@ -13,6 +14,7 @@ import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
 import ArchiveView from "@/components/archive/ArchiveView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
+import SettingsModal from "@/components/settings/SettingsModal";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive";
 
@@ -33,6 +35,7 @@ const Index = () => {
   const quickCapture = useQuickCapture();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {
@@ -83,15 +86,25 @@ const Index = () => {
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
-          <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl gradient-purple border-2 border-primary/40 glow-md animate-pulse-glow mb-4">
-            <span className="text-2xl animate-fire">🔥</span>
-            <span className="text-lg font-bold text-primary-foreground">Gamified Productivity</span>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl gradient-purple border-2 border-primary/40 glow-md animate-pulse-glow">
+              <span className="text-2xl animate-fire">🔥</span>
+              <span className="text-lg font-bold text-primary-foreground">Gamified Productivity</span>
+            </div>
+            {user && (
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
+                title="Settings"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
           <h1 className="mb-2 text-4xl font-bold text-gradient-purple">MindsetForest</h1>
           <p className="text-lg text-muted-foreground mb-6">Your Life. Your Quest.</p>
 
-          {/* Tabs - Desktop: inline row, Mobile: tap-to-expand */}
           {isMobile ? (
             <div className="relative inline-block">
               <button
@@ -152,6 +165,7 @@ const Index = () => {
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
       {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
+      {user && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 };

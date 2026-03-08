@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CATEGORIES } from "@/lib/dashboard-data";
+import { CATEGORIES, Category } from "@/lib/dashboard-data";
 import { Mission } from "@/lib/dashboard-data";
 
 interface CategoryGridProps {
@@ -7,12 +7,14 @@ interface CategoryGridProps {
   getCompletedCount: (categoryId: string) => number;
   onSelectCategory: (categoryId: string) => void;
   projectCount?: number;
+  categories?: Category[];
 }
 
-export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0 }: CategoryGridProps) {
+export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0, categories }: CategoryGridProps) {
+  const cats = categories || CATEGORIES;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-      {CATEGORIES.map((cat, i) => {
+      {cats.map((cat, i) => {
         const missions = getMissions(cat.id);
         const completed = getCompletedCount(cat.id);
 
@@ -57,7 +59,7 @@ export default function CategoryGrid({ getMissions, getCompletedCount, onSelectC
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.05 * CATEGORIES.length, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ delay: 0.05 * cats.length, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           onClick={() => onSelectCategory("__projects__")}
           className="glass-card-hover p-8 cursor-pointer relative overflow-hidden group"
         >

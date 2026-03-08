@@ -232,6 +232,7 @@ export type Database = {
       oracle_state: {
         Row: {
           created_at: string
+          custom_rewards: Json
           id: string
           oracle_xp: number
           rewards_purchased: Json
@@ -241,6 +242,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          custom_rewards?: Json
           id?: string
           oracle_xp?: number
           rewards_purchased?: Json
@@ -250,6 +252,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          custom_rewards?: Json
           id?: string
           oracle_xp?: number
           rewards_purchased?: Json
@@ -283,6 +286,42 @@ export type Database = {
           metric_id?: string
           user_id?: string
           value?: number
+        }
+        Relationships: []
+      }
+      user_metrics: {
+        Row: {
+          category_id: string
+          color_var: string
+          created_at: string
+          icon: string
+          id: string
+          label: string
+          sort_order: number
+          unit: string
+          user_id: string
+        }
+        Insert: {
+          category_id?: string
+          color_var?: string
+          created_at?: string
+          icon?: string
+          id?: string
+          label: string
+          sort_order?: number
+          unit?: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string
+          color_var?: string
+          created_at?: string
+          icon?: string
+          id?: string
+          label?: string
+          sort_order?: number
+          unit?: string
+          user_id?: string
         }
         Relationships: []
       }

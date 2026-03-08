@@ -2,7 +2,8 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useOracleState } from "@/hooks/useOracleState";
 import { useDashboardState } from "@/hooks/useDashboardState";
-import { determineTier, randomMessage, REWARDS, Reward } from "@/lib/oracle-data";
+import { useUserSettings } from "@/hooks/useUserSettings";
+import { determineTier, randomMessage, Reward } from "@/lib/oracle-data";
 import OracleGem from "./OracleGem";
 import RewardCard from "./RewardCard";
 import { toast } from "sonner";
@@ -10,6 +11,8 @@ import { toast } from "sonner";
 export default function OracleView() {
   const { state: oracle, loading, sacrificeXP, purchaseReward } = useOracleState();
   const { state: dashboard, spendXP } = useDashboardState();
+  const { getRewards } = useUserSettings();
+  const rewards = getRewards();
   const [dialogText, setDialogText] = useState<string | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [shaking, setShaking] = useState(false);
@@ -149,7 +152,7 @@ export default function OracleView() {
           Rewards Shop
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {REWARDS.map(reward => (
+          {rewards.map(reward => (
             <RewardCard
               key={reward.id}
               reward={reward}

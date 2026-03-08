@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { TRACKER_METRICS } from "@/lib/tracker-data";
+import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
 import { TrackerEntry, getTodayTotal } from "@/hooks/useTrackerEntries";
 
 const borderColorMap: Record<string, string> = {
@@ -17,9 +17,11 @@ interface TrackerWatchViewProps {
   entries: TrackerEntry[];
   streak: number;
   onAdd: (metricId: string) => void;
+  metrics?: TrackerMetric[];
 }
 
-export default function TrackerWatchView({ entries, streak, onAdd }: TrackerWatchViewProps) {
+export default function TrackerWatchView({ entries, streak, onAdd, metrics }: TrackerWatchViewProps) {
+  const displayMetrics = metrics || TRACKER_METRICS;
   return (
     <div className="min-h-screen bg-background flex flex-col items-center px-2 py-3">
       {/* Streak pill */}
@@ -33,7 +35,7 @@ export default function TrackerWatchView({ entries, streak, onAdd }: TrackerWatc
 
       {/* Circle grid */}
       <div className="grid grid-cols-3 gap-2 w-full max-w-[220px]">
-        {TRACKER_METRICS.map((metric, i) => {
+        {displayMetrics.map((metric, i) => {
           const todayVal = getTodayTotal(entries, metric.id);
           return (
             <motion.button

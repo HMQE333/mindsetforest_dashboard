@@ -5,6 +5,7 @@ import { useLadderState } from "@/hooks/useLadderState";
 import { useUserProjects } from "@/hooks/useUserProjects";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDailyCompletions } from "@/hooks/useDailyCompletions";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
@@ -21,6 +22,8 @@ export default function DashboardView() {
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
+  const { getCategories } = useUserSettings();
+  const categories = getCategories();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -181,6 +184,7 @@ export default function DashboardView() {
               getCompletedCount={getCompletedCount}
               onSelectCategory={setSelectedCategory}
               projectCount={projects.length}
+              categories={categories}
             />
           </motion.div>
         )}
