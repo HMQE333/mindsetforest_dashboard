@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off, Download } from "lucide-react";
+import { Link2Off, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
@@ -12,6 +12,7 @@ interface Props {
   loading: boolean;
   updateBlock: (id: string, u: Partial<ArchiveBlock>) => Promise<void>;
   deleteBlock: (id: string) => Promise<void>;
+  addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<void>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
   semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
@@ -20,7 +21,7 @@ interface Props {
 
 type SortMode = "newest" | "oldest" | "az";
 
-const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
+const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
@@ -109,6 +110,33 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
     URL.revokeObjectURL(url);
     toast.success(`Exported ${blocks.length} blocks`);
   }, [blocks]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const onFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        toast.error("Invalid file: expected an array of blocks");
+        return;
+      }
+      // Strip ids and user_id so they get fresh ones on insert
+      const cleaned = parsed.map(({ id, user_id, embedding, ...rest }: any) => rest);
+      await addBlocks(cleaned);
+      toast.success(`Imported ${cleaned.length} blocks`);
+    } catch {
+      toast.error("Failed to parse file — make sure it's a valid archive JSON");
+    }
+    // Reset so the same file can be re-imported
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [addBlocks]);
 
   if (loading) {
     return (
@@ -267,9 +295,18 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
       {/* Scroll sentinel */}
       <div ref={sentinelRef} className="h-1" />
 
-      {/* Export button — visible at bottom */}
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={onFileSelected}
+      />
+
+      {/* Export & Import buttons — visible at bottom */}
       <div
-        className={`flex justify-center transition-all duration-500 ${
+        className={`flex justify-center gap-3 transition-all duration-500 ${
           showExport && blocks.length > 0
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-4 pointer-events-none"
@@ -280,7 +317,14 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
           className="glass-card px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
         >
           <Download size={16} />
-          💾 Export Archive
+          💾 Export
+        </button>
+        <button
+          onClick={handleImport}
+          className="glass-card px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
+        >
+          <Upload size={16} />
+          📂 Import
         </button>
       </div>
 
