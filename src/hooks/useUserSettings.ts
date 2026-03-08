@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { applyThemePreview } from "@/components/settings/ThemeTab";
+import { KeybindMap } from "@/hooks/useKeyboardShortcuts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
