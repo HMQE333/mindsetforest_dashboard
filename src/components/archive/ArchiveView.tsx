@@ -56,7 +56,7 @@ const ArchiveView = () => {
     { id: "library", label: "Library", icon: "📚", count: archive.blocks.length },
     { id: "links", label: "Links", icon: "🔗", count: linkCount },
     { id: "images", label: "Images", icon: "🖼️", count: imageCount },
-    { id: "digest", label: "Digest", icon: "🔁", count: digestCount },
+    { id: "digest", label: "Digest", icon: "🔁" },
   ];
 
   const toggleSelect = (id: string) => {
