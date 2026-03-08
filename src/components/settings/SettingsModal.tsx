@@ -7,11 +7,13 @@ import MetricsTab from "./MetricsTab";
 import RewardsTab from "./RewardsTab";
 import ModulesTab from "./ModulesTab";
 import ProjectsTab from "./ProjectsTab";
+import ThemeTab from "./ThemeTab";
 
-type SettingsTab = "modules" | "categories" | "projects" | "metrics" | "rewards";
+type SettingsTab = "modules" | "theme" | "categories" | "projects" | "metrics" | "rewards";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "modules", label: "Modules", icon: "🧩" },
+  { id: "theme", label: "Theme", icon: "🎨" },
   { id: "categories", label: "Pillars", icon: "🏛️" },
   { id: "projects", label: "Projects", icon: "📂" },
   { id: "metrics", label: "Metrics", icon: "📊" },
