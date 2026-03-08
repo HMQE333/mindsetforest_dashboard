@@ -15,6 +15,7 @@ type SettingsTab = "modules" | "theme" | "keybinds" | "categories" | "projects" 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "modules", label: "Modules", icon: "🧩" },
   { id: "theme", label: "Theme", icon: "🎨" },
+  { id: "keybinds", label: "Keybinds", icon: "⌨️" },
   { id: "categories", label: "Pillars", icon: "🏛️" },
   { id: "projects", label: "Projects", icon: "📂" },
   { id: "metrics", label: "Metrics", icon: "📊" },
