@@ -31,6 +31,8 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
   const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
 
