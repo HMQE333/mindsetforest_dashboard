@@ -1,0 +1,1 @@
+ALTER TABLE public.user_onboarding ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{}'::jsonb;

@@ -331,6 +331,7 @@ export type Database = {
           created_at: string
           custom_categories: Json
           id: string
+          preferences: Json
           user_id: string
         }
         Insert: {
@@ -338,6 +339,7 @@ export type Database = {
           created_at?: string
           custom_categories?: Json
           id?: string
+          preferences?: Json
           user_id: string
         }
         Update: {
@@ -345,6 +347,7 @@ export type Database = {
           created_at?: string
           custom_categories?: Json
           id?: string
+          preferences?: Json
           user_id?: string
         }
         Relationships: []
