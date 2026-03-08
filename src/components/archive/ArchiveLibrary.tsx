@@ -12,6 +12,7 @@ interface Props {
   loading: boolean;
   updateBlock: (id: string, u: Partial<ArchiveBlock>) => Promise<void>;
   deleteBlock: (id: string) => Promise<void>;
+  addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<void>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
   semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
