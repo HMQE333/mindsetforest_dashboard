@@ -6,12 +6,14 @@ import CategoriesTab from "./CategoriesTab";
 import MetricsTab from "./MetricsTab";
 import RewardsTab from "./RewardsTab";
 import ModulesTab from "./ModulesTab";
+import ProjectsTab from "./ProjectsTab";
 
-type SettingsTab = "modules" | "categories" | "metrics" | "rewards";
+type SettingsTab = "modules" | "categories" | "projects" | "metrics" | "rewards";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "modules", label: "Modules", icon: "🧩" },
   { id: "categories", label: "Pillars", icon: "🏛️" },
+  { id: "projects", label: "Projects", icon: "📂" },
   { id: "metrics", label: "Metrics", icon: "📊" },
   { id: "rewards", label: "Rewards", icon: "🎁" },
 ];
@@ -96,6 +98,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onSave={settings.saveMetrics}
                       onReset={settings.resetMetricsToDefaults}
                     />
+                  )}
+                  {activeTab === "projects" && (
+                    <ProjectsTab />
                   )}
                   {activeTab === "rewards" && (
                     <RewardsTab
