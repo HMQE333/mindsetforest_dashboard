@@ -80,13 +80,19 @@ export default function ModulesTab({ enabledModules, onSave }: ModulesTabProps) 
                 <div className="text-sm font-semibold text-foreground">{mod.label}</div>
                 <div className="text-xs text-muted-foreground truncate">{mod.description}</div>
               </div>
-              <div className={`w-10 h-6 rounded-full flex items-center transition-all px-0.5 ${
+              <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 ${
                 isOn ? "bg-primary justify-end" : "bg-muted/50 justify-start"
               }`}>
                 <motion.div
                   layout
-                  className="w-5 h-5 rounded-full bg-white shadow-sm"
-                />
+                  className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${
+                    isOn ? "bg-white" : "bg-white/80"
+                  }`}
+                >
+                  <span className={`block w-2 h-2 rounded-full transition-colors ${
+                    isOn ? "bg-primary" : "bg-muted-foreground/40"
+                  }`} />
+                </motion.div>
               </div>
             </motion.button>
           );
