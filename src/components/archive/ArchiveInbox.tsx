@@ -274,21 +274,18 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
         )}
 
         {/* Button row */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <Button onClick={() => handleAIClean()} disabled={!text.trim() || processing} className="gradient-purple text-primary-foreground font-bold glow-sm">
             {processing ? "⏳ Processing..." : "🧹 AI Clean + Split"}
           </Button>
           <Button onClick={() => setShowPromptInput(!showPromptInput)} disabled={!text.trim() || processing} variant="outline" className="border-white/10 font-bold">
             🤖 AI by Prompt
           </Button>
-          <Button onClick={handleQuickSave} disabled={items.length === 0 || processing} variant="outline" className="border-white/10 font-bold">
-            ⚡ Quick Save
-          </Button>
-          {hasSplitItems && (
-            <Button onClick={handleAIOrganize} disabled={processing} className="gradient-purple text-primary-foreground font-bold glow-sm">
-              {processing ? "⏳ AI Working..." : "🏷️ AI Organize + Save"}
+          <div className="ml-auto">
+            <Button onClick={handleQuickSave} disabled={items.length === 0 || processing} className="font-bold">
+              💾 Save
             </Button>
-          )}
+          </div>
         </div>
 
         {/* Custom prompt input */}
