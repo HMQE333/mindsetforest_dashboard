@@ -5,6 +5,15 @@ import { toast } from "sonner";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 interface Props {
@@ -112,10 +121,20 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   }, [blocks]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importConfirm, setImportConfirm] = useState<{ parsed: any[]; dupes: number; total: number } | null>(null);
+  const [filterDupes, setFilterDupes] = useState(true);
 
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  const findDuplicates = useCallback((incoming: any[]) => {
+    return incoming.filter((item) =>
+      blocks.some(
+        (b) => b.title === item.title && b.content === item.content
+      )
+    ).length;
+  }, [blocks]);
 
   const onFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -127,16 +146,31 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         toast.error("Invalid file: expected an array of blocks");
         return;
       }
-      // Strip ids and user_id so they get fresh ones on insert
       const cleaned = parsed.map(({ id, user_id, embedding, ...rest }: any) => rest);
-      await addBlocks(cleaned);
-      toast.success(`Imported ${cleaned.length} blocks`);
+      const dupes = findDuplicates(cleaned);
+      setImportConfirm({ parsed: cleaned, dupes, total: cleaned.length });
     } catch {
       toast.error("Failed to parse file — make sure it's a valid archive JSON");
     }
-    // Reset so the same file can be re-imported
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [addBlocks]);
+  }, [findDuplicates]);
+
+  const confirmImport = useCallback(async () => {
+    if (!importConfirm) return;
+    let toImport = importConfirm.parsed;
+    if (filterDupes) {
+      toImport = toImport.filter(
+        (item) => !blocks.some((b) => b.title === item.title && b.content === item.content)
+      );
+    }
+    if (toImport.length === 0) {
+      toast.info("All blocks are duplicates — nothing to import");
+    } else {
+      await addBlocks(toImport);
+      toast.success(`Imported ${toImport.length} blocks`);
+    }
+    setImportConfirm(null);
+  }, [importConfirm, filterDupes, blocks, addBlocks]);
 
   if (loading) {
     return (
@@ -337,6 +371,42 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         semanticSearch={semanticSearch}
         onEditBlock={(b) => setEditBlock(b)}
       />
+
+      {/* Import confirmation dialog */}
+      <Dialog open={importConfirm !== null} onOpenChange={(open) => { if (!open) setImportConfirm(null); }}>
+        <DialogContent className="glass-card border-white/10">
+          <DialogHeader>
+            <DialogTitle>Import Archive</DialogTitle>
+            <DialogDescription>
+              Found <span className="font-bold text-foreground">{importConfirm?.total ?? 0}</span> blocks in the file.
+              {(importConfirm?.dupes ?? 0) > 0 && (
+                <span className="block mt-1 text-yellow-400">
+                  ⚠️ {importConfirm?.dupes} potential duplicate{importConfirm?.dupes === 1 ? "" : "s"} detected (same title &amp; content).
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {(importConfirm?.dupes ?? 0) > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer px-1">
+              <input
+                type="checkbox"
+                checked={filterDupes}
+                onChange={(e) => setFilterDupes(e.target.checked)}
+                className="rounded border-white/20 bg-background/50 accent-primary"
+              />
+              <span className="text-sm text-muted-foreground">Skip duplicates</span>
+            </label>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setImportConfirm(null)}>Cancel</Button>
+            <Button onClick={confirmImport} className="gradient-purple text-primary-foreground">
+              Import {filterDupes && importConfirm ? importConfirm.total - importConfirm.dupes : importConfirm?.total ?? 0} blocks
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
