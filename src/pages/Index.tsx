@@ -102,7 +102,9 @@ const Index = () => {
             )}
           </div>
 
-          {/* Tabs - Desktop: inline row, Mobile: tap-to-expand */}
+          <h1 className="mb-2 text-4xl font-bold text-gradient-purple">MindsetForest</h1>
+          <p className="text-lg text-muted-foreground mb-6">Your Life. Your Quest.</p>
+
           {isMobile ? (
             <div className="relative inline-block">
               <button
