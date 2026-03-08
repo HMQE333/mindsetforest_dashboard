@@ -98,7 +98,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, selectedIds
   }, [filtered]);
 
   const handleExport = useCallback(() => {
-    const exportData = blocks.map(({ embedding, ...rest }) => rest);
+    const exportData = blocks.map(({ embedding, ...rest }: any) => rest);
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
