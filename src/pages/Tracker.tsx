@@ -63,7 +63,7 @@ export default function Tracker() {
   if (isWatch) {
     return (
       <>
-        <TrackerWatchView entries={entries} streak={streak} onAdd={handleAdd} />
+        <TrackerWatchView entries={entries} streak={streak} onAdd={handleAdd} metrics={metrics} />
         <AnimatePresence>
           {activeMetric && (
             <TrackerInputModal
