@@ -16,6 +16,7 @@ const ALL_MODULES: ModuleConfig[] = [
   { id: "habitloop", label: "Habit Loop", icon: "🔄", description: "Repetition-based habit building" },
   { id: "oracle", label: "Oracle & Rewards", icon: "🔮", description: "Sacrifice XP for real-life rewards" },
   { id: "archive", label: "Knowledge Archive", icon: "📦", description: "Store and organize knowledge blocks" },
+  { id: "projects", label: "Projects", icon: "📂", description: "Custom project scopes for focused work" },
 ];
 
 interface ModulesTabProps {
