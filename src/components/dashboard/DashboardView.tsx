@@ -5,6 +5,7 @@ import { useLadderState } from "@/hooks/useLadderState";
 import { useUserProjects } from "@/hooks/useUserProjects";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDailyCompletions } from "@/hooks/useDailyCompletions";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
