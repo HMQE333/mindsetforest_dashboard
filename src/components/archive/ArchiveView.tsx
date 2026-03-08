@@ -227,6 +227,7 @@ const ArchiveView = () => {
               loading={archive.loading}
               updateBlock={archive.updateBlock}
               deleteBlock={archive.deleteBlock}
+              addBlocks={archive.addBlocks}
               selectedIds={selectedIds}
               toggleSelect={toggleSelect}
               semanticSearch={archive.semanticSearch}
