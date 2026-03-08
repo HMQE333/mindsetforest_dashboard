@@ -111,6 +111,33 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
     toast.success(`Exported ${blocks.length} blocks`);
   }, [blocks]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const onFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        toast.error("Invalid file: expected an array of blocks");
+        return;
+      }
+      // Strip ids and user_id so they get fresh ones on insert
+      const cleaned = parsed.map(({ id, user_id, embedding, ...rest }: any) => rest);
+      await addBlocks(cleaned);
+      toast.success(`Imported ${cleaned.length} blocks`);
+    } catch {
+      toast.error("Failed to parse file — make sure it's a valid archive JSON");
+    }
+    // Reset so the same file can be re-imported
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [addBlocks]);
+
   if (loading) {
     return (
       <div className="text-center py-12 text-muted-foreground">
