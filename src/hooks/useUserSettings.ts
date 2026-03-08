@@ -29,7 +29,7 @@ export interface UserPreferences {
   enabledModules: string[];
 }
 
-const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive"];
+const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects"];
 
 export function useUserSettings() {
   const { user } = useAuth();
