@@ -51,8 +51,8 @@ export const CATEGORIES: Category[] = [
     name: "Creation",
     tagline: "Build & Express",
     icon: "🎨",
-    color: "#F97316",
-    lightColor: "#FB923C",
+    color: "#EF4444",
+    lightColor: "#F87171",
     colorVar: "cat-creation",
     missions: [
       { title: "Deep Work Block", description: "2 hours of uninterrupted building. Phone off, one project, full immersion. Ship something real.", duration: "120 min", xp: 80 },
