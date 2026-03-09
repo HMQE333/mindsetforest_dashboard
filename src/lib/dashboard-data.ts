@@ -23,8 +23,8 @@ export const CATEGORIES: Category[] = [
     name: "Mind",
     tagline: "Learning & Programming",
     icon: "🧠",
-    color: "#8B5CF6",
-    lightColor: "#A78BFA",
+    color: "#EC4899",
+    lightColor: "#F472B6",
     colorVar: "cat-mind",
     missions: [
       { title: "Memory Palace Practice", description: "Build/refresh a route and store 10-20 items. Speed + clarity.", duration: "15 min", xp: 25 },
