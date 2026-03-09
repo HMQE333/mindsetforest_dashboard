@@ -79,8 +79,8 @@ export const CATEGORIES: Category[] = [
     name: "Networking",
     tagline: "Connect & Lead",
     icon: "👑",
-    color: "#FBBF24",
-    lightColor: "#FCD34D",
+    color: "#22C55E",
+    lightColor: "#4ADE80",
     colorVar: "cat-networking",
     missions: [
       { title: "Message 1", description: "Short, human opener. Curiosity + value, no selling.", duration: "10 min", xp: 25 },
