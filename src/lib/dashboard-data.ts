@@ -93,8 +93,8 @@ export const CATEGORIES: Category[] = [
     name: "Trading",
     tagline: "Trade & Journal",
     icon: "📊",
-    color: "#6366F1",
-    lightColor: "#818CF8",
+    color: "#10B981",
+    lightColor: "#34D399",
     colorVar: "cat-trading",
     missions: [
       { title: "Quick Macro Check", description: "Scan economic situation: headline + calendar + sentiment.", duration: "10 min", xp: 20 },
