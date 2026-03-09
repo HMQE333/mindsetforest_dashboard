@@ -107,8 +107,8 @@ export const CATEGORIES: Category[] = [
     name: "Spirit",
     tagline: "Philosophy & Meaning",
     icon: "✨",
-    color: "#D946EF",
-    lightColor: "#E879F9",
+    color: "#F59E0B",
+    lightColor: "#FBBF24",
     colorVar: "cat-spirit",
     missions: [
       { title: "No Stimuli (Dark Focus)", description: "Close eyes, focus on the dark 'texture'. Train attention stability.", duration: "10 min", xp: 20 },
