@@ -37,8 +37,8 @@ export const CATEGORIES: Category[] = [
     name: "Body",
     tagline: "Health & Fitness",
     icon: "💪",
-    color: "#EF4444",
-    lightColor: "#F87171",
+    color: "#F97316",
+    lightColor: "#FB923C",
     colorVar: "cat-body",
     missions: [
       { title: "Push-ups + Warm-up", description: "Warm-up (joints + shoulders) then push-up sets (good form).", duration: "15 min", xp: 25 },
