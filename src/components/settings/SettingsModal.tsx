@@ -62,20 +62,24 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 px-5 pt-3 overflow-x-auto">
-              {TABS.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "gradient-purple text-primary-foreground glow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                  }`}
-                >
-                  {tab.icon} {tab.label}
-                </button>
-              ))}
+            <div className="relative">
+              <div className="flex gap-1 px-5 pt-3 overflow-x-auto scrollbar-none pb-0.5">
+                {TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? "gradient-purple text-primary-foreground glow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    }`}
+                  >
+                    {tab.icon} {tab.label}
+                  </button>
+                ))}
+              </div>
+              {/* Scroll hint gradient */}
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-card/95 to-transparent" />
             </div>
 
             {/* Content */}
