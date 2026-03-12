@@ -104,6 +104,24 @@ export default function LibraryView() {
         </button>
       </div>
 
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <Tag className="w-3.5 h-3.5 text-muted-foreground mt-0.5" />
+          {allTags.map(t => (
+            <button
+              key={t}
+              onClick={() => setTagFilter(tagFilter === t ? null : t)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                tagFilter === t ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Book Grid */}
       {filtered.length === 0 ? (
         <div className="text-center py-16">
