@@ -27,13 +27,15 @@ export interface UserMetric {
   sortOrder: number;
 }
 
-export type ThemeMode = "dark" | "light" | "oled" | "midnight";
+export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "crimson" | "cyber" | "sandstone";
 export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
+export type FrameStyle = "default" | "glow" | "neon" | "frost" | "sharp";
 
 export interface UserPreferences {
   enabledModules: string[];
   theme?: ThemeMode;
   accentColor?: AccentColor;
+  frameStyle?: FrameStyle;
   customKeybinds?: Partial<KeybindMap>;
 }
 
@@ -52,7 +54,6 @@ export function useUserSettings() {
     if (!user) { setLoading(false); return; }
 
     const load = async () => {
-      // Load categories + preferences from onboarding
       const { data: onb } = await supabase
         .from("user_onboarding")
         .select("custom_categories, preferences")
@@ -67,13 +68,11 @@ export function useUserSettings() {
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
           setPreferences(prefs);
         }
-        // Apply saved theme on load
-        if (prefs.theme || prefs.accentColor) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple");
+        if (prefs.theme || prefs.accentColor || prefs.frameStyle) {
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default");
         }
       }
 
-      // Load custom metrics
       const { data: metrics } = await supabase
         .from("user_metrics")
         .select("*")
@@ -92,7 +91,6 @@ export function useUserSettings() {
         })));
       }
 
-      // Load custom rewards from oracle_state
       const { data: oracle } = await supabase
         .from("oracle_state")
         .select("custom_rewards")
@@ -111,7 +109,6 @@ export function useUserSettings() {
     load();
   }, [user]);
 
-  // Get merged categories (defaults + customizations)
   const getCategories = useCallback((): Category[] => {
     return CATEGORIES.map(cat => {
       const custom = customCategories.find(c => c.id === cat.id);
@@ -127,7 +124,6 @@ export function useUserSettings() {
     });
   }, [customCategories]);
 
-  // Get metrics (custom if any, otherwise defaults)
   const getMetrics = useCallback((): TrackerMetric[] => {
     if (userMetrics.length === 0) return TRACKER_METRICS;
     const cats = getCategories();
@@ -146,12 +142,10 @@ export function useUserSettings() {
     });
   }, [userMetrics, getCategories]);
 
-  // Get rewards (custom if any, otherwise defaults)
   const getRewards = useCallback((): Reward[] => {
     return customRewards || REWARDS;
   }, [customRewards]);
 
-  // Save categories
   const saveCategories = useCallback(async (cats: CustomCategory[]) => {
     if (!user) return;
     setCustomCategories(cats);
@@ -165,14 +159,9 @@ export function useUserSettings() {
     else toast.success("Categories saved");
   }, [user, preferences]);
 
-  // Save metrics (full replace)
   const saveMetrics = useCallback(async (metrics: Omit<UserMetric, "id">[]) => {
     if (!user) return;
-
-    // Delete existing
     await supabase.from("user_metrics").delete().eq("user_id", user.id);
-
-    // Insert new
     if (metrics.length > 0) {
       const rows = metrics.map((m, i) => ({
         user_id: user.id,
@@ -202,7 +191,6 @@ export function useUserSettings() {
     toast.success("Metrics saved");
   }, [user]);
 
-  // Save rewards
   const saveRewards = useCallback(async (rewards: Reward[] | null) => {
     if (!user) return;
     setCustomRewards(rewards);
@@ -214,7 +202,6 @@ export function useUserSettings() {
     else toast.success("Rewards saved");
   }, [user]);
 
-  // Reset metrics to defaults
   const resetMetricsToDefaults = useCallback(async () => {
     if (!user) return;
     await supabase.from("user_metrics").delete().eq("user_id", user.id);
@@ -222,13 +209,11 @@ export function useUserSettings() {
     toast.success("Metrics reset to defaults");
   }, [user]);
 
-  // Reset rewards to defaults
   const resetRewardsToDefaults = useCallback(async () => {
     await saveRewards(null);
     toast.success("Rewards reset to defaults");
   }, [saveRewards]);
 
-  // Save preferences (modules, etc.)
   const savePreferences = useCallback(async (prefs: UserPreferences) => {
     if (!user) return;
     setPreferences(prefs);
@@ -246,10 +231,10 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor) => {
-    const newPrefs = { ...preferences, theme, accentColor };
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle) => {
+    const newPrefs = { ...preferences, theme, accentColor, frameStyle: frameStyle || preferences.frameStyle || "default" };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor);
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default");
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
