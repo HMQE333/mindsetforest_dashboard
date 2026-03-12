@@ -136,7 +136,21 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
             </div>
           </div>
 
-          <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" />
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs font-semibold text-muted-foreground">Tags</p>
+              <TagLibraryPopover
+                module="archive"
+                currentTags={tags.split(",").map(t => t.trim()).filter(Boolean)}
+                onAddTag={(tag) => setTags(prev => {
+                  const current = prev.split(",").map(t => t.trim()).filter(Boolean);
+                  if (current.includes(tag)) return prev;
+                  return current.length > 0 ? `${prev}, ${tag}` : tag;
+                })}
+              />
+            </div>
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" />
+          </div>
 
           {/* Related Blocks */}
           {semanticSearch && (

@@ -141,7 +141,10 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
 
           {/* Tags */}
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Tags</label>
+            <div className="flex items-center gap-2 mb-1">
+              <label className="text-xs text-muted-foreground">Tags</label>
+              <TagLibraryPopover module="library" currentTags={tags} onAddTag={addTag} />
+            </div>
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {tags.map(tag => (
