@@ -294,9 +294,11 @@ export type Database = {
           author: string
           cover_color: string
           created_at: string
+          directions: string[]
           id: string
           notes: string
           pages_read: number
+          pillars: string[]
           rating: number | null
           status: string
           tags: string[]
@@ -309,9 +311,11 @@ export type Database = {
           author?: string
           cover_color?: string
           created_at?: string
+          directions?: string[]
           id?: string
           notes?: string
           pages_read?: number
+          pillars?: string[]
           rating?: number | null
           status?: string
           tags?: string[]
@@ -324,9 +328,11 @@ export type Database = {
           author?: string
           cover_color?: string
           created_at?: string
+          directions?: string[]
           id?: string
           notes?: string
           pages_read?: number
+          pillars?: string[]
           rating?: number | null
           status?: string
           tags?: string[]

@@ -10,6 +10,8 @@ export interface Book {
   notes: string;
   cover_color: string;
   tags: string[];
+  pillars: string[];
+  directions: string[];
   created_at: string;
   updated_at: string;
 }
