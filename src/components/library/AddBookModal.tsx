@@ -5,6 +5,7 @@ import { COVER_COLORS, DIRECTION_TAGS, FORMAT_LABELS, BookFormat } from "@/lib/l
 import { PILLARS } from "@/lib/archive-data";
 import type { BookStatus } from "@/lib/library-data";
 import { X } from "lucide-react";
+import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 
 interface AddBookModalProps {
   open: boolean;
