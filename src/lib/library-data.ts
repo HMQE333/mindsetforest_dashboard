@@ -9,6 +9,7 @@ export interface Book {
   status: "to-read" | "reading" | "finished";
   notes: string;
   cover_color: string;
+  tags: string[];
   created_at: string;
   updated_at: string;
 }
@@ -24,4 +25,10 @@ export const STATUS_LABELS: Record<BookStatus, string> = {
 export const COVER_COLORS = [
   "#8B5CF6", "#3B82F6", "#EF4444", "#F97316", "#10B981",
   "#EC4899", "#6366F1", "#14B8A6", "#F59E0B", "#64748B",
+];
+
+export const DIRECTION_TAGS = [
+  "Self-Development", "Psychology", "Philosophy", "Science", "History",
+  "Business", "Finance", "Health", "Spirituality", "Fiction",
+  "Biography", "Technology", "Creativity", "Leadership", "Productivity",
 ];

@@ -1,0 +1,1 @@
+ALTER TABLE public.user_books ADD COLUMN tags text[] NOT NULL DEFAULT '{}'::text[];
