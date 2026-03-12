@@ -83,7 +83,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
 
             {/* Content */}
-            <div className="px-5 py-4 overflow-y-auto">
+            <div className="px-5 py-4 overflow-y-auto" style={{ maxHeight: "calc(85vh - 120px)" }}>
               {settings.loading ? (
                 <div className="text-center py-10 text-muted-foreground animate-pulse">Loading...</div>
               ) : (
