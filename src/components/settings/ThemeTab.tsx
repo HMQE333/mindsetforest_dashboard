@@ -31,6 +31,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "neon", label: "Neon", icon: "💡", description: "Bright neon outline" },
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
+  { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
 ];
 
 interface ThemeTabProps {
