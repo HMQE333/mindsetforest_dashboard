@@ -14,6 +14,7 @@ import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
 import ArchiveView from "@/components/archive/ArchiveView";
+import LibraryView from "@/components/library/LibraryView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 
