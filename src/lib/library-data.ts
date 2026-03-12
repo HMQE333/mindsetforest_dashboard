@@ -12,16 +12,25 @@ export interface Book {
   tags: string[];
   pillars: string[];
   directions: string[];
+  format: BookFormat;
   created_at: string;
   updated_at: string;
 }
 
 export type BookStatus = Book["status"];
+export type BookFormat = "owned" | "borrowed" | "ebook" | "audiobook";
 
 export const STATUS_LABELS: Record<BookStatus, string> = {
   "to-read": "📖 To Read",
   reading: "📚 Reading",
   finished: "✅ Finished",
+};
+
+export const FORMAT_LABELS: Record<BookFormat, string> = {
+  owned: "📕 Owned",
+  borrowed: "🤝 Borrowed",
+  ebook: "📱 E-book",
+  audiobook: "🎧 Audiobook",
 };
 
 export const COVER_COLORS = [
