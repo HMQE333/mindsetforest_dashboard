@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS } from "@/lib/library-data";
-import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
+import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat } from "@/lib/library-data";
+import { PILLARS } from "@/lib/archive-data";
 import { Star, Trash2, Sparkles, Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   const [status, setStatus] = useState<BookStatus>("to-read");
   const [tags, setTags] = useState<string[]>([]);
   const [pillars, setPillars] = useState<string[]>([]);
-  const [directions, setDirections] = useState<string[]>([]);
+  const [format, setFormat] = useState<BookFormat>("owned");
   const [customTag, setCustomTag] = useState("");
   const [question, setQuestion] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
@@ -37,10 +37,8 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
       setStatus(book.status);
       setTags(book.tags || []);
       setPillars(book.pillars || []);
-      setDirections(book.directions || []);
-      setAiAnswer("");
-      setQuestion("");
-      setCustomTag("");
+      setFormat((book.format as BookFormat) || "owned");
+      setAiAnswer(""); setQuestion(""); setCustomTag("");
     }
   }, [book]);
 
@@ -50,10 +48,9 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag));
   const handleCustomTagKey = (e: React.KeyboardEvent) => { if (e.key === "Enter" && customTag.trim()) { e.preventDefault(); addTag(customTag); setCustomTag(""); } };
   const togglePillar = (id: string) => setPillars(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
-  const toggleDirection = (id: string) => setDirections(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
 
   const handleSave = () => {
-    onUpdate(book.id, { notes, pages_read: parseInt(pagesRead) || 0, rating, status, tags, pillars, directions });
+    onUpdate(book.id, { notes, pages_read: parseInt(pagesRead) || 0, rating, status, tags, pillars, format });
     toast.success("Book updated");
   };
 
@@ -94,6 +91,18 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
             ))}
           </div>
 
+          {/* Format */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Format</label>
+            <div className="flex gap-2 flex-wrap">
+              {(["owned", "borrowed", "ebook", "audiobook"] as BookFormat[]).map(f => (
+                <button key={f} onClick={() => setFormat(f)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${format === f ? "gradient-purple text-primary-foreground" : "bg-muted/30 text-muted-foreground"}`}>
+                  {FORMAT_LABELS[f]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Rating */}
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Rating</label>
@@ -124,18 +133,6 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
               {PILLARS.map(p => (
                 <button key={p.id} onClick={() => togglePillar(p.id)} className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${pillars.includes(p.id) ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"}`}>
                   {p.icon} {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Directions */}
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Directions</label>
-            <div className="flex flex-wrap gap-1.5">
-              {DIRECTIONS.map(d => (
-                <button key={d.id} onClick={() => toggleDirection(d.id)} className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${directions.includes(d.id) ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"}`}>
-                  {d.icon} {d.label}
                 </button>
               ))}
             </div>

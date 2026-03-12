@@ -1,0 +1,1 @@
+ALTER TABLE public.user_books ADD COLUMN format text NOT NULL DEFAULT 'owned';

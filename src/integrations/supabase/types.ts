@@ -295,6 +295,7 @@ export type Database = {
           cover_color: string
           created_at: string
           directions: string[]
+          format: string
           id: string
           notes: string
           pages_read: number
@@ -312,6 +313,7 @@ export type Database = {
           cover_color?: string
           created_at?: string
           directions?: string[]
+          format?: string
           id?: string
           notes?: string
           pages_read?: number
@@ -329,6 +331,7 @@ export type Database = {
           cover_color?: string
           created_at?: string
           directions?: string[]
+          format?: string
           id?: string
           notes?: string
           pages_read?: number
