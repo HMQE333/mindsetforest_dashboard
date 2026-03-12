@@ -1,61 +1,53 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+## Plan: More Themes + Card Frame Styles
 
-### Concept
+### 1. New Theme Modes
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+Add 4 new themes alongside the existing 4 (Dark, OLED, Midnight, Light):
 
-### Shortcut Map
+| Theme | Description | Vibe |
+|-------|-------------|------|
+| **Forest** | Deep greens, earthy tones | 🌲 Nature RPG |
+| **Crimson** | Dark reds, warm blacks | 🩸 Dark fantasy |
+| **Cyber** | Neon-tinted dark with high contrast | 🔮 Cyberpunk |
+| **Sandstone** | Warm beige/tan light theme | 🏜️ Desert parchment |
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+Each theme sets all CSS variables (background, card, foreground, muted, border, glass) like the existing ones.
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+**Files:** `ThemeTab.tsx` (add THEMES entries + switch cases in `applyThemePreview`), `useUserSettings.ts` (extend `ThemeMode` type).
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+### 2. Card Frame Styles (Block Hover Effects)
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
+Add a new **"Frame Style"** selector in the Theme tab that changes how `glass-card` and `glass-card-hover` behave on hover. Options:
 
-### Implementation
+| Frame | Hover Effect |
+|-------|-------------|
+| **Default** | Current lift + shadow |
+| **Glow** | Accent-colored glow border, no lift |
+| **Neon** | Bright neon outline + subtle inner glow |
+| **Frost** | Increased blur + frosted white border |
+| **Sharp** | No rounded corners, hard shadow, slight scale |
 
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
+Implementation approach:
+- Add a CSS class to `<body>` like `frame-glow`, `frame-neon`, etc.
+- Override `.glass-card-hover:hover` styles per frame class in `index.css`
+- Store the frame preference in `UserPreferences` alongside theme/accent
+- Apply on load via `applyThemePreview`
 
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
+**Files changed:**
+- `src/hooks/useUserSettings.ts` — add `FrameStyle` type, store in preferences
+- `src/components/settings/ThemeTab.tsx` — add Frame Style picker UI + apply logic
+- `src/index.css` — add frame-specific hover overrides
+- `src/components/settings/SettingsModal.tsx` — pass new prop through
 
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
+### Summary of Changes
 
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
+```text
+ThemeTab.tsx        → 4 new themes + frame style picker UI + applyThemePreview cases
+useUserSettings.ts  → ThemeMode extended, new FrameStyle type in preferences
+index.css           → 5 frame style CSS rule sets
+```
 
-### File Summary
-
-| File | Change |
-|------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
-
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+No database migration needed — frame style stores in existing `preferences` JSON column.
 
