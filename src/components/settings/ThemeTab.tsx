@@ -27,6 +27,7 @@ const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light
 const FRAMES: { id: FrameStyle; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎯", description: "Lift + shadow on hover" },
   { id: "glow", label: "Glow", icon: "✨", description: "Accent-colored glow border" },
+  { id: "aura", label: "Aura", icon: "🔆", description: "Card-color matching glow" },
   { id: "neon", label: "Neon", icon: "💡", description: "Bright neon outline" },
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
@@ -282,7 +283,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   }
 
   // Frame style — remove all frame classes then add active one
-  const frameClasses = ["frame-default", "frame-glow", "frame-neon", "frame-frost", "frame-sharp"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
