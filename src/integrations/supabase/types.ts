@@ -289,6 +289,51 @@ export type Database = {
         }
         Relationships: []
       }
+      user_books: {
+        Row: {
+          author: string
+          cover_color: string
+          created_at: string
+          id: string
+          notes: string
+          pages_read: number
+          rating: number | null
+          status: string
+          title: string
+          total_pages: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          author?: string
+          cover_color?: string
+          created_at?: string
+          id?: string
+          notes?: string
+          pages_read?: number
+          rating?: number | null
+          status?: string
+          title: string
+          total_pages?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          author?: string
+          cover_color?: string
+          created_at?: string
+          id?: string
+          notes?: string
+          pages_read?: number
+          rating?: number | null
+          status?: string
+          title?: string
+          total_pages?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_metrics: {
         Row: {
           category_id: string
