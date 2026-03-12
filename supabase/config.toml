@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.ai-embed-block]
 verify_jwt = false
+
+[functions.ai-book-suggest]
+verify_jwt = false
