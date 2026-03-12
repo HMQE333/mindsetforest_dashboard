@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
