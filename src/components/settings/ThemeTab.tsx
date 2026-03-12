@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ThemeMode, AccentColor } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle } from "@/hooks/useUserSettings";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
-  { id: "oled", label: "OLED Black", icon: "⬛", description: "True black for AMOLED screens", preview: { bg: "#000000", card: "#0a0a0a", text: "#e8e8f0" } },
+  { id: "oled", label: "OLED Black", icon: "⬛", description: "True black for AMOLED", preview: { bg: "#000000", card: "#0a0a0a", text: "#e8e8f0" } },
   { id: "midnight", label: "Midnight", icon: "🌌", description: "Deep navy blue tones", preview: { bg: "#0a0e1a", card: "#111828", text: "#d0d8f0" } },
+  { id: "forest", label: "Forest", icon: "🌲", description: "Deep greens, earthy tones", preview: { bg: "#070d08", card: "#0e1a10", text: "#d0e8d4" } },
+  { id: "crimson", label: "Crimson", icon: "🩸", description: "Dark reds, warm blacks", preview: { bg: "#0d0608", card: "#1a0c10", text: "#f0d8dc" } },
+  { id: "cyber", label: "Cyber", icon: "🔮", description: "Neon-tinted high contrast", preview: { bg: "#040810", card: "#081018", text: "#c8f0ff" } },
+  { id: "sandstone", label: "Sandstone", icon: "🏜️", description: "Warm beige light theme", preview: { bg: "#f5f0e8", card: "#faf7f0", text: "#2a2418" } },
   { id: "light", label: "Light", icon: "☀️", description: "Clean light mode", preview: { bg: "#f5f5f7", card: "#ffffff", text: "#1a1a2e" } },
 ];
 
@@ -20,38 +24,53 @@ const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light
   { id: "pink", label: "Rose", hue: 330, sat: 81, light: 60 },
 ];
 
+const FRAMES: { id: FrameStyle; label: string; icon: string; description: string }[] = [
+  { id: "default", label: "Default", icon: "🎯", description: "Lift + shadow on hover" },
+  { id: "glow", label: "Glow", icon: "✨", description: "Accent-colored glow border" },
+  { id: "neon", label: "Neon", icon: "💡", description: "Bright neon outline" },
+  { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
+  { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
+];
+
 interface ThemeTabProps {
   currentTheme: ThemeMode;
   currentAccent: AccentColor;
-  onSave: (theme: ThemeMode, accent: AccentColor) => Promise<void>;
+  currentFrame?: FrameStyle;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle) => Promise<void>;
 }
 
-export default function ThemeTab({ currentTheme, currentAccent, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
+  const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setTheme(currentTheme);
     setAccent(currentAccent);
-  }, [currentTheme, currentAccent]);
+    setFrame(currentFrame || "default");
+  }, [currentTheme, currentAccent, currentFrame]);
 
   const handleThemeChange = (t: ThemeMode) => {
     setTheme(t);
     setDirty(true);
-    // Live preview
-    applyThemePreview(t, accent);
+    applyThemePreview(t, accent, frame);
   };
 
   const handleAccentChange = (a: AccentColor) => {
     setAccent(a);
     setDirty(true);
-    // Live preview
-    applyThemePreview(theme, a);
+    applyThemePreview(theme, a, frame);
+  };
+
+  const handleFrameChange = (f: FrameStyle) => {
+    setFrame(f);
+    setDirty(true);
+    applyThemePreview(theme, accent, f);
   };
 
   const handleSave = async () => {
-    await onSave(theme, accent);
+    await onSave(theme, accent, frame);
     setDirty(false);
   };
 
@@ -74,7 +93,6 @@ export default function ThemeTab({ currentTheme, currentAccent, onSave }: ThemeT
                   : "border-white/5 hover:border-white/15 bg-muted/20"
               }`}
             >
-              {/* Mini preview */}
               <div
                 className="w-full h-10 rounded-lg mb-2 flex items-center gap-1.5 px-2"
                 style={{ backgroundColor: t.preview.bg }}
@@ -122,6 +140,31 @@ export default function ThemeTab({ currentTheme, currentAccent, onSave }: ThemeT
         </div>
       </div>
 
+      {/* Frame Style */}
+      <div>
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Card Frame Style</label>
+        <div className="grid grid-cols-5 gap-1.5">
+          {FRAMES.map((f, i) => (
+            <motion.button
+              key={f.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleFrameChange(f.id)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
+                frame === f.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <span className="text-lg">{f.icon}</span>
+              <span className="text-[9px] font-bold text-foreground">{f.label}</span>
+              <span className="text-[8px] text-muted-foreground text-center leading-tight">{f.description}</span>
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
       {/* Preview bar */}
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
@@ -152,8 +195,8 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
   ACCENTS.map(a => [a.id, { hue: a.hue, sat: a.sat, light: a.light }])
 ) as any;
 
-/** Apply theme + accent to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor) {
+/** Apply theme + accent + frame to CSS variables immediately (live preview) */
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default") {
   const root = document.documentElement;
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
   const h = a.hue, s = a.sat, l = a.light;
@@ -171,86 +214,78 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor) {
   root.style.setProperty("--sidebar-ring", `${h} ${s}% ${l}%`);
 
   // Theme mode
+  const setDarkVars = (bg: string, fg: string, card: string, cardFg: string, sec: string, secFg: string, mut: string, mutFg: string, brd: string, glass: string) => {
+    root.style.setProperty("--background", bg);
+    root.style.setProperty("--foreground", fg);
+    root.style.setProperty("--card", card);
+    root.style.setProperty("--card-foreground", cardFg);
+    root.style.setProperty("--popover", card);
+    root.style.setProperty("--popover-foreground", cardFg);
+    root.style.setProperty("--secondary", sec);
+    root.style.setProperty("--secondary-foreground", secFg);
+    root.style.setProperty("--muted", mut);
+    root.style.setProperty("--muted-foreground", mutFg);
+    root.style.setProperty("--border", brd);
+    root.style.setProperty("--input", brd);
+    root.style.setProperty("--glass", glass);
+    root.style.setProperty("--glass-border", "0 0% 100%");
+    root.style.setProperty("--primary-foreground", "0 0% 100%");
+    root.style.setProperty("--destructive-foreground", "0 0% 100%");
+    root.classList.remove("light-theme");
+  };
+
+  const setLightVars = (bg: string, fg: string, card: string, cardFg: string, sec: string, secFg: string, mut: string, mutFg: string, brd: string, glass: string, glassBorder: string) => {
+    root.style.setProperty("--background", bg);
+    root.style.setProperty("--foreground", fg);
+    root.style.setProperty("--card", card);
+    root.style.setProperty("--card-foreground", cardFg);
+    root.style.setProperty("--popover", card);
+    root.style.setProperty("--popover-foreground", cardFg);
+    root.style.setProperty("--secondary", sec);
+    root.style.setProperty("--secondary-foreground", secFg);
+    root.style.setProperty("--muted", mut);
+    root.style.setProperty("--muted-foreground", mutFg);
+    root.style.setProperty("--border", brd);
+    root.style.setProperty("--input", brd);
+    root.style.setProperty("--glass", glass);
+    root.style.setProperty("--glass-border", glassBorder);
+    root.style.setProperty("--primary-foreground", "0 0% 100%");
+    root.style.setProperty("--destructive-foreground", "0 0% 100%");
+    root.classList.add("light-theme");
+  };
+
   switch (theme) {
     case "dark":
-      root.style.setProperty("--background", "230 25% 4%");
-      root.style.setProperty("--foreground", "220 20% 95%");
-      root.style.setProperty("--card", "230 20% 7%");
-      root.style.setProperty("--card-foreground", "220 20% 95%");
-      root.style.setProperty("--popover", "230 20% 7%");
-      root.style.setProperty("--popover-foreground", "220 20% 95%");
-      root.style.setProperty("--secondary", "230 15% 14%");
-      root.style.setProperty("--secondary-foreground", "220 20% 90%");
-      root.style.setProperty("--muted", "230 15% 12%");
-      root.style.setProperty("--muted-foreground", "220 10% 55%");
-      root.style.setProperty("--border", "230 15% 15%");
-      root.style.setProperty("--input", "230 15% 15%");
-      root.style.setProperty("--glass", "230 20% 7%");
-      root.style.setProperty("--glass-border", "0 0% 100%");
-      root.style.setProperty("--primary-foreground", "0 0% 100%");
-      root.style.setProperty("--destructive-foreground", "0 0% 100%");
-      root.classList.remove("light-theme");
+      setDarkVars("230 25% 4%", "220 20% 95%", "230 20% 7%", "220 20% 95%", "230 15% 14%", "220 20% 90%", "230 15% 12%", "220 10% 55%", "230 15% 15%", "230 20% 7%");
       break;
-
     case "oled":
-      root.style.setProperty("--background", "0 0% 0%");
-      root.style.setProperty("--foreground", "220 20% 95%");
-      root.style.setProperty("--card", "0 0% 4%");
-      root.style.setProperty("--card-foreground", "220 20% 95%");
-      root.style.setProperty("--popover", "0 0% 4%");
-      root.style.setProperty("--popover-foreground", "220 20% 95%");
-      root.style.setProperty("--secondary", "0 0% 8%");
-      root.style.setProperty("--secondary-foreground", "220 20% 90%");
-      root.style.setProperty("--muted", "0 0% 6%");
-      root.style.setProperty("--muted-foreground", "220 10% 50%");
-      root.style.setProperty("--border", "0 0% 10%");
-      root.style.setProperty("--input", "0 0% 10%");
-      root.style.setProperty("--glass", "0 0% 4%");
-      root.style.setProperty("--glass-border", "0 0% 100%");
-      root.style.setProperty("--primary-foreground", "0 0% 100%");
-      root.style.setProperty("--destructive-foreground", "0 0% 100%");
-      root.classList.remove("light-theme");
+      setDarkVars("0 0% 0%", "220 20% 95%", "0 0% 4%", "220 20% 95%", "0 0% 8%", "220 20% 90%", "0 0% 6%", "220 10% 50%", "0 0% 10%", "0 0% 4%");
       break;
-
     case "midnight":
-      root.style.setProperty("--background", "222 47% 5%");
-      root.style.setProperty("--foreground", "213 31% 91%");
-      root.style.setProperty("--card", "222 40% 8%");
-      root.style.setProperty("--card-foreground", "213 31% 91%");
-      root.style.setProperty("--popover", "222 40% 8%");
-      root.style.setProperty("--popover-foreground", "213 31% 91%");
-      root.style.setProperty("--secondary", "222 30% 14%");
-      root.style.setProperty("--secondary-foreground", "213 25% 88%");
-      root.style.setProperty("--muted", "222 30% 11%");
-      root.style.setProperty("--muted-foreground", "215 15% 50%");
-      root.style.setProperty("--border", "222 25% 15%");
-      root.style.setProperty("--input", "222 25% 15%");
-      root.style.setProperty("--glass", "222 40% 8%");
-      root.style.setProperty("--glass-border", "0 0% 100%");
-      root.style.setProperty("--primary-foreground", "0 0% 100%");
-      root.style.setProperty("--destructive-foreground", "0 0% 100%");
-      root.classList.remove("light-theme");
+      setDarkVars("222 47% 5%", "213 31% 91%", "222 40% 8%", "213 31% 91%", "222 30% 14%", "213 25% 88%", "222 30% 11%", "215 15% 50%", "222 25% 15%", "222 40% 8%");
       break;
-
+    case "forest":
+      setDarkVars("140 30% 4%", "130 20% 92%", "145 25% 7%", "130 20% 92%", "140 18% 13%", "130 20% 88%", "142 20% 10%", "135 12% 48%", "140 18% 14%", "145 25% 7%");
+      break;
+    case "crimson":
+      setDarkVars("350 30% 4%", "350 15% 93%", "350 22% 7%", "350 15% 93%", "350 15% 13%", "350 15% 88%", "350 18% 10%", "350 10% 48%", "350 15% 14%", "350 22% 7%");
+      break;
+    case "cyber":
+      setDarkVars("215 50% 3%", "195 70% 90%", "215 45% 6%", "195 70% 90%", "215 35% 12%", "195 50% 85%", "215 40% 8%", "200 20% 45%", "215 35% 13%", "215 45% 6%");
+      break;
+    case "sandstone":
+      setLightVars("35 30% 94%", "30 30% 12%", "38 35% 97%", "30 30% 12%", "35 25% 89%", "30 20% 20%", "35 25% 89%", "30 12% 50%", "35 20% 82%", "38 35% 97%", "35 20% 82%");
+      break;
     case "light":
-      root.style.setProperty("--background", "220 14% 96%");
-      root.style.setProperty("--foreground", "224 71% 10%");
-      root.style.setProperty("--card", "0 0% 100%");
-      root.style.setProperty("--card-foreground", "224 71% 10%");
-      root.style.setProperty("--popover", "0 0% 100%");
-      root.style.setProperty("--popover-foreground", "224 71% 10%");
-      root.style.setProperty("--secondary", "220 14% 92%");
-      root.style.setProperty("--secondary-foreground", "224 50% 18%");
-      root.style.setProperty("--muted", "220 14% 92%");
-      root.style.setProperty("--muted-foreground", "220 9% 46%");
-      root.style.setProperty("--border", "220 13% 87%");
-      root.style.setProperty("--input", "220 13% 87%");
-      root.style.setProperty("--glass", "0 0% 100%");
-      root.style.setProperty("--glass-border", "220 13% 87%");
-      root.style.setProperty("--primary-foreground", "0 0% 100%");
-      root.style.setProperty("--destructive-foreground", "0 0% 100%");
-      root.classList.add("light-theme");
+      setLightVars("220 14% 96%", "224 71% 10%", "0 0% 100%", "224 71% 10%", "220 14% 92%", "224 50% 18%", "220 14% 92%", "220 9% 46%", "220 13% 87%", "0 0% 100%", "220 13% 87%");
       break;
+  }
+
+  // Frame style — remove all frame classes then add active one
+  const frameClasses = ["frame-default", "frame-glow", "frame-neon", "frame-frost", "frame-sharp"];
+  root.classList.remove(...frameClasses);
+  if (frame && frame !== "default") {
+    root.classList.add(`frame-${frame}`);
   }
 }
 

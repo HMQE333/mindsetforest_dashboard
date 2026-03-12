@@ -98,6 +98,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                     <ThemeTab
                       currentTheme={settings.preferences.theme || "dark"}
                       currentAccent={settings.preferences.accentColor || "purple"}
+                      currentFrame={settings.preferences.frameStyle || "default"}
                       onSave={settings.saveTheme}
                     />
                   )}
