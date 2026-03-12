@@ -299,6 +299,7 @@ export type Database = {
           pages_read: number
           rating: number | null
           status: string
+          tags: string[]
           title: string
           total_pages: number
           updated_at: string
@@ -313,6 +314,7 @@ export type Database = {
           pages_read?: number
           rating?: number | null
           status?: string
+          tags?: string[]
           title: string
           total_pages?: number
           updated_at?: string
@@ -327,6 +329,7 @@ export type Database = {
           pages_read?: number
           rating?: number | null
           status?: string
+          tags?: string[]
           title?: string
           total_pages?: number
           updated_at?: string

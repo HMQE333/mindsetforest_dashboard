@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Book, STATUS_LABELS, BookStatus, COVER_COLORS } from "@/lib/library-data";
-import { Star, Trash2, Sparkles, Loader2 } from "lucide-react";
+import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS } from "@/lib/library-data";
+import { Star, Trash2, Sparkles, Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -20,6 +20,8 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   const [pagesRead, setPagesRead] = useState("");
   const [rating, setRating] = useState<number | null>(null);
   const [status, setStatus] = useState<BookStatus>("to-read");
+  const [tags, setTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState("");
   const [question, setQuestion] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -30,12 +32,29 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
       setPagesRead(String(book.pages_read));
       setRating(book.rating);
       setStatus(book.status);
+      setTags(book.tags || []);
       setAiAnswer("");
       setQuestion("");
+      setCustomTag("");
     }
   }, [book]);
 
   if (!book) return null;
+
+  const addTag = (tag: string) => {
+    const t = tag.trim();
+    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+  };
+
+  const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag));
+
+  const handleCustomTagKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && customTag.trim()) {
+      e.preventDefault();
+      addTag(customTag);
+      setCustomTag("");
+    }
+  };
 
   const handleSave = () => {
     onUpdate(book.id, {
@@ -43,6 +62,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
       pages_read: parseInt(pagesRead) || 0,
       rating,
       status,
+      tags,
     });
     toast.success("Book updated");
   };
@@ -123,6 +143,35 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
               </div>
             </div>
           )}
+
+          {/* Tags */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Tags</label>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-xs font-medium">
+                    {tag}
+                    <button onClick={() => removeTag(tag)} className="hover:text-destructive"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Input
+              value={customTag}
+              onChange={e => setCustomTag(e.target.value)}
+              onKeyDown={handleCustomTagKey}
+              placeholder="Type custom tag + Enter"
+              className="bg-muted/30 border-white/10 text-sm mb-2"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {DIRECTION_TAGS.filter(t => !tags.includes(t)).slice(0, 6).map(t => (
+                <button key={t} onClick={() => addTag(t)} className="px-2 py-0.5 rounded-full bg-muted/30 text-muted-foreground text-xs hover:text-foreground hover:bg-muted/50 transition-all">
+                  + {t}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Notes */}
           <div>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Sparkles, Filter } from "lucide-react";
+import { Plus, Search, Sparkles, Filter, Tag } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
 import { BookStatus, STATUS_LABELS } from "@/lib/library-data";
 import BookCard from "./BookCard";
@@ -17,18 +17,27 @@ export default function LibraryView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookStatus | "all">("all");
   const [ratingFilter, setRatingFilter] = useState<number | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+
+  // Collect all unique tags
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    books.forEach(b => (b.tags || []).forEach(t => set.add(t)));
+    return Array.from(set).sort();
+  }, [books]);
 
   const filtered = useMemo(() => {
     return books.filter(b => {
       if (statusFilter !== "all" && b.status !== statusFilter) return false;
       if (ratingFilter && (b.rating || 0) < ratingFilter) return false;
+      if (tagFilter && !(b.tags || []).includes(tagFilter)) return false;
       if (search) {
         const q = search.toLowerCase();
         if (!b.title.toLowerCase().includes(q) && !b.author.toLowerCase().includes(q)) return false;
       }
       return true;
     });
-  }, [books, statusFilter, ratingFilter, search]);
+  }, [books, statusFilter, ratingFilter, tagFilter, search]);
 
   const counts = useMemo(() => ({
     all: books.length,
@@ -94,6 +103,24 @@ export default function LibraryView() {
           <Filter className="w-3 h-3" /> {ratingFilter ? `★${ratingFilter}+` : "Rating"}
         </button>
       </div>
+
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <Tag className="w-3.5 h-3.5 text-muted-foreground mt-0.5" />
+          {allTags.map(t => (
+            <button
+              key={t}
+              onClick={() => setTagFilter(tagFilter === t ? null : t)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                tagFilter === t ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Book Grid */}
       {filtered.length === 0 ? (

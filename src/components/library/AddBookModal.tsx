@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { COVER_COLORS } from "@/lib/library-data";
+import { COVER_COLORS, DIRECTION_TAGS } from "@/lib/library-data";
 import type { BookStatus } from "@/lib/library-data";
+import { X } from "lucide-react";
 
 interface AddBookModalProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (book: { title: string; author: string; total_pages: number; status: BookStatus; cover_color: string }) => void;
+  onAdd: (book: { title: string; author: string; total_pages: number; status: BookStatus; cover_color: string; tags: string[] }) => void;
 }
 
 export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps) {
@@ -16,17 +17,34 @@ export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps
   const [pages, setPages] = useState("");
   const [status, setStatus] = useState<BookStatus>("to-read");
   const [color, setColor] = useState(COVER_COLORS[0]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState("");
+
+  const addTag = (tag: string) => {
+    const t = tag.trim();
+    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+  };
+
+  const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag));
+
+  const handleCustomTagKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && customTag.trim()) {
+      e.preventDefault();
+      addTag(customTag);
+      setCustomTag("");
+    }
+  };
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    onAdd({ title: title.trim(), author: author.trim(), total_pages: parseInt(pages) || 0, status, cover_color: color });
-    setTitle(""); setAuthor(""); setPages(""); setStatus("to-read"); setColor(COVER_COLORS[0]);
+    onAdd({ title: title.trim(), author: author.trim(), total_pages: parseInt(pages) || 0, status, cover_color: color, tags });
+    setTitle(""); setAuthor(""); setPages(""); setStatus("to-read"); setColor(COVER_COLORS[0]); setTags([]); setCustomTag("");
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="glass-card border-white/10 max-w-md">
+      <DialogContent className="glass-card border-white/10 max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-foreground">📖 Add Book</DialogTitle>
         </DialogHeader>
@@ -47,6 +65,35 @@ export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps
                   }`}
                 >
                   {s === "to-read" ? "To Read" : s === "reading" ? "Reading" : "Finished"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Tags</label>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-xs font-medium">
+                    {tag}
+                    <button onClick={() => removeTag(tag)} className="hover:text-destructive"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Input
+              value={customTag}
+              onChange={e => setCustomTag(e.target.value)}
+              onKeyDown={handleCustomTagKey}
+              placeholder="Type custom tag + Enter"
+              className="bg-muted/30 border-white/10 text-sm mb-2"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {DIRECTION_TAGS.filter(t => !tags.includes(t)).slice(0, 8).map(t => (
+                <button key={t} onClick={() => addTag(t)} className="px-2 py-0.5 rounded-full bg-muted/30 text-muted-foreground text-xs hover:text-foreground hover:bg-muted/50 transition-all">
+                  + {t}
                 </button>
               ))}
             </div>

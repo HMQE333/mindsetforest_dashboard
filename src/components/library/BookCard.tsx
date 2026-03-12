@@ -44,6 +44,16 @@ export default function BookCard({ book, index, onClick }: BookCardProps) {
             </div>
           )}
 
+          {/* Tags */}
+          {book.tags && book.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {book.tags.slice(0, 3).map(tag => (
+                <span key={tag} className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium">{tag}</span>
+              ))}
+              {book.tags.length > 3 && <span className="text-[10px] text-muted-foreground">+{book.tags.length - 3}</span>}
+            </div>
+          )}
+
           {/* Progress */}
           {book.total_pages > 0 && (
             <div>
