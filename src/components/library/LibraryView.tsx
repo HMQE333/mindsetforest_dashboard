@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Sparkles, Filter } from "lucide-react";
+import { Plus, Search, Sparkles, Filter, Tag } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
 import { BookStatus, STATUS_LABELS } from "@/lib/library-data";
 import BookCard from "./BookCard";
