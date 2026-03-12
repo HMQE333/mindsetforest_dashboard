@@ -283,7 +283,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   }
 
   // Frame style — remove all frame classes then add active one
-  const frameClasses = ["frame-default", "frame-glow", "frame-neon", "frame-frost", "frame-sharp"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
