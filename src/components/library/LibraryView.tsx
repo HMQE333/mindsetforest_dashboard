@@ -17,18 +17,27 @@ export default function LibraryView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookStatus | "all">("all");
   const [ratingFilter, setRatingFilter] = useState<number | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+
+  // Collect all unique tags
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    books.forEach(b => (b.tags || []).forEach(t => set.add(t)));
+    return Array.from(set).sort();
+  }, [books]);
 
   const filtered = useMemo(() => {
     return books.filter(b => {
       if (statusFilter !== "all" && b.status !== statusFilter) return false;
       if (ratingFilter && (b.rating || 0) < ratingFilter) return false;
+      if (tagFilter && !(b.tags || []).includes(tagFilter)) return false;
       if (search) {
         const q = search.toLowerCase();
         if (!b.title.toLowerCase().includes(q) && !b.author.toLowerCase().includes(q)) return false;
       }
       return true;
     });
-  }, [books, statusFilter, ratingFilter, search]);
+  }, [books, statusFilter, ratingFilter, tagFilter, search]);
 
   const counts = useMemo(() => ({
     all: books.length,
