@@ -53,6 +53,7 @@ export default function ModulesTab({ enabledModules, onSave }: ModulesTabProps) 
   const handleSave = async () => {
     await onSave(Array.from(enabled));
     setDirty(false);
+    window.location.reload();
   };
 
   return (
