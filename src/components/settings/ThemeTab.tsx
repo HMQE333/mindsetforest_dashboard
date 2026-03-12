@@ -27,6 +27,7 @@ const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light
 const FRAMES: { id: FrameStyle; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎯", description: "Lift + shadow on hover" },
   { id: "glow", label: "Glow", icon: "✨", description: "Accent-colored glow border" },
+  { id: "aura", label: "Aura", icon: "🔆", description: "Card-color matching glow" },
   { id: "neon", label: "Neon", icon: "💡", description: "Bright neon outline" },
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },

@@ -29,7 +29,7 @@ export interface UserMetric {
 
 export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "crimson" | "cyber" | "sandstone";
 export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
-export type FrameStyle = "default" | "glow" | "neon" | "frost" | "sharp";
+export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp";
 
 export interface UserPreferences {
   enabledModules: string[];
