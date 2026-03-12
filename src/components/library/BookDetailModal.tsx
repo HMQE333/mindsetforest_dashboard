@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat } from "@/lib/library-data";
 import { PILLARS } from "@/lib/archive-data";
 import { Star, Trash2, Sparkles, Loader2, X } from "lucide-react";
+import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
