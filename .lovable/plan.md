@@ -1,25 +1,61 @@
 
 
-## Plan: Add Prism Frame Style (Dual Glow Effect)
+## Plan: Keyboard Shortcuts System for Dashboard
 
-Add a new frame style "Prism" that combines both accent-colored glow AND card-color glow for a layered dual-glow hover effect.
+### Concept
+
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+
+### Shortcut Map
+
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
+
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
+
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
+
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
 ### Implementation
 
-1. **useUserSettings.ts** - Add "prism" to FrameStyle type
-2. **ThemeTab.tsx** - Add PRISM entry to FRAMES array with icon/description
-3. **index.css** - Add `.frame-prism` rule with dual box-shadow (accent + card color)
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-### CSS Effect
-```css
-.frame-prism .glass-card-hover:hover {
-  transform: none;
-  border-color: hsl(var(--glow-purple) / 0.6);
-  box-shadow: 
-    0 0 20px hsl(var(--glow-purple) / 0.4),    /* Accent glow */
-    0 0 40px hsl(var(--card) / 0.3);            /* Card color glow */
-}
-```
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-No database changes needed - stores in existing preferences JSON.
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
+
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
+
+### File Summary
+
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

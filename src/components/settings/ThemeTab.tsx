@@ -31,6 +31,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "neon", label: "Neon", icon: "💡", description: "Bright neon outline" },
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
+  { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
 ];
 
 interface ThemeTabProps {
@@ -283,7 +284,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   }
 
   // Frame style — remove all frame classes then add active one
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
