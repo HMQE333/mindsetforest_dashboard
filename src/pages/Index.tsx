@@ -14,10 +14,11 @@ import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
 import ArchiveView from "@/components/archive/ArchiveView";
+import LibraryView from "@/components/library/LibraryView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library";
 
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
@@ -26,9 +27,10 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   habitloop: "🔄 Habit Loop",
   oracle: "🔮 Oracle",
   archive: "📦 Archive",
+  library: "📚 Library",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive"];
+const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library"];
 
 const Index = () => {
   const { user } = useAuth();
@@ -170,6 +172,7 @@ const Index = () => {
         {activeTab === "habitloop" && enabledModules.has("habitloop") && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
         {activeTab === "oracle" && enabledModules.has("oracle") && (user ? <OracleView /> : renderAuthGate("oracle"))}
         {activeTab === "archive" && enabledModules.has("archive") && (user ? <ArchiveView /> : renderAuthGate("archive"))}
+        {activeTab === "library" && enabledModules.has("library") && (user ? <LibraryView /> : renderAuthGate("library"))}
       </div>
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
