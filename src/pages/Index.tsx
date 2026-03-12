@@ -152,7 +152,7 @@ const Index = () => {
               </AnimatePresence>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10">
+            <div className="inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10 max-w-full overflow-x-auto scrollbar-hide">
               {visibleTabs.map(id => {
                 if (id === "tracker") {
                   return tabButton(id, ALL_TAB_LABELS[id], () => {
