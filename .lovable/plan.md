@@ -1,61 +1,24 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+## Improve Bark Frame Style
 
-### Concept
+The current Bark frame is minimal — just a brown border, a faint warm glow, and a single thin `repeating-linear-gradient` grain line. It doesn't feel organic or textured enough. Here's the plan to make it feel like actual rough bark.
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+### CSS Changes (`src/index.css`)
 
-### Shortcut Map
+Replace the `.frame-bark` block with a richer treatment:
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+- **Multi-layer grain**: 3 overlapping `repeating-linear-gradient` at slightly different angles (88°, 94°, 91°) with varying widths and opacities to create irregular wood-grain lines
+- **Rough border**: Use a thicker, uneven-looking border via `border-width: 1.5px` with a warm brown that's slightly brighter
+- **Layered warm glow**: Add a subtle amber outer glow + a deeper brown inner shadow for depth, giving the impression of rough texture catching light
+- **Subtle texture noise**: Add a radial-gradient "knot" spot or two for organic imperfection
+- **No transform** on hover (keep consistent with nature frames)
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+### Preview Update (`src/components/settings/ThemeTab.tsx`)
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+Update the `case "bark"` preview to show richer brown tones and a hint of grain pattern in the small preview card.
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
-
-### Implementation
-
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
-
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
-
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
-
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
-
-### File Summary
-
-| File | Change |
-|------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
-
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+### Files Changed
+- `src/index.css` — rewrite `.frame-bark` block
+- `src/components/settings/ThemeTab.tsx` — update bark preview styling
 
