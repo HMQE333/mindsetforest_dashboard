@@ -83,7 +83,9 @@ export function useUserSettings() {
         .maybeSingle();
 
       if (onb?.custom_categories) {
-        setCustomCategories(onb.custom_categories as unknown as CustomCategory[]);
+        const cats = onb.custom_categories as unknown as CustomCategory[];
+        setCustomCategories(cats);
+        try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
       }
       if (onb?.preferences) {
         const prefs = onb.preferences as unknown as UserPreferences;
