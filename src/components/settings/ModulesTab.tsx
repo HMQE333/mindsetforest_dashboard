@@ -35,7 +35,7 @@ interface ModulesTabProps {
   onSavePulseStyle?: (style: FocusPulseStyle) => void;
 }
 
-export default function ModulesTab({ enabledModules, onSave }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
 

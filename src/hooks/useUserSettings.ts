@@ -34,6 +34,8 @@ export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid"
 export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
 export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh";
 
+export type FocusPulseStyle = "glow" | "ping" | "none";
+
 export interface UserPreferences {
   enabledModules: string[];
   theme?: ThemeMode;
@@ -43,6 +45,7 @@ export interface UserPreferences {
   heroLayout?: HeroLayout;
   fontPair?: FontPair;
   backgroundPattern?: BackgroundPattern;
+  focusPulseStyle?: FocusPulseStyle;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
