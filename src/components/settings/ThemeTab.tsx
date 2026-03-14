@@ -869,7 +869,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     root.classList.add(`frame-${frame}`);
   }
 
-  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated"];
+  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated", "card-frosted"];
   root.classList.remove(...cardClasses);
   if (cardStyle && cardStyle !== "default") {
     root.classList.add(`card-${cardStyle}`);
