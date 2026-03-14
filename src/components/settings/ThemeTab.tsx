@@ -58,6 +58,7 @@ const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; descrip
   { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
   { id: "fireflies", label: "Fireflies", icon: "🪲", description: "Warm drifting firefly glow" },
   { id: "forest", label: "Forest", icon: "🌲", description: "Layered tree silhouettes" },
+  { id: "snow", label: "Snowfall", icon: "❄️", description: "Gently falling snowflakes" },
 ];
 
 const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: string }[] = [
