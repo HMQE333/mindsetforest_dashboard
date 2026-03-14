@@ -563,8 +563,9 @@ export default function BackgroundPattern({ pattern, intensity = 0.6 }: Props) {
 
   if (pattern === "mesh") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.08]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.13,
           background: `
             radial-gradient(ellipse at 20% 50%, hsl(var(--primary) / 0.15) 0%, transparent 50%),
             radial-gradient(ellipse at 80% 20%, hsl(var(--glow-pink) / 0.12) 0%, transparent 50%),
