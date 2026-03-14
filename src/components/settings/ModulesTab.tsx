@@ -111,6 +111,31 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
         })}
       </div>
 
+      {/* Focus Pulse Style picker — only if monthly-focus is enabled */}
+      {enabled.has("monthly-focus") && (
+        <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">
+          <div className="text-xs font-semibold text-foreground">🎯 Focus Reminder Effect</div>
+          <div className="flex gap-2">
+            {PULSE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  onSavePulseStyle?.(opt.value);
+                }}
+                className={`flex-1 p-2 rounded-lg border text-center transition-all text-xs ${
+                  focusPulseStyle === opt.value
+                    ? "border-primary/50 bg-primary/10 text-foreground"
+                    : "border-border bg-muted/20 text-muted-foreground hover:border-white/20"
+                }`}
+              >
+                <div className="font-medium">{opt.label}</div>
+                <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {dirty && (
         <motion.button
           initial={{ opacity: 0, y: 10 }}
