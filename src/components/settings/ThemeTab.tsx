@@ -816,9 +816,17 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Background Intensity Slider */}
+        {bgPattern !== "none" && (
+          <div className="mt-3 px-1">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium">Intensity</span>
+              <span className="text-[10px] font-mono text-muted-foreground">{Math.round(bgIntensity * 100)}%</span>
+            </div>
+            <Slider min={10} max={100} step={1} value={[Math.round(bgIntensity * 100)]} onValueChange={([v]) => handleBgIntensityChange(v / 100)} className="w-full" />
+          </div>
+        )}
       </Section>
-
-      {/* ── Accent gradient bar ── */}
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
           background: `linear-gradient(90deg, hsl(${getAccentHSL(accent)}), hsl(${getAccentHSL(accent, 20)}))`,
