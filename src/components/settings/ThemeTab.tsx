@@ -882,6 +882,9 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     case "frost":
       setLightVars("205 40% 94%", "210 40% 15%", "205 50% 97%", "210 40% 15%", "205 30% 88%", "210 30% 22%", "205 30% 90%", "210 15% 48%", "205 25% 82%", "205 50% 97%", "205 30% 82%");
       break;
+    case "timber":
+      setDarkVars("25 35% 4%", "30 25% 90%", "28 30% 8%", "30 25% 90%", "25 20% 14%", "30 20% 85%", "25 22% 11%", "30 12% 48%", "25 18% 16%", "28 30% 8%");
+      break;
   }
 
   const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle"];
