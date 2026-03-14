@@ -33,7 +33,7 @@ export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
 export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
 export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh";
-
+export type CardStyle = "default" | "glassmorphic" | "solid" | "outline" | "elevated";
 export type FocusPulseStyle = "glow" | "ping" | "none";
 
 export interface UserPreferences {
