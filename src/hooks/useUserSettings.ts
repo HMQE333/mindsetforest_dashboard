@@ -39,7 +39,7 @@ export interface UserPreferences {
   customKeybinds?: Partial<KeybindMap>;
 }
 
-const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library"];
+const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
 
 export function useUserSettings() {
   const { user } = useAuth();
