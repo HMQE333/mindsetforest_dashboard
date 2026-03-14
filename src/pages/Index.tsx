@@ -96,12 +96,8 @@ const Index = () => {
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl gradient-purple border-2 border-primary/40 glow-md animate-pulse-glow">
-              <span className="text-2xl animate-fire">🔥</span>
-              <span className="text-lg font-bold text-primary-foreground">Gamified Productivity</span>
-            </div>
-            {user && (
+          {user && (
+            <div className="flex justify-end mb-2">
               <button
                 onClick={() => setSettingsOpen(true)}
                 className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
@@ -109,8 +105,8 @@ const Index = () => {
               >
                 <Settings className="w-5 h-5" />
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           <h1 className="mb-2 text-4xl font-bold text-gradient-purple">MindsetForest</h1>
           <p className="text-lg text-muted-foreground mb-6">Your Life. Your Quest.</p>
