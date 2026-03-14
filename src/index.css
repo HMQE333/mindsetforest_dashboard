@@ -273,7 +273,7 @@
 /* Electric — animated turbulent border via SVG filter */
 .frame-electric .glass-card-hover {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .frame-electric .glass-card-hover::after {
@@ -305,7 +305,7 @@
 /* Plasma — electric turbulent border using per-card category color */
 .frame-plasma .glass-card-hover {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .frame-plasma .glass-card-hover::after {
