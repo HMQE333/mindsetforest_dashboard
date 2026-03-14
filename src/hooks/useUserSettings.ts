@@ -241,7 +241,7 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => {
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => {
     const newPrefs = {
       ...preferences,
       theme,
@@ -250,9 +250,10 @@ export function useUserSettings() {
       heroLayout: heroLayout || preferences.heroLayout || "default",
       fontPair: fontPair || preferences.fontPair || "default",
       backgroundPattern: backgroundPattern || preferences.backgroundPattern || "none",
+      cardStyle: cardStyle || preferences.cardStyle || "default",
     };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default");
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default");
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
