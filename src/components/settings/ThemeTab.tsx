@@ -34,6 +34,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
+  { id: "electric", label: "Electric", icon: "⚡", description: "Animated crackling border" },
 ];
 
 const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
@@ -139,6 +140,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, borderRadius: 3, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" };
       case "prism":
         return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
+      case "electric":
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
@@ -838,7 +841,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
       break;
   }
 
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
