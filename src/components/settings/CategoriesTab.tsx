@@ -1,7 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { Camera, X } from "lucide-react";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { CustomCategory } from "@/hooks/useUserSettings";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+import PillarIcon from "@/components/shared/PillarIcon";
 
 const COLOR_PRESETS = [
   { color: "#8B5CF6", lightColor: "#A78BFA", label: "Purple" },
@@ -16,17 +21,40 @@ const COLOR_PRESETS = [
   { color: "#EC4899", lightColor: "#F472B6", label: "Rose" },
 ];
 
+const MAX_FILE_SIZE = 256 * 1024; // 256KB
+
+async function resizeToSquare(file: File, size: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, size, size);
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error("Canvas toBlob failed"));
+      }, "image/png");
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 interface CategoriesTabProps {
   customCategories: CustomCategory[];
   onSave: (cats: CustomCategory[]) => Promise<void>;
 }
 
 export default function CategoriesTab({ customCategories, onSave }: CategoriesTabProps) {
+  const { user } = useAuth();
   const [editing, setEditing] = useState<CustomCategory[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
-    // Merge defaults with customs
     const merged = CATEGORIES.map(cat => {
       const custom = customCategories.find(c => c.id === cat.id);
       return {
@@ -34,6 +62,7 @@ export default function CategoriesTab({ customCategories, onSave }: CategoriesTa
         name: custom?.name || cat.name,
         tagline: custom?.tagline || cat.tagline,
         icon: custom?.icon || cat.icon,
+        iconUrl: custom?.iconUrl || undefined,
         color: custom?.color || cat.color,
         lightColor: custom?.lightColor || cat.lightColor,
       };
@@ -51,6 +80,52 @@ export default function CategoriesTab({ customCategories, onSave }: CategoriesTa
     setDirty(true);
   };
 
+  const handleIconUpload = async (catId: string, file: File) => {
+    if (!user) return;
+    if (file.type !== "image/png") {
+      toast.error("Only PNG files accepted");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("Icon must be under 256KB");
+      return;
+    }
+
+    setUploading(catId);
+    try {
+      const resized = await resizeToSquare(file, 64);
+      const path = `${user.id}/${catId}.png`;
+
+      // Remove old file first (ignore errors)
+      await supabase.storage.from("pillar-icons").remove([path]);
+
+      const { error } = await supabase.storage.from("pillar-icons").upload(path, resized, {
+        contentType: "image/png",
+        upsert: true,
+      });
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage.from("pillar-icons").getPublicUrl(path);
+      const iconUrl = urlData.publicUrl + "?t=" + Date.now(); // cache bust
+
+      setEditing(prev => prev.map(c => c.id === catId ? { ...c, iconUrl } : c));
+      setDirty(true);
+      toast.success("Icon uploaded");
+    } catch (e: any) {
+      toast.error("Upload failed: " + (e.message || "Unknown error"));
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const handleRemoveIcon = async (catId: string) => {
+    if (!user) return;
+    const path = `${user.id}/${catId}.png`;
+    await supabase.storage.from("pillar-icons").remove([path]);
+    setEditing(prev => prev.map(c => c.id === catId ? { ...c, iconUrl: undefined } : c));
+    setDirty(true);
+  };
+
   const handleSave = async () => {
     await onSave(editing);
     setDirty(false);
@@ -62,6 +137,7 @@ export default function CategoriesTab({ customCategories, onSave }: CategoriesTa
       name: cat.name,
       tagline: cat.tagline,
       icon: cat.icon,
+      iconUrl: undefined,
       color: cat.color,
       lightColor: cat.lightColor,
     })));
@@ -87,12 +163,49 @@ export default function CategoriesTab({ customCategories, onSave }: CategoriesTa
             className="glass-card p-3 space-y-2"
           >
             <div className="flex items-center gap-2">
-              <input
-                value={cat.icon}
-                onChange={e => update(cat.id, "icon", e.target.value)}
-                className="w-10 h-10 text-center text-xl bg-transparent border border-white/10 rounded-lg focus:outline-none focus:border-primary/50"
-                maxLength={4}
-              />
+              {/* Icon area: emoji input or uploaded image */}
+              <div className="relative w-10 h-10 flex-shrink-0">
+                {cat.iconUrl ? (
+                  <>
+                    <PillarIcon icon={cat.icon} iconUrl={cat.iconUrl} size={40} className="rounded-lg" />
+                    <button
+                      onClick={() => handleRemoveIcon(cat.id)}
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-[10px] hover:scale-110 transition-transform"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={cat.icon}
+                      onChange={e => update(cat.id, "icon", e.target.value)}
+                      className="w-10 h-10 text-center text-xl bg-transparent border border-white/10 rounded-lg focus:outline-none focus:border-primary/50"
+                      maxLength={4}
+                    />
+                    <button
+                      onClick={() => fileInputRefs.current[cat.id]?.click()}
+                      disabled={uploading === cat.id}
+                      className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-muted border border-border flex items-center justify-center hover:bg-accent transition-colors"
+                      title="Upload PNG icon"
+                    >
+                      <Camera className="w-2.5 h-2.5 text-muted-foreground" />
+                    </button>
+                  </>
+                )}
+                <input
+                  ref={el => { fileInputRefs.current[cat.id] = el; }}
+                  type="file"
+                  accept="image/png"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleIconUpload(cat.id, f);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+
               <div className="flex-1 space-y-1">
                 <input
                   value={cat.name}
@@ -127,6 +240,8 @@ export default function CategoriesTab({ customCategories, onSave }: CategoriesTa
           </motion.div>
         ))}
       </div>
+
+      <p className="text-[10px] text-muted-foreground/60 text-center">PNG only · max 256KB · square recommended</p>
 
       {dirty && (
         <motion.button
