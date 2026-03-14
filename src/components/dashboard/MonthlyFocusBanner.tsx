@@ -12,7 +12,13 @@ interface FocusItem {
   is_active: boolean;
 }
 
-export default function MonthlyFocusBanner() {
+type FocusPulseStyle = "glow" | "ping" | "none";
+
+interface MonthlyFocusProps {
+  pulseStyle?: FocusPulseStyle;
+}
+
+export default function MonthlyFocusBanner({ pulseStyle = "glow" }: MonthlyFocusProps) {
   const { user } = useAuth();
   const [items, setItems] = useState<FocusItem[]>([]);
   const [editing, setEditing] = useState(false);
@@ -38,19 +44,19 @@ export default function MonthlyFocusBanner() {
     load();
   }, [user, currentMonth]);
 
-  // Periodic pulse animation every ~10s
+  // Periodic pulse animation every ~10s (skip if none)
   useEffect(() => {
+    if (pulseStyle === "none") return;
     const interval = setInterval(() => {
       setPulse(true);
       setTimeout(() => setPulse(false), 2000);
     }, 10000);
-    // Initial pulse after 3s
     const initial = setTimeout(() => {
       setPulse(true);
       setTimeout(() => setPulse(false), 2000);
     }, 3000);
     return () => { clearInterval(interval); clearTimeout(initial); };
-  }, []);
+  }, [pulseStyle]);
 
   const addItem = useCallback(async () => {
     if (!user || !newText.trim()) return;
@@ -88,13 +94,16 @@ export default function MonthlyFocusBanner() {
               {items.length}
             </span>
           )}
-          {/* Soft glow */}
-          <span
-            className="absolute inset-0 rounded-xl pointer-events-none transition-all duration-1000 ease-in-out"
-            style={{
-              boxShadow: pulse ? "0 0 12px 3px hsl(var(--primary) / 0.35)" : "0 0 0px 0px hsl(var(--primary) / 0)",
-            }}
-          />
+          {/* Pulse effect */}
+          {pulse && pulseStyle === "ping" && (
+            <span className="absolute inset-0 rounded-xl border-2 border-primary/40 animate-ping pointer-events-none" />
+          )}
+          {pulse && pulseStyle === "glow" && (
+            <span
+              className="absolute inset-0 rounded-xl pointer-events-none transition-all duration-1000 ease-in-out"
+              style={{ boxShadow: "0 0 12px 3px hsl(var(--primary) / 0.35)" }}
+            />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 p-0">
