@@ -7,6 +7,7 @@ interface DashboardHeroProps {
   onResetDay: () => void;
   onShowShortcuts: () => void;
   heroLayout?: HeroLayout;
+  extraActions?: React.ReactNode;
 }
 
 const stats = (state: DashboardState) => [
