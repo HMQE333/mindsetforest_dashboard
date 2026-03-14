@@ -233,8 +233,8 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle) => {
-    const newPrefs = { ...preferences, theme, accentColor, frameStyle: frameStyle || preferences.frameStyle || "default" };
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout) => {
+    const newPrefs = { ...preferences, theme, accentColor, frameStyle: frameStyle || preferences.frameStyle || "default", heroLayout: heroLayout || preferences.heroLayout || "default" };
     await savePreferences(newPrefs);
     applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default");
   }, [savePreferences, preferences]);

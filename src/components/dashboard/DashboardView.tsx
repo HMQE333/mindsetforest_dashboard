@@ -140,7 +140,7 @@ export default function DashboardView() {
   return (
     <div className="relative">
       {showMonthlyFocus && <MonthlyFocusBanner />}
-      <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} />
+      <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} heroLayout={preferences.heroLayout} />
 
       {/* Weekly Progress - moved to bottom */}
 
