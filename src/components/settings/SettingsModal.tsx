@@ -107,6 +107,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentFontPair={settings.preferences.fontPair || "default"}
                       currentBackgroundPattern={settings.preferences.backgroundPattern || "none"}
                       currentCardStyle={settings.preferences.cardStyle || "default"}
+                      currentCustomAccentHue={settings.preferences.customAccentHue}
+                      currentCardOpacity={settings.preferences.cardOpacity}
+                      currentBackgroundIntensity={settings.preferences.backgroundIntensity}
+                      currentBorderRadius={settings.preferences.borderRadius}
                       onSave={settings.saveTheme}
                     />
                   )}

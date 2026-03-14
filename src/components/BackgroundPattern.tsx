@@ -3,9 +3,10 @@ import { BackgroundPattern as BgType } from "@/hooks/useUserSettings";
 
 interface Props {
   pattern: BgType;
+  intensity?: number;
 }
 
-export default function BackgroundPattern({ pattern }: Props) {
+export default function BackgroundPattern({ pattern, intensity = 0.6 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Starry night animation
