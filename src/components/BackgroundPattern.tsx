@@ -184,7 +184,119 @@ export default function BackgroundPattern({ pattern }: Props) {
     };
   }, [pattern]);
 
+  // Forest silhouette animation
+  useEffect(() => {
+    if (pattern !== "forest") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    // Tree layers: back to front with increasing opacity/size
+    interface TreeLayer {
+      y: number; // baseline Y ratio (0-1)
+      opacity: number;
+      color: string;
+      trees: { x: number; width: number; height: number; trunkH: number; layers: number }[];
+      sway: number; // sway amount
+      speed: number; // sway speed
+    }
+
+    const generateTrees = (count: number, minW: number, maxW: number, minH: number, maxH: number) => {
+      const trees = [];
+      for (let i = 0; i < count; i++) {
+        const width = Math.random() * (maxW - minW) + minW;
+        trees.push({
+          x: (i / count) * 1.1 - 0.05 + (Math.random() - 0.5) * (0.8 / count),
+          width,
+          height: Math.random() * (maxH - minH) + minH,
+          trunkH: Math.random() * 8 + 4,
+          layers: Math.floor(Math.random() * 3) + 3,
+        });
+      }
+      return trees;
+    };
+
+    const layers: TreeLayer[] = [
+      { y: 0.92, opacity: 0.04, color: "120, 60%, 20%", trees: generateTrees(18, 30, 60, 80, 160), sway: 0.3, speed: 0.0004 },
+      { y: 0.94, opacity: 0.07, color: "130, 50%, 18%", trees: generateTrees(14, 35, 70, 90, 180), sway: 0.5, speed: 0.0006 },
+      { y: 0.96, opacity: 0.12, color: "140, 45%, 14%", trees: generateTrees(10, 40, 80, 100, 200), sway: 0.8, speed: 0.0008 },
+      { y: 0.98, opacity: 0.18, color: "145, 40%, 10%", trees: generateTrees(8, 50, 90, 110, 220), sway: 1.2, speed: 0.001 },
+    ];
+
+    const drawTree = (
+      x: number, baseY: number, width: number, height: number,
+      layerCount: number, trunkH: number, color: string, alpha: number, swayX: number
+    ) => {
+      // Trunk
+      ctx.fillStyle = `hsla(30, 30%, 15%, ${alpha * 0.8})`;
+      ctx.fillRect(x - 3 + swayX * 0.3, baseY - trunkH, 6, trunkH);
+
+      // Layered triangular canopy
+      for (let i = 0; i < layerCount; i++) {
+        const ratio = i / layerCount;
+        const layerW = width * (1 - ratio * 0.5);
+        const layerH = height / layerCount * 1.3;
+        const layerY = baseY - trunkH - (height * ratio * 0.7);
+        const tipY = layerY - layerH;
+        const sx = swayX * (1 + ratio * 0.5); // more sway at top
+
+        ctx.beginPath();
+        ctx.moveTo(x + sx, tipY);
+        ctx.lineTo(x - layerW / 2 + sx * 0.5, layerY);
+        ctx.lineTo(x + layerW / 2 + sx * 0.5, layerY);
+        ctx.closePath();
+        ctx.fillStyle = `hsla(${color}, ${alpha})`;
+        ctx.fill();
+      }
+    };
+
+    const animate = (t: number) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Subtle fog gradient at bottom
+      const fogGrad = ctx.createLinearGradient(0, canvas.height * 0.7, 0, canvas.height);
+      fogGrad.addColorStop(0, "hsla(140, 30%, 15%, 0)");
+      fogGrad.addColorStop(1, "hsla(140, 30%, 15%, 0.06)");
+      ctx.fillStyle = fogGrad;
+      ctx.fillRect(0, canvas.height * 0.7, canvas.width, canvas.height * 0.3);
+
+      for (const layer of layers) {
+        const baseY = canvas.height * layer.y;
+        const swayOffset = Math.sin(t * layer.speed) * layer.sway;
+
+        for (const tree of layer.trees) {
+          const tx = tree.x * canvas.width;
+          const individualSway = swayOffset + Math.sin(t * layer.speed * 1.3 + tree.x * 10) * layer.sway * 0.4;
+          drawTree(tx, baseY, tree.width, tree.height, tree.layers, tree.trunkH, layer.color, layer.opacity, individualSway);
+        }
+      }
+
+      animId = requestAnimationFrame(animate);
+    };
+
+    animId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [pattern]);
+
   if (pattern === "none") return null;
+
+  if (pattern === "forest") {
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" />;
+  }
 
   if (pattern === "fireflies") {
     return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.7 }} />;
