@@ -507,23 +507,23 @@ export default function BackgroundPattern({ pattern, intensity = 0.6 }: Props) {
   if (pattern === "none") return null;
 
   if (pattern === "leaves") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.5 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "snow") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "forest") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "fireflies") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.7 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "starry") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "grid") {
