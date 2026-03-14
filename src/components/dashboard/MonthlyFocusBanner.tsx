@@ -94,13 +94,16 @@ export default function MonthlyFocusBanner({ pulseStyle = "glow" }: MonthlyFocus
               {items.length}
             </span>
           )}
-          {/* Soft glow */}
-          <span
-            className="absolute inset-0 rounded-xl pointer-events-none transition-all duration-1000 ease-in-out"
-            style={{
-              boxShadow: pulse ? "0 0 12px 3px hsl(var(--primary) / 0.35)" : "0 0 0px 0px hsl(var(--primary) / 0)",
-            }}
-          />
+          {/* Pulse effect */}
+          {pulse && pulseStyle === "ping" && (
+            <span className="absolute inset-0 rounded-xl border-2 border-primary/40 animate-ping pointer-events-none" />
+          )}
+          {pulse && pulseStyle === "glow" && (
+            <span
+              className="absolute inset-0 rounded-xl pointer-events-none transition-all duration-1000 ease-in-out"
+              style={{ boxShadow: "0 0 12px 3px hsl(var(--primary) / 0.35)" }}
+            />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 p-0">
