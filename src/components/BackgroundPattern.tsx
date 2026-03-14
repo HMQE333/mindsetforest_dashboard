@@ -528,8 +528,9 @@ export default function BackgroundPattern({ pattern, intensity = 0.6 }: Props) {
 
   if (pattern === "grid") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.04]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.07,
           backgroundImage: `linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)`,
           backgroundSize: "40px 40px",
         }}
