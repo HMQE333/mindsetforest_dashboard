@@ -56,9 +56,16 @@ export interface UserPreferences {
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
 
+function getCachedCategories(): CustomCategory[] {
+  try {
+    const cached = localStorage.getItem("cached_custom_categories");
+    return cached ? JSON.parse(cached) : [];
+  } catch { return []; }
+}
+
 export function useUserSettings() {
   const { user } = useAuth();
-  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>(getCachedCategories);
   const [userMetrics, setUserMetrics] = useState<UserMetric[]>([]);
   const [customRewards, setCustomRewards] = useState<Reward[] | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({ enabledModules: DEFAULT_MODULES });
