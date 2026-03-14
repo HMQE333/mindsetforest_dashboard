@@ -858,6 +858,9 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     case "light":
       setLightVars("220 14% 96%", "224 71% 10%", "0 0% 100%", "224 71% 10%", "220 14% 92%", "224 50% 18%", "220 14% 92%", "220 9% 46%", "220 13% 87%", "0 0% 100%", "220 13% 87%");
       break;
+    case "frost":
+      setLightVars("205 40% 94%", "210 40% 15%", "205 50% 97%", "210 40% 15%", "205 30% 88%", "210 30% 22%", "205 30% 90%", "210 15% 48%", "205 25% 82%", "205 50% 97%", "205 30% 82%");
+      break;
   }
 
   const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma"];
