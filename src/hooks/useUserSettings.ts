@@ -6,7 +6,7 @@ import { useAuth } from "./useAuth";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
 import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
 import { REWARDS, Reward } from "@/lib/oracle-data";
-import type { FontPair, BackgroundPattern } from "@/hooks/useUserSettings";
+import { toast } from "sonner";
 import { toast } from "sonner";
 
 export interface CustomCategory {
