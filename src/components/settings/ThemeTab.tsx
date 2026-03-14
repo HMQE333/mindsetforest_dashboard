@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ThemeMode, AccentColor, FrameStyle } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout } from "@/hooks/useUserSettings";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
