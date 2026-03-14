@@ -154,7 +154,81 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
   );
 }
 
-/* ── Accent Preview Strip ── */
+/* ── Card Style Preview ── */
+function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: AccentColor }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
+
+  const base: React.CSSProperties = {
+    width: "100%",
+    height: 40,
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 10px",
+    transition: "all 0.3s",
+  };
+
+  const innerLine = (w: number, opacity = 0.15) => (
+    <div style={{ width: w, height: 3, borderRadius: 2, backgroundColor: `rgba(255,255,255,${opacity})` }} />
+  );
+  const innerDot = (color: string) => (
+    <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
+  );
+
+  const getStyle = (): React.CSSProperties => {
+    switch (styleId) {
+      case "glassmorphic":
+        return {
+          ...base,
+          backgroundColor: "rgba(255,255,255,0.06)",
+          backdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px ${accentDim}`,
+          background: `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.06) 100%)`,
+        };
+      case "solid":
+        return {
+          ...base,
+          backgroundColor: "rgba(30,30,40,0.95)",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: 10,
+        };
+      case "outline":
+        return {
+          ...base,
+          backgroundColor: "transparent",
+          border: `1.5px solid rgba(255,255,255,0.15)`,
+        };
+      case "elevated":
+        return {
+          ...base,
+          backgroundColor: "rgba(25,25,35,0.9)",
+          border: "1px solid rgba(255,255,255,0.05)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+          borderRadius: 14,
+        };
+      default:
+        return {
+          ...base,
+          backgroundColor: "rgba(255,255,255,0.04)",
+          backdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+        };
+    }
+  };
+
+  return (
+    <div style={getStyle()}>
+      {innerDot(accentColor)}
+      {innerLine(20)}
+      <div style={{ flex: 1 }} />
+      {innerLine(14, 0.1)}
+    </div>
+  );
+}
+
 function AccentPreviewStrip({ accent }: { accent: AccentColor }) {
   const accentColor = `hsl(${getAccentHSL(accent)})`;
   const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
