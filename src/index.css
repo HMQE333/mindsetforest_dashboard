@@ -260,19 +260,14 @@
   box-shadow: 6px 6px 0px hsl(var(--glow-purple) / 0.25);
 }
 
-/* Prism — dual glow: per-card category color */
-.frame-prism .glass-card-hover {
-  --prism-color: var(--card-color, hsl(var(--glow-purple)));
-}
-
+/* Prism — dual glow: accent + per-card category color layered */
 .frame-prism .glass-card-hover:hover {
   transform: none;
-  border-color: var(--prism-color);
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
   box-shadow:
-    0 0 20px var(--prism-color),
-    0 0 40px var(--prism-color),
-    0 4px 24px var(--prism-color);
-  filter: drop-shadow(0 0 6px var(--prism-color));
+    0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 60%, transparent),
+    0 0 40px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 30%, transparent),
+    0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
 }
 
 /* Electric — animated turbulent border via SVG filter */
