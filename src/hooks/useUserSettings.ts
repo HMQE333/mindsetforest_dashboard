@@ -56,9 +56,16 @@ export interface UserPreferences {
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
 
+function getCachedCategories(): CustomCategory[] {
+  try {
+    const cached = localStorage.getItem("cached_custom_categories");
+    return cached ? JSON.parse(cached) : [];
+  } catch { return []; }
+}
+
 export function useUserSettings() {
   const { user } = useAuth();
-  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>(getCachedCategories);
   const [userMetrics, setUserMetrics] = useState<UserMetric[]>([]);
   const [customRewards, setCustomRewards] = useState<Reward[] | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({ enabledModules: DEFAULT_MODULES });
@@ -76,7 +83,9 @@ export function useUserSettings() {
         .maybeSingle();
 
       if (onb?.custom_categories) {
-        setCustomCategories(onb.custom_categories as unknown as CustomCategory[]);
+        const cats = onb.custom_categories as unknown as CustomCategory[];
+        setCustomCategories(cats);
+        try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
       }
       if (onb?.preferences) {
         const prefs = onb.preferences as unknown as UserPreferences;
@@ -165,6 +174,7 @@ export function useUserSettings() {
   const saveCategories = useCallback(async (cats: CustomCategory[]) => {
     if (!user) return;
     setCustomCategories(cats);
+    try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
     const { error } = await (supabase.from("user_onboarding") as any).upsert([{
       user_id: user.id,
       completed: true,
