@@ -54,6 +54,7 @@ const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; descrip
   { id: "starry", label: "Starry Night", icon: "✨", description: "Animated floating stars" },
   { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
   { id: "fireflies", label: "Fireflies", icon: "🪲", description: "Warm drifting firefly glow" },
+  { id: "forest", label: "Forest", icon: "🌲", description: "Layered tree silhouettes" },
 ];
 
 const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: string }[] = [
