@@ -726,9 +726,15 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Card Opacity Slider */}
+        <div className="mt-3 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground font-medium">Opacity</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{Math.round(cardOpacity * 100)}%</span>
+          </div>
+          <Slider min={5} max={100} step={1} value={[Math.round(cardOpacity * 100)]} onValueChange={([v]) => handleCardOpacityChange(v / 100)} className="w-full" />
+        </div>
       </Section>
-
-      {/* ── Dashboard Hero Layout ── */}
       <Section title="Dashboard Hero Layout" icon="🏠">
         <div className="grid grid-cols-2 gap-2">
           {HERO_LAYOUTS.map((h, i) => (
