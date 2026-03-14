@@ -1,56 +1,61 @@
 
 
-## Plan: Custom PNG Icons for Pillars
+## Plan: Keyboard Shortcuts System for Dashboard
 
-### Approach
+### Concept
 
-Replace the current emoji-only icon input (the small text box on the left of each pillar row) with a dual-mode icon selector: users can either type an emoji **or** upload a PNG image. The uploaded image replaces the emoji and is displayed everywhere the pillar icon appears.
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-### UX Design
+### Shortcut Map
 
-**In each pillar row** (CategoriesTab), the current 40×40 emoji input becomes a clickable icon area:
-- If no custom image: shows the emoji (still editable by clicking and typing)
-- A small camera/upload overlay icon in the corner — clicking it opens a file picker (PNG only)
-- On upload: validates file (PNG, ≤256KB, ideally square), resizes client-side to 64×64, stores to a storage bucket, saves the URL
-- Once an image is set: the area shows the image with a tiny ✕ button to remove it (reverts to emoji)
-- Tooltip or helper text below the icon area: "PNG, max 256KB, square recommended"
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-**No separate upload modal** — keeps it inline and lightweight.
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-### Storage
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-- Create a `pillar-icons` public storage bucket via SQL migration
-- RLS: authenticated users can upload/delete within their own `user_id/` folder, public read
-- Files stored as `{user_id}/{pillar_id}.png`
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-### Data Model
+### Implementation
 
-Add `iconUrl?: string` to `CustomCategory` interface. When `iconUrl` is set, it takes priority over the `icon` emoji string. No DB migration needed — this is stored in the existing JSON preferences column.
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-### Client-Side Validation & Resize
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-Before uploading:
-1. Check file type is `image/png` — reject others with toast "Only PNG files accepted"
-2. Check file size ≤ 256KB — reject with toast "Icon must be under 256KB"
-3. Load into a canvas, resize to 64×64, export as PNG blob — this ensures consistent rendering everywhere
-4. Upload the resized blob to storage
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
 
-### Rendering Changes
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
 
-Everywhere pillar icons render (dashboard category grid, mission cards, archive pillar chips, etc.), check: if `iconUrl` exists, render an `<img>` with `object-fit: contain` and rounded corners; otherwise render the emoji text as before. The key rendering spots:
-- `CategoryGrid.tsx` — main dashboard cards
-- `CategoriesTab.tsx` — settings preview
-- `ArchiveBlockCard.tsx` / pillar chips across archive
-- `TrackerDetailedStats.tsx` — if pillars shown there
+### File Summary
 
-Create a small shared `PillarIcon` component that handles the emoji-vs-image logic in one place.
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
 
-### Files to Change
-
-- **SQL migration** — create `pillar-icons` storage bucket + RLS policies
-- `src/hooks/useUserSettings.ts` — add `iconUrl` to `CustomCategory`
-- `src/components/settings/CategoriesTab.tsx` — replace emoji input with dual-mode icon selector + upload logic
-- `src/components/shared/PillarIcon.tsx` — new tiny component (emoji or img)
-- `src/components/dashboard/CategoryGrid.tsx` — use `PillarIcon`
-- Any other components rendering `cat.icon` — swap to `PillarIcon`
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

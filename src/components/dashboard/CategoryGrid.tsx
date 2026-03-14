@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
 import { Mission } from "@/lib/dashboard-data";
+import PillarIcon from "@/components/shared/PillarIcon";
 
 interface CategoryGridProps {
   getMissions: (categoryId: string) => Mission[];
@@ -34,12 +35,12 @@ export default function CategoryGrid({ getMissions, getCompletedCount, onSelectC
               style={{ background: `linear-gradient(135deg, ${cat.color}, transparent)` }}
             />
 
-            <span
-              className="text-5xl block mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[5deg]"
+            <div
+              className="block mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[5deg]"
               style={{ filter: `drop-shadow(0 0 10px ${cat.color})` }}
             >
-              {cat.icon}
-            </span>
+              <PillarIcon icon={cat.icon} iconUrl={cat.iconUrl} size={48} />
+            </div>
             <h3
               className="text-xl font-bold mb-2"
               style={{ color: cat.color }}

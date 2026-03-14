@@ -11,6 +11,7 @@ export interface Category {
   name: string;
   tagline: string;
   icon: string;
+  iconUrl?: string;
   color: string;
   lightColor: string;
   colorVar: string;
