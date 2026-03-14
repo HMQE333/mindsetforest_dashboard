@@ -82,7 +82,113 @@ export default function BackgroundPattern({ pattern }: Props) {
     };
   }, [pattern]);
 
+  // Fireflies animation
+  useEffect(() => {
+    if (pattern !== "fireflies") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+
+    interface Firefly {
+      x: number; y: number; r: number;
+      baseOpacity: number; opacity: number;
+      pulseSpeed: number; pulsePhase: number;
+      wanderAngle: number; wanderSpeed: number;
+      hue: number; pauseUntil: number;
+    }
+
+    const flies: Firefly[] = [];
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const count = Math.floor((canvas.width * canvas.height) / 18000) + 20;
+    for (let i = 0; i < count; i++) {
+      flies.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: Math.random() * 2.5 + 1.5,
+        baseOpacity: Math.random() * 0.5 + 0.3,
+        opacity: 0,
+        pulseSpeed: Math.random() * 0.004 + 0.001,
+        pulsePhase: Math.random() * Math.PI * 2,
+        wanderAngle: Math.random() * Math.PI * 2,
+        wanderSpeed: Math.random() * 0.3 + 0.1,
+        hue: Math.random() * 30 + 40, // 40-70: gold to green-gold
+        pauseUntil: 0,
+      });
+    }
+
+    const animate = (t: number) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const f of flies) {
+        // Occasional pause/dim
+        if (t < f.pauseUntil) {
+          f.opacity *= 0.96;
+        } else {
+          // Pulse
+          const pulse = (Math.sin(t * f.pulseSpeed + f.pulsePhase) + 1) / 2;
+          f.opacity = f.baseOpacity * (pulse * 0.8 + 0.2);
+
+          // Random pause trigger
+          if (Math.random() < 0.0003) {
+            f.pauseUntil = t + 1500 + Math.random() * 3000;
+          }
+        }
+
+        // Organic wandering
+        f.wanderAngle += (Math.random() - 0.5) * 0.08;
+        f.x += Math.cos(f.wanderAngle) * f.wanderSpeed;
+        f.y += Math.sin(f.wanderAngle) * f.wanderSpeed;
+
+        // Wrap around
+        if (f.x < -20) f.x = canvas.width + 20;
+        if (f.x > canvas.width + 20) f.x = -20;
+        if (f.y < -20) f.y = canvas.height + 20;
+        if (f.y > canvas.height + 20) f.y = -20;
+
+        // Draw glow halo
+        const gradient = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 8);
+        gradient.addColorStop(0, `hsla(${f.hue}, 100%, 65%, ${f.opacity * 0.4})`);
+        gradient.addColorStop(0.3, `hsla(${f.hue}, 90%, 55%, ${f.opacity * 0.15})`);
+        gradient.addColorStop(1, `hsla(${f.hue}, 80%, 50%, 0)`);
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r * 8, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Draw core
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${f.hue}, 100%, 75%, ${f.opacity})`;
+        ctx.fill();
+      }
+
+      animId = requestAnimationFrame(animate);
+    };
+
+    animId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [pattern]);
+
   if (pattern === "none") return null;
+
+  if (pattern === "fireflies") {
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.7 }} />;
+  }
 
   if (pattern === "starry") {
     return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
