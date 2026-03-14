@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { ThemeMode, AccentColor, FrameStyle, HeroLayout } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern } from "@/hooks/useUserSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
@@ -36,6 +36,24 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
 ];
 
+const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
+  { id: "default", label: "Default", display: "Inter", body: "Inter", preview: "Clean & modern", googleImport: "" },
+  { id: "mono", label: "Mono", display: "JetBrains Mono", body: "JetBrains Mono", preview: "Terminal vibes", googleImport: "" },
+  { id: "editorial", label: "Editorial", display: "Playfair Display", body: "Inter", preview: "Classic & refined", googleImport: "family=Playfair+Display:wght@400;600;700;800;900" },
+  { id: "geometric", label: "Geometric", display: "Space Grotesk", body: "Space Grotesk", preview: "Bold & technical", googleImport: "family=Space+Grotesk:wght@300;400;500;600;700" },
+  { id: "handcraft", label: "Handcraft", display: "Caveat", body: "Inter", preview: "Personal touch", googleImport: "family=Caveat:wght@400;500;600;700" },
+  { id: "clean", label: "Clean", display: "DM Sans", body: "DM Sans", preview: "Polished & soft", googleImport: "family=DM+Sans:wght@300;400;500;600;700" },
+];
+
+const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; description: string }[] = [
+  { id: "none", label: "None", icon: "🚫", description: "Clean, no pattern" },
+  { id: "grid", label: "Grid", icon: "📐", description: "Subtle grid lines" },
+  { id: "dots", label: "Dots", icon: "⚬", description: "Polka dot matrix" },
+  { id: "noise", label: "Noise", icon: "📡", description: "Film grain texture" },
+  { id: "starry", label: "Starry Night", icon: "✨", description: "Animated floating stars" },
+  { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
+];
+
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎮", description: "Full streak + bar + cards" },
   { id: "compact", label: "Compact", icon: "⚡", description: "All stats in 2 rows" },
@@ -49,7 +67,9 @@ interface ThemeTabProps {
   currentAccent: AccentColor;
   currentFrame?: FrameStyle;
   currentHeroLayout?: HeroLayout;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout) => Promise<void>;
+  currentFontPair?: FontPair;
+  currentBackgroundPattern?: BackgroundPattern;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => Promise<void>;
 }
 
 /* ── Collapsible Section Wrapper ── */
@@ -361,11 +381,13 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
 }
 
 /* ── Main ThemeTab ── */
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
   const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
+  const [fontPair, setFontPair] = useState<FontPair>(currentFontPair || "default");
+  const [bgPattern, setBgPattern] = useState<BackgroundPattern>(currentBackgroundPattern || "none");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -373,15 +395,19 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setAccent(currentAccent);
     setFrame(currentFrame || "default");
     setHeroLayout(currentHeroLayout || "default");
-  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout]);
+    setFontPair(currentFontPair || "default");
+    setBgPattern(currentBackgroundPattern || "none");
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern]);
 
-  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame); };
-  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame); };
-  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f); };
+  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair); };
+  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair); };
+  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair); };
   const handleHeroLayoutChange = (h: HeroLayout) => { setHeroLayout(h); setDirty(true); };
+  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f); };
+  const handleBgChange = (b: BackgroundPattern) => { setBgPattern(b); setDirty(true); };
 
   const handleSave = async () => {
-    await onSave(theme, accent, frame, heroLayout);
+    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern);
     setDirty(false);
   };
 
@@ -511,6 +537,60 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
         <HeroLivePreview layoutId={heroLayout} accent={accent} />
       </Section>
 
+      {/* ── Typography ── */}
+      <Section title="Typography" icon="🔤" defaultOpen={false}>
+        <div className="grid grid-cols-2 gap-2">
+          {FONT_PAIRS.map((f, i) => (
+            <motion.button
+              key={f.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleFontChange(f.id)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                fontPair === f.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <div className="mb-1.5 h-8 flex items-center">
+                <span
+                  className="text-sm font-bold text-foreground truncate"
+                  style={{ fontFamily: f.display }}
+                >
+                  {f.preview}
+                </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">{f.display}{f.display !== f.body ? ` + ${f.body}` : ""}</div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Background Pattern ── */}
+      <Section title="Background" icon="🎨" defaultOpen={false}>
+        <div className="grid grid-cols-3 gap-2">
+          {BACKGROUNDS.map((b, i) => (
+            <motion.button
+              key={b.id}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleBgChange(b.id)}
+              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${
+                bgPattern === b.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <span className="text-xl">{b.icon}</span>
+              <div className="text-[10px] font-bold text-foreground">{b.label}</div>
+              <div className="text-[8px] text-muted-foreground text-center leading-tight">{b.description}</div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
       {/* ── Accent gradient bar ── */}
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
@@ -541,8 +621,8 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
   ACCENTS.map(a => [a.id, { hue: a.hue, sat: a.sat, light: a.light }])
 ) as any;
 
-/** Apply theme + accent + frame to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default") {
+/** Apply theme + accent + frame + font to CSS variables immediately (live preview) */
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default") {
   const root = document.documentElement;
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
   const h = a.hue, s = a.sat, l = a.light;
@@ -557,6 +637,22 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   root.style.setProperty("--xp-gradient-to", `${(h + 29) % 360} ${Math.min(s + 14, 100)}% ${Math.min(l + 3, 80)}%`);
   root.style.setProperty("--sidebar-primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--sidebar-ring", `${h} ${s}% ${l}%`);
+
+  // Apply font pair
+  const fp = FONT_PAIRS.find(f => f.id === font) || FONT_PAIRS[0];
+  if (fp.googleImport) {
+    const linkId = "google-fonts-custom";
+    let link = document.getElementById(linkId) as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = linkId;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    link.href = `https://fonts.googleapis.com/css2?${fp.googleImport}&display=swap`;
+  }
+  document.body.style.fontFamily = `'${fp.body}', system-ui, -apple-system, sans-serif`;
+  root.style.setProperty("--font-display", `'${fp.display}'`);
 
   const setDarkVars = (bg: string, fg: string, card: string, cardFg: string, sec: string, secFg: string, mut: string, mutFg: string, brd: string, glass: string) => {
     root.style.setProperty("--background", bg);

@@ -31,6 +31,8 @@ export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "cri
 export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
 export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp" | "prism";
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
+export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
+export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh";
 
 export interface UserPreferences {
   enabledModules: string[];
@@ -39,6 +41,8 @@ export interface UserPreferences {
   frameStyle?: FrameStyle;
   customKeybinds?: Partial<KeybindMap>;
   heroLayout?: HeroLayout;
+  fontPair?: FontPair;
+  backgroundPattern?: BackgroundPattern;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
@@ -70,8 +74,8 @@ export function useUserSettings() {
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
           setPreferences(prefs);
         }
-        if (prefs.theme || prefs.accentColor || prefs.frameStyle) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default");
+        if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair) {
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default");
         }
       }
 
@@ -233,10 +237,18 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout) => {
-    const newPrefs = { ...preferences, theme, accentColor, frameStyle: frameStyle || preferences.frameStyle || "default", heroLayout: heroLayout || preferences.heroLayout || "default" };
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => {
+    const newPrefs = {
+      ...preferences,
+      theme,
+      accentColor,
+      frameStyle: frameStyle || preferences.frameStyle || "default",
+      heroLayout: heroLayout || preferences.heroLayout || "default",
+      fontPair: fontPair || preferences.fontPair || "default",
+      backgroundPattern: backgroundPattern || preferences.backgroundPattern || "none",
+    };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default");
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default");
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {

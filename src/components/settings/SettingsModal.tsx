@@ -100,6 +100,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentAccent={settings.preferences.accentColor || "purple"}
                       currentFrame={settings.preferences.frameStyle || "default"}
                       currentHeroLayout={settings.preferences.heroLayout || "default"}
+                      currentFontPair={settings.preferences.fontPair || "default"}
+                      currentBackgroundPattern={settings.preferences.backgroundPattern || "none"}
                       onSave={settings.saveTheme}
                     />
                   )}
