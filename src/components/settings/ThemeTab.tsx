@@ -68,6 +68,7 @@ const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: st
   { id: "outline", label: "Outline", icon: "🔲", description: "Transparent, border-only" },
   { id: "elevated", label: "Elevated", icon: "📦", description: "Strong shadows, layered depth" },
   { id: "frosted", label: "Frosted", icon: "🧊", description: "Icy translucent glass" },
+  { id: "wood", label: "Wood", icon: "🪵", description: "Natural wood grain texture" },
 ];
 
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
