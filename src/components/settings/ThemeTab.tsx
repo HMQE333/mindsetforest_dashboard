@@ -628,6 +628,33 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setBorderRadius(currentBorderRadius ?? 12);
   }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius]);
 
+  // Notify parent of dirty state so modal close can auto-revert
+  useEffect(() => {
+    if (onDirtyChange) {
+      onDirtyChange(dirty, handleRevertInternal);
+    }
+  }, [dirty]);
+
+  const handleRevertInternal = () => {
+    setTheme(currentTheme);
+    setAccent(currentAccent);
+    setFrame(currentFrame || "default");
+    setHeroLayout(currentHeroLayout || "default");
+    setFontPair(currentFontPair || "default");
+    setBgPattern(currentBackgroundPattern || "none");
+    setCardStyle(currentCardStyle || "default");
+    setCustomHue(currentCustomAccentHue ?? null);
+    setCardOpacity(currentCardOpacity ?? 0.6);
+    setBgIntensity(currentBackgroundIntensity ?? 0.6);
+    setBorderRadius(currentBorderRadius ?? 12);
+    setDirty(false);
+    applyThemePreview(
+      currentTheme, currentAccent, currentFrame || "default",
+      currentFontPair || "default", currentCardStyle || "default",
+      currentCustomAccentHue, currentBorderRadius ?? 12, currentCardOpacity ?? 0.6
+    );
+  };
+
   const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle, customHue, borderRadius, cardOpacity); };
   const handleAccentChange = (a: AccentColor) => { setAccent(a); setCustomHue(null); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle, null, borderRadius, cardOpacity); };
   const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle, customHue, borderRadius, cardOpacity); };
