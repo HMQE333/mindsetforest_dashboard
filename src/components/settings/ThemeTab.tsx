@@ -151,6 +151,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
       case "plasma":
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
+      case "icicle":
+        return { ...baseCard, borderColor: "hsl(200, 80%, 85%)", boxShadow: "0 0 16px hsla(200, 80%, 75%, 0.25), 0 0 32px hsla(200, 70%, 70%, 0.1)", backgroundColor: "rgba(200, 230, 255, 0.05)" };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
