@@ -17,6 +17,7 @@ import ArchiveView from "@/components/archive/ArchiveView";
 import LibraryView from "@/components/library/LibraryView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
+import BackgroundPattern from "@/components/BackgroundPattern";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library";
 
