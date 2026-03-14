@@ -274,6 +274,7 @@ export function useUserSettings() {
     saveEnabledModules,
     saveTheme,
     saveKeybinds,
+    savePreferences,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };
