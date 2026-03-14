@@ -537,6 +537,60 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
         <HeroLivePreview layoutId={heroLayout} accent={accent} />
       </Section>
 
+      {/* ── Typography ── */}
+      <Section title="Typography" icon="🔤" defaultOpen={false}>
+        <div className="grid grid-cols-2 gap-2">
+          {FONT_PAIRS.map((f, i) => (
+            <motion.button
+              key={f.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleFontChange(f.id)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                fontPair === f.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <div className="mb-1.5 h-8 flex items-center">
+                <span
+                  className="text-sm font-bold text-foreground truncate"
+                  style={{ fontFamily: f.display }}
+                >
+                  {f.preview}
+                </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">{f.display}{f.display !== f.body ? ` + ${f.body}` : ""}</div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Background Pattern ── */}
+      <Section title="Background" icon="🎨" defaultOpen={false}>
+        <div className="grid grid-cols-3 gap-2">
+          {BACKGROUNDS.map((b, i) => (
+            <motion.button
+              key={b.id}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleBgChange(b.id)}
+              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${
+                bgPattern === b.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <span className="text-xl">{b.icon}</span>
+              <div className="text-[10px] font-bold text-foreground">{b.label}</div>
+              <div className="text-[8px] text-muted-foreground text-center leading-tight">{b.description}</div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
       {/* ── Accent gradient bar ── */}
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
