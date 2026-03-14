@@ -837,6 +837,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
           ))}
         </div>
         <HeroLivePreview layoutId={heroLayout} accent={accent} />
+        <DashboardCardPreview accent={accent} cardStyle={cardStyle} frame={frame} />
       </Section>
 
       {/* ── Typography ── */}
