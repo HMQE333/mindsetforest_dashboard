@@ -795,10 +795,14 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
 ) as any;
 
 /** Apply theme + accent + frame + font to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default", cardStyle: CardStyle = "default") {
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default", cardStyle: CardStyle = "default", customAccentHue?: number | null, borderRadius?: number, cardOpacity?: number) {
   const root = document.documentElement;
+  
+  // Use custom hue if set, otherwise use preset accent
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
-  const h = a.hue, s = a.sat, l = a.light;
+  const h = customAccentHue != null ? customAccentHue : a.hue;
+  const s = customAccentHue != null ? 70 : a.sat;
+  const l = customAccentHue != null ? 58 : a.light;
 
   root.style.setProperty("--primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--ring", `${h} ${s}% ${l}%`);
@@ -810,6 +814,16 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   root.style.setProperty("--xp-gradient-to", `${(h + 29) % 360} ${Math.min(s + 14, 100)}% ${Math.min(l + 3, 80)}%`);
   root.style.setProperty("--sidebar-primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--sidebar-ring", `${h} ${s}% ${l}%`);
+
+  // Border radius
+  if (borderRadius != null) {
+    root.style.setProperty("--radius", `${borderRadius}px`);
+  }
+
+  // Card opacity
+  if (cardOpacity != null) {
+    root.style.setProperty("--card-opacity", `${cardOpacity}`);
+  }
 
   // Apply font pair
   const fp = FONT_PAIRS.find(f => f.id === font) || FONT_PAIRS[0];
