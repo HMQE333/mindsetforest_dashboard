@@ -605,7 +605,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
               }`}
             >
               <div className="mb-2">
-                <FrameStylePreview frameId={f.id} accent={accent} />
+                <FrameStylePreview frameId={f.id} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base">{f.icon}</span>
