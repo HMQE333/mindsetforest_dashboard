@@ -273,7 +273,6 @@
 /* Electric — animated turbulent border via SVG filter */
 .frame-electric .glass-card-hover {
   position: relative;
-  overflow: hidden;
 }
 
 .frame-electric .glass-card-hover::after {
