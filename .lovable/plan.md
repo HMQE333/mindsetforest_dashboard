@@ -1,62 +1,61 @@
 
 
-## Plan: P0 + P1 Settings Audit Fixes
+## Plan: Keyboard Shortcuts System for Dashboard
 
-### Summary
+### Concept
 
-Upgrade ThemeTab with collapsible sections, rich frame style previews, accent color preview strips, and live hero layout preview. Remove misleading drag grip from MetricsTab. Save the current ThemeTab as an archive file before editing.
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-### Changes
+### Shortcut Map
 
-| File | What |
-|------|------|
-| `src/components/settings/ThemeTab.archive.tsx` | **New** — exact copy of current ThemeTab for safekeeping |
-| `src/components/settings/ThemeTab.tsx` | Major rewrite (details below) |
-| `src/components/settings/MetricsTab.tsx` | Remove `GripVertical` icon from metric cards |
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-### ThemeTab Rewrite Details
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-**1. Collapsible Sections (P1)**
-- Wrap each settings group (Theme Mode, Accent Color, Card Frame, Hero Layout) in a `<Collapsible>` from radix. Each section has a header row with label + chevron that toggles open/closed.
-- All sections default open. Reduces perceived complexity and lets users collapse what they don't need.
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-**2. Frame Style Visual Previews (P0)**
-- Replace the current cramped 5-col icon grid with a 2-col grid (matching theme mode selector style).
-- Each frame button gets a `FrameStylePreview` mini-component: a small mock card (40px tall) that visually demonstrates the hover effect using CSS — e.g., Glow shows an accent-colored border glow, Neon shows a bright outline, Frost shows a white border + blur overlay, Sharp shows squared corners + hard shadow, Prism shows dual-color glow. These are static visual representations, not interactive hover demos.
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-**3. Accent Color Preview Strip (P1)**
-- Below the accent swatch grid, add a small "preview strip" row: a mini button (filled with accent color) + a mini progress bar (partially filled with accent) + a small badge. This gives users immediate visual context for how their chosen accent applies to real UI elements — not just a colored dot.
+### Implementation
 
-**4. Live Hero Layout Preview (P0)**
-- When user changes hero layout selection, the existing `HeroLayoutPreview` thumbnails are already present. Enhancement: add a larger "live preview" panel below the hero layout grid that shows a bigger, more detailed mockup of the selected layout — approximately 120px tall, showing streak badge, XP bar shape, and stat card arrangement at a glance. This uses the same `HeroLayoutPreview` approach but scaled up with more detail.
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-**5. MetricsTab Drag Grip Removal (P1)**
-- Remove the `GripVertical` import and the `<GripVertical>` icon element from each metric card row in MetricsTab.tsx (line 114). This icon currently misleads users into thinking drag-reorder is supported.
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-### UI Structure (ThemeTab after changes)
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
 
-```text
-┌──────────────────────────────┐
-│ ▼ Theme Mode                 │  ← Collapsible header
-│   [2-col grid of 8 themes]   │
-│                              │
-│ ▼ Accent Color               │
-│   [4-col swatches]           │
-│   [btn] [━━━━━] [badge]     │  ← preview strip
-│                              │
-│ ▼ Card Frame Style           │
-│   [2-col grid with previews] │  ← upgraded from 5-col icons
-│                              │
-│ ▼ Dashboard Hero Layout      │
-│   [2-col grid with thumbs]   │
-│   ┌─── Live Preview ───────┐ │  ← larger preview of selected
-│   │  (selected layout big)  │ │
-│   └─────────────────────────┘ │
-│                              │
-│ [gradient bar]               │
-│ [Save Theme]                 │
-└──────────────────────────────┘
-```
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
 
-### No DB changes needed. No new dependencies — `Collapsible` already exists in the project.
+### File Summary
+
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

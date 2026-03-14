@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { UserMetric } from "@/hooks/useUserSettings";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 interface MetricsTabProps {
   userMetrics: UserMetric[];
@@ -111,7 +111,7 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
               transition={{ delay: i * 0.02 }}
               className="glass-card p-3 flex items-start gap-2"
             >
-              <GripVertical className="w-4 h-4 text-muted-foreground/40 mt-2 shrink-0" />
+              
               <input
                 value={metric.icon}
                 onChange={e => update(metric.tempId, "icon", e.target.value)}
