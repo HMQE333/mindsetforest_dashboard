@@ -540,8 +540,9 @@ export default function BackgroundPattern({ pattern, intensity = 0.6 }: Props) {
 
   if (pattern === "dots") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.06]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.1,
           backgroundImage: `radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
         }}
