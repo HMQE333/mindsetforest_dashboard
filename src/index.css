@@ -263,11 +263,12 @@
 /* Prism — dual glow: accent + per-card category color layered */
 .frame-prism .glass-card-hover:hover {
   transform: none;
-  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
+  --prism-color: var(--card-color, hsl(var(--glow-purple)));
+  border-color: var(--prism-color);
   box-shadow:
-    0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 60%, transparent),
-    0 0 40px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 30%, transparent),
-    0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
+    0 0 20px color-mix(in srgb, var(--prism-color) 60%, transparent),
+    0 0 40px color-mix(in srgb, var(--prism-color) 30%, transparent),
+    0 4px 24px color-mix(in srgb, var(--prism-color) 15%, transparent);
 }
 
 /* Electric — animated turbulent border via SVG filter */
