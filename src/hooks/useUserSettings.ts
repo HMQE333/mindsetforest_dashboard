@@ -83,7 +83,7 @@ export function useUserSettings() {
           setPreferences(prefs);
         }
         if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair || prefs.cardStyle) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default");
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default", prefs.customAccentHue, prefs.borderRadius, prefs.cardOpacity);
         }
       }
 

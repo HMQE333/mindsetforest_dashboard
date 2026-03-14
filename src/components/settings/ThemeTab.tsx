@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle, UserPreferences } from "@/hooks/useUserSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Slider } from "@/components/ui/slider";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
