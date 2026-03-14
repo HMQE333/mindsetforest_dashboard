@@ -37,6 +37,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
   { id: "electric", label: "Electric", icon: "⚡", description: "Animated crackling border" },
   { id: "plasma", label: "Plasma", icon: "🔮", description: "Electric + card-color border" },
+  { id: "icicle", label: "Icicle", icon: "🧊", description: "Frosted ice border glow" },
 ];
 
 const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
