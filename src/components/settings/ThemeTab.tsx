@@ -524,7 +524,7 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
 }
 
 /* ── Main ThemeTab ── */
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
@@ -532,6 +532,10 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
   const [fontPair, setFontPair] = useState<FontPair>(currentFontPair || "default");
   const [bgPattern, setBgPattern] = useState<BackgroundPattern>(currentBackgroundPattern || "none");
   const [cardStyle, setCardStyle] = useState<CardStyle>(currentCardStyle || "default");
+  const [customHue, setCustomHue] = useState<number | null>(currentCustomAccentHue ?? null);
+  const [cardOpacity, setCardOpacity] = useState<number>(currentCardOpacity ?? 0.6);
+  const [bgIntensity, setBgIntensity] = useState<number>(currentBackgroundIntensity ?? 0.6);
+  const [borderRadius, setBorderRadius] = useState<number>(currentBorderRadius ?? 12);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -542,18 +546,31 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setFontPair(currentFontPair || "default");
     setBgPattern(currentBackgroundPattern || "none");
     setCardStyle(currentCardStyle || "default");
-  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle]);
+    setCustomHue(currentCustomAccentHue ?? null);
+    setCardOpacity(currentCardOpacity ?? 0.6);
+    setBgIntensity(currentBackgroundIntensity ?? 0.6);
+    setBorderRadius(currentBorderRadius ?? 12);
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius]);
 
-  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle); };
-  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle); };
-  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle); };
+  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle, customHue, borderRadius, cardOpacity); };
+  const handleAccentChange = (a: AccentColor) => { setAccent(a); setCustomHue(null); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle, null, borderRadius, cardOpacity); };
+  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle, customHue, borderRadius, cardOpacity); };
   const handleHeroLayoutChange = (h: HeroLayout) => { setHeroLayout(h); setDirty(true); };
-  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f, cardStyle); };
+  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f, cardStyle, customHue, borderRadius, cardOpacity); };
   const handleBgChange = (b: BackgroundPattern) => { setBgPattern(b); setDirty(true); };
-  const handleCardStyleChange = (c: CardStyle) => { setCardStyle(c); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, c); };
+  const handleCardStyleChange = (c: CardStyle) => { setCardStyle(c); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, c, customHue, borderRadius, cardOpacity); };
+  const handleCustomHueChange = (h: number) => { setCustomHue(h); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, cardStyle, h, borderRadius, cardOpacity); };
+  const handleCardOpacityChange = (v: number) => { setCardOpacity(v); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, cardStyle, customHue, borderRadius, v); };
+  const handleBorderRadiusChange = (v: number) => { setBorderRadius(v); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, cardStyle, customHue, v, cardOpacity); };
+  const handleBgIntensityChange = (v: number) => { setBgIntensity(v); setDirty(true); };
 
   const handleSave = async () => {
-    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern, cardStyle);
+    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern, cardStyle, {
+      customAccentHue: customHue,
+      cardOpacity,
+      backgroundIntensity: bgIntensity,
+      borderRadius,
+    });
     setDirty(false);
   };
 
