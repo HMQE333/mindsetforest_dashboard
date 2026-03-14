@@ -253,6 +253,17 @@ function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: Acc
             hsla(30, 30%, 22%, 0.4) 9px
           )`,
         };
+      case "moss":
+        return {
+          ...base,
+          backgroundColor: "hsl(140, 35%, 12%)",
+          border: "1px solid hsl(135, 30%, 22%)",
+          boxShadow: "inset 0 1px 0 hsla(140, 40%, 25%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
+          borderRadius: 14,
+          backgroundImage: `radial-gradient(circle 3px at 25% 35%, hsla(130, 50%, 28%, 0.4), transparent),
+            radial-gradient(circle 2px at 65% 60%, hsla(140, 45%, 25%, 0.3), transparent),
+            radial-gradient(circle 2.5px at 80% 30%, hsla(125, 40%, 22%, 0.25), transparent)`,
+        };
       default:
         return {
           ...base,
