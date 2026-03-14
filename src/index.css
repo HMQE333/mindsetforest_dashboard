@@ -81,7 +81,8 @@
 /* Glass morphism utility */
 @layer utilities {
   .glass-card {
-    @apply bg-card/60 backdrop-blur-xl border border-white/10 rounded-2xl;
+    @apply backdrop-blur-xl border border-white/10 rounded-2xl;
+    background: hsl(var(--card) / var(--card-opacity, 0.6));
   }
 
   .glass-card-hover {

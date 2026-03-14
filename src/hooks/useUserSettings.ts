@@ -47,6 +47,10 @@ export interface UserPreferences {
   backgroundPattern?: BackgroundPattern;
   cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
+  customAccentHue?: number | null;
+  cardOpacity?: number;
+  backgroundIntensity?: number;
+  borderRadius?: number;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
@@ -79,7 +83,7 @@ export function useUserSettings() {
           setPreferences(prefs);
         }
         if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair || prefs.cardStyle) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default");
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default", prefs.customAccentHue, prefs.borderRadius, prefs.cardOpacity);
         }
       }
 
@@ -241,7 +245,7 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => {
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle, extraPrefs?: Partial<UserPreferences>) => {
     const newPrefs = {
       ...preferences,
       theme,
@@ -251,9 +255,10 @@ export function useUserSettings() {
       fontPair: fontPair || preferences.fontPair || "default",
       backgroundPattern: backgroundPattern || preferences.backgroundPattern || "none",
       cardStyle: cardStyle || preferences.cardStyle || "default",
+      ...extraPrefs,
     };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default");
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default", newPrefs.customAccentHue, newPrefs.borderRadius, newPrefs.cardOpacity);
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {

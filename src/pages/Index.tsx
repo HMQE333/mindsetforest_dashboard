@@ -89,7 +89,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Background pattern */}
-      <BackgroundPattern pattern={preferences.backgroundPattern || "none"} />
+      <BackgroundPattern pattern={preferences.backgroundPattern || "none"} intensity={preferences.backgroundIntensity} />
 
       {/* Background effects */}
       <div className="fixed inset-0 pointer-events-none z-[1]">

@@ -3,9 +3,10 @@ import { BackgroundPattern as BgType } from "@/hooks/useUserSettings";
 
 interface Props {
   pattern: BgType;
+  intensity?: number;
 }
 
-export default function BackgroundPattern({ pattern }: Props) {
+export default function BackgroundPattern({ pattern, intensity = 0.6 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Starry night animation
@@ -506,29 +507,30 @@ export default function BackgroundPattern({ pattern }: Props) {
   if (pattern === "none") return null;
 
   if (pattern === "leaves") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.5 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "snow") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "forest") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "fireflies") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.7 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "starry") {
-    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: intensity }} />;
   }
 
   if (pattern === "grid") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.04]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.07,
           backgroundImage: `linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)`,
           backgroundSize: "40px 40px",
         }}
@@ -538,8 +540,9 @@ export default function BackgroundPattern({ pattern }: Props) {
 
   if (pattern === "dots") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.06]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.1,
           backgroundImage: `radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
         }}
@@ -549,8 +552,9 @@ export default function BackgroundPattern({ pattern }: Props) {
 
   if (pattern === "noise") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.05,
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
         }}
       />
@@ -559,8 +563,9 @@ export default function BackgroundPattern({ pattern }: Props) {
 
   if (pattern === "mesh") {
     return (
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.08]"
+      <div className="fixed inset-0 pointer-events-none z-0"
         style={{
+          opacity: intensity * 0.13,
           background: `
             radial-gradient(ellipse at 20% 50%, hsl(var(--primary) / 0.15) 0%, transparent 50%),
             radial-gradient(ellipse at 80% 20%, hsl(var(--glow-pink) / 0.12) 0%, transparent 50%),

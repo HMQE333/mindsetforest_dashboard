@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle, UserPreferences } from "@/hooks/useUserSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Slider } from "@/components/ui/slider";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
@@ -91,7 +92,11 @@ interface ThemeTabProps {
   currentFontPair?: FontPair;
   currentBackgroundPattern?: BackgroundPattern;
   currentCardStyle?: CardStyle;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => Promise<void>;
+  currentCustomAccentHue?: number | null;
+  currentCardOpacity?: number;
+  currentBackgroundIntensity?: number;
+  currentBorderRadius?: number;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle, extraPrefs?: Partial<UserPreferences>) => Promise<void>;
 }
 
 /* ── Collapsible Section Wrapper ── */
@@ -519,7 +524,7 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
 }
 
 /* ── Main ThemeTab ── */
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
@@ -527,6 +532,10 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
   const [fontPair, setFontPair] = useState<FontPair>(currentFontPair || "default");
   const [bgPattern, setBgPattern] = useState<BackgroundPattern>(currentBackgroundPattern || "none");
   const [cardStyle, setCardStyle] = useState<CardStyle>(currentCardStyle || "default");
+  const [customHue, setCustomHue] = useState<number | null>(currentCustomAccentHue ?? null);
+  const [cardOpacity, setCardOpacity] = useState<number>(currentCardOpacity ?? 0.6);
+  const [bgIntensity, setBgIntensity] = useState<number>(currentBackgroundIntensity ?? 0.6);
+  const [borderRadius, setBorderRadius] = useState<number>(currentBorderRadius ?? 12);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -537,18 +546,31 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setFontPair(currentFontPair || "default");
     setBgPattern(currentBackgroundPattern || "none");
     setCardStyle(currentCardStyle || "default");
-  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle]);
+    setCustomHue(currentCustomAccentHue ?? null);
+    setCardOpacity(currentCardOpacity ?? 0.6);
+    setBgIntensity(currentBackgroundIntensity ?? 0.6);
+    setBorderRadius(currentBorderRadius ?? 12);
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius]);
 
-  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle); };
-  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle); };
-  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle); };
+  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle, customHue, borderRadius, cardOpacity); };
+  const handleAccentChange = (a: AccentColor) => { setAccent(a); setCustomHue(null); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle, null, borderRadius, cardOpacity); };
+  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle, customHue, borderRadius, cardOpacity); };
   const handleHeroLayoutChange = (h: HeroLayout) => { setHeroLayout(h); setDirty(true); };
-  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f, cardStyle); };
+  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f, cardStyle, customHue, borderRadius, cardOpacity); };
   const handleBgChange = (b: BackgroundPattern) => { setBgPattern(b); setDirty(true); };
-  const handleCardStyleChange = (c: CardStyle) => { setCardStyle(c); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, c); };
+  const handleCardStyleChange = (c: CardStyle) => { setCardStyle(c); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, c, customHue, borderRadius, cardOpacity); };
+  const handleCustomHueChange = (h: number) => { setCustomHue(h); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, cardStyle, h, borderRadius, cardOpacity); };
+  const handleCardOpacityChange = (v: number) => { setCardOpacity(v); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, cardStyle, customHue, borderRadius, v); };
+  const handleBorderRadiusChange = (v: number) => { setBorderRadius(v); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, cardStyle, customHue, v, cardOpacity); };
+  const handleBgIntensityChange = (v: number) => { setBgIntensity(v); setDirty(true); };
 
   const handleSave = async () => {
-    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern, cardStyle);
+    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern, cardStyle, {
+      customAccentHue: customHue,
+      cardOpacity,
+      backgroundIntensity: bgIntensity,
+      borderRadius,
+    });
     setDirty(false);
   };
 
@@ -614,6 +636,27 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Custom Accent Hue Slider */}
+        <div className="mt-3 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground font-medium">Custom Hue</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{customHue != null ? `${customHue}°` : "—"}</span>
+          </div>
+          <div className="relative">
+            <Slider
+              min={0}
+              max={360}
+              step={1}
+              value={[customHue ?? 0]}
+              onValueChange={([v]) => handleCustomHueChange(v)}
+              className="w-full"
+            />
+            <div className="h-1.5 w-full rounded-full mt-1" style={{
+              background: "linear-gradient(90deg, hsl(0,70%,58%), hsl(60,70%,58%), hsl(120,70%,58%), hsl(180,70%,58%), hsl(240,70%,58%), hsl(300,70%,58%), hsl(360,70%,58%))",
+              opacity: 0.5,
+            }} />
+          </div>
+        </div>
         <AccentPreviewStrip accent={accent} />
       </Section>
 
@@ -646,9 +689,15 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Border Radius Slider */}
+        <div className="mt-3 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground font-medium">Border Radius</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{borderRadius}px</span>
+          </div>
+          <Slider min={0} max={24} step={1} value={[borderRadius]} onValueChange={([v]) => handleBorderRadiusChange(v)} className="w-full" />
+        </div>
       </Section>
-
-      {/* ── Card Style ── */}
       <Section title="Card Style" icon="🃏">
         <div className="grid grid-cols-2 gap-2">
           {CARD_STYLES.map((c, i) => (
@@ -677,9 +726,15 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Card Opacity Slider */}
+        <div className="mt-3 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground font-medium">Opacity</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{Math.round(cardOpacity * 100)}%</span>
+          </div>
+          <Slider min={5} max={100} step={1} value={[Math.round(cardOpacity * 100)]} onValueChange={([v]) => handleCardOpacityChange(v / 100)} className="w-full" />
+        </div>
       </Section>
-
-      {/* ── Dashboard Hero Layout ── */}
       <Section title="Dashboard Hero Layout" icon="🏠">
         <div className="grid grid-cols-2 gap-2">
           {HERO_LAYOUTS.map((h, i) => (
@@ -761,9 +816,17 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Background Intensity Slider */}
+        {bgPattern !== "none" && (
+          <div className="mt-3 px-1">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium">Intensity</span>
+              <span className="text-[10px] font-mono text-muted-foreground">{Math.round(bgIntensity * 100)}%</span>
+            </div>
+            <Slider min={10} max={100} step={1} value={[Math.round(bgIntensity * 100)]} onValueChange={([v]) => handleBgIntensityChange(v / 100)} className="w-full" />
+          </div>
+        )}
       </Section>
-
-      {/* ── Accent gradient bar ── */}
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
           background: `linear-gradient(90deg, hsl(${getAccentHSL(accent)}), hsl(${getAccentHSL(accent, 20)}))`,
@@ -794,10 +857,14 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
 ) as any;
 
 /** Apply theme + accent + frame + font to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default", cardStyle: CardStyle = "default") {
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default", cardStyle: CardStyle = "default", customAccentHue?: number | null, borderRadius?: number, cardOpacity?: number) {
   const root = document.documentElement;
+  
+  // Use custom hue if set, otherwise use preset accent
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
-  const h = a.hue, s = a.sat, l = a.light;
+  const h = customAccentHue != null ? customAccentHue : a.hue;
+  const s = customAccentHue != null ? 70 : a.sat;
+  const l = customAccentHue != null ? 58 : a.light;
 
   root.style.setProperty("--primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--ring", `${h} ${s}% ${l}%`);
@@ -809,6 +876,16 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   root.style.setProperty("--xp-gradient-to", `${(h + 29) % 360} ${Math.min(s + 14, 100)}% ${Math.min(l + 3, 80)}%`);
   root.style.setProperty("--sidebar-primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--sidebar-ring", `${h} ${s}% ${l}%`);
+
+  // Border radius
+  if (borderRadius != null) {
+    root.style.setProperty("--radius", `${borderRadius}px`);
+  }
+
+  // Card opacity
+  if (cardOpacity != null) {
+    root.style.setProperty("--card-opacity", `${cardOpacity}`);
+  }
 
   // Apply font pair
   const fp = FONT_PAIRS.find(f => f.id === font) || FONT_PAIRS[0];
