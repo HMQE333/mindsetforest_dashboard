@@ -57,9 +57,6 @@ export default function MonthlyFocusBanner() {
 
   if (loading || dismissed) return null;
 
-  // Show banner if there are items, or if editing (to allow adding first item)
-  if (items.length === 0 && !editing) return null;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
