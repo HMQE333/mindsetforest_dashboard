@@ -689,9 +689,15 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Border Radius Slider */}
+        <div className="mt-3 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground font-medium">Border Radius</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{borderRadius}px</span>
+          </div>
+          <Slider min={0} max={24} step={1} value={[borderRadius]} onValueChange={([v]) => handleBorderRadiusChange(v)} className="w-full" />
+        </div>
       </Section>
-
-      {/* ── Card Style ── */}
       <Section title="Card Style" icon="🃏">
         <div className="grid grid-cols-2 gap-2">
           {CARD_STYLES.map((c, i) => (
