@@ -31,6 +31,8 @@ export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "cri
 export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
 export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp" | "prism";
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
+export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
+export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh";
 
 export interface UserPreferences {
   enabledModules: string[];
@@ -39,6 +41,8 @@ export interface UserPreferences {
   frameStyle?: FrameStyle;
   customKeybinds?: Partial<KeybindMap>;
   heroLayout?: HeroLayout;
+  fontPair?: FontPair;
+  backgroundPattern?: BackgroundPattern;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
