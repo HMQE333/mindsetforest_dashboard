@@ -50,17 +50,19 @@ interface ThemeTabProps {
   onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout) => Promise<void>;
 }
 
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
+  const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setTheme(currentTheme);
     setAccent(currentAccent);
     setFrame(currentFrame || "default");
-  }, [currentTheme, currentAccent, currentFrame]);
+    setHeroLayout(currentHeroLayout || "default");
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout]);
 
   const handleThemeChange = (t: ThemeMode) => {
     setTheme(t);
