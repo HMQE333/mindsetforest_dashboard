@@ -16,6 +16,7 @@ import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 import ShortcutsPanel from "./ShortcutsPanel";
 import WeeklyProgress from "./WeeklyProgress";
+import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
