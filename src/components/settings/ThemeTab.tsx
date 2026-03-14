@@ -121,10 +121,11 @@ function Section({ title, icon, defaultOpen = true, children }: { title: string;
 function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: AccentColor }) {
   const accentColor = `hsl(${getAccentHSL(accent)})`;
   const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
+  const warmGlow = `hsl(${getAccentHSL(accent, 15)} / 0.3)`;
 
   const baseCard: React.CSSProperties = {
     width: "100%",
-    height: 36,
+    height: 44,
     borderRadius: 8,
     backgroundColor: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.08)",
@@ -134,6 +135,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
     gap: 6,
     padding: "0 10px",
     transition: "all 0.2s",
+    position: "relative",
+    overflow: "hidden",
   };
 
   const innerLine = (w: number, opacity = 0.15) => (
@@ -146,27 +149,27 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
   const getStyle = (): React.CSSProperties => {
     switch (frameId) {
       case "glow":
-        return { ...baseCard, boxShadow: `0 0 12px ${accentDim}, inset 0 0 6px ${accentDim}`, borderColor: accentColor };
+        return { ...baseCard, boxShadow: `0 0 16px ${accentDim}, 0 0 4px ${accentColor}, inset 0 0 8px ${accentDim}`, borderColor: accentColor };
       case "aura":
-        return { ...baseCard, boxShadow: `0 0 14px rgba(255,255,255,0.06), 0 0 8px rgba(255,255,255,0.04)`, borderColor: "rgba(255,255,255,0.15)" };
+        return { ...baseCard, boxShadow: `0 0 20px ${warmGlow}, 0 0 40px ${warmGlow}, 0 4px 12px rgba(0,0,0,0.2)`, borderColor: `hsl(${getAccentHSL(accent)} / 0.3)`, backgroundColor: "rgba(255,255,255,0.05)" };
       case "neon":
-        return { ...baseCard, boxShadow: `0 0 8px ${accentColor}, 0 0 16px ${accentDim}`, borderColor: accentColor, borderWidth: 1.5 };
+        return { ...baseCard, boxShadow: `0 0 6px ${accentColor}, 0 0 14px ${accentColor}, 0 0 28px ${accentDim}`, borderColor: accentColor, borderWidth: 2 };
       case "frost":
-        return { ...baseCard, backdropFilter: "blur(8px)", borderColor: "rgba(255,255,255,0.25)", backgroundColor: "rgba(255,255,255,0.06)" };
+        return { ...baseCard, backdropFilter: "blur(8px)", borderColor: "rgba(200,230,255,0.35)", backgroundColor: "rgba(200,230,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 0 12px rgba(180,220,255,0.1)" };
       case "sharp":
-        return { ...baseCard, borderRadius: 3, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" };
+        return { ...baseCard, borderRadius: 2, boxShadow: "4px 4px 0 rgba(0,0,0,0.4)", borderColor: "rgba(255,255,255,0.15)", borderWidth: 1.5 };
       case "prism":
-        return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
+        return { ...baseCard, boxShadow: `6px 0 18px ${accentDim}, -6px 0 18px rgba(255,180,255,0.15), 0 0 8px ${accentDim}`, borderColor: accentColor, borderWidth: 1.5 };
       case "electric":
-        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 8px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.2s infinite", backgroundImage: `linear-gradient(90deg, transparent 40%, ${accentDim} 50%, transparent 60%)` };
       case "plasma":
-        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 12px ${warmGlow}, 0 0 24px ${warmGlow}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.2s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), ${accentDim}, rgba(0,0,0,0.1))` };
       case "icicle":
-        return { ...baseCard, borderColor: "hsl(200, 80%, 85%)", boxShadow: "0 0 16px hsla(200, 80%, 75%, 0.25), 0 0 32px hsla(200, 70%, 70%, 0.1)", backgroundColor: "rgba(200, 230, 255, 0.05)" };
+        return { ...baseCard, borderColor: "hsl(200, 80%, 82%)", boxShadow: "0 0 12px hsla(200, 80%, 75%, 0.3), 0 0 28px hsla(200, 70%, 70%, 0.12), inset 0 1px 0 rgba(200,230,255,0.2)", backgroundColor: "rgba(200,230,255,0.06)" };
       case "bark":
         return { ...baseCard, borderColor: "hsl(28, 45%, 38%)", borderWidth: "1.5px", boxShadow: "0 0 18px hsla(30, 55%, 32%, 0.4), 0 0 36px hsla(25, 45%, 22%, 0.18), inset 0 0 14px hsla(30, 40%, 20%, 0.12)", backgroundColor: "rgba(60, 40, 20, 0.15)", backgroundImage: "repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 28%, 0.18) 10px, hsla(28, 35%, 28%, 0.18) 11.5px), repeating-linear-gradient(94deg, transparent, transparent 18px, hsla(25, 30%, 25%, 0.12) 18px, hsla(25, 30%, 25%, 0.12) 19px)" };
       default:
-        return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
+        return { ...baseCard, boxShadow: "0 4px 12px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)", borderColor: "rgba(255,255,255,0.1)", transform: "translateY(-1px)" };
     }
   };
 
@@ -425,6 +428,78 @@ function HeroLivePreview({ layoutId, accent }: { layoutId: HeroLayout; accent: A
   );
 }
 
+/* ── Dashboard Card Preview (shows sample category cards) ── */
+function DashboardCardPreview({ accent, cardStyle, frame }: { accent: AccentColor; cardStyle: CardStyle; frame: FrameStyle }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
+
+  const sampleCards = [
+    { icon: "🧠", name: "Mind", color: "#8B5CF6", progress: 60 },
+    { icon: "💪", name: "Body", color: "#EF4444", progress: 40 },
+    { icon: "🎨", name: "Creation", color: "#F97316", progress: 80 },
+  ];
+
+  const getCardBg = (): React.CSSProperties => {
+    switch (cardStyle) {
+      case "glassmorphic":
+        return { backgroundColor: "rgba(255,255,255,0.06)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.15)", boxShadow: `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 0 1px ${accentDim}` };
+      case "solid":
+        return { backgroundColor: "rgba(30,30,40,0.95)", border: "1px solid rgba(255,255,255,0.06)" };
+      case "outline":
+        return { backgroundColor: "transparent", border: "1.5px solid rgba(255,255,255,0.15)" };
+      case "elevated":
+        return { backgroundColor: "rgba(25,25,35,0.9)", border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 6px 20px rgba(0,0,0,0.5)" };
+      case "frosted":
+        return { backgroundColor: "rgba(200,230,255,0.06)", backdropFilter: "blur(20px)", border: "1px solid hsla(200,60%,80%,0.2)" };
+      case "wood":
+        return { backgroundColor: "hsl(28,40%,18%)", border: "1px solid hsl(28,30%,28%)", backgroundImage: "repeating-linear-gradient(95deg, transparent, transparent 8px, hsla(30,30%,22%,0.4) 8px, hsla(30,30%,22%,0.4) 9px)" };
+      case "moss":
+        return { backgroundColor: "hsl(140,35%,12%)", border: "1px solid hsl(135,30%,22%)", backgroundImage: "radial-gradient(circle 3px at 25% 35%, hsla(130,50%,28%,0.4), transparent)" };
+      default:
+        return { backgroundColor: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)" };
+    }
+  };
+
+  const getFrameFx = (color: string): React.CSSProperties => {
+    const dim = color + "40";
+    switch (frame) {
+      case "glow": return { boxShadow: `0 0 12px ${dim}` };
+      case "aura": return { boxShadow: `0 0 16px ${dim}, 0 0 32px ${dim}` };
+      case "neon": return { boxShadow: `0 0 6px ${color}, 0 0 12px ${dim}`, borderColor: color, borderWidth: 1.5 };
+      case "frost": return { borderColor: "rgba(200,230,255,0.3)" };
+      case "sharp": return { borderRadius: 2, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)" };
+      case "prism": return { boxShadow: `4px 0 12px ${dim}, -4px 0 12px rgba(255,180,255,0.1)` };
+      case "electric": return { borderColor: color, boxShadow: `0 0 8px ${dim}`, animation: "electric-preview-pulse 1.5s infinite" };
+      case "plasma": return { borderColor: color, boxShadow: `0 0 10px ${dim}`, animation: "electric-preview-pulse 1.5s infinite" };
+      case "icicle": return { borderColor: "hsl(200,80%,82%)", boxShadow: "0 0 12px hsla(200,80%,75%,0.2)" };
+      case "bark": return { borderColor: "hsl(28,45%,38%)", boxShadow: "0 0 14px hsla(30,55%,32%,0.3)" };
+      default: return { boxShadow: "0 4px 12px rgba(0,0,0,0.2)" };
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-xl p-4 border border-white/5" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
+      <div className="text-[9px] text-muted-foreground mb-2 uppercase tracking-wider">Card Preview</div>
+      <div className="grid grid-cols-3 gap-2">
+        {sampleCards.map(card => (
+          <div
+            key={card.name}
+            className="rounded-xl p-2.5 transition-all"
+            style={{ ...getCardBg(), ...getFrameFx(card.color), borderRadius: undefined }}
+          >
+            <span className="text-lg block mb-1" style={{ filter: `drop-shadow(0 0 4px ${card.color})` }}>{card.icon}</span>
+            <div className="text-[9px] font-bold mb-1" style={{ color: card.color }}>{card.name}</div>
+            <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.08)" }}>
+              <div className="h-full rounded-full" style={{ width: `${card.progress}%`, backgroundColor: card.color }} />
+            </div>
+            <div className="text-[7px] text-muted-foreground mt-0.5">{card.progress}% done</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Small Thumbnail Preview (for grid selector) ── */
 function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent: AccentColor }) {
   const accentColor = `hsl(${getAccentHSL(accent)})`;
@@ -572,6 +647,26 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
       borderRadius,
     });
     setDirty(false);
+  };
+
+  const handleRevert = () => {
+    setTheme(currentTheme);
+    setAccent(currentAccent);
+    setFrame(currentFrame || "default");
+    setHeroLayout(currentHeroLayout || "default");
+    setFontPair(currentFontPair || "default");
+    setBgPattern(currentBackgroundPattern || "none");
+    setCardStyle(currentCardStyle || "default");
+    setCustomHue(currentCustomAccentHue ?? null);
+    setCardOpacity(currentCardOpacity ?? 0.6);
+    setBgIntensity(currentBackgroundIntensity ?? 0.6);
+    setBorderRadius(currentBorderRadius ?? 12);
+    setDirty(false);
+    applyThemePreview(
+      currentTheme, currentAccent, currentFrame || "default",
+      currentFontPair || "default", currentCardStyle || "default",
+      currentCustomAccentHue, currentBorderRadius ?? 12, currentCardOpacity ?? 0.6
+    );
   };
 
   return (
@@ -762,6 +857,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
           ))}
         </div>
         <HeroLivePreview layoutId={heroLayout} accent={accent} />
+        <DashboardCardPreview accent={accent} cardStyle={cardStyle} frame={frame} />
       </Section>
 
       {/* ── Typography ── */}
@@ -834,14 +930,30 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
       </div>
 
       {dirty && (
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          onClick={handleSave}
-          className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all"
+          className="sticky bottom-0 z-50 -mx-4 mt-3 px-4 py-3 flex items-center justify-between gap-3 bg-background/80 backdrop-blur-md border-t border-border/50"
         >
-          Save Theme
-        </motion.button>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-xs font-semibold text-foreground">Unsaved changes</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRevert}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-all"
+            >
+              Revert
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-1.5 rounded-lg text-xs font-bold text-primary-foreground gradient-purple glow-sm hover:opacity-90 transition-all"
+            >
+              Save
+            </button>
+          </div>
+        </motion.div>
       )}
     </div>
   );
