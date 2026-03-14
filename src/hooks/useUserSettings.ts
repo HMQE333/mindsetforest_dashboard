@@ -47,6 +47,10 @@ export interface UserPreferences {
   backgroundPattern?: BackgroundPattern;
   cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
+  customAccentHue?: number | null;
+  cardOpacity?: number;
+  backgroundIntensity?: number;
+  borderRadius?: number;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
