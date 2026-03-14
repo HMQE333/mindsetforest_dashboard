@@ -370,7 +370,133 @@ export default function BackgroundPattern({ pattern }: Props) {
     };
   }, [pattern]);
 
+  // Falling Leaves animation
+  useEffect(() => {
+    if (pattern !== "leaves") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+
+    interface Leaf {
+      x: number; y: number; size: number;
+      speed: number; rotSpeed: number; rot: number;
+      wobblePhase: number; wobbleAmp: number;
+      hue: number; sat: number; light: number; opacity: number;
+      shape: number; // 0-2 for variety
+    }
+
+    const leaves: Leaf[] = [];
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const count = Math.floor((canvas.width * canvas.height) / 20000) + 25;
+    for (let i = 0; i < count; i++) {
+      // Autumn palette: reds, oranges, yellows, browns
+      const palette = [
+        { hue: 15, sat: 70, light: 45 },   // burnt orange
+        { hue: 30, sat: 80, light: 50 },   // orange
+        { hue: 45, sat: 75, light: 48 },   // gold
+        { hue: 8, sat: 65, light: 40 },    // rust
+        { hue: 25, sat: 55, light: 35 },   // brown
+        { hue: 55, sat: 60, light: 42 },   // olive gold
+      ];
+      const col = palette[Math.floor(Math.random() * palette.length)];
+      leaves.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height - canvas.height * 0.1,
+        size: Math.random() * 8 + 4,
+        speed: Math.random() * 0.5 + 0.2,
+        rotSpeed: (Math.random() - 0.5) * 0.02,
+        rot: Math.random() * Math.PI * 2,
+        wobblePhase: Math.random() * Math.PI * 2,
+        wobbleAmp: Math.random() * 1.2 + 0.4,
+        hue: col.hue + (Math.random() - 0.5) * 10,
+        sat: col.sat,
+        light: col.light,
+        opacity: Math.random() * 0.35 + 0.15,
+        shape: Math.floor(Math.random() * 3),
+      });
+    }
+
+    const drawLeaf = (l: Leaf) => {
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.rot);
+      ctx.globalAlpha = l.opacity;
+      ctx.fillStyle = `hsl(${l.hue}, ${l.sat}%, ${l.light}%)`;
+
+      const s = l.size;
+      ctx.beginPath();
+      if (l.shape === 0) {
+        // Oval leaf
+        ctx.ellipse(0, 0, s * 0.5, s, 0, 0, Math.PI * 2);
+      } else if (l.shape === 1) {
+        // Pointed leaf
+        ctx.moveTo(0, -s);
+        ctx.quadraticCurveTo(s * 0.6, -s * 0.3, s * 0.3, s * 0.5);
+        ctx.quadraticCurveTo(0, s * 0.8, -s * 0.3, s * 0.5);
+        ctx.quadraticCurveTo(-s * 0.6, -s * 0.3, 0, -s);
+      } else {
+        // Maple-ish (simple 3-lobed)
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.4, -s * 0.3);
+        ctx.lineTo(s * 0.8, -s * 0.5);
+        ctx.lineTo(s * 0.5, 0);
+        ctx.lineTo(s * 0.3, s * 0.6);
+        ctx.lineTo(0, s * 0.3);
+        ctx.lineTo(-s * 0.3, s * 0.6);
+        ctx.lineTo(-s * 0.5, 0);
+        ctx.lineTo(-s * 0.8, -s * 0.5);
+        ctx.lineTo(-s * 0.4, -s * 0.3);
+        ctx.closePath();
+      }
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const animate = (t: number) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const l of leaves) {
+        const wobble = Math.sin(t * 0.001 + l.wobblePhase) * l.wobbleAmp;
+        l.y += l.speed;
+        l.x += wobble * 0.3;
+        l.rot += l.rotSpeed;
+
+        if (l.y > canvas.height + 20) {
+          l.y = -20;
+          l.x = Math.random() * canvas.width;
+        }
+        if (l.x < -20) l.x = canvas.width + 20;
+        if (l.x > canvas.width + 20) l.x = -20;
+
+        drawLeaf(l);
+      }
+
+      animId = requestAnimationFrame(animate);
+    };
+
+    animId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [pattern]);
+
   if (pattern === "none") return null;
+
+  if (pattern === "leaves") {
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.5 }} />;
+  }
 
   if (pattern === "snow") {
     return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
