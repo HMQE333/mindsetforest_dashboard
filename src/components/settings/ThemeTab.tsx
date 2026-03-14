@@ -54,6 +54,14 @@ const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; descrip
   { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
 ];
 
+const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: string }[] = [
+  { id: "default", label: "Default", icon: "🪟", description: "Semi-transparent glass" },
+  { id: "glassmorphic", label: "Glassmorphic", icon: "💎", description: "Heavy blur, iridescent shimmer" },
+  { id: "solid", label: "Solid", icon: "🧱", description: "Opaque, flat surface" },
+  { id: "outline", label: "Outline", icon: "🔲", description: "Transparent, border-only" },
+  { id: "elevated", label: "Elevated", icon: "📦", description: "Strong shadows, layered depth" },
+];
+
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎮", description: "Full streak + bar + cards" },
   { id: "compact", label: "Compact", icon: "⚡", description: "All stats in 2 rows" },
