@@ -140,6 +140,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, borderRadius: 3, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" };
       case "prism":
         return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
+      case "electric":
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
