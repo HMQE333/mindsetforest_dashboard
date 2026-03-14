@@ -92,6 +92,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                     <ModulesTab
                       enabledModules={settings.preferences.enabledModules}
                       onSave={settings.saveEnabledModules}
+                      focusPulseStyle={settings.preferences.focusPulseStyle || "glow"}
+                      onSavePulseStyle={(style) => {
+                        settings.savePreferences({ ...settings.preferences, focusPulseStyle: style });
+                      }}
                     />
                   )}
                   {activeTab === "theme" && (
