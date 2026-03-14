@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, ChevronDown } from "lucide-react";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import PillarIcon from "@/components/shared/PillarIcon";
 
 const COLOR_PRESETS = [
   { var: "cat-mind", label: "Purple", hex: "#8B5CF6" },
@@ -58,9 +59,7 @@ export default function ProjectsTab() {
   };
 
   const handleSaveProject = useCallback(async (proj: EditingProject) => {
-    // Use the existing renameProject + update color/parent via supabase directly
     await renameProject(proj.id, proj.name, proj.emoji);
-    // For color_var and parent_category, we need a direct update
     const { supabase } = await import("@/integrations/supabase/client");
     await (supabase.from("user_projects" as any) as any)
       .update({ parent_category: proj.parent_category, color_var: proj.color_var })
@@ -80,7 +79,6 @@ export default function ProjectsTab() {
         </button>
       </div>
 
-      {/* New project inline */}
       <AnimatePresence>
         {showNew && (
           <motion.div
@@ -118,13 +116,13 @@ export default function ProjectsTab() {
         )}
       </AnimatePresence>
 
-      {/* Project list */}
       <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
         {editingList.length === 0 && !showNew && (
           <div className="text-center py-8 text-muted-foreground text-sm">No projects yet. Click + New to create one.</div>
         )}
         {editingList.map((proj, i) => {
           const isExpanded = expandedId === proj.id;
+          const parentCat = categories.find(c => c.id === proj.parent_category);
           return (
             <motion.div
               key={proj.id}
@@ -133,7 +131,6 @@ export default function ProjectsTab() {
               transition={{ delay: i * 0.03 }}
               className="glass-card overflow-hidden"
             >
-              {/* Collapsed row */}
               <div
                 className="flex items-center gap-2 p-3 cursor-pointer hover:bg-white/5 transition-colors"
                 onClick={() => setExpandedId(isExpanded ? null : proj.id)}
@@ -141,9 +138,9 @@ export default function ProjectsTab() {
                 <span className="text-xl">{proj.emoji}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-foreground truncate">{proj.name}</div>
-                  {proj.parent_category && (
-                    <div className="text-[10px] text-muted-foreground">
-                      under {categories.find(c => c.id === proj.parent_category)?.icon} {categories.find(c => c.id === proj.parent_category)?.name}
+                  {parentCat && (
+                    <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      under <PillarIcon icon={parentCat.icon} iconUrl={parentCat.iconUrl} size={12} className="inline-block" /> {parentCat.name}
                     </div>
                   )}
                 </div>
@@ -154,7 +151,6 @@ export default function ProjectsTab() {
                 <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
               </div>
 
-              {/* Expanded editor */}
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -164,7 +160,6 @@ export default function ProjectsTab() {
                     className="overflow-hidden"
                   >
                     <div className="px-3 pb-3 space-y-3 border-t border-white/5 pt-3">
-                      {/* Name & emoji */}
                       <div className="flex items-center gap-2">
                         <input
                           value={proj.emoji}
@@ -180,7 +175,6 @@ export default function ProjectsTab() {
                         />
                       </div>
 
-                      {/* Parent category */}
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 block">Parent Category</label>
                         <div className="flex gap-1.5 flex-wrap">
@@ -196,19 +190,18 @@ export default function ProjectsTab() {
                             <button
                               key={cat.id}
                               onClick={() => updateField(proj.id, "parent_category", cat.id)}
-                              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
                                 proj.parent_category === cat.id
                                   ? "bg-primary/20 text-primary border border-primary/30"
                                   : "text-muted-foreground hover:bg-white/5 border border-white/5"
                               }`}
                             >
-                              {cat.icon} {cat.name}
+                              <PillarIcon icon={cat.icon} iconUrl={cat.iconUrl} size={14} className="inline-block" /> {cat.name}
                             </button>
                           ))}
                         </div>
                       </div>
 
-                      {/* Color */}
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 block">Color</label>
                         <div className="flex gap-1.5 flex-wrap">
@@ -226,7 +219,6 @@ export default function ProjectsTab() {
                         </div>
                       </div>
 
-                      {/* Actions */}
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {

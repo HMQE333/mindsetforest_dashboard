@@ -2,6 +2,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { DashboardState } from "@/hooks/useDashboardState";
+import { useUserSettings } from "@/hooks/useUserSettings";
+import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ProjectInfo {
@@ -23,9 +25,12 @@ interface MissionViewProps {
 }
 
 export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
-  const category = CATEGORIES.find(c => c.id === categoryId);
+  const { getCategories } = useUserSettings();
+  const categories = getCategories();
+  const category = categories.find(c => c.id === categoryId);
   const displayName = projectInfo?.name || category?.name || categoryId;
-  const displayIcon = projectInfo?.emoji || category?.icon || "📁";
+  const displayIcon = category?.icon || "📁";
+  const displayIconUrl = category?.iconUrl;
   const displayColor = category?.color || "#8B5CF6";
   const displayTagline = projectInfo ? "Project" : category?.tagline || "";
   const missions = getMissions(categoryId);
@@ -68,12 +73,18 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
           >
             ← Back
           </button>
-          <span
-            className="text-4xl"
-            style={{ filter: `drop-shadow(0 0 15px ${displayColor})` }}
-          >
-            {displayIcon}
-          </span>
+          {projectInfo ? (
+            <span
+              className="text-4xl"
+              style={{ filter: `drop-shadow(0 0 15px ${displayColor})` }}
+            >
+              {projectInfo.emoji}
+            </span>
+          ) : (
+            <span style={{ filter: `drop-shadow(0 0 15px ${displayColor})` }}>
+              <PillarIcon icon={displayIcon} iconUrl={displayIconUrl} size={48} />
+            </span>
+          )}
           <div>
             <h2 className="text-2xl font-bold" style={{ color: displayColor }}>
               {displayName}

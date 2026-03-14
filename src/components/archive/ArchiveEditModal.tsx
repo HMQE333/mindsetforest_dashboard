@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
+import { DIRECTIONS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 
@@ -22,6 +24,7 @@ interface Props {
 }
 
 const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSearch, onEditBlock }: Props) => {
+  const allPillars = usePillars();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
@@ -42,7 +45,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
     }
   }, [block]);
 
-  // Extract image URLs from content for preview
   const imageUrls = useMemo(() => {
     const urls: string[] = [];
     let match;
@@ -88,7 +90,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="bg-background/50 border-white/10" />
           <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Content" className="min-h-[120px] bg-background/50 border-white/10" />
 
-          {/* Image preview strip */}
           {imageUrls.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {imageUrls.map((url, i) => (
@@ -102,16 +103,16 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-2">Pillars</p>
             <div className="flex flex-wrap gap-1.5">
-              {PILLARS.map((p) => (
+              {allPillars.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => togglePillar(p.id)}
-                  className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all ${
+                  className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1 ${
                     pillars.includes(p.id) ? "text-white" : "opacity-40 hover:opacity-70"
                   }`}
                   style={{ backgroundColor: pillars.includes(p.id) ? p.color : p.color + "22", color: pillars.includes(p.id) ? "#fff" : p.color }}
                 >
-                  {p.icon} {p.name}
+                  <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
                 </button>
               ))}
             </div>
@@ -152,7 +153,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
             <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" />
           </div>
 
-          {/* Related Blocks */}
           {semanticSearch && (
             <Collapsible open={relatedOpen} onOpenChange={async (isOpen) => {
               setRelatedOpen(isOpen);

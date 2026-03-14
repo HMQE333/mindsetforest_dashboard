@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Book, STATUS_LABELS, FORMAT_LABELS } from "@/lib/library-data";
-import { PILLARS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import { Star } from "lucide-react";
 
 interface BookCardProps {
@@ -11,8 +12,9 @@ interface BookCardProps {
 }
 
 export default function BookCard({ book, index, onClick, view }: BookCardProps) {
+  const allPillars = usePillars();
   const progress = book.total_pages > 0 ? Math.round((book.pages_read / book.total_pages) * 100) : 0;
-  const bookPillars = PILLARS.filter(p => (book.pillars || []).includes(p.id));
+  const bookPillars = allPillars.filter(p => (book.pillars || []).includes(p.id));
   const formatLabel = FORMAT_LABELS[book.format || "owned"];
 
   if (view === "list") {
@@ -51,7 +53,11 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
           </span>
           {bookPillars.length > 0 && (
             <div className="flex gap-0.5 shrink-0">
-              {bookPillars.slice(0, 3).map(p => <span key={p.id} className="text-sm" title={p.name}>{p.icon}</span>)}
+              {bookPillars.slice(0, 3).map(p => (
+                <span key={p.id} title={p.name}>
+                  <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={16} className="inline-block" />
+                </span>
+              ))}
             </div>
           )}
         </div>
@@ -116,7 +122,9 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
           {bookPillars.length > 0 && (
             <div className="flex flex-col gap-1 shrink-0 items-end">
               {bookPillars.map(p => (
-                <span key={p.id} className="text-base leading-none" title={p.name}>{p.icon}</span>
+                <span key={p.id} title={p.name}>
+                  <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={20} className="inline-block" />
+                </span>
               ))}
             </div>
           )}

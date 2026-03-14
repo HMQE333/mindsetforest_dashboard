@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { CATEGORIES } from "@/lib/dashboard-data";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { UserProject, useUserProjects } from "@/hooks/useUserProjects";
+import PillarIcon from "@/components/shared/PillarIcon";
 
 interface CategoryProjectSelectorProps {
   value: string;
@@ -10,6 +11,8 @@ interface CategoryProjectSelectorProps {
 const EMOJI_OPTIONS = ["📁", "🦀", "🚀", "🎹", "📚", "💻", "🎯", "🧪", "🎨", "📈", "🏋️", "🌱", "⚡", "🔧", "🧠"];
 
 export default function CategoryProjectSelector({ value, onChange }: CategoryProjectSelectorProps) {
+  const { getCategories } = useUserSettings();
+  const categories = getCategories();
   const { projects, addProject, deleteProject, renameProject, projectKey, isProjectKey } = useUserProjects();
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -20,7 +23,6 @@ export default function CategoryProjectSelector({ value, onChange }: CategoryPro
   const [editEmoji, setEditEmoji] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -29,9 +31,14 @@ export default function CategoryProjectSelector({ value, onChange }: CategoryPro
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const selectedCat = CATEGORIES.find(c => c.id === value);
+  const selectedCat = categories.find(c => c.id === value);
   const selectedProj = isProjectKey(value) ? projects.find(p => projectKey(p.id) === value) : null;
-  const displayLabel = selectedProj ? `${selectedProj.emoji} ${selectedProj.name}` : selectedCat ? `${selectedCat.icon} ${selectedCat.name}` : value;
+
+  const displayLabel = selectedProj
+    ? <span className="flex items-center gap-1.5">{selectedProj.emoji} {selectedProj.name}</span>
+    : selectedCat
+    ? <span className="flex items-center gap-1.5"><PillarIcon icon={selectedCat.icon} iconUrl={selectedCat.iconUrl} size={16} className="inline-block" /> {selectedCat.name}</span>
+    : <span>{value}</span>;
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
@@ -60,7 +67,6 @@ export default function CategoryProjectSelector({ value, onChange }: CategoryPro
     <div className="flex items-center gap-3 flex-wrap" ref={ref}>
       <label className="text-sm text-muted-foreground">Scope</label>
 
-      {/* Custom dropdown trigger */}
       <div className="relative">
         <button
           onClick={() => setOpen(!open)}
@@ -78,11 +84,10 @@ export default function CategoryProjectSelector({ value, onChange }: CategoryPro
               boxShadow: "0 16px 64px rgba(0,0,0,0.5)",
             }}
           >
-            {/* Categories */}
             <div className="px-3 pt-3 pb-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-foreground/40">Categories</span>
             </div>
-            {CATEGORIES.map(c => (
+            {categories.map(c => (
               <button
                 key={c.id}
                 onClick={() => { onChange(c.id); setOpen(false); }}
@@ -90,13 +95,12 @@ export default function CategoryProjectSelector({ value, onChange }: CategoryPro
                   value === c.id ? "bg-primary/15 text-foreground" : "text-foreground/80"
                 }`}
               >
-                <span className="text-base">{c.icon}</span>
+                <PillarIcon icon={c.icon} iconUrl={c.iconUrl} size={20} className="inline-block" />
                 <span className="truncate">{c.name}</span>
                 {value === c.id && <span className="ml-auto text-primary text-xs">●</span>}
               </button>
             ))}
 
-            {/* Projects */}
             {projects.length > 0 && (
               <>
                 <div className="px-3 pt-3 pb-1 border-t border-white/8">
@@ -145,7 +149,6 @@ export default function CategoryProjectSelector({ value, onChange }: CategoryPro
               </>
             )}
 
-            {/* Create */}
             <div className="border-t border-white/8">
               {showCreate ? (
                 <div className="p-3 space-y-2">

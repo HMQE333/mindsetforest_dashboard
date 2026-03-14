@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, ChevronLeft, ChevronRight } from "lucide-react";
-import { PILLARS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 
@@ -35,6 +36,7 @@ function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
 }
 
 const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props) => {
+  const pillars = usePillars();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
@@ -90,16 +92,16 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
           >
             All
           </button>
-          {PILLARS.map((p) => (
+          {pillars.map((p) => (
             <button
               key={p.id}
               onClick={() => setFilterPillar(filterPillar === p.id ? null : p.id)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1 ${
                 filterPillar === p.id ? "text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:text-foreground"
               }`}
               style={filterPillar === p.id ? { backgroundColor: p.color } : undefined}
             >
-              {p.icon} {p.name}
+              <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
             </button>
           ))}
           <span className="ml-auto text-sm text-muted-foreground">{filtered.length} images</span>
@@ -115,7 +117,7 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
           <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
             {filtered.map((img, i) => {
               const pillarColors = img.block.pillars
-                .map((p) => PILLARS.find((pl) => pl.id === p))
+                .map((p) => pillars.find((pl) => pl.id === p))
                 .filter(Boolean);
               const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(img.block.title?.trim() || "")
                 ? "Image block"
@@ -156,10 +158,10 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
                         {pillarColors.map((p) => (
                           <span
                             key={p!.id}
-                            className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
+                            className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5"
                             style={{ backgroundColor: p!.color + "22", color: p!.color }}
                           >
-                            {p!.icon}
+                            <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={10} className="inline-block" />
                           </span>
                         ))}
                       </div>
@@ -172,7 +174,7 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
         )}
       </div>
 
-      {/* Lightbox with close / download / prev / next */}
+      {/* Lightbox */}
       <AnimatePresence>
         {lightboxUrl && lightboxIndex !== null && (
           <motion.div
@@ -182,43 +184,22 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
             onClick={() => setLightboxIndex(null)}
           >
-            {/* Close */}
-            <button
-              onClick={() => setLightboxIndex(null)}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-            >
+            <button onClick={() => setLightboxIndex(null)} className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
               <X size={20} />
             </button>
-            {/* Download */}
-            <a
-              href={lightboxUrl}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-            >
+            <a href={lightboxUrl} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
               <Download size={20} />
             </a>
-            {/* Counter */}
             <span className="absolute top-5 left-4 z-10 text-sm text-white/60 font-medium">
               {lightboxIndex + 1} / {filtered.length}
             </span>
-            {/* Prev */}
             {lightboxIndex > 0 && (
-              <button
-                onClick={(e) => { e.stopPropagation(); goPrev(); }}
-                className="absolute left-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-              >
+              <button onClick={(e) => { e.stopPropagation(); goPrev(); }} className="absolute left-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
                 <ChevronLeft size={24} />
               </button>
             )}
-            {/* Next */}
             {lightboxIndex < filtered.length - 1 && (
-              <button
-                onClick={(e) => { e.stopPropagation(); goNext(); }}
-                className="absolute right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-              >
+              <button onClick={(e) => { e.stopPropagation(); goNext(); }} className="absolute right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
                 <ChevronRight size={24} />
               </button>
             )}
@@ -236,7 +217,6 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
         )}
       </AnimatePresence>
 
-      {/* Edit modal */}
       <ArchiveEditModal
         block={editBlock}
         open={!!editBlock}

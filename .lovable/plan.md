@@ -1,49 +1,61 @@
 
 
-## Plan: Propagate Custom Pillar Icons Everywhere
+## Plan: Keyboard Shortcuts System for Dashboard
 
-### Problem
-`PillarIcon` is only used in `CategoryGrid` and `CategoriesTab`. All other components (archive, library, tracker, missions, settings/projects, onboarding) still render raw `{p.icon}` emoji text, ignoring any uploaded PNG icons.
+### Concept
 
-The root cause is two-fold:
-1. **`PILLARS` in `archive-data.ts`** maps from `CATEGORIES` but doesn't include `iconUrl` — and it's a static constant, not reactive to user customizations
-2. **Most components import `CATEGORIES` or `PILLARS` directly** instead of using `getCategories()` from `useUserSettings`, so they never see custom icons
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-### Approach
+### Shortcut Map
 
-**Step 1: Make `PILLARS` include `iconUrl`** in `archive-data.ts` — add `iconUrl` to the mapping. This fixes the type but not the reactivity problem.
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-**Step 2: Replace raw emoji rendering with `PillarIcon`** in all affected components. For inline text contexts like `{p.icon} {p.name}`, render `<PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} />` inline next to the name. For standalone icon spots, use appropriate sizes.
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-**Step 3: Thread `getCategories()` data into components that currently use static `CATEGORIES`/`PILLARS`**. The key components that need custom category data passed in or fetched:
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-**Files to update:**
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-| File | What renders `icon` | Fix |
-|------|-------------------|-----|
-| `src/lib/archive-data.ts` | `PILLARS` mapping | Add `iconUrl: c.iconUrl` |
-| `src/components/archive/ArchiveBlockCard.tsx` | `{p!.icon} {p!.name}` in pillar tags | Use `PillarIcon` inline |
-| `src/components/archive/ArchiveLibrary.tsx` | `{p.icon} {p.name}` in filter buttons | Use `PillarIcon` inline |
-| `src/components/archive/ArchiveImagesView.tsx` | `{p.icon} {p.name}` in filters + `{p!.icon}` in tags | Use `PillarIcon` inline |
-| `src/components/archive/ArchiveEditModal.tsx` | `{p.icon} {p.name}` in pillar toggles | Use `PillarIcon` inline |
-| `src/components/archive/LinkContextMenu.tsx` | `{p.icon} {p.name}` in pillar toggles | Use `PillarIcon` inline |
-| `src/components/archive/ArchiveSearchResults.tsx` | pillar tags via `pillarColors` | Use `PillarIcon` inline |
-| `src/components/library/BookCard.tsx` | `{p.icon}` standalone icons | Use `PillarIcon` |
-| `src/components/library/BookDetailModal.tsx` | `{p.icon} {p.name}` in toggles | Use `PillarIcon` inline |
-| `src/components/library/AddBookModal.tsx` | `{p.icon} {p.name}` in toggles | Use `PillarIcon` inline |
-| `src/components/dashboard/MissionView.tsx` | `displayIcon` from `category?.icon` | Use `PillarIcon`, include `iconUrl` |
-| `src/components/settings/ProjectsTab.tsx` | `{cat.icon} {cat.name}` in parent selectors | Use `PillarIcon` inline |
-| `src/components/shared/CategoryProjectSelector.tsx` | `{c.icon}` in dropdown + display label | Use `PillarIcon` inline |
-| `src/components/TrackerActivityPulse.tsx` | derives local `CATEGORIES` with `icon` from metrics | Include `iconUrl` from metrics data |
+### Implementation
 
-**Step 4: Make archive/library components use customized pillar data**. These components currently import the static `PILLARS`. The cleanest fix: since `PILLARS` is derived from `CATEGORIES` and `CATEGORIES` is a static default, we need to either:
-- Pass customized pillars as props from parent components that have access to `useUserSettings`
-- Or create a lightweight context/hook that provides customized pillars
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-The simplest approach: the parent components (`ArchiveView`, `LibraryView`, `DashboardView`) already have access to `useUserSettings().getCategories()`. We'll pass customized categories down as props where needed, or have the child components call `useUserSettings().getCategories()` directly (it's already a hook used across the app).
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-For archive components that use `PILLARS`, we'll replace `PILLARS` usage with a call to `useUserSettings().getCategories()` and map to the pillar shape locally.
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
 
-### Summary
-~14 files changed. Each change is small — import `PillarIcon`, replace `{p.icon}` with `<PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={N} className="inline-block" />`, and ensure the data source includes `iconUrl`.
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
+
+### File Summary
+
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

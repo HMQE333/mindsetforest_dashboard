@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download } from "lucide-react";
-import { PILLARS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -20,6 +21,7 @@ interface Props {
 }
 
 const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore }: Props) => {
+  const allPillars = usePillars();
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{
@@ -36,7 +38,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
       });
       if (error) throw error;
 
-      // Show preview instead of instant overwrite
       if (action === "organize" && data?.pillars) {
         setPreviewData({
           action,
@@ -79,7 +80,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
     }
   }, [lightboxUrl, handleKeyDown]);
 
-  const pillarColors = block.pillars.map((p) => PILLARS.find((pl) => pl.id === p)).filter(Boolean);
+  const pillarColors = block.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
 
   const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(block.title?.trim() || "")
     ? "Image block"
@@ -158,8 +159,8 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         {(pillarColors.length > 0 || block.directions.length > 0) && (
           <div className="flex flex-wrap gap-1.5">
             {pillarColors.map((p) => (
-              <span key={p!.id} className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
-                {p!.icon} {p!.name}
+              <span key={p!.id} className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
+                <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
               </span>
             ))}
             {block.directions.map((d) => (
@@ -194,7 +195,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         </div>
       </motion.div>
 
-      {/* AI Preview Modal */}
       <ArchiveAIPreviewModal
         open={previewData !== null}
         data={previewData}
@@ -202,7 +202,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         onReject={() => setPreviewData(null)}
       />
 
-      {/* Lightbox overlay */}
       <AnimatePresence>
         {lightboxUrl && (
           <motion.div

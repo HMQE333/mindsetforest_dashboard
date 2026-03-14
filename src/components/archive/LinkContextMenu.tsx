@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ExternalLink, Copy, Pencil, MessageSquarePlus, Tag, Trash2 } from "lucide-react";
-import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
+import { DIRECTIONS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 interface ContextMenuState {
@@ -20,11 +22,11 @@ interface Props {
 }
 
 const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => {
+  const allPillars = usePillars();
   const [subView, setSubView] = useState<null | "note" | "tags">(null);
   const [noteText, setNoteText] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click or Escape
   useEffect(() => {
     if (!menu) return;
     const handleClick = (e: MouseEvent) => {
@@ -41,7 +43,6 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
     };
   }, [menu, onClose]);
 
-  // Reset sub-view when menu changes
   useEffect(() => {
     setSubView(null);
     setNoteText("");
@@ -51,7 +52,6 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
 
   const { x, y, url, block } = menu;
 
-  // Ensure menu stays within viewport
   const style: React.CSSProperties = {
     position: "fixed",
     left: Math.min(x, window.innerWidth - 260),
@@ -95,7 +95,6 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
       ? block.pillars.filter((p) => p !== pillarId)
       : [...block.pillars, pillarId];
     await updateBlock(block.id, { pillars: newPillars });
-    // Update local block reference for UI reactivity
     block.pillars = newPillars;
   };
 
@@ -140,11 +139,11 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">Pillars</p>
           <div className="flex flex-wrap gap-1">
-            {PILLARS.map((p) => (
+            {allPillars.map((p) => (
               <button
                 key={p.id}
                 onClick={() => togglePillar(p.id)}
-                className={`text-[10px] px-2 py-1 rounded-full font-semibold transition-all ${
+                className={`text-[10px] px-2 py-1 rounded-full font-semibold transition-all flex items-center gap-0.5 ${
                   block.pillars.includes(p.id) ? "text-white" : "opacity-40 hover:opacity-70"
                 }`}
                 style={{
@@ -152,7 +151,7 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
                   color: block.pillars.includes(p.id) ? "#fff" : p.color,
                 }}
               >
-                {p.icon} {p.name}
+                <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={12} className="inline-block" /> {p.name}
               </button>
             ))}
           </div>

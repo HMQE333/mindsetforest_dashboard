@@ -4,6 +4,7 @@ export const PILLARS = CATEGORIES.map((c) => ({
   id: c.id,
   name: c.name,
   icon: c.icon,
+  iconUrl: c.iconUrl,
   color: c.color,
   colorVar: c.colorVar,
 }));
