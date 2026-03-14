@@ -65,7 +65,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
               <h2 className="text-lg font-bold text-foreground">⚙️ Settings</h2>
-              <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">
+              <button onClick={handleClose} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">
                 <X className="w-5 h-5" />
               </button>
             </div>
