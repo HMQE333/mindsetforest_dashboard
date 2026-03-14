@@ -13,6 +13,7 @@ export interface CustomCategory {
   name: string;
   tagline: string;
   icon: string;
+  iconUrl?: string;
   color?: string;
   lightColor?: string;
 }
