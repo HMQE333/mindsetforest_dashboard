@@ -136,111 +136,20 @@ function FrameStylePreview({ frameId }: { frameId: FrameStyle }) {
   );
 }
 
-/* ── Card Style Preview ── */
-function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: AccentColor }) {
-  const accentColor = `hsl(${getAccentHSL(accent)})`;
-  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
-
-  const base: React.CSSProperties = {
-    width: "100%",
-    height: 40,
-    borderRadius: 12,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "0 10px",
-    transition: "all 0.3s",
-  };
-
-  const innerLine = (w: number, opacity = 0.15) => (
-    <div style={{ width: w, height: 3, borderRadius: 2, backgroundColor: `rgba(255,255,255,${opacity})` }} />
-  );
-  const innerDot = (color: string) => (
-    <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
-  );
-
-  const getStyle = (): React.CSSProperties => {
-    switch (styleId) {
-      case "glassmorphic":
-        return {
-          ...base,
-          backgroundColor: "rgba(255,255,255,0.06)",
-          backdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px ${accentDim}`,
-          background: `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.06) 100%)`,
-        };
-      case "solid":
-        return {
-          ...base,
-          backgroundColor: "rgba(30,30,40,0.95)",
-          border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: 10,
-        };
-      case "outline":
-        return {
-          ...base,
-          backgroundColor: "transparent",
-          border: `1.5px solid rgba(255,255,255,0.15)`,
-        };
-      case "elevated":
-        return {
-          ...base,
-          backgroundColor: "rgba(25,25,35,0.9)",
-          border: "1px solid rgba(255,255,255,0.05)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
-          borderRadius: 14,
-        };
-      case "frosted":
-        return {
-          ...base,
-          backgroundColor: "rgba(200, 230, 255, 0.06)",
-          backdropFilter: "blur(28px)",
-          border: "1px solid hsla(200, 60%, 80%, 0.25)",
-          boxShadow: "inset 0 0 20px hsla(200, 70%, 80%, 0.06), 0 4px 20px rgba(0,0,0,0.2)",
-        };
-      case "wood":
-        return {
-          ...base,
-          backgroundColor: "hsl(28, 40%, 18%)",
-          border: "1px solid hsl(28, 30%, 28%)",
-          boxShadow: "inset 0 1px 0 hsla(35, 40%, 30%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
-          borderRadius: 10,
-          backgroundImage: `repeating-linear-gradient(
-            95deg,
-            transparent,
-            transparent 8px,
-            hsla(30, 30%, 22%, 0.4) 8px,
-            hsla(30, 30%, 22%, 0.4) 9px
-          )`,
-        };
-      case "moss":
-        return {
-          ...base,
-          backgroundColor: "hsl(140, 35%, 12%)",
-          border: "1px solid hsl(135, 30%, 22%)",
-          boxShadow: "inset 0 1px 0 hsla(140, 40%, 25%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
-          borderRadius: 14,
-          backgroundImage: `radial-gradient(circle 3px at 25% 35%, hsla(130, 50%, 28%, 0.4), transparent),
-            radial-gradient(circle 2px at 65% 60%, hsla(140, 45%, 25%, 0.3), transparent),
-            radial-gradient(circle 2.5px at 80% 30%, hsla(125, 40%, 22%, 0.25), transparent)`,
-        };
-      default:
-        return {
-          ...base,
-          backgroundColor: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(12px)",
-          border: "1px solid rgba(255,255,255,0.1)",
-        };
-    }
-  };
-
+/* ── Card Style Preview (uses real CSS classes) ── */
+function CardStylePreview({ styleId }: { styleId: CardStyle }) {
+  const wrapperCls = styleId === "default" ? "" : `card-${styleId}`;
   return (
-    <div style={getStyle()}>
-      {innerDot(accentColor)}
-      {innerLine(20)}
-      <div style={{ flex: 1 }} />
-      {innerLine(14, 0.1)}
+    <div className={wrapperCls}>
+      <div
+        className="glass-card flex items-center gap-1.5 px-2.5"
+        style={{ height: 40 }}
+      >
+        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+        <div className="w-5 h-[3px] rounded bg-foreground/15" />
+        <div className="flex-1" />
+        <div className="w-3.5 h-[3px] rounded bg-foreground/10" />
+      </div>
     </div>
   );
 }
