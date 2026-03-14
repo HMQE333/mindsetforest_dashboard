@@ -290,69 +290,31 @@ function HeroLivePreview({ layoutId, accent }: { layoutId: HeroLayout; accent: A
   );
 }
 
-/* ── Dashboard Card Preview (shows sample category cards) ── */
-function DashboardCardPreview({ accent, cardStyle, frame }: { accent: AccentColor; cardStyle: CardStyle; frame: FrameStyle }) {
-  const accentColor = `hsl(${getAccentHSL(accent)})`;
-  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
+/* ── Dashboard Card Preview (uses real CSS classes) ── */
+function DashboardCardPreview({ cardStyle, frame }: { accent: AccentColor; cardStyle: CardStyle; frame: FrameStyle }) {
+  const cardCls = cardStyle === "default" ? "" : `card-${cardStyle}`;
+  const frameCls = frame === "default" ? "" : `frame-${frame}`;
 
   const sampleCards = [
-    { icon: "🧠", name: "Mind", color: "#8B5CF6", progress: 60 },
-    { icon: "💪", name: "Body", color: "#EF4444", progress: 40 },
-    { icon: "🎨", name: "Creation", color: "#F97316", progress: 80 },
+    { icon: "🧠", name: "Mind", colorVar: "--cat-mind", progress: 60 },
+    { icon: "💪", name: "Body", colorVar: "--cat-body", progress: 40 },
+    { icon: "🎨", name: "Creation", colorVar: "--cat-creation", progress: 80 },
   ];
 
-  const getCardBg = (): React.CSSProperties => {
-    switch (cardStyle) {
-      case "glassmorphic":
-        return { backgroundColor: "rgba(255,255,255,0.06)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.15)", boxShadow: `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 0 1px ${accentDim}` };
-      case "solid":
-        return { backgroundColor: "rgba(30,30,40,0.95)", border: "1px solid rgba(255,255,255,0.06)" };
-      case "outline":
-        return { backgroundColor: "transparent", border: "1.5px solid rgba(255,255,255,0.15)" };
-      case "elevated":
-        return { backgroundColor: "rgba(25,25,35,0.9)", border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 6px 20px rgba(0,0,0,0.5)" };
-      case "frosted":
-        return { backgroundColor: "rgba(200,230,255,0.06)", backdropFilter: "blur(20px)", border: "1px solid hsla(200,60%,80%,0.2)" };
-      case "wood":
-        return { backgroundColor: "hsl(28,40%,18%)", border: "1px solid hsl(28,30%,28%)", backgroundImage: "repeating-linear-gradient(95deg, transparent, transparent 8px, hsla(30,30%,22%,0.4) 8px, hsla(30,30%,22%,0.4) 9px)" };
-      case "moss":
-        return { backgroundColor: "hsl(140,35%,12%)", border: "1px solid hsl(135,30%,22%)", backgroundImage: "radial-gradient(circle 3px at 25% 35%, hsla(130,50%,28%,0.4), transparent)" };
-      default:
-        return { backgroundColor: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)" };
-    }
-  };
-
-  const getFrameFx = (color: string): React.CSSProperties => {
-    const dim = color + "40";
-    switch (frame) {
-      case "glow": return { boxShadow: `0 0 12px ${dim}` };
-      case "aura": return { boxShadow: `0 0 16px ${dim}, 0 0 32px ${dim}` };
-      case "neon": return { boxShadow: `0 0 6px ${color}, 0 0 12px ${dim}`, borderColor: color, borderWidth: 1.5 };
-      case "frost": return { borderColor: "rgba(200,230,255,0.3)" };
-      case "sharp": return { borderRadius: 2, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)" };
-      case "prism": return { boxShadow: `4px 0 12px ${dim}, -4px 0 12px rgba(255,180,255,0.1)` };
-      case "electric": return { borderColor: color, boxShadow: `0 0 8px ${dim}`, animation: "electric-preview-pulse 1.5s infinite" };
-      case "plasma": return { borderColor: color, boxShadow: `0 0 10px ${dim}`, animation: "electric-preview-pulse 1.5s infinite" };
-      case "icicle": return { borderColor: "hsl(200,80%,82%)", boxShadow: "0 0 12px hsla(200,80%,75%,0.2)" };
-      case "bark": return { borderColor: "hsl(28,45%,38%)", boxShadow: "0 0 14px hsla(30,55%,32%,0.3)" };
-      default: return { boxShadow: "0 4px 12px rgba(0,0,0,0.2)" };
-    }
-  };
-
   return (
-    <div className="mt-3 rounded-xl p-4 border border-white/5" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
+    <div className="mt-3 rounded-xl p-4 border border-border/30" style={{ backgroundColor: "hsl(var(--card) / 0.3)" }}>
       <div className="text-[9px] text-muted-foreground mb-2 uppercase tracking-wider">Card Preview</div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid grid-cols-3 gap-2 ${cardCls} ${frameCls}`}>
         {sampleCards.map(card => (
           <div
             key={card.name}
-            className="rounded-xl p-2.5 transition-all"
-            style={{ ...getCardBg(), ...getFrameFx(card.color), borderRadius: undefined }}
+            className="glass-card-hover preview-active p-2.5"
+            style={{ "--card-color": `hsl(var(${card.colorVar}))` } as React.CSSProperties}
           >
-            <span className="text-lg block mb-1" style={{ filter: `drop-shadow(0 0 4px ${card.color})` }}>{card.icon}</span>
-            <div className="text-[9px] font-bold mb-1" style={{ color: card.color }}>{card.name}</div>
-            <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.08)" }}>
-              <div className="h-full rounded-full" style={{ width: `${card.progress}%`, backgroundColor: card.color }} />
+            <span className="text-lg block mb-1" style={{ filter: `drop-shadow(0 0 4px hsl(var(${card.colorVar})))` }}>{card.icon}</span>
+            <div className="text-[9px] font-bold mb-1" style={{ color: `hsl(var(${card.colorVar}))` }}>{card.name}</div>
+            <div className="w-full h-1.5 rounded-full overflow-hidden bg-foreground/[0.08]">
+              <div className="h-full rounded-full" style={{ width: `${card.progress}%`, backgroundColor: `hsl(var(${card.colorVar}))` }} />
             </div>
             <div className="text-[7px] text-muted-foreground mt-0.5">{card.progress}% done</div>
           </div>
