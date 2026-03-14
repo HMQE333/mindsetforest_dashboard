@@ -2,7 +2,9 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Link2Off, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { PILLARS, DIRECTIONS } from "@/lib/archive-data";
+import { DIRECTIONS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
 import {
@@ -31,6 +33,7 @@ interface Props {
 type SortMode = "newest" | "oldest" | "az";
 
 const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
+  const pillars = usePillars();
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
@@ -56,7 +59,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
     const timer = setTimeout(async () => {
       setSemanticLoading(true);
       const results = await semanticSearch(search.trim());
-      // Extract similarity scores before setting results
       const scores: Record<string, number> = {};
       for (const r of results as any[]) {
         if (r.similarity !== undefined) scores[r.id] = r.similarity;
@@ -69,13 +71,11 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   }, [search, smartSearch, semanticSearch]);
 
   const filtered = useMemo(() => {
-    // If smart search is active and we have results, use those instead
     if (smartSearch && semanticResults !== null) {
       let list = semanticResults;
       if (filterPillar) list = list.filter((b) => b.pillars.includes(filterPillar));
       if (filterDirection) list = list.filter((b) => b.directions.includes(filterDirection));
       if (hideLinks) list = list.filter((b) => !URL_REGEX.test(b.content) && !b.source_url);
-      // Pinned on top
       return [...list.filter((b) => b.is_pinned), ...list.filter((b) => !b.is_pinned)];
     }
 
@@ -91,11 +91,9 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       if (sortMode === "az") return [...list].sort((a, b) => a.title.localeCompare(b.title));
       return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     })();
-    // Pinned blocks always on top
     return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
   }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode, smartSearch, semanticResults]);
 
-  // Scroll-to-bottom detection
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -219,7 +217,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
               </button>
           ))}
           </div>
-          {/* Select All / Deselect All */}
           {selectedIds.size > 0 || filtered.length > 0 ? (
             <div className="flex items-center gap-1 ml-auto">
               <button
@@ -245,17 +242,17 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
           >
             All
           </button>
-          {PILLARS.map((p) => (
+          {pillars.map((p) => (
             <button
               key={p.id}
               onClick={() => setFilterPillar(filterPillar === p.id ? null : p.id)}
-              className="text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all"
+              className="text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1"
               style={{
                 backgroundColor: filterPillar === p.id ? p.color : p.color + "18",
                 color: filterPillar === p.id ? "#fff" : p.color,
               }}
             >
-              {p.icon} {p.name}
+              <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
             </button>
           ))}
         </div>
@@ -326,10 +323,8 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         </div>
       )}
 
-      {/* Scroll sentinel */}
       <div ref={sentinelRef} className="h-1" />
 
-      {/* Hidden file input for import */}
       <input
         ref={fileInputRef}
         type="file"
@@ -338,7 +333,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         onChange={onFileSelected}
       />
 
-      {/* Export & Import buttons — visible at bottom */}
       <div
         className={`flex justify-center gap-3 transition-all duration-500 ${
           showExport && blocks.length > 0
@@ -372,7 +366,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         onEditBlock={(b) => setEditBlock(b)}
       />
 
-      {/* Import confirmation dialog */}
       <Dialog open={importConfirm !== null} onOpenChange={(open) => { if (!open) setImportConfirm(null); }}>
         <DialogContent className="glass-card border-white/10">
           <DialogHeader>

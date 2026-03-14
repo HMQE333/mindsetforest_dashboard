@@ -3,27 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { TrackerEntry, getMonthTotal } from "@/hooks/useTrackerEntries";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
+import { useUserSettings } from "@/hooks/useUserSettings";
+import PillarIcon from "@/components/shared/PillarIcon";
 
 interface TrackerActivityPulseProps {
   entries: TrackerEntry[];
 }
 
-// Unique categories from metrics
-const CATEGORIES = (() => {
-  const seen = new Set<string>();
-  return TRACKER_METRICS.filter((m) => {
-    if (seen.has(m.categoryId)) return false;
-    seen.add(m.categoryId);
-    return true;
-  }).map((m) => ({
-    id: m.categoryId,
-    name: m.categoryName,
-    icon: m.categoryIcon,
-    colorVar: m.colorVar,
-  }));
-})();
-
-// Sample data for demo — will be removed next iteration
+// Sample data for demo
 function generateSampleData(): TrackerEntry[] {
   const samples: TrackerEntry[] = [];
   const now = new Date();
@@ -34,7 +21,6 @@ function generateSampleData(): TrackerEntry[] {
     const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 
     for (const metricId of metricIds) {
-      // Random number of entries per metric per month
       const count = Math.floor(Math.random() * 15) + 2;
       for (let i = 0; i < count; i++) {
         const day = Math.min(Math.floor(Math.random() * daysInMonth) + 1, daysInMonth);
@@ -65,14 +51,14 @@ const bgColorMap: Record<string, string> = {
 
 export default function TrackerActivityPulse({ entries }: TrackerActivityPulseProps) {
   const [expanded, setExpanded] = useState(false);
+  const { getCategories } = useUserSettings();
+  const categories = getCategories();
 
-  // Merge real + sample data
   const allEntries = useMemo(() => [...entries, ...generateSampleData()], [entries]);
 
   const now = new Date();
   const year = now.getFullYear();
 
-  // Build month labels
   const months = useMemo(() => {
     const result: { label: string; year: number; month: number }[] = [];
     for (let i = 11; i >= 0; i--) {
@@ -86,9 +72,27 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
     return result;
   }, [year]);
 
-  // For each category, get metric ids and compute monthly totals
+  // Build unique categories from metrics, enriched with custom data
+  const CATS = useMemo(() => {
+    const seen = new Set<string>();
+    return TRACKER_METRICS.filter((m) => {
+      if (seen.has(m.categoryId)) return false;
+      seen.add(m.categoryId);
+      return true;
+    }).map((m) => {
+      const cat = categories.find(c => c.id === m.categoryId);
+      return {
+        id: m.categoryId,
+        name: cat?.name || m.categoryName,
+        icon: cat?.icon || m.categoryIcon,
+        iconUrl: cat?.iconUrl,
+        colorVar: m.colorVar,
+      };
+    });
+  }, [categories]);
+
   const pulseData = useMemo(() => {
-    return CATEGORIES.map((cat) => {
+    return CATS.map((cat) => {
       const metricIds = TRACKER_METRICS.filter((m) => m.categoryId === cat.id).map((m) => m.id);
       const monthlyTotals = months.map((mo) => {
         let total = 0;
@@ -100,7 +104,7 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
       const max = Math.max(1, ...monthlyTotals);
       return { ...cat, monthlyTotals, max };
     });
-  }, [allEntries, months]);
+  }, [allEntries, months, CATS]);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
@@ -129,7 +133,6 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
             className="overflow-hidden"
           >
             <div className="px-6 pb-6">
-              {/* Month headers */}
               <div className="flex gap-1 mb-1 pl-28">
                 {months.map((mo, i) => (
                   <div key={i} className="flex-1 text-center text-[9px] text-muted-foreground font-medium">
@@ -138,17 +141,14 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
                 ))}
               </div>
 
-              {/* Category rows */}
               <div className="flex flex-col gap-1.5">
                 {pulseData.map((cat) => (
                   <div key={cat.id} className="flex items-center gap-2">
-                    {/* Category label */}
                     <div className="w-26 flex items-center gap-1.5 shrink-0">
-                      <span className="text-sm">{cat.icon}</span>
+                      <PillarIcon icon={cat.icon} iconUrl={cat.iconUrl} size={16} className="inline-block" />
                       <span className="text-[11px] font-semibold text-foreground/80 truncate">{cat.name}</span>
                     </div>
 
-                    {/* Pulse cells */}
                     <div className="flex gap-1 flex-1">
                       {cat.monthlyTotals.map((total, i) => {
                         const intensity = total > 0 ? Math.max(0.12, total / cat.max) : 0;
@@ -163,7 +163,6 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
                               }`}
                               style={{ opacity: total > 0 ? intensity : 1 }}
                             />
-                            {/* Tooltip */}
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-popover border border-border rounded text-[10px] text-popover-foreground font-mono opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
                               {total > 0 ? `${total} units` : "No activity"}
                             </div>
@@ -175,7 +174,6 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
                 ))}
               </div>
 
-              {/* Legend */}
               <div className="flex items-center justify-end gap-2 mt-4">
                 <span className="text-[9px] text-muted-foreground">Less</span>
                 {[0.15, 0.35, 0.55, 0.75, 1].map((op, i) => (

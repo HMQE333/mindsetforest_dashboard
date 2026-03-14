@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { PILLARS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
@@ -20,6 +21,8 @@ interface Props {
 }
 
 const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch, skipFilter }: Props) => {
+  const pillars = usePillars();
+
   const results = useMemo(() => {
     if (skipFilter) return blocks;
     const q = query.toLowerCase();
@@ -58,7 +61,7 @@ const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch, skipFi
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {results.map((block) => {
           const type = getBlockType(block);
-          const pillarColors = block.pillars.map((p) => PILLARS.find((pl) => pl.id === p)).filter(Boolean);
+          const pillarColors = block.pillars.map((p) => pillars.find((pl) => pl.id === p)).filter(Boolean);
           return (
             <div
               key={block.id}
@@ -83,10 +86,10 @@ const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch, skipFi
                   {pillarColors.map((p) => (
                     <span
                       key={p!.id}
-                      className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                      className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5"
                       style={{ backgroundColor: p!.color + "22", color: p!.color }}
                     >
-                      {p!.icon} {p!.name}
+                      <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
                     </span>
                   ))}
                 </div>

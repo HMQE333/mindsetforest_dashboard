@@ -3,7 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat } from "@/lib/library-data";
-import { PILLARS } from "@/lib/archive-data";
+import { usePillars } from "@/hooks/usePillars";
+import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Trash2, Sparkles, Loader2, X } from "lucide-react";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +19,7 @@ interface BookDetailModalProps {
 }
 
 export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete }: BookDetailModalProps) {
+  const allPillars = usePillars();
   const [notes, setNotes] = useState("");
   const [pagesRead, setPagesRead] = useState("");
   const [rating, setRating] = useState<number | null>(null);
@@ -131,9 +133,9 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Pillars</label>
             <div className="flex flex-wrap gap-1.5">
-              {PILLARS.map(p => (
-                <button key={p.id} onClick={() => togglePillar(p.id)} className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${pillars.includes(p.id) ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"}`}>
-                  {p.icon} {p.name}
+              {allPillars.map(p => (
+                <button key={p.id} onClick={() => togglePillar(p.id)} className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${pillars.includes(p.id) ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"}`}>
+                  <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
                 </button>
               ))}
             </div>
