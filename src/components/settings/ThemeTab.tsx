@@ -642,7 +642,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
               }`}
             >
               <div className="mb-2">
-                <CardStylePreview styleId={c.id} accent={accent} />
+                <CardStylePreview styleId={c.id} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base">{c.icon}</span>
