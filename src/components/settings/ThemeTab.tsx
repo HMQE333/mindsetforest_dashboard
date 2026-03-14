@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { ChevronDown } from "lucide-react";
 import { ThemeMode, AccentColor, FrameStyle, HeroLayout } from "@/hooks/useUserSettings";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
@@ -50,189 +52,217 @@ interface ThemeTabProps {
   onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout) => Promise<void>;
 }
 
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, onSave }: ThemeTabProps) {
-  const [theme, setTheme] = useState<ThemeMode>(currentTheme);
-  const [accent, setAccent] = useState<AccentColor>(currentAccent);
-  const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
-  const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
-  const [dirty, setDirty] = useState(false);
+/* ── Collapsible Section Wrapper ── */
+function Section({ title, icon, defaultOpen = true, children }: { title: string; icon: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center justify-between w-full py-2 group cursor-pointer">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+          <span>{icon}</span> {title}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pb-1">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
-  useEffect(() => {
-    setTheme(currentTheme);
-    setAccent(currentAccent);
-    setFrame(currentFrame || "default");
-    setHeroLayout(currentHeroLayout || "default");
-  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout]);
+/* ── Frame Style Preview ── */
+function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: AccentColor }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
 
-  const handleThemeChange = (t: ThemeMode) => {
-    setTheme(t);
-    setDirty(true);
-    applyThemePreview(t, accent, frame);
+  const baseCard: React.CSSProperties = {
+    width: "100%",
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    padding: "0 10px",
+    transition: "all 0.2s",
   };
 
-  const handleAccentChange = (a: AccentColor) => {
-    setAccent(a);
-    setDirty(true);
-    applyThemePreview(theme, a, frame);
-  };
+  const innerLine = (w: number, opacity = 0.15) => (
+    <div style={{ width: w, height: 3, borderRadius: 2, backgroundColor: `rgba(255,255,255,${opacity})` }} />
+  );
+  const innerDot = (color: string) => (
+    <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
+  );
 
-  const handleFrameChange = (f: FrameStyle) => {
-    setFrame(f);
-    setDirty(true);
-    applyThemePreview(theme, accent, f);
-  };
-
-  const handleHeroLayoutChange = (h: HeroLayout) => {
-    setHeroLayout(h);
-    setDirty(true);
-  };
-
-  const handleSave = async () => {
-    await onSave(theme, accent, frame, heroLayout);
-    setDirty(false);
+  const getStyle = (): React.CSSProperties => {
+    switch (frameId) {
+      case "glow":
+        return { ...baseCard, boxShadow: `0 0 12px ${accentDim}, inset 0 0 6px ${accentDim}`, borderColor: accentColor };
+      case "aura":
+        return { ...baseCard, boxShadow: `0 0 14px rgba(255,255,255,0.06), 0 0 8px rgba(255,255,255,0.04)`, borderColor: "rgba(255,255,255,0.15)" };
+      case "neon":
+        return { ...baseCard, boxShadow: `0 0 8px ${accentColor}, 0 0 16px ${accentDim}`, borderColor: accentColor, borderWidth: 1.5 };
+      case "frost":
+        return { ...baseCard, backdropFilter: "blur(8px)", borderColor: "rgba(255,255,255,0.25)", backgroundColor: "rgba(255,255,255,0.06)" };
+      case "sharp":
+        return { ...baseCard, borderRadius: 3, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" };
+      case "prism":
+        return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
+      default:
+        return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
+    }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Theme Mode */}
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Theme Mode</label>
-        <div className="grid grid-cols-2 gap-2">
-          {THEMES.map((t, i) => (
-            <motion.button
-              key={t.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
-              onClick={() => handleThemeChange(t.id)}
-              className={`relative p-3 rounded-xl border text-left transition-all overflow-hidden ${
-                theme === t.id
-                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
-                  : "border-white/5 hover:border-white/15 bg-muted/20"
-              }`}
-            >
-              <div
-                className="w-full h-10 rounded-lg mb-2 flex items-center gap-1.5 px-2"
-                style={{ backgroundColor: t.preview.bg }}
-              >
-                <div className="w-6 h-4 rounded" style={{ backgroundColor: t.preview.card }} />
-                <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: t.preview.text, opacity: 0.3 }} />
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: `hsl(${getAccentHSL(accent)})` }} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{t.icon}</span>
-                <div>
-                  <div className="text-xs font-bold text-foreground">{t.label}</div>
-                  <div className="text-[10px] text-muted-foreground">{t.description}</div>
-                </div>
-              </div>
-            </motion.button>
-          ))}
-        </div>
-      </div>
-
-      {/* Accent Color */}
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Accent Color</label>
-        <div className="grid grid-cols-4 gap-2">
-          {ACCENTS.map((a, i) => (
-            <motion.button
-              key={a.id}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: i * 0.03 }}
-              onClick={() => handleAccentChange(a.id)}
-              className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition-all ${
-                accent === a.id
-                  ? "border-foreground/30 bg-white/5 scale-105"
-                  : "border-white/5 hover:border-white/15"
-              }`}
-            >
-              <div
-                className={`w-8 h-8 rounded-full transition-all ${accent === a.id ? "ring-2 ring-foreground/40 ring-offset-2 ring-offset-background" : ""}`}
-                style={{ backgroundColor: `hsl(${a.hue}, ${a.sat}%, ${a.light}%)` }}
-              />
-              <span className="text-[10px] font-semibold text-muted-foreground">{a.label}</span>
-            </motion.button>
-          ))}
-        </div>
-      </div>
-
-      {/* Frame Style */}
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Card Frame Style</label>
-        <div className="grid grid-cols-5 gap-1.5">
-          {FRAMES.map((f, i) => (
-            <motion.button
-              key={f.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-              onClick={() => handleFrameChange(f.id)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
-                frame === f.id
-                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
-                  : "border-white/5 hover:border-white/15 bg-muted/20"
-              }`}
-            >
-              <span className="text-lg">{f.icon}</span>
-              <span className="text-[9px] font-bold text-foreground">{f.label}</span>
-              <span className="text-[8px] text-muted-foreground text-center leading-tight">{f.description}</span>
-            </motion.button>
-          ))}
-        </div>
-      </div>
-
-      {/* Hero Layout */}
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Dashboard Hero Layout</label>
-        <div className="grid grid-cols-2 gap-2">
-          {HERO_LAYOUTS.map((h, i) => (
-            <motion.button
-              key={h.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
-              onClick={() => handleHeroLayoutChange(h.id)}
-              className={`relative p-3 rounded-xl border text-left transition-all overflow-hidden ${
-                heroLayout === h.id
-                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
-                  : "border-white/5 hover:border-white/15 bg-muted/20"
-              }`}
-            >
-              {/* Mini preview */}
-              <HeroLayoutPreview layoutId={h.id} accent={accent} />
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{h.icon}</span>
-                <div>
-                  <div className="text-xs font-bold text-foreground">{h.label}</div>
-                  <div className="text-[10px] text-muted-foreground">{h.description}</div>
-                </div>
-              </div>
-            </motion.button>
-          ))}
-        </div>
-      </div>
-      <div className="rounded-xl overflow-hidden">
-        <div className="h-2 w-full" style={{
-          background: `linear-gradient(90deg, hsl(${getAccentHSL(accent)}), hsl(${getAccentHSL(accent, 20)}))`,
-        }} />
-      </div>
-
-      {dirty && (
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={handleSave}
-          className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all"
-        >
-          Save Theme
-        </motion.button>
-      )}
+    <div style={getStyle()}>
+      {innerDot(accentColor)}
+      {innerLine(24)}
+      <div style={{ flex: 1 }} />
+      {innerLine(16, 0.1)}
     </div>
   );
 }
 
+/* ── Accent Preview Strip ── */
+function AccentPreviewStrip({ accent }: { accent: AccentColor }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
+
+  return (
+    <div className="flex items-center gap-3 mt-3 px-1">
+      {/* Mini button */}
+      <div
+        className="px-3 py-1 rounded-lg text-[9px] font-bold text-white shrink-0"
+        style={{ backgroundColor: accentColor }}
+      >
+        Button
+      </div>
+      {/* Mini progress bar */}
+      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: accentDim }}>
+        <div className="h-full w-[65%] rounded-full" style={{ backgroundColor: accentColor }} />
+      </div>
+      {/* Mini badge */}
+      <div
+        className="px-2 py-0.5 rounded-full text-[8px] font-bold shrink-0"
+        style={{ backgroundColor: accentDim, color: accentColor }}
+      >
+        Badge
+      </div>
+    </div>
+  );
+}
+
+/* ── Large Hero Preview ── */
+function HeroLivePreview({ layoutId, accent }: { layoutId: HeroLayout; accent: AccentColor }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
+  const mutedBar = "rgba(255,255,255,0.06)";
+  const mutedLine = "rgba(255,255,255,0.12)";
+
+  const StatCard = ({ w = 60 }: { w?: number }) => (
+    <div className="rounded-lg flex flex-col items-center justify-center gap-0.5 py-2" style={{ width: w, backgroundColor: mutedBar, border: `1px solid ${mutedLine}` }}>
+      <div className="text-[8px] font-bold" style={{ color: accentColor }}>128</div>
+      <div style={{ width: 24, height: 2, borderRadius: 2, backgroundColor: mutedLine }} />
+    </div>
+  );
+
+  const XPBar = ({ height = 6 }: { height?: number }) => (
+    <div className="w-full rounded-full overflow-hidden" style={{ height, backgroundColor: accentDim }}>
+      <div className="h-full rounded-full" style={{ width: "55%", background: `linear-gradient(90deg, ${accentColor}, hsl(${getAccentHSL(accent, 20)}))` }} />
+    </div>
+  );
+
+  const StreakBadge = () => (
+    <div className="px-2 py-0.5 rounded-full text-[8px] font-bold" style={{ backgroundColor: accentDim, color: accentColor }}>
+      🔥 7 day streak
+    </div>
+  );
+
+  return (
+    <div className="mt-3 rounded-xl p-4 border border-white/5" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
+      <div className="text-[9px] text-muted-foreground mb-2 uppercase tracking-wider">Live Preview</div>
+      <div className="rounded-xl p-3" style={{ backgroundColor: "rgba(0,0,0,0.3)", minHeight: 100 }}>
+        {layoutId === "default" && (
+          <div className="flex flex-col items-center gap-2">
+            <StreakBadge />
+            <div className="flex items-center gap-2 w-full max-w-[80%]">
+              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Lv.5</div>
+              <XPBar />
+              <div className="text-[8px] text-muted-foreground whitespace-nowrap">550/1000</div>
+            </div>
+            <div className="flex gap-2 mt-1">
+              <StatCard /><StatCard /><StatCard />
+            </div>
+          </div>
+        )}
+        {layoutId === "compact" && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <StreakBadge />
+              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Lv.5</div>
+              <XPBar height={5} />
+            </div>
+            <div className="flex gap-2 justify-center">
+              <StatCard w={52} /><StatCard w={52} /><StatCard w={52} /><StatCard w={52} />
+            </div>
+          </div>
+        )}
+        {layoutId === "minimal" && (
+          <div className="flex flex-col items-center gap-2 py-2">
+            <div className="flex items-center gap-2 w-full max-w-[85%]">
+              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Lv.5</div>
+              <XPBar height={4} />
+              <div className="text-[8px] text-muted-foreground whitespace-nowrap">55%</div>
+            </div>
+            <div className="flex gap-4">
+              {[1,2,3,4].map(i => (
+                <div key={i} style={{ width: 16, height: 3, borderRadius: 2, backgroundColor: mutedLine }} />
+              ))}
+            </div>
+          </div>
+        )}
+        {layoutId === "command" && (
+          <div className="flex items-center gap-4 justify-center py-1">
+            <div className="w-14 h-14 rounded-full border-2 flex items-center justify-center" style={{ borderColor: accentColor }}>
+              <div className="text-[10px] font-bold" style={{ color: accentColor }}>55%</div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Level 5 — 550 XP</div>
+              <div className="flex gap-1.5">
+                <StatCard w={48} /><StatCard w={48} /><StatCard w={48} />
+              </div>
+            </div>
+          </div>
+        )}
+        {layoutId === "solid" && (
+          <div className="flex flex-col items-center gap-2">
+            <div className="px-3 py-1 rounded text-[9px] font-bold text-white" style={{ backgroundColor: accentColor }}>
+              🔥 7 day streak
+            </div>
+            <div className="flex items-center gap-2 w-full max-w-[80%]">
+              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Lv.5</div>
+              <div className="flex-1 h-[6px] rounded border overflow-hidden" style={{ borderColor: mutedLine }}>
+                <div className="h-full w-[55%] rounded" style={{ backgroundColor: accentColor }} />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-1">
+              {[1,2,3].map(i => (
+                <div key={i} className="rounded flex flex-col items-center justify-center gap-0.5 py-2" style={{ width: 60, backgroundColor: mutedBar, border: `1px solid ${mutedLine}`, borderRadius: 3 }}>
+                  <div className="text-[8px] font-bold" style={{ color: accentColor }}>128</div>
+                  <div style={{ width: 24, height: 2, borderRadius: 1, backgroundColor: mutedLine }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Small Thumbnail Preview (for grid selector) ── */
 function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent: AccentColor }) {
   const accentColor = `hsl(${getAccentHSL(accent)})`;
   const accentDim = `hsl(${getAccentHSL(accent)}/ 0.3)`;
@@ -330,6 +360,178 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
   );
 }
 
+/* ── Main ThemeTab ── */
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, onSave }: ThemeTabProps) {
+  const [theme, setTheme] = useState<ThemeMode>(currentTheme);
+  const [accent, setAccent] = useState<AccentColor>(currentAccent);
+  const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
+  const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setTheme(currentTheme);
+    setAccent(currentAccent);
+    setFrame(currentFrame || "default");
+    setHeroLayout(currentHeroLayout || "default");
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout]);
+
+  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame); };
+  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame); };
+  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f); };
+  const handleHeroLayoutChange = (h: HeroLayout) => { setHeroLayout(h); setDirty(true); };
+
+  const handleSave = async () => {
+    await onSave(theme, accent, frame, heroLayout);
+    setDirty(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* ── Theme Mode ── */}
+      <Section title="Theme Mode" icon="🌙">
+        <div className="grid grid-cols-2 gap-2">
+          {THEMES.map((t, i) => (
+            <motion.button
+              key={t.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              onClick={() => handleThemeChange(t.id)}
+              className={`relative p-3 rounded-xl border text-left transition-all overflow-hidden ${
+                theme === t.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <div
+                className="w-full h-10 rounded-lg mb-2 flex items-center gap-1.5 px-2"
+                style={{ backgroundColor: t.preview.bg }}
+              >
+                <div className="w-6 h-4 rounded" style={{ backgroundColor: t.preview.card }} />
+                <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: t.preview.text, opacity: 0.3 }} />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: `hsl(${getAccentHSL(accent)})` }} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{t.icon}</span>
+                <div>
+                  <div className="text-xs font-bold text-foreground">{t.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{t.description}</div>
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Accent Color ── */}
+      <Section title="Accent Color" icon="🎨">
+        <div className="grid grid-cols-4 gap-2">
+          {ACCENTS.map((a, i) => (
+            <motion.button
+              key={a.id}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleAccentChange(a.id)}
+              className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition-all ${
+                accent === a.id
+                  ? "border-foreground/30 bg-white/5 scale-105"
+                  : "border-white/5 hover:border-white/15"
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-full transition-all ${accent === a.id ? "ring-2 ring-foreground/40 ring-offset-2 ring-offset-background" : ""}`}
+                style={{ backgroundColor: `hsl(${a.hue}, ${a.sat}%, ${a.light}%)` }}
+              />
+              <span className="text-[10px] font-semibold text-muted-foreground">{a.label}</span>
+            </motion.button>
+          ))}
+        </div>
+        <AccentPreviewStrip accent={accent} />
+      </Section>
+
+      {/* ── Card Frame Style ── */}
+      <Section title="Card Frame Style" icon="🖼️">
+        <div className="grid grid-cols-2 gap-2">
+          {FRAMES.map((f, i) => (
+            <motion.button
+              key={f.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleFrameChange(f.id)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                frame === f.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <div className="mb-2">
+                <FrameStylePreview frameId={f.id} accent={accent} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base">{f.icon}</span>
+                <div>
+                  <div className="text-xs font-bold text-foreground">{f.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{f.description}</div>
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Dashboard Hero Layout ── */}
+      <Section title="Dashboard Hero Layout" icon="🏠">
+        <div className="grid grid-cols-2 gap-2">
+          {HERO_LAYOUTS.map((h, i) => (
+            <motion.button
+              key={h.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              onClick={() => handleHeroLayoutChange(h.id)}
+              className={`relative p-3 rounded-xl border text-left transition-all overflow-hidden ${
+                heroLayout === h.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <HeroLayoutPreview layoutId={h.id} accent={accent} />
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{h.icon}</span>
+                <div>
+                  <div className="text-xs font-bold text-foreground">{h.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{h.description}</div>
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+        <HeroLivePreview layoutId={heroLayout} accent={accent} />
+      </Section>
+
+      {/* ── Accent gradient bar ── */}
+      <div className="rounded-xl overflow-hidden">
+        <div className="h-2 w-full" style={{
+          background: `linear-gradient(90deg, hsl(${getAccentHSL(accent)}), hsl(${getAccentHSL(accent, 20)}))`,
+        }} />
+      </div>
+
+      {dirty && (
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={handleSave}
+          className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all"
+        >
+          Save Theme
+        </motion.button>
+      )}
+    </div>
+  );
+}
+
 function getAccentHSL(id: AccentColor, lightOffset = 0): string {
   const a = ACCENTS.find(a => a.id === id) || ACCENTS[0];
   return `${a.hue}, ${a.sat}%, ${a.light + lightOffset}%`;
@@ -345,7 +547,6 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
   const h = a.hue, s = a.sat, l = a.light;
 
-  // Accent-derived vars
   root.style.setProperty("--primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--ring", `${h} ${s}% ${l}%`);
   root.style.setProperty("--accent", `${h} ${Math.max(s - 20, 30)}% ${Math.max(l - 33, 12)}%`);
@@ -357,7 +558,6 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   root.style.setProperty("--sidebar-primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--sidebar-ring", `${h} ${s}% ${l}%`);
 
-  // Theme mode
   const setDarkVars = (bg: string, fg: string, card: string, cardFg: string, sec: string, secFg: string, mut: string, mutFg: string, brd: string, glass: string) => {
     root.style.setProperty("--background", bg);
     root.style.setProperty("--foreground", fg);
@@ -425,7 +625,6 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
       break;
   }
 
-  // Frame style — remove all frame classes then add active one
   const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {

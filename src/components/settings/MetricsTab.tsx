@@ -111,7 +111,7 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
               transition={{ delay: i * 0.02 }}
               className="glass-card p-3 flex items-start gap-2"
             >
-              <GripVertical className="w-4 h-4 text-muted-foreground/40 mt-2 shrink-0" />
+              
               <input
                 value={metric.icon}
                 onChange={e => update(metric.tempId, "icon", e.target.value)}
