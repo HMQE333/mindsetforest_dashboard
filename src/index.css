@@ -249,13 +249,13 @@
   box-shadow: 0 8px 32px hsl(var(--foreground) / 0.06);
 }
 
-/* Sharp — no rounded corners, hard shadow, subtle scale */
+/* Sharp — reduced rounding, hard shadow, subtle scale */
+.frame-sharp .glass-card,
 .frame-sharp .glass-card-hover {
-  border-radius: 4px;
+  border-radius: clamp(4px, 0.25rem, 6px);
 }
 .frame-sharp .glass-card-hover:hover {
   transform: scale(1.015);
-  border-radius: 4px;
   border-color: hsl(var(--foreground) / 0.2);
   box-shadow: 6px 6px 0px hsl(var(--glow-purple) / 0.25);
 }
@@ -273,7 +273,6 @@
 /* Electric — animated turbulent border via SVG filter */
 .frame-electric .glass-card-hover {
   position: relative;
-  overflow: hidden;
 }
 
 .frame-electric .glass-card-hover::after {
@@ -305,7 +304,6 @@
 /* Plasma — electric turbulent border using per-card category color */
 .frame-plasma .glass-card-hover {
   position: relative;
-  overflow: hidden;
 }
 
 .frame-plasma .glass-card-hover::after {
