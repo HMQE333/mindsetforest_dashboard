@@ -121,10 +121,11 @@ function Section({ title, icon, defaultOpen = true, children }: { title: string;
 function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: AccentColor }) {
   const accentColor = `hsl(${getAccentHSL(accent)})`;
   const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
+  const warmGlow = `hsl(${getAccentHSL(accent, 15)} / 0.3)`;
 
   const baseCard: React.CSSProperties = {
     width: "100%",
-    height: 36,
+    height: 44,
     borderRadius: 8,
     backgroundColor: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.08)",
@@ -134,6 +135,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
     gap: 6,
     padding: "0 10px",
     transition: "all 0.2s",
+    position: "relative",
+    overflow: "hidden",
   };
 
   const innerLine = (w: number, opacity = 0.15) => (
@@ -146,27 +149,27 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
   const getStyle = (): React.CSSProperties => {
     switch (frameId) {
       case "glow":
-        return { ...baseCard, boxShadow: `0 0 12px ${accentDim}, inset 0 0 6px ${accentDim}`, borderColor: accentColor };
+        return { ...baseCard, boxShadow: `0 0 16px ${accentDim}, 0 0 4px ${accentColor}, inset 0 0 8px ${accentDim}`, borderColor: accentColor };
       case "aura":
-        return { ...baseCard, boxShadow: `0 0 14px rgba(255,255,255,0.06), 0 0 8px rgba(255,255,255,0.04)`, borderColor: "rgba(255,255,255,0.15)" };
+        return { ...baseCard, boxShadow: `0 0 20px ${warmGlow}, 0 0 40px ${warmGlow}, 0 4px 12px rgba(0,0,0,0.2)`, borderColor: `hsl(${getAccentHSL(accent)} / 0.3)`, backgroundColor: "rgba(255,255,255,0.05)" };
       case "neon":
-        return { ...baseCard, boxShadow: `0 0 8px ${accentColor}, 0 0 16px ${accentDim}`, borderColor: accentColor, borderWidth: 1.5 };
+        return { ...baseCard, boxShadow: `0 0 6px ${accentColor}, 0 0 14px ${accentColor}, 0 0 28px ${accentDim}`, borderColor: accentColor, borderWidth: 2 };
       case "frost":
-        return { ...baseCard, backdropFilter: "blur(8px)", borderColor: "rgba(255,255,255,0.25)", backgroundColor: "rgba(255,255,255,0.06)" };
+        return { ...baseCard, backdropFilter: "blur(8px)", borderColor: "rgba(200,230,255,0.35)", backgroundColor: "rgba(200,230,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 0 12px rgba(180,220,255,0.1)" };
       case "sharp":
-        return { ...baseCard, borderRadius: 3, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" };
+        return { ...baseCard, borderRadius: 2, boxShadow: "4px 4px 0 rgba(0,0,0,0.4)", borderColor: "rgba(255,255,255,0.15)", borderWidth: 1.5 };
       case "prism":
-        return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
+        return { ...baseCard, boxShadow: `6px 0 18px ${accentDim}, -6px 0 18px rgba(255,180,255,0.15), 0 0 8px ${accentDim}`, borderColor: accentColor, borderWidth: 1.5 };
       case "electric":
-        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 8px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.2s infinite", backgroundImage: `linear-gradient(90deg, transparent 40%, ${accentDim} 50%, transparent 60%)` };
       case "plasma":
-        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 12px ${warmGlow}, 0 0 24px ${warmGlow}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.2s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), ${accentDim}, rgba(0,0,0,0.1))` };
       case "icicle":
-        return { ...baseCard, borderColor: "hsl(200, 80%, 85%)", boxShadow: "0 0 16px hsla(200, 80%, 75%, 0.25), 0 0 32px hsla(200, 70%, 70%, 0.1)", backgroundColor: "rgba(200, 230, 255, 0.05)" };
+        return { ...baseCard, borderColor: "hsl(200, 80%, 82%)", boxShadow: "0 0 12px hsla(200, 80%, 75%, 0.3), 0 0 28px hsla(200, 70%, 70%, 0.12), inset 0 1px 0 rgba(200,230,255,0.2)", backgroundColor: "rgba(200,230,255,0.06)" };
       case "bark":
         return { ...baseCard, borderColor: "hsl(28, 45%, 38%)", borderWidth: "1.5px", boxShadow: "0 0 18px hsla(30, 55%, 32%, 0.4), 0 0 36px hsla(25, 45%, 22%, 0.18), inset 0 0 14px hsla(30, 40%, 20%, 0.12)", backgroundColor: "rgba(60, 40, 20, 0.15)", backgroundImage: "repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 28%, 0.18) 10px, hsla(28, 35%, 28%, 0.18) 11.5px), repeating-linear-gradient(94deg, transparent, transparent 18px, hsla(25, 30%, 25%, 0.12) 18px, hsla(25, 30%, 25%, 0.12) 19px)" };
       default:
-        return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
+        return { ...baseCard, boxShadow: "0 4px 12px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)", borderColor: "rgba(255,255,255,0.1)", transform: "translateY(-1px)" };
     }
   };
 
