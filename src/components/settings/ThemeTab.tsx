@@ -183,7 +183,30 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
         </div>
       </div>
 
-      {/* Preview bar */}
+      {/* Hero Layout */}
+      <div>
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Dashboard Hero Layout</label>
+        <div className="grid grid-cols-5 gap-1.5">
+          {HERO_LAYOUTS.map((h, i) => (
+            <motion.button
+              key={h.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleHeroLayoutChange(h.id)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
+                heroLayout === h.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <span className="text-lg">{h.icon}</span>
+              <span className="text-[9px] font-bold text-foreground">{h.label}</span>
+              <span className="text-[8px] text-muted-foreground text-center leading-tight">{h.description}</span>
+            </motion.button>
+          ))}
+        </div>
+      </div>
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
           background: `linear-gradient(90deg, hsl(${getAccentHSL(accent)}), hsl(${getAccentHSL(accent, 20)}))`,
