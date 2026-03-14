@@ -36,6 +36,24 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
 ];
 
+const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
+  { id: "default", label: "Default", display: "Inter", body: "Inter", preview: "Clean & modern", googleImport: "" },
+  { id: "mono", label: "Mono", display: "JetBrains Mono", body: "JetBrains Mono", preview: "Terminal vibes", googleImport: "" },
+  { id: "editorial", label: "Editorial", display: "Playfair Display", body: "Inter", preview: "Classic & refined", googleImport: "family=Playfair+Display:wght@400;600;700;800;900" },
+  { id: "geometric", label: "Geometric", display: "Space Grotesk", body: "Space Grotesk", preview: "Bold & technical", googleImport: "family=Space+Grotesk:wght@300;400;500;600;700" },
+  { id: "handcraft", label: "Handcraft", display: "Caveat", body: "Inter", preview: "Personal touch", googleImport: "family=Caveat:wght@400;500;600;700" },
+  { id: "clean", label: "Clean", display: "DM Sans", body: "DM Sans", preview: "Polished & soft", googleImport: "family=DM+Sans:wght@300;400;500;600;700" },
+];
+
+const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; description: string }[] = [
+  { id: "none", label: "None", icon: "🚫", description: "Clean, no pattern" },
+  { id: "grid", label: "Grid", icon: "📐", description: "Subtle grid lines" },
+  { id: "dots", label: "Dots", icon: "⚬", description: "Polka dot matrix" },
+  { id: "noise", label: "Noise", icon: "📡", description: "Film grain texture" },
+  { id: "starry", label: "Starry Night", icon: "✨", description: "Animated floating stars" },
+  { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
+];
+
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎮", description: "Full streak + bar + cards" },
   { id: "compact", label: "Compact", icon: "⚡", description: "All stats in 2 rows" },
@@ -49,7 +67,9 @@ interface ThemeTabProps {
   currentAccent: AccentColor;
   currentFrame?: FrameStyle;
   currentHeroLayout?: HeroLayout;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout) => Promise<void>;
+  currentFontPair?: FontPair;
+  currentBackgroundPattern?: BackgroundPattern;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => Promise<void>;
 }
 
 /* ── Collapsible Section Wrapper ── */
