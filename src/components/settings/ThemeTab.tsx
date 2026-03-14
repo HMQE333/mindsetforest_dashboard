@@ -186,23 +186,29 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
       {/* Hero Layout */}
       <div>
         <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Dashboard Hero Layout</label>
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-2 gap-2">
           {HERO_LAYOUTS.map((h, i) => (
             <motion.button
               key={h.id}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
+              transition={{ delay: i * 0.04 }}
               onClick={() => handleHeroLayoutChange(h.id)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
+              className={`relative p-3 rounded-xl border text-left transition-all overflow-hidden ${
                 heroLayout === h.id
                   ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
                   : "border-white/5 hover:border-white/15 bg-muted/20"
               }`}
             >
-              <span className="text-lg">{h.icon}</span>
-              <span className="text-[9px] font-bold text-foreground">{h.label}</span>
-              <span className="text-[8px] text-muted-foreground text-center leading-tight">{h.description}</span>
+              {/* Mini preview */}
+              <HeroLayoutPreview layoutId={h.id} accent={accent} />
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{h.icon}</span>
+                <div>
+                  <div className="text-xs font-bold text-foreground">{h.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{h.description}</div>
+                </div>
+              </div>
             </motion.button>
           ))}
         </div>
@@ -223,6 +229,103 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
           Save Theme
         </motion.button>
       )}
+    </div>
+  );
+}
+
+function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent: AccentColor }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)}/ 0.3)`;
+  const mutedBar = "rgba(255,255,255,0.08)";
+  const mutedBlock = "rgba(255,255,255,0.06)";
+
+  if (layoutId === "default") {
+    return (
+      <div className="w-full h-12 rounded-lg mb-2 flex flex-col items-center justify-center gap-1 px-2" style={{ backgroundColor: mutedBlock }}>
+        <div className="w-14 h-2.5 rounded-full" style={{ backgroundColor: accentColor }} />
+        <div className="flex items-center gap-1 w-full max-w-[90%]">
+          <div className="w-6 h-1.5 rounded" style={{ backgroundColor: accentColor }} />
+          <div className="flex-1 h-2 rounded-full" style={{ backgroundColor: accentDim }}>
+            <div className="h-full w-[55%] rounded-full" style={{ backgroundColor: accentColor }} />
+          </div>
+        </div>
+        <div className="flex gap-1">
+          <div className="w-8 h-3 rounded" style={{ backgroundColor: mutedBar }} />
+          <div className="w-8 h-3 rounded" style={{ backgroundColor: mutedBar }} />
+          <div className="w-8 h-3 rounded" style={{ backgroundColor: mutedBar }} />
+        </div>
+      </div>
+    );
+  }
+  if (layoutId === "compact") {
+    return (
+      <div className="w-full h-12 rounded-lg mb-2 flex flex-col items-center justify-center gap-1.5 px-2" style={{ backgroundColor: mutedBlock }}>
+        <div className="flex items-center gap-1 w-full">
+          <div className="w-5 h-3 rounded-full" style={{ backgroundColor: accentColor }} />
+          <div className="w-5 h-2 rounded" style={{ backgroundColor: accentColor }} />
+          <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: accentDim }}>
+            <div className="h-full w-[55%] rounded-full" style={{ backgroundColor: accentColor }} />
+          </div>
+        </div>
+        <div className="flex gap-2 items-center">
+          <div className="w-6 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.15)" }} />
+          <div className="w-6 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.15)" }} />
+          <div className="w-6 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.15)" }} />
+        </div>
+      </div>
+    );
+  }
+  if (layoutId === "minimal") {
+    return (
+      <div className="w-full h-12 rounded-lg mb-2 flex flex-col items-center justify-center gap-1 px-3" style={{ backgroundColor: mutedBlock }}>
+        <div className="flex items-center gap-1.5 w-full">
+          <div className="w-5 h-1.5 rounded" style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
+          <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: accentDim }}>
+            <div className="h-full w-[55%] rounded-full" style={{ backgroundColor: accentColor }} />
+          </div>
+          <div className="w-5 h-1 rounded" style={{ backgroundColor: "rgba(255,255,255,0.15)" }} />
+        </div>
+        <div className="flex gap-3">
+          <div className="w-3 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
+          <div className="w-3 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
+          <div className="w-3 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
+          <div className="w-3 h-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.1)" }} />
+        </div>
+      </div>
+    );
+  }
+  if (layoutId === "command") {
+    return (
+      <div className="w-full h-12 rounded-lg mb-2 flex items-center justify-center gap-2 px-2" style={{ backgroundColor: mutedBlock }}>
+        <div className="w-9 h-9 rounded-full border-2 flex items-center justify-center" style={{ borderColor: accentColor }}>
+          <div className="text-[7px] font-bold" style={{ color: accentColor }}>55</div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="w-12 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
+          <div className="flex gap-0.5">
+            <div className="w-6 h-3 rounded" style={{ backgroundColor: mutedBar }} />
+            <div className="w-6 h-3 rounded" style={{ backgroundColor: mutedBar }} />
+            <div className="w-6 h-3 rounded" style={{ backgroundColor: mutedBar }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // solid
+  return (
+    <div className="w-full h-12 rounded-lg mb-2 flex flex-col items-center justify-center gap-1 px-2" style={{ backgroundColor: mutedBlock }}>
+      <div className="w-14 h-2.5 rounded" style={{ backgroundColor: accentColor }} />
+      <div className="flex items-center gap-1 w-full max-w-[90%]">
+        <div className="w-6 h-1.5 rounded" style={{ backgroundColor: accentColor }} />
+        <div className="flex-1 h-2 rounded border" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+          <div className="h-full w-[55%] rounded" style={{ backgroundColor: accentColor }} />
+        </div>
+      </div>
+      <div className="flex gap-1">
+        <div className="w-8 h-3 rounded border" style={{ borderColor: "rgba(255,255,255,0.1)", backgroundColor: mutedBar }} />
+        <div className="w-8 h-3 rounded border" style={{ borderColor: "rgba(255,255,255,0.1)", backgroundColor: mutedBar }} />
+        <div className="w-8 h-3 rounded border" style={{ borderColor: "rgba(255,255,255,0.1)", backgroundColor: mutedBar }} />
+      </div>
     </div>
   );
 }
