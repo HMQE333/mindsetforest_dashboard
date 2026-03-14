@@ -614,3 +614,90 @@
     0 0 20px hsla(140, 40%, 20%, 0.1);
   transform: none;
 }
+
+/* ===== Light Theme Overrides for Textured Card Styles ===== */
+
+/* Frosted — boost contrast on light themes */
+.light-theme .card-frosted .glass-card,
+.light-theme .card-frosted .glass-card-hover {
+  background: hsla(205, 40%, 88%, 0.45);
+  border: 1px solid hsla(200, 50%, 70%, 0.35);
+  box-shadow: inset 0 0 20px hsla(200, 60%, 70%, 0.1), 0 2px 12px hsla(200, 40%, 40%, 0.08);
+}
+
+.light-theme .card-frosted .glass-card-hover:hover {
+  border-color: hsla(200, 60%, 60%, 0.45);
+  box-shadow:
+    inset 0 0 24px hsla(200, 60%, 70%, 0.12),
+    0 4px 20px hsla(200, 40%, 40%, 0.12);
+}
+
+/* Wood — warm light wood on light themes */
+.light-theme .card-wood .glass-card,
+.light-theme .card-wood .glass-card-hover {
+  background-color: hsl(30 35% 82%);
+  border: 1px solid hsl(28 30% 72%);
+  box-shadow:
+    inset 0 1px 0 hsla(35, 40%, 88%, 0.6),
+    inset 0 -1px 0 hsla(20, 30%, 65%, 0.2),
+    0 2px 8px hsla(20, 30%, 40%, 0.1);
+  background-image: url('/images/wood-texture.png');
+  background-size: cover;
+  background-blend-mode: soft-light;
+}
+
+.light-theme .card-wood .glass-card-hover:hover {
+  border-color: hsl(30 35% 65%);
+  box-shadow:
+    inset 0 1px 0 hsla(35, 40%, 90%, 0.6),
+    inset 0 -1px 0 hsla(20, 30%, 60%, 0.2),
+    0 4px 16px hsla(20, 30%, 40%, 0.15);
+}
+
+/* Moss — lighter organic green on light themes */
+.light-theme .card-moss .glass-card,
+.light-theme .card-moss .glass-card-hover {
+  background-color: hsl(140 30% 85%);
+  border: 1px solid hsl(135 25% 72%);
+  box-shadow:
+    inset 0 1px 0 hsla(140, 35%, 90%, 0.5),
+    inset 0 -1px 0 hsla(140, 15%, 65%, 0.2),
+    0 2px 8px hsla(140, 20%, 40%, 0.08);
+  background-image:
+    radial-gradient(ellipse 60% 50% at 20% 30%, hsla(130, 40%, 72%, 0.4), transparent),
+    radial-gradient(ellipse 40% 60% at 75% 60%, hsla(145, 35%, 68%, 0.35), transparent),
+    radial-gradient(ellipse 50% 40% at 50% 80%, hsla(120, 30%, 70%, 0.3), transparent),
+    radial-gradient(circle 3px at 15% 25%, hsla(130, 45%, 60%, 0.25), transparent),
+    radial-gradient(circle 2px at 35% 70%, hsla(140, 40%, 55%, 0.2), transparent),
+    radial-gradient(circle 4px at 60% 20%, hsla(125, 35%, 58%, 0.18), transparent),
+    radial-gradient(circle 2.5px at 80% 55%, hsla(135, 45%, 62%, 0.25), transparent);
+}
+
+.light-theme .card-moss .glass-card-hover:hover {
+  border-color: hsl(135 30% 62%);
+  box-shadow:
+    inset 0 1px 0 hsla(140, 35%, 92%, 0.5),
+    inset 0 -1px 0 hsla(140, 15%, 60%, 0.2),
+    0 4px 16px hsla(140, 25%, 40%, 0.12),
+    0 0 20px hsla(140, 35%, 55%, 0.08);
+}
+
+/* Light-theme Bark frame — warmer, visible grain on light backgrounds */
+.light-theme .frame-bark .glass-card-hover:hover {
+  border-color: hsl(28 40% 62%);
+  box-shadow:
+    0 0 18px hsla(30, 45%, 55%, 0.2),
+    0 0 36px hsla(25, 35%, 45%, 0.08),
+    0 2px 10px hsla(20, 30%, 40%, 0.12),
+    inset 0 0 14px hsla(30, 35%, 55%, 0.08),
+    inset 0 1px 0 hsla(35, 45%, 70%, 0.2);
+}
+
+.light-theme .frame-bark .glass-card-hover::before {
+  background-image:
+    repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 55%, 0.15) 10px, hsla(28, 35%, 55%, 0.15) 11.5px),
+    repeating-linear-gradient(94deg, transparent, transparent 18px, hsla(25, 30%, 50%, 0.1) 18px, hsla(25, 30%, 50%, 0.1) 19px),
+    repeating-linear-gradient(91deg, transparent, transparent 7px, hsla(32, 40%, 58%, 0.07) 7px, hsla(32, 40%, 58%, 0.07) 8px),
+    radial-gradient(ellipse 12px 8px at 30% 40%, hsla(25, 35%, 50%, 0.2), transparent),
+    radial-gradient(ellipse 8px 10px at 72% 65%, hsla(30, 30%, 48%, 0.15), transparent);
+}
