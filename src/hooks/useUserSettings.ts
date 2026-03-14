@@ -237,10 +237,18 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout) => {
-    const newPrefs = { ...preferences, theme, accentColor, frameStyle: frameStyle || preferences.frameStyle || "default", heroLayout: heroLayout || preferences.heroLayout || "default" };
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => {
+    const newPrefs = {
+      ...preferences,
+      theme,
+      accentColor,
+      frameStyle: frameStyle || preferences.frameStyle || "default",
+      heroLayout: heroLayout || preferences.heroLayout || "default",
+      fontPair: fontPair || preferences.fontPair || "default",
+      backgroundPattern: backgroundPattern || preferences.backgroundPattern || "none",
+    };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default");
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default");
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
