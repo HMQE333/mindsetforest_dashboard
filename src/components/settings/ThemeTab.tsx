@@ -634,7 +634,7 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
 ) as any;
 
 /** Apply theme + accent + frame + font to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default") {
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default", cardStyle: CardStyle = "default") {
   const root = document.documentElement;
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
   const h = a.hue, s = a.sat, l = a.light;
