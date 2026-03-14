@@ -68,6 +68,7 @@ const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: st
   { id: "outline", label: "Outline", icon: "🔲", description: "Transparent, border-only" },
   { id: "elevated", label: "Elevated", icon: "📦", description: "Strong shadows, layered depth" },
   { id: "frosted", label: "Frosted", icon: "🧊", description: "Icy translucent glass" },
+  { id: "wood", label: "Wood", icon: "🪵", description: "Natural wood grain texture" },
 ];
 
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
@@ -230,6 +231,21 @@ function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: Acc
           backdropFilter: "blur(28px)",
           border: "1px solid hsla(200, 60%, 80%, 0.25)",
           boxShadow: "inset 0 0 20px hsla(200, 70%, 80%, 0.06), 0 4px 20px rgba(0,0,0,0.2)",
+        };
+      case "wood":
+        return {
+          ...base,
+          backgroundColor: "hsl(28, 40%, 18%)",
+          border: "1px solid hsl(28, 30%, 28%)",
+          boxShadow: "inset 0 1px 0 hsla(35, 40%, 30%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
+          borderRadius: 10,
+          backgroundImage: `repeating-linear-gradient(
+            95deg,
+            transparent,
+            transparent 8px,
+            hsla(30, 30%, 22%, 0.4) 8px,
+            hsla(30, 30%, 22%, 0.4) 9px
+          )`,
         };
       default:
         return {
@@ -869,7 +885,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     root.classList.add(`frame-${frame}`);
   }
 
-  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated", "card-frosted"];
+  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated", "card-frosted", "card-wood"];
   root.classList.remove(...cardClasses);
   if (cardStyle && cardStyle !== "default") {
     root.classList.add(`card-${cardStyle}`);
