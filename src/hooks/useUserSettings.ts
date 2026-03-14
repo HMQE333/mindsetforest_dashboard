@@ -45,6 +45,7 @@ export interface UserPreferences {
   heroLayout?: HeroLayout;
   fontPair?: FontPair;
   backgroundPattern?: BackgroundPattern;
+  cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
 }
 
