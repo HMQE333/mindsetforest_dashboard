@@ -245,7 +245,7 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => {
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle, extraPrefs?: Partial<UserPreferences>) => {
     const newPrefs = {
       ...preferences,
       theme,
@@ -255,9 +255,10 @@ export function useUserSettings() {
       fontPair: fontPair || preferences.fontPair || "default",
       backgroundPattern: backgroundPattern || preferences.backgroundPattern || "none",
       cardStyle: cardStyle || preferences.cardStyle || "default",
+      ...extraPrefs,
     };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default");
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default", newPrefs.customAccentHue, newPrefs.borderRadius, newPrefs.cardOpacity);
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
