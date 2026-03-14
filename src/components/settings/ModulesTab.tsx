@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import type { FocusPulseStyle } from "@/hooks/useUserSettings";
 
 export interface ModuleConfig {
   id: string;
@@ -21,9 +22,17 @@ const ALL_MODULES: ModuleConfig[] = [
   { id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Monthly theme reminders on dashboard" },
 ];
 
+const PULSE_OPTIONS: { value: FocusPulseStyle; label: string; desc: string }[] = [
+  { value: "glow", label: "✨ Soft Glow", desc: "Gentle box-shadow pulse" },
+  { value: "ping", label: "📡 Ping", desc: "Expanding ring effect" },
+  { value: "none", label: "🚫 None", desc: "No animation" },
+];
+
 interface ModulesTabProps {
   enabledModules: string[];
   onSave: (modules: string[]) => Promise<void>;
+  focusPulseStyle?: FocusPulseStyle;
+  onSavePulseStyle?: (style: FocusPulseStyle) => void;
 }
 
 export default function ModulesTab({ enabledModules, onSave }: ModulesTabProps) {
