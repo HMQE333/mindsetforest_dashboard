@@ -269,3 +269,113 @@
     0 0 40px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 30%, transparent),
     0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
 }
+
+/* ===== Card Styles ===== */
+
+/* Glassmorphic — heavy blur, iridescent shimmer, inspired by Anchored Glassmorphic Tab Indicator */
+.card-glassmorphic .glass-card,
+.card-glassmorphic .glass-card-hover {
+  @apply bg-card/30 border-white/15 rounded-2xl;
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  background: linear-gradient(
+    135deg,
+    hsl(var(--card) / 0.35) 0%,
+    hsl(var(--card) / 0.15) 40%,
+    hsl(var(--card) / 0.25) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 hsl(var(--glass-border) / 0.12),
+    inset 0 -1px 0 hsl(var(--glass-border) / 0.04),
+    0 4px 24px hsl(var(--background) / 0.4);
+}
+
+.card-glassmorphic .glass-card-hover:hover {
+  border-color: hsl(var(--glow-purple) / 0.35);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--glass-border) / 0.18),
+    0 0 40px hsl(var(--glow-purple) / 0.12),
+    0 8px 32px hsl(var(--background) / 0.5);
+}
+
+/* Shimmer edge effect for glassmorphic */
+.card-glassmorphic .glass-card::before,
+.card-glassmorphic .glass-card-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    hsl(var(--glow-purple) / 0.2),
+    transparent 40%,
+    hsl(var(--glow-pink) / 0.15) 60%,
+    transparent
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.card-glassmorphic .glass-card,
+.card-glassmorphic .glass-card-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Solid — opaque, flat, no transparency */
+.card-solid .glass-card,
+.card-solid .glass-card-hover {
+  @apply rounded-xl;
+  background: hsl(var(--card));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid hsl(var(--border));
+}
+
+.card-solid .glass-card-hover:hover {
+  border-color: hsl(var(--border));
+  box-shadow: 0 2px 8px hsl(var(--background) / 0.5);
+  transform: none;
+}
+
+/* Outline — transparent, border-only */
+.card-outline .glass-card,
+.card-outline .glass-card-hover {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1.5px solid hsl(var(--border));
+  @apply rounded-2xl;
+}
+
+.card-outline .glass-card-hover:hover {
+  border-color: hsl(var(--muted-foreground) / 0.3);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Elevated — strong shadows, layered depth */
+.card-elevated .glass-card,
+.card-elevated .glass-card-hover {
+  @apply rounded-2xl;
+  background: hsl(var(--card) / 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid hsl(var(--border) / 0.5);
+  box-shadow:
+    0 4px 12px hsl(var(--background) / 0.4),
+    0 12px 36px hsl(var(--background) / 0.3),
+    0 1px 3px hsl(var(--background) / 0.2);
+}
+
+.card-elevated .glass-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: hsl(var(--border) / 0.7);
+  box-shadow:
+    0 8px 24px hsl(var(--background) / 0.5),
+    0 20px 48px hsl(var(--background) / 0.4),
+    0 2px 6px hsl(var(--background) / 0.3);
+}

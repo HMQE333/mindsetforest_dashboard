@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle } from "@/hooks/useUserSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
@@ -54,6 +54,14 @@ const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; descrip
   { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
 ];
 
+const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: string }[] = [
+  { id: "default", label: "Default", icon: "🪟", description: "Semi-transparent glass" },
+  { id: "glassmorphic", label: "Glassmorphic", icon: "💎", description: "Heavy blur, iridescent shimmer" },
+  { id: "solid", label: "Solid", icon: "🧱", description: "Opaque, flat surface" },
+  { id: "outline", label: "Outline", icon: "🔲", description: "Transparent, border-only" },
+  { id: "elevated", label: "Elevated", icon: "📦", description: "Strong shadows, layered depth" },
+];
+
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎮", description: "Full streak + bar + cards" },
   { id: "compact", label: "Compact", icon: "⚡", description: "All stats in 2 rows" },
@@ -69,7 +77,8 @@ interface ThemeTabProps {
   currentHeroLayout?: HeroLayout;
   currentFontPair?: FontPair;
   currentBackgroundPattern?: BackgroundPattern;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => Promise<void>;
+  currentCardStyle?: CardStyle;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => Promise<void>;
 }
 
 /* ── Collapsible Section Wrapper ── */
@@ -145,7 +154,81 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
   );
 }
 
-/* ── Accent Preview Strip ── */
+/* ── Card Style Preview ── */
+function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: AccentColor }) {
+  const accentColor = `hsl(${getAccentHSL(accent)})`;
+  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
+
+  const base: React.CSSProperties = {
+    width: "100%",
+    height: 40,
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 10px",
+    transition: "all 0.3s",
+  };
+
+  const innerLine = (w: number, opacity = 0.15) => (
+    <div style={{ width: w, height: 3, borderRadius: 2, backgroundColor: `rgba(255,255,255,${opacity})` }} />
+  );
+  const innerDot = (color: string) => (
+    <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
+  );
+
+  const getStyle = (): React.CSSProperties => {
+    switch (styleId) {
+      case "glassmorphic":
+        return {
+          ...base,
+          backgroundColor: "rgba(255,255,255,0.06)",
+          backdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px ${accentDim}`,
+          background: `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.06) 100%)`,
+        };
+      case "solid":
+        return {
+          ...base,
+          backgroundColor: "rgba(30,30,40,0.95)",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: 10,
+        };
+      case "outline":
+        return {
+          ...base,
+          backgroundColor: "transparent",
+          border: `1.5px solid rgba(255,255,255,0.15)`,
+        };
+      case "elevated":
+        return {
+          ...base,
+          backgroundColor: "rgba(25,25,35,0.9)",
+          border: "1px solid rgba(255,255,255,0.05)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+          borderRadius: 14,
+        };
+      default:
+        return {
+          ...base,
+          backgroundColor: "rgba(255,255,255,0.04)",
+          backdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+        };
+    }
+  };
+
+  return (
+    <div style={getStyle()}>
+      {innerDot(accentColor)}
+      {innerLine(20)}
+      <div style={{ flex: 1 }} />
+      {innerLine(14, 0.1)}
+    </div>
+  );
+}
+
 function AccentPreviewStrip({ accent }: { accent: AccentColor }) {
   const accentColor = `hsl(${getAccentHSL(accent)})`;
   const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
@@ -381,13 +464,14 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
 }
 
 /* ── Main ThemeTab ── */
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
   const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
   const [fontPair, setFontPair] = useState<FontPair>(currentFontPair || "default");
   const [bgPattern, setBgPattern] = useState<BackgroundPattern>(currentBackgroundPattern || "none");
+  const [cardStyle, setCardStyle] = useState<CardStyle>(currentCardStyle || "default");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -397,17 +481,19 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setHeroLayout(currentHeroLayout || "default");
     setFontPair(currentFontPair || "default");
     setBgPattern(currentBackgroundPattern || "none");
-  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern]);
+    setCardStyle(currentCardStyle || "default");
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle]);
 
-  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair); };
-  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair); };
-  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair); };
+  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle); };
+  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle); };
+  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle); };
   const handleHeroLayoutChange = (h: HeroLayout) => { setHeroLayout(h); setDirty(true); };
-  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f); };
+  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f, cardStyle); };
   const handleBgChange = (b: BackgroundPattern) => { setBgPattern(b); setDirty(true); };
+  const handleCardStyleChange = (c: CardStyle) => { setCardStyle(c); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, c); };
 
   const handleSave = async () => {
-    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern);
+    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern, cardStyle);
     setDirty(false);
   };
 
@@ -500,6 +586,37 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
                 <div>
                   <div className="text-xs font-bold text-foreground">{f.label}</div>
                   <div className="text-[10px] text-muted-foreground">{f.description}</div>
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Card Style ── */}
+      <Section title="Card Style" icon="🃏">
+        <div className="grid grid-cols-2 gap-2">
+          {CARD_STYLES.map((c, i) => (
+            <motion.button
+              key={c.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleCardStyleChange(c.id)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                cardStyle === c.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <div className="mb-2">
+                <CardStylePreview styleId={c.id} accent={accent} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base">{c.icon}</span>
+                <div>
+                  <div className="text-xs font-bold text-foreground">{c.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{c.description}</div>
                 </div>
               </div>
             </motion.button>
@@ -622,7 +739,7 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
 ) as any;
 
 /** Apply theme + accent + frame + font to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default") {
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default", cardStyle: CardStyle = "default") {
   const root = document.documentElement;
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
   const h = a.hue, s = a.sat, l = a.light;
@@ -725,6 +842,12 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
+  }
+
+  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated"];
+  root.classList.remove(...cardClasses);
+  if (cardStyle && cardStyle !== "default") {
+    root.classList.add(`card-${cardStyle}`);
   }
 }
 

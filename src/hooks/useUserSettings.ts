@@ -33,7 +33,7 @@ export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
 export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
 export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh";
-
+export type CardStyle = "default" | "glassmorphic" | "solid" | "outline" | "elevated";
 export type FocusPulseStyle = "glow" | "ping" | "none";
 
 export interface UserPreferences {
@@ -45,6 +45,7 @@ export interface UserPreferences {
   heroLayout?: HeroLayout;
   fontPair?: FontPair;
   backgroundPattern?: BackgroundPattern;
+  cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
 }
 
@@ -77,8 +78,8 @@ export function useUserSettings() {
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
           setPreferences(prefs);
         }
-        if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default");
+        if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair || prefs.cardStyle) {
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default");
         }
       }
 
@@ -240,7 +241,7 @@ export function useUserSettings() {
     await savePreferences({ ...preferences, enabledModules: modules });
   }, [savePreferences, preferences]);
 
-  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => {
+  const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => {
     const newPrefs = {
       ...preferences,
       theme,
@@ -249,9 +250,10 @@ export function useUserSettings() {
       heroLayout: heroLayout || preferences.heroLayout || "default",
       fontPair: fontPair || preferences.fontPair || "default",
       backgroundPattern: backgroundPattern || preferences.backgroundPattern || "none",
+      cardStyle: cardStyle || preferences.cardStyle || "default",
     };
     await savePreferences(newPrefs);
-    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default");
+    applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default");
   }, [savePreferences, preferences]);
 
   const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
