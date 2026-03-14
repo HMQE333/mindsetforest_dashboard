@@ -79,7 +79,7 @@ export default function MonthlyFocusBanner() {
           className="relative glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
           title="Monthly Focus"
         >
-          <span className={`text-base transition-all duration-500 ${pulse ? "scale-125 brightness-150" : ""}`} style={{ display: "inline-block", transform: pulse ? "scale(1.2)" : "scale(1)" }}>
+          <span className="text-base inline-block transition-transform duration-700 ease-in-out" style={{ transform: pulse ? "scale(1.1)" : "scale(1)" }}>
             🎯
           </span>
           {/* Badge dot */}
@@ -88,10 +88,13 @@ export default function MonthlyFocusBanner() {
               {items.length}
             </span>
           )}
-          {/* Pulse ring */}
-          {pulse && (
-            <span className="absolute inset-0 rounded-xl border-2 border-primary/40 animate-ping pointer-events-none" />
-          )}
+          {/* Soft glow */}
+          <span
+            className="absolute inset-0 rounded-xl pointer-events-none transition-all duration-1000 ease-in-out"
+            style={{
+              boxShadow: pulse ? "0 0 12px 3px hsl(var(--primary) / 0.35)" : "0 0 0px 0px hsl(var(--primary) / 0)",
+            }}
+          />
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 p-0">
