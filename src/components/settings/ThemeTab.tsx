@@ -97,6 +97,7 @@ interface ThemeTabProps {
   currentBackgroundIntensity?: number;
   currentBorderRadius?: number;
   onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle, extraPrefs?: Partial<UserPreferences>) => Promise<void>;
+  onDirtyChange?: (isDirty: boolean, revertFn: () => void) => void;
 }
 
 /* ── Collapsible Section Wrapper ── */
