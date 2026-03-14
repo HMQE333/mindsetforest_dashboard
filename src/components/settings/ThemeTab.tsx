@@ -498,6 +498,7 @@ function DashboardCardPreview({ accent, cardStyle, frame }: { accent: AccentColo
       </div>
     </div>
   );
+}
 
 /* ── Small Thumbnail Preview (for grid selector) ── */
 function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent: AccentColor }) {
