@@ -738,6 +738,12 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
   }
+
+  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated"];
+  root.classList.remove(...cardClasses);
+  if (cardStyle && cardStyle !== "default") {
+    root.classList.add(`card-${cardStyle}`);
+  }
 }
 
 export { ACCENTS };
