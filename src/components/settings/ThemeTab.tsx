@@ -600,7 +600,7 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
 }
 
 /* ── Main ThemeTab ── */
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, currentCustomAccentHue, currentCardOpacity, currentBackgroundIntensity, currentBorderRadius, onSave, onDirtyChange }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
