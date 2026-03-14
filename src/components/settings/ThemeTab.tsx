@@ -145,6 +145,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
       case "electric":
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
+      case "plasma":
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
