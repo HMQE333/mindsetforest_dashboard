@@ -13,6 +13,7 @@ const THEMES: { id: ThemeMode; label: string; icon: string; description: string;
   { id: "cyber", label: "Cyber", icon: "🔮", description: "Neon-tinted high contrast", preview: { bg: "#040810", card: "#081018", text: "#c8f0ff" } },
   { id: "sandstone", label: "Sandstone", icon: "🏜️", description: "Warm beige light theme", preview: { bg: "#f5f0e8", card: "#faf7f0", text: "#2a2418" } },
   { id: "light", label: "Light", icon: "☀️", description: "Clean light mode", preview: { bg: "#f5f5f7", card: "#ffffff", text: "#1a1a2e" } },
+  { id: "frost", label: "Frost", icon: "❄️", description: "Icy blues, crisp whites", preview: { bg: "#e8f0f8", card: "#f0f6fc", text: "#1a2a3a" } },
 ];
 
 const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light: number }[] = [
