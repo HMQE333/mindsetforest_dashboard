@@ -34,6 +34,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
+  { id: "electric", label: "Electric", icon: "⚡", description: "Animated crackling border" },
 ];
 
 const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
