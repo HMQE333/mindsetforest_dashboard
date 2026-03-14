@@ -30,6 +30,15 @@ interface SettingsModalProps {
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("modules");
   const settings = useUserSettings();
+  const themeRevertRef = useRef<(() => void) | null>(null);
+
+  const handleClose = useCallback(() => {
+    if (themeRevertRef.current) {
+      themeRevertRef.current();
+      themeRevertRef.current = null;
+    }
+    onClose();
+  }, [onClose]);
 
   if (!open) return null;
 
