@@ -144,7 +144,7 @@ export default function DashboardView() {
         onResetDay={resetDay}
         onShowShortcuts={() => setShowShortcuts(true)}
         heroLayout={preferences.heroLayout}
-        extraActions={showMonthlyFocus ? <MonthlyFocusBanner /> : undefined}
+        extraActions={showMonthlyFocus ? <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} /> : undefined}
       />
 
       {/* Weekly Progress - moved to bottom */}
