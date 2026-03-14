@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle } from "@/hooks/useUserSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
