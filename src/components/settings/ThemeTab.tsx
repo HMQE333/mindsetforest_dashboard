@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ThemeMode, AccentColor, FrameStyle } from "@/hooks/useUserSettings";
+import { ThemeMode, AccentColor, FrameStyle, HeroLayout } from "@/hooks/useUserSettings";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
@@ -34,24 +34,35 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
 ];
 
+const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
+  { id: "default", label: "Default", icon: "🎮", description: "Full streak + bar + cards" },
+  { id: "compact", label: "Compact", icon: "⚡", description: "All stats in 2 rows" },
+  { id: "minimal", label: "Minimal", icon: "🧊", description: "Just the XP bar" },
+  { id: "command", label: "Command", icon: "🎯", description: "Radial gauge + stats" },
+  { id: "solid", label: "Solid", icon: "🪨", description: "Flat matte, no glass" },
+];
+
 interface ThemeTabProps {
   currentTheme: ThemeMode;
   currentAccent: AccentColor;
   currentFrame?: FrameStyle;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle) => Promise<void>;
+  currentHeroLayout?: HeroLayout;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout) => Promise<void>;
 }
 
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
+  const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setTheme(currentTheme);
     setAccent(currentAccent);
     setFrame(currentFrame || "default");
-  }, [currentTheme, currentAccent, currentFrame]);
+    setHeroLayout(currentHeroLayout || "default");
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout]);
 
   const handleThemeChange = (t: ThemeMode) => {
     setTheme(t);
@@ -71,8 +82,13 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, on
     applyThemePreview(theme, accent, f);
   };
 
+  const handleHeroLayoutChange = (h: HeroLayout) => {
+    setHeroLayout(h);
+    setDirty(true);
+  };
+
   const handleSave = async () => {
-    await onSave(theme, accent, frame);
+    await onSave(theme, accent, frame, heroLayout);
     setDirty(false);
   };
 
@@ -167,7 +183,30 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, on
         </div>
       </div>
 
-      {/* Preview bar */}
+      {/* Hero Layout */}
+      <div>
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">Dashboard Hero Layout</label>
+        <div className="grid grid-cols-5 gap-1.5">
+          {HERO_LAYOUTS.map((h, i) => (
+            <motion.button
+              key={h.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleHeroLayoutChange(h.id)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
+                heroLayout === h.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <span className="text-lg">{h.icon}</span>
+              <span className="text-[9px] font-bold text-foreground">{h.label}</span>
+              <span className="text-[8px] text-muted-foreground text-center leading-tight">{h.description}</span>
+            </motion.button>
+          ))}
+        </div>
+      </div>
       <div className="rounded-xl overflow-hidden">
         <div className="h-2 w-full" style={{
           background: `linear-gradient(90deg, hsl(${getAccentHSL(accent)}), hsl(${getAccentHSL(accent, 20)}))`,
