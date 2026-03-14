@@ -649,6 +649,26 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setDirty(false);
   };
 
+  const handleRevert = () => {
+    setTheme(currentTheme);
+    setAccent(currentAccent);
+    setFrame(currentFrame || "default");
+    setHeroLayout(currentHeroLayout || "default");
+    setFontPair(currentFontPair || "default");
+    setBgPattern(currentBackgroundPattern || "none");
+    setCardStyle(currentCardStyle || "default");
+    setCustomHue(currentCustomAccentHue ?? null);
+    setCardOpacity(currentCardOpacity ?? 0.6);
+    setBgIntensity(currentBackgroundIntensity ?? 0.6);
+    setBorderRadius(currentBorderRadius ?? 12);
+    setDirty(false);
+    applyThemePreview(
+      currentTheme, currentAccent, currentFrame || "default",
+      currentFontPair || "default", currentCardStyle || "default",
+      currentCustomAccentHue, currentBorderRadius ?? 12, currentCardOpacity ?? 0.6
+    );
+  };
+
   return (
     <div className="space-y-2">
       {/* ── Theme Mode ── */}
