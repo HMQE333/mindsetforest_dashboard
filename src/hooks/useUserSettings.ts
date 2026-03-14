@@ -133,6 +133,7 @@ export function useUserSettings() {
         name: custom.name || cat.name,
         tagline: custom.tagline || cat.tagline,
         icon: custom.icon || cat.icon,
+        iconUrl: custom.iconUrl || undefined,
         color: custom.color || cat.color,
         lightColor: custom.lightColor || cat.lightColor,
       };
