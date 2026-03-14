@@ -77,7 +77,8 @@ interface ThemeTabProps {
   currentHeroLayout?: HeroLayout;
   currentFontPair?: FontPair;
   currentBackgroundPattern?: BackgroundPattern;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern) => Promise<void>;
+  currentCardStyle?: CardStyle;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle) => Promise<void>;
 }
 
 /* ── Collapsible Section Wrapper ── */
