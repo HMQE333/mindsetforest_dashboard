@@ -930,14 +930,30 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
       </div>
 
       {dirty && (
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          onClick={handleSave}
-          className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all"
+          className="sticky bottom-0 z-50 -mx-4 mt-3 px-4 py-3 flex items-center justify-between gap-3 bg-background/80 backdrop-blur-md border-t border-border/50"
         >
-          Save Theme
-        </motion.button>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-xs font-semibold text-foreground">Unsaved changes</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRevert}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-all"
+            >
+              Revert
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-1.5 rounded-lg text-xs font-bold text-primary-foreground gradient-purple glow-sm hover:opacity-90 transition-all"
+            >
+              Save
+            </button>
+          </div>
+        </motion.div>
       )}
     </div>
   );
