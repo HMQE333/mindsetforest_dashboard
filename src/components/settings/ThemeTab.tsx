@@ -34,11 +34,20 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
 ];
 
+const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
+  { id: "default", label: "Default", icon: "🎮", description: "Full streak + bar + cards" },
+  { id: "compact", label: "Compact", icon: "⚡", description: "All stats in 2 rows" },
+  { id: "minimal", label: "Minimal", icon: "🧊", description: "Just the XP bar" },
+  { id: "command", label: "Command", icon: "🎯", description: "Radial gauge + stats" },
+  { id: "solid", label: "Solid", icon: "🪨", description: "Flat matte, no glass" },
+];
+
 interface ThemeTabProps {
   currentTheme: ThemeMode;
   currentAccent: AccentColor;
   currentFrame?: FrameStyle;
-  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle) => Promise<void>;
+  currentHeroLayout?: HeroLayout;
+  onSave: (theme: ThemeMode, accent: AccentColor, frame?: FrameStyle, heroLayout?: HeroLayout) => Promise<void>;
 }
 
 export default function ThemeTab({ currentTheme, currentAccent, currentFrame, onSave }: ThemeTabProps) {
