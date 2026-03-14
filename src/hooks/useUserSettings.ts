@@ -174,6 +174,7 @@ export function useUserSettings() {
   const saveCategories = useCallback(async (cats: CustomCategory[]) => {
     if (!user) return;
     setCustomCategories(cats);
+    try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
     const { error } = await (supabase.from("user_onboarding") as any).upsert([{
       user_id: user.id,
       completed: true,
