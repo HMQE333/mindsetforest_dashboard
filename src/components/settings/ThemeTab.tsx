@@ -118,177 +118,38 @@ function Section({ title, icon, defaultOpen = true, children }: { title: string;
   );
 }
 
-/* ── Frame Style Preview ── */
-function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: AccentColor }) {
-  const accentColor = `hsl(${getAccentHSL(accent)})`;
-  const accentDim = `hsl(${getAccentHSL(accent)} / 0.25)`;
-  const warmGlow = `hsl(${getAccentHSL(accent, 15)} / 0.3)`;
-
-  const baseCard: React.CSSProperties = {
-    width: "100%",
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    padding: "0 10px",
-    transition: "all 0.2s",
-    position: "relative",
-    overflow: "hidden",
-  };
-
-  const innerLine = (w: number, opacity = 0.15) => (
-    <div style={{ width: w, height: 3, borderRadius: 2, backgroundColor: `rgba(255,255,255,${opacity})` }} />
-  );
-  const innerDot = (color: string) => (
-    <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
-  );
-
-  const getStyle = (): React.CSSProperties => {
-    switch (frameId) {
-      case "glow":
-        return { ...baseCard, boxShadow: `0 0 16px ${accentDim}, 0 0 4px ${accentColor}, inset 0 0 8px ${accentDim}`, borderColor: accentColor };
-      case "aura":
-        return { ...baseCard, boxShadow: `0 0 20px ${warmGlow}, 0 0 40px ${warmGlow}, 0 4px 12px rgba(0,0,0,0.2)`, borderColor: `hsl(${getAccentHSL(accent)} / 0.3)`, backgroundColor: "rgba(255,255,255,0.05)" };
-      case "neon":
-        return { ...baseCard, boxShadow: `0 0 6px ${accentColor}, 0 0 14px ${accentColor}, 0 0 28px ${accentDim}`, borderColor: accentColor, borderWidth: 2 };
-      case "frost":
-        return { ...baseCard, backdropFilter: "blur(8px)", borderColor: "rgba(200,230,255,0.35)", backgroundColor: "rgba(200,230,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 0 12px rgba(180,220,255,0.1)" };
-      case "sharp":
-        return { ...baseCard, borderRadius: 2, boxShadow: "4px 4px 0 rgba(0,0,0,0.4)", borderColor: "rgba(255,255,255,0.15)", borderWidth: 1.5 };
-      case "prism":
-        return { ...baseCard, boxShadow: `6px 0 18px ${accentDim}, -6px 0 18px rgba(255,180,255,0.15), 0 0 8px ${accentDim}`, borderColor: accentColor, borderWidth: 1.5 };
-      case "electric":
-        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 8px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.2s infinite", backgroundImage: `linear-gradient(90deg, transparent 40%, ${accentDim} 50%, transparent 60%)` };
-      case "plasma":
-        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 12px ${warmGlow}, 0 0 24px ${warmGlow}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.2s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), ${accentDim}, rgba(0,0,0,0.1))` };
-      case "icicle":
-        return { ...baseCard, borderColor: "hsl(200, 80%, 82%)", boxShadow: "0 0 12px hsla(200, 80%, 75%, 0.3), 0 0 28px hsla(200, 70%, 70%, 0.12), inset 0 1px 0 rgba(200,230,255,0.2)", backgroundColor: "rgba(200,230,255,0.06)" };
-      case "bark":
-        return { ...baseCard, borderColor: "hsl(28, 45%, 38%)", borderWidth: "1.5px", boxShadow: "0 0 18px hsla(30, 55%, 32%, 0.4), 0 0 36px hsla(25, 45%, 22%, 0.18), inset 0 0 14px hsla(30, 40%, 20%, 0.12)", backgroundColor: "rgba(60, 40, 20, 0.15)", backgroundImage: "repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 28%, 0.18) 10px, hsla(28, 35%, 28%, 0.18) 11.5px), repeating-linear-gradient(94deg, transparent, transparent 18px, hsla(25, 30%, 25%, 0.12) 18px, hsla(25, 30%, 25%, 0.12) 19px)" };
-      default:
-        return { ...baseCard, boxShadow: "0 4px 12px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)", borderColor: "rgba(255,255,255,0.1)", transform: "translateY(-1px)" };
-    }
-  };
-
+/* ── Frame Style Preview (uses real CSS classes) ── */
+function FrameStylePreview({ frameId }: { frameId: FrameStyle }) {
+  const wrapperCls = frameId === "default" ? "" : `frame-${frameId}`;
   return (
-    <div style={getStyle()}>
-      {innerDot(accentColor)}
-      {innerLine(24)}
-      <div style={{ flex: 1 }} />
-      {innerLine(16, 0.1)}
+    <div className={wrapperCls}>
+      <div
+        className="glass-card-hover preview-active flex items-center gap-1.5 px-2.5"
+        style={{ height: 44, borderRadius: 8 }}
+      >
+        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+        <div className="w-6 h-[3px] rounded bg-foreground/15" />
+        <div className="flex-1" />
+        <div className="w-4 h-[3px] rounded bg-foreground/10" />
+      </div>
     </div>
   );
 }
 
-/* ── Card Style Preview ── */
-function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: AccentColor }) {
-  const accentColor = `hsl(${getAccentHSL(accent)})`;
-  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
-
-  const base: React.CSSProperties = {
-    width: "100%",
-    height: 40,
-    borderRadius: 12,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "0 10px",
-    transition: "all 0.3s",
-  };
-
-  const innerLine = (w: number, opacity = 0.15) => (
-    <div style={{ width: w, height: 3, borderRadius: 2, backgroundColor: `rgba(255,255,255,${opacity})` }} />
-  );
-  const innerDot = (color: string) => (
-    <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} />
-  );
-
-  const getStyle = (): React.CSSProperties => {
-    switch (styleId) {
-      case "glassmorphic":
-        return {
-          ...base,
-          backgroundColor: "rgba(255,255,255,0.06)",
-          backdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px ${accentDim}`,
-          background: `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.06) 100%)`,
-        };
-      case "solid":
-        return {
-          ...base,
-          backgroundColor: "rgba(30,30,40,0.95)",
-          border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: 10,
-        };
-      case "outline":
-        return {
-          ...base,
-          backgroundColor: "transparent",
-          border: `1.5px solid rgba(255,255,255,0.15)`,
-        };
-      case "elevated":
-        return {
-          ...base,
-          backgroundColor: "rgba(25,25,35,0.9)",
-          border: "1px solid rgba(255,255,255,0.05)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
-          borderRadius: 14,
-        };
-      case "frosted":
-        return {
-          ...base,
-          backgroundColor: "rgba(200, 230, 255, 0.06)",
-          backdropFilter: "blur(28px)",
-          border: "1px solid hsla(200, 60%, 80%, 0.25)",
-          boxShadow: "inset 0 0 20px hsla(200, 70%, 80%, 0.06), 0 4px 20px rgba(0,0,0,0.2)",
-        };
-      case "wood":
-        return {
-          ...base,
-          backgroundColor: "hsl(28, 40%, 18%)",
-          border: "1px solid hsl(28, 30%, 28%)",
-          boxShadow: "inset 0 1px 0 hsla(35, 40%, 30%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
-          borderRadius: 10,
-          backgroundImage: `repeating-linear-gradient(
-            95deg,
-            transparent,
-            transparent 8px,
-            hsla(30, 30%, 22%, 0.4) 8px,
-            hsla(30, 30%, 22%, 0.4) 9px
-          )`,
-        };
-      case "moss":
-        return {
-          ...base,
-          backgroundColor: "hsl(140, 35%, 12%)",
-          border: "1px solid hsl(135, 30%, 22%)",
-          boxShadow: "inset 0 1px 0 hsla(140, 40%, 25%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
-          borderRadius: 14,
-          backgroundImage: `radial-gradient(circle 3px at 25% 35%, hsla(130, 50%, 28%, 0.4), transparent),
-            radial-gradient(circle 2px at 65% 60%, hsla(140, 45%, 25%, 0.3), transparent),
-            radial-gradient(circle 2.5px at 80% 30%, hsla(125, 40%, 22%, 0.25), transparent)`,
-        };
-      default:
-        return {
-          ...base,
-          backgroundColor: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(12px)",
-          border: "1px solid rgba(255,255,255,0.1)",
-        };
-    }
-  };
-
+/* ── Card Style Preview (uses real CSS classes) ── */
+function CardStylePreview({ styleId }: { styleId: CardStyle }) {
+  const wrapperCls = styleId === "default" ? "" : `card-${styleId}`;
   return (
-    <div style={getStyle()}>
-      {innerDot(accentColor)}
-      {innerLine(20)}
-      <div style={{ flex: 1 }} />
-      {innerLine(14, 0.1)}
+    <div className={wrapperCls}>
+      <div
+        className="glass-card flex items-center gap-1.5 px-2.5"
+        style={{ height: 40 }}
+      >
+        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+        <div className="w-5 h-[3px] rounded bg-foreground/15" />
+        <div className="flex-1" />
+        <div className="w-3.5 h-[3px] rounded bg-foreground/10" />
+      </div>
     </div>
   );
 }
@@ -429,69 +290,31 @@ function HeroLivePreview({ layoutId, accent }: { layoutId: HeroLayout; accent: A
   );
 }
 
-/* ── Dashboard Card Preview (shows sample category cards) ── */
-function DashboardCardPreview({ accent, cardStyle, frame }: { accent: AccentColor; cardStyle: CardStyle; frame: FrameStyle }) {
-  const accentColor = `hsl(${getAccentHSL(accent)})`;
-  const accentDim = `hsl(${getAccentHSL(accent)} / 0.2)`;
+/* ── Dashboard Card Preview (uses real CSS classes) ── */
+function DashboardCardPreview({ cardStyle, frame }: { accent: AccentColor; cardStyle: CardStyle; frame: FrameStyle }) {
+  const cardCls = cardStyle === "default" ? "" : `card-${cardStyle}`;
+  const frameCls = frame === "default" ? "" : `frame-${frame}`;
 
   const sampleCards = [
-    { icon: "🧠", name: "Mind", color: "#8B5CF6", progress: 60 },
-    { icon: "💪", name: "Body", color: "#EF4444", progress: 40 },
-    { icon: "🎨", name: "Creation", color: "#F97316", progress: 80 },
+    { icon: "🧠", name: "Mind", colorVar: "--cat-mind", progress: 60 },
+    { icon: "💪", name: "Body", colorVar: "--cat-body", progress: 40 },
+    { icon: "🎨", name: "Creation", colorVar: "--cat-creation", progress: 80 },
   ];
 
-  const getCardBg = (): React.CSSProperties => {
-    switch (cardStyle) {
-      case "glassmorphic":
-        return { backgroundColor: "rgba(255,255,255,0.06)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.15)", boxShadow: `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 0 1px ${accentDim}` };
-      case "solid":
-        return { backgroundColor: "rgba(30,30,40,0.95)", border: "1px solid rgba(255,255,255,0.06)" };
-      case "outline":
-        return { backgroundColor: "transparent", border: "1.5px solid rgba(255,255,255,0.15)" };
-      case "elevated":
-        return { backgroundColor: "rgba(25,25,35,0.9)", border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 6px 20px rgba(0,0,0,0.5)" };
-      case "frosted":
-        return { backgroundColor: "rgba(200,230,255,0.06)", backdropFilter: "blur(20px)", border: "1px solid hsla(200,60%,80%,0.2)" };
-      case "wood":
-        return { backgroundColor: "hsl(28,40%,18%)", border: "1px solid hsl(28,30%,28%)", backgroundImage: "repeating-linear-gradient(95deg, transparent, transparent 8px, hsla(30,30%,22%,0.4) 8px, hsla(30,30%,22%,0.4) 9px)" };
-      case "moss":
-        return { backgroundColor: "hsl(140,35%,12%)", border: "1px solid hsl(135,30%,22%)", backgroundImage: "radial-gradient(circle 3px at 25% 35%, hsla(130,50%,28%,0.4), transparent)" };
-      default:
-        return { backgroundColor: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)" };
-    }
-  };
-
-  const getFrameFx = (color: string): React.CSSProperties => {
-    const dim = color + "40";
-    switch (frame) {
-      case "glow": return { boxShadow: `0 0 12px ${dim}` };
-      case "aura": return { boxShadow: `0 0 16px ${dim}, 0 0 32px ${dim}` };
-      case "neon": return { boxShadow: `0 0 6px ${color}, 0 0 12px ${dim}`, borderColor: color, borderWidth: 1.5 };
-      case "frost": return { borderColor: "rgba(200,230,255,0.3)" };
-      case "sharp": return { borderRadius: 2, boxShadow: "3px 3px 0 rgba(0,0,0,0.3)" };
-      case "prism": return { boxShadow: `4px 0 12px ${dim}, -4px 0 12px rgba(255,180,255,0.1)` };
-      case "electric": return { borderColor: color, boxShadow: `0 0 8px ${dim}`, animation: "electric-preview-pulse 1.5s infinite" };
-      case "plasma": return { borderColor: color, boxShadow: `0 0 10px ${dim}`, animation: "electric-preview-pulse 1.5s infinite" };
-      case "icicle": return { borderColor: "hsl(200,80%,82%)", boxShadow: "0 0 12px hsla(200,80%,75%,0.2)" };
-      case "bark": return { borderColor: "hsl(28,45%,38%)", boxShadow: "0 0 14px hsla(30,55%,32%,0.3)" };
-      default: return { boxShadow: "0 4px 12px rgba(0,0,0,0.2)" };
-    }
-  };
-
   return (
-    <div className="mt-3 rounded-xl p-4 border border-white/5" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
+    <div className="mt-3 rounded-xl p-4 border border-border/30" style={{ backgroundColor: "hsl(var(--card) / 0.3)" }}>
       <div className="text-[9px] text-muted-foreground mb-2 uppercase tracking-wider">Card Preview</div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid grid-cols-3 gap-2 ${cardCls} ${frameCls}`}>
         {sampleCards.map(card => (
           <div
             key={card.name}
-            className="rounded-xl p-2.5 transition-all"
-            style={{ ...getCardBg(), ...getFrameFx(card.color), borderRadius: undefined }}
+            className="glass-card-hover preview-active p-2.5"
+            style={{ "--card-color": `hsl(var(${card.colorVar}))` } as React.CSSProperties}
           >
-            <span className="text-lg block mb-1" style={{ filter: `drop-shadow(0 0 4px ${card.color})` }}>{card.icon}</span>
-            <div className="text-[9px] font-bold mb-1" style={{ color: card.color }}>{card.name}</div>
-            <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.08)" }}>
-              <div className="h-full rounded-full" style={{ width: `${card.progress}%`, backgroundColor: card.color }} />
+            <span className="text-lg block mb-1" style={{ filter: `drop-shadow(0 0 4px hsl(var(${card.colorVar})))` }}>{card.icon}</span>
+            <div className="text-[9px] font-bold mb-1" style={{ color: `hsl(var(${card.colorVar}))` }}>{card.name}</div>
+            <div className="w-full h-1.5 rounded-full overflow-hidden bg-foreground/[0.08]">
+              <div className="h-full rounded-full" style={{ width: `${card.progress}%`, backgroundColor: `hsl(var(${card.colorVar}))` }} />
             </div>
             <div className="text-[7px] text-muted-foreground mt-0.5">{card.progress}% done</div>
           </div>
@@ -782,7 +605,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
               }`}
             >
               <div className="mb-2">
-                <FrameStylePreview frameId={f.id} accent={accent} />
+                <FrameStylePreview frameId={f.id} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base">{f.icon}</span>
@@ -819,7 +642,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
               }`}
             >
               <div className="mb-2">
-                <CardStylePreview styleId={c.id} accent={accent} />
+                <CardStylePreview styleId={c.id} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base">{c.icon}</span>
