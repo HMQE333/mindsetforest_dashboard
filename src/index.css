@@ -260,12 +260,12 @@
   box-shadow: 6px 6px 0px hsl(var(--glow-purple) / 0.25);
 }
 
-/* Prism — dual glow: accent + card color layered */
+/* Prism — dual glow: accent + per-card category color layered */
 .frame-prism .glass-card-hover:hover {
   transform: none;
-  border-color: hsl(var(--glow-purple) / 0.6);
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
   box-shadow:
-    0 0 20px hsl(var(--glow-purple) / 0.4),
-    0 0 40px hsl(var(--card) / 0.35),
-    0 4px 24px hsl(var(--glow-purple) / 0.15);
+    0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 60%, transparent),
+    0 0 40px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 30%, transparent),
+    0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
 }
