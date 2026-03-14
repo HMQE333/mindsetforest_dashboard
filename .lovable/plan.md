@@ -1,61 +1,24 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+## Fix: Snowfall invisible on light/Frost themes
 
-### Concept
+**Problem**: Snowflakes use hardcoded near-white colors (`rgba(220, 235, 255, ...)`) — invisible against light backgrounds like Frost or Sandstone.
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+**Solution**: Detect the `light-theme` class on `document.documentElement` inside the snow animation and swap to blue-tinted flakes when active.
 
-### Shortcut Map
+### Changes — `src/components/BackgroundPattern.tsx`
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+In the snow `useEffect`:
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+1. At the start of the animation setup, read `document.documentElement.classList.contains("light-theme")` and store it
+2. Set up a `MutationObserver` on the root element's class list to reactively update when the theme changes mid-session
+3. Swap flake colors based on the flag:
+   - **Dark themes**: keep current `rgba(220, 235, 255, opacity)` (white-blue)
+   - **Light themes**: use `rgba(100, 160, 220, opacity)` for flakes and `rgba(80, 140, 200, opacity * 0.08)` for glow — a visible soft blue
+4. Clean up the observer in the effect teardown
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+This is a minimal, self-contained change — only the snow `useEffect` block is touched. No new props or CSS needed.
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
-
-### Implementation
-
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
-
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
-
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
-
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
-
-### File Summary
-
-| File | Change |
-|------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
-
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+### Files
+- `src/components/BackgroundPattern.tsx` — snow animation color logic (~10 lines changed)
 
