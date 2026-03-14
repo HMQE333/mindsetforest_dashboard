@@ -38,6 +38,7 @@ export interface UserPreferences {
   accentColor?: AccentColor;
   frameStyle?: FrameStyle;
   customKeybinds?: Partial<KeybindMap>;
+  heroLayout?: HeroLayout;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus"];
