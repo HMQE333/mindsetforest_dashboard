@@ -887,7 +887,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
       break;
   }
 
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle", "frame-bark"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);

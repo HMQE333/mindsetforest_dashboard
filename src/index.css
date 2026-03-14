@@ -459,6 +459,24 @@
   -webkit-backdrop-filter: blur(20px);
 }
 
+/* ===== Bark Frame Style ===== */
+.frame-bark .glass-card-hover:hover {
+  transform: none;
+  border-color: hsl(30 50% 35%);
+  box-shadow:
+    0 0 16px hsla(30, 50%, 30%, 0.35),
+    0 0 32px hsla(25, 40%, 25%, 0.15),
+    inset 0 0 10px hsla(30, 40%, 25%, 0.08);
+  background-image:
+    repeating-linear-gradient(
+      92deg,
+      transparent,
+      transparent 14px,
+      hsla(30, 30%, 30%, 0.12) 14px,
+      hsla(30, 30%, 30%, 0.12) 15px
+    );
+}
+
 /* ===== Frosted Card Style ===== */
 .card-frosted .glass-card,
 .card-frosted .glass-card-hover {

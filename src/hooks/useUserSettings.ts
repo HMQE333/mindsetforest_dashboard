@@ -27,12 +27,12 @@ export interface UserMetric {
   sortOrder: number;
 }
 
-export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "crimson" | "cyber" | "sandstone" | "frost";
+export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "crimson" | "cyber" | "sandstone" | "frost" | "timber";
 export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
-export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp" | "prism" | "electric" | "plasma" | "icicle";
+export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp" | "prism" | "electric" | "plasma" | "icicle" | "bark";
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
 export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
-export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh" | "fireflies" | "forest" | "snow";
+export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh" | "fireflies" | "forest" | "snow" | "leaves";
 export type CardStyle = "default" | "glassmorphic" | "solid" | "outline" | "elevated" | "frosted" | "wood";
 export type FocusPulseStyle = "glow" | "ping" | "none";
 
