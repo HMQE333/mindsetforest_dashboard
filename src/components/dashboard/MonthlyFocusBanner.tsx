@@ -12,7 +12,13 @@ interface FocusItem {
   is_active: boolean;
 }
 
-export default function MonthlyFocusBanner() {
+type FocusPulseStyle = "glow" | "ping" | "none";
+
+interface MonthlyFocusProps {
+  pulseStyle?: FocusPulseStyle;
+}
+
+export default function MonthlyFocusBanner({ pulseStyle = "glow" }: MonthlyFocusProps) {
   const { user } = useAuth();
   const [items, setItems] = useState<FocusItem[]>([]);
   const [editing, setEditing] = useState(false);
