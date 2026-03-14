@@ -1,61 +1,69 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+## Plan: Monthly Focus / Notifications Banner
 
-### Concept
+Add a dismissable "Monthly Focus" banner that appears at the top of the Dashboard when the app opens. Users can set themes/reminders for the current month, and the banner shows them on every visit until dismissed for that session. The feature is toggleable via the Modules settings.
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+### How It Works
 
-### Shortcut Map
+1. **New DB table `user_notifications`** stores the user's monthly focus items:
+   - `id`, `user_id`, `title`, `content`, `month` (e.g. "2026-03"), `is_active`, `created_at`
+   - RLS: users can only CRUD their own rows
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+2. **Monthly Focus Banner** (`src/components/dashboard/MonthlyFocusBanner.tsx`):
+   - Queries active notifications for the current month
+   - Renders a collapsible/dismissable banner at the top of DashboardView
+   - Dismiss is session-only (useState), so it reappears next visit
+   - Includes an inline "Edit Focus" button to add/edit/delete focus items
+   - Small modal/popover for managing focus items (add text, toggle active, delete)
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+3. **Module Toggle**:
+   - Add `{ id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Monthly theme reminders on dashboard" }` to `ModulesTab.tsx`
+   - DashboardView conditionally renders the banner based on enabled modules
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+4. **Settings Integration**:
+   - Add a new "Focus" tab to SettingsModal OR keep management inline in the banner itself (simpler)
+   - Going with inline management in the banner to keep it lightweight
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
-
-### Implementation
-
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
-
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
-
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
-
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
-
-### File Summary
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+| **Migration** | Create `user_notifications` table with RLS |
+| `src/components/dashboard/MonthlyFocusBanner.tsx` | New component: banner + inline edit |
+| `src/components/dashboard/DashboardView.tsx` | Import and render banner at top |
+| `src/components/settings/ModulesTab.tsx` | Add monthly-focus module entry |
+| `src/hooks/useUserSettings.ts` | Add "monthly-focus" to DEFAULT_MODULES |
 
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+### DB Schema
+
+```sql
+CREATE TABLE public.user_notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL DEFAULT '',
+  content text NOT NULL DEFAULT '',
+  month text NOT NULL DEFAULT to_char(now(), 'YYYY-MM'),
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.user_notifications ENABLE ROW LEVEL SECURITY;
+-- Standard per-user CRUD policies
+```
+
+### UI Sketch
+
+```text
+┌─────────────────────────────────────────┐
+│ 🎯 Monthly Focus — March 2026      [×] │
+│                                         │
+│  • "Deep work on project X"             │
+│  • "Read 2 books this month"            │
+│  • "No social media before noon"        │
+│                                    [✏️] │
+└─────────────────────────────────────────┘
+```
+
+The banner uses glass-card styling, appears above the DashboardHero, and can be dismissed per session. The edit mode allows adding/removing focus items inline.
 
