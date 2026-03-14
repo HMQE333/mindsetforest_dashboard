@@ -82,8 +82,13 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     applyThemePreview(theme, accent, f);
   };
 
+  const handleHeroLayoutChange = (h: HeroLayout) => {
+    setHeroLayout(h);
+    setDirty(true);
+  };
+
   const handleSave = async () => {
-    await onSave(theme, accent, frame);
+    await onSave(theme, accent, frame, heroLayout);
     setDirty(false);
   };
 
