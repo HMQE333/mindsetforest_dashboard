@@ -229,7 +229,7 @@ function HeroSolid({ state, onResetDay, onShowShortcuts, extraActions }: Omit<Da
 
 export default function DashboardHero(props: DashboardHeroProps) {
   const layout = props.heroLayout || "default";
-  const passProps = { state: props.state, onResetDay: props.onResetDay, onShowShortcuts: props.onShowShortcuts };
+  const passProps = { state: props.state, onResetDay: props.onResetDay, onShowShortcuts: props.onShowShortcuts, extraActions: props.extraActions };
 
   switch (layout) {
     case "compact": return <HeroCompact {...passProps} />;
