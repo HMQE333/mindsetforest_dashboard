@@ -106,6 +106,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentHeroLayout={settings.preferences.heroLayout || "default"}
                       currentFontPair={settings.preferences.fontPair || "default"}
                       currentBackgroundPattern={settings.preferences.backgroundPattern || "none"}
+                      currentCardStyle={settings.preferences.cardStyle || "default"}
                       onSave={settings.saveTheme}
                     />
                   )}
