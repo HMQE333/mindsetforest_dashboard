@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useUserSettings } from "@/hooks/useUserSettings";
@@ -30,6 +30,15 @@ interface SettingsModalProps {
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("modules");
   const settings = useUserSettings();
+  const themeRevertRef = useRef<(() => void) | null>(null);
+
+  const handleClose = useCallback(() => {
+    if (themeRevertRef.current) {
+      themeRevertRef.current();
+      themeRevertRef.current = null;
+    }
+    onClose();
+  }, [onClose]);
 
   if (!open) return null;
 
@@ -43,7 +52,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           className="fixed inset-0 z-[200] flex items-center justify-center p-4"
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
 
           {/* Modal */}
           <motion.div
@@ -56,7 +65,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
               <h2 className="text-lg font-bold text-foreground">⚙️ Settings</h2>
-              <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">
+              <button onClick={handleClose} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -111,7 +120,13 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentCardOpacity={settings.preferences.cardOpacity}
                       currentBackgroundIntensity={settings.preferences.backgroundIntensity}
                       currentBorderRadius={settings.preferences.borderRadius}
-                      onSave={settings.saveTheme}
+                      onSave={(t, a, f, h, fp, bp, cs, ep) => {
+                        themeRevertRef.current = null;
+                        return settings.saveTheme(t, a, f, h, fp, bp, cs, ep);
+                      }}
+                      onDirtyChange={(isDirty, revertFn) => {
+                        themeRevertRef.current = isDirty ? revertFn : null;
+                      }}
                     />
                   )}
                   {activeTab === "keybinds" && (
