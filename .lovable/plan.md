@@ -1,59 +1,61 @@
 
 
-## Add Snow/Frost Themed Customizations
+## Plan: Keyboard Shortcuts System for Dashboard
 
-Bundle of winter-themed additions across multiple customization tiers.
+### Concept
 
-### 1. New Theme Mode: "Frost" 
-**`useUserSettings.ts`** — Add `"frost"` to `ThemeMode` union.
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-**`ThemeTab.tsx`** — Add to `THEMES` array:
-- Icon: ❄️, label: "Frost", description: "Icy blues, crisp whites"
-- Preview colors: cool blue-white bg (`#e8f0f8`), card (`#f0f6fc`), text (`#1a2a3a`)
-- Light theme variant with icy blue tones
+### Shortcut Map
 
-**`applyThemePreview`** — Add `case "frost"` using `setLightVars` with cool blue-white palette.
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-### 2. New Background Pattern: "Snow"
-**`useUserSettings.ts`** — Add `"snow"` to `BackgroundPattern` union.
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-**`ThemeTab.tsx`** — Add to `BACKGROUNDS`: `{ id: "snow", label: "Snowfall", icon: "❄️", description: "Gently falling snowflakes" }`
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-**`BackgroundPattern.tsx`** — New canvas animation:
-- ~80-120 snowflake particles of varying sizes (1-4px radius)
-- White/ice-blue color, low opacity (0.3-0.7)
-- Gentle downward drift with slight horizontal sine-wave wobble
-- Varying fall speeds for parallax depth effect
-- Subtle rotation wouldn't apply (circles), but size variation creates depth
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-### 3. New Frame Style: "Icicle"
-**`useUserSettings.ts`** — Add `"icicle"` to `FrameStyle` union.
+### Implementation
 
-**`ThemeTab.tsx`** — Add to `FRAMES`: `{ id: "icicle", label: "Icicle", icon: "🧊", description: "Frosted ice border glow" }`
-- Preview: frosted white-blue border with cold glow
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-**`index.css`** — New `.frame-icicle` styles:
-- On hover: icy blue-white border (`hsl(200, 80%, 85%)`)
-- Cold blue glow (`box-shadow` with ice-blue tones)
-- Frosted backdrop blur effect
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-**`applyThemePreview`** — Add `"frame-icicle"` to frameClasses array.
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
 
-### 4. New Card Style: "Frosted"
-**`useUserSettings.ts`** — Add `"frosted"` to `CardStyle` union.
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
 
-**`ThemeTab.tsx`** — Add to `CARD_STYLES`: `{ id: "frosted", label: "Frosted", icon: "🧊", description: "Icy translucent glass" }`
+### File Summary
 
-**`index.css`** — New `.card-frosted` styles:
-- Heavy blur (28px), very light white bg tint
-- Subtle ice-blue border
-- Faint blue inner glow
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
 
-**`applyThemePreview`** — Add `"card-frosted"` to cardClasses array.
-
-### Files Changed
-- `src/hooks/useUserSettings.ts` — type unions
-- `src/components/settings/ThemeTab.tsx` — arrays, preview, apply function
-- `src/components/BackgroundPattern.tsx` — snow canvas animation
-- `src/index.css` — icicle frame + frosted card CSS
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 

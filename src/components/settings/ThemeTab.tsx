@@ -13,6 +13,7 @@ const THEMES: { id: ThemeMode; label: string; icon: string; description: string;
   { id: "cyber", label: "Cyber", icon: "🔮", description: "Neon-tinted high contrast", preview: { bg: "#040810", card: "#081018", text: "#c8f0ff" } },
   { id: "sandstone", label: "Sandstone", icon: "🏜️", description: "Warm beige light theme", preview: { bg: "#f5f0e8", card: "#faf7f0", text: "#2a2418" } },
   { id: "light", label: "Light", icon: "☀️", description: "Clean light mode", preview: { bg: "#f5f5f7", card: "#ffffff", text: "#1a1a2e" } },
+  { id: "frost", label: "Frost", icon: "❄️", description: "Icy blues, crisp whites", preview: { bg: "#e8f0f8", card: "#f0f6fc", text: "#1a2a3a" } },
 ];
 
 const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light: number }[] = [
@@ -36,6 +37,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
   { id: "electric", label: "Electric", icon: "⚡", description: "Animated crackling border" },
   { id: "plasma", label: "Plasma", icon: "🔮", description: "Electric + card-color border" },
+  { id: "icicle", label: "Icicle", icon: "🧊", description: "Frosted ice border glow" },
 ];
 
 const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
@@ -56,6 +58,7 @@ const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; descrip
   { id: "mesh", label: "Gradient Mesh", icon: "🌈", description: "Soft color blobs" },
   { id: "fireflies", label: "Fireflies", icon: "🪲", description: "Warm drifting firefly glow" },
   { id: "forest", label: "Forest", icon: "🌲", description: "Layered tree silhouettes" },
+  { id: "snow", label: "Snowfall", icon: "❄️", description: "Gently falling snowflakes" },
 ];
 
 const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: string }[] = [
@@ -64,6 +67,7 @@ const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: st
   { id: "solid", label: "Solid", icon: "🧱", description: "Opaque, flat surface" },
   { id: "outline", label: "Outline", icon: "🔲", description: "Transparent, border-only" },
   { id: "elevated", label: "Elevated", icon: "📦", description: "Strong shadows, layered depth" },
+  { id: "frosted", label: "Frosted", icon: "🧊", description: "Icy translucent glass" },
 ];
 
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
@@ -147,6 +151,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
       case "plasma":
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
+      case "icicle":
+        return { ...baseCard, borderColor: "hsl(200, 80%, 85%)", boxShadow: "0 0 16px hsla(200, 80%, 75%, 0.25), 0 0 32px hsla(200, 70%, 70%, 0.1)", backgroundColor: "rgba(200, 230, 255, 0.05)" };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
@@ -216,6 +222,14 @@ function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: Acc
           border: "1px solid rgba(255,255,255,0.05)",
           boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
           borderRadius: 14,
+        };
+      case "frosted":
+        return {
+          ...base,
+          backgroundColor: "rgba(200, 230, 255, 0.06)",
+          backdropFilter: "blur(28px)",
+          border: "1px solid hsla(200, 60%, 80%, 0.25)",
+          boxShadow: "inset 0 0 20px hsla(200, 70%, 80%, 0.06), 0 4px 20px rgba(0,0,0,0.2)",
         };
       default:
         return {
@@ -844,15 +858,18 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     case "light":
       setLightVars("220 14% 96%", "224 71% 10%", "0 0% 100%", "224 71% 10%", "220 14% 92%", "224 50% 18%", "220 14% 92%", "220 9% 46%", "220 13% 87%", "0 0% 100%", "220 13% 87%");
       break;
+    case "frost":
+      setLightVars("205 40% 94%", "210 40% 15%", "205 50% 97%", "210 40% 15%", "205 30% 88%", "210 30% 22%", "205 30% 90%", "210 15% 48%", "205 25% 82%", "205 50% 97%", "205 30% 82%");
+      break;
   }
 
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
   }
 
-  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated"];
+  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated", "card-frosted"];
   root.classList.remove(...cardClasses);
   if (cardStyle && cardStyle !== "default") {
     root.classList.add(`card-${cardStyle}`);
