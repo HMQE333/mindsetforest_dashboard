@@ -390,13 +390,14 @@ function HeroLayoutPreview({ layoutId, accent }: { layoutId: HeroLayout; accent:
 }
 
 /* ── Main ThemeTab ── */
-export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, onSave }: ThemeTabProps) {
+export default function ThemeTab({ currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle, onSave }: ThemeTabProps) {
   const [theme, setTheme] = useState<ThemeMode>(currentTheme);
   const [accent, setAccent] = useState<AccentColor>(currentAccent);
   const [frame, setFrame] = useState<FrameStyle>(currentFrame || "default");
   const [heroLayout, setHeroLayout] = useState<HeroLayout>(currentHeroLayout || "default");
   const [fontPair, setFontPair] = useState<FontPair>(currentFontPair || "default");
   const [bgPattern, setBgPattern] = useState<BackgroundPattern>(currentBackgroundPattern || "none");
+  const [cardStyle, setCardStyle] = useState<CardStyle>(currentCardStyle || "default");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -406,17 +407,19 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
     setHeroLayout(currentHeroLayout || "default");
     setFontPair(currentFontPair || "default");
     setBgPattern(currentBackgroundPattern || "none");
-  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern]);
+    setCardStyle(currentCardStyle || "default");
+  }, [currentTheme, currentAccent, currentFrame, currentHeroLayout, currentFontPair, currentBackgroundPattern, currentCardStyle]);
 
-  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair); };
-  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair); };
-  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair); };
+  const handleThemeChange = (t: ThemeMode) => { setTheme(t); setDirty(true); applyThemePreview(t, accent, frame, fontPair, cardStyle); };
+  const handleAccentChange = (a: AccentColor) => { setAccent(a); setDirty(true); applyThemePreview(theme, a, frame, fontPair, cardStyle); };
+  const handleFrameChange = (f: FrameStyle) => { setFrame(f); setDirty(true); applyThemePreview(theme, accent, f, fontPair, cardStyle); };
   const handleHeroLayoutChange = (h: HeroLayout) => { setHeroLayout(h); setDirty(true); };
-  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f); };
+  const handleFontChange = (f: FontPair) => { setFontPair(f); setDirty(true); applyThemePreview(theme, accent, frame, f, cardStyle); };
   const handleBgChange = (b: BackgroundPattern) => { setBgPattern(b); setDirty(true); };
+  const handleCardStyleChange = (c: CardStyle) => { setCardStyle(c); setDirty(true); applyThemePreview(theme, accent, frame, fontPair, c); };
 
   const handleSave = async () => {
-    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern);
+    await onSave(theme, accent, frame, heroLayout, fontPair, bgPattern, cardStyle);
     setDirty(false);
   };
 
