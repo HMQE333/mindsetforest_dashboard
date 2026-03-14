@@ -120,7 +120,13 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       currentCardOpacity={settings.preferences.cardOpacity}
                       currentBackgroundIntensity={settings.preferences.backgroundIntensity}
                       currentBorderRadius={settings.preferences.borderRadius}
-                      onSave={settings.saveTheme}
+                      onSave={(t, a, f, h, fp, bp, cs, ep) => {
+                        themeRevertRef.current = null;
+                        return settings.saveTheme(t, a, f, h, fp, bp, cs, ep);
+                      }}
+                      onDirtyChange={(isDirty, revertFn) => {
+                        themeRevertRef.current = isDirty ? revertFn : null;
+                      }}
                     />
                   )}
                   {activeTab === "keybinds" && (
