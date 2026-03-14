@@ -44,19 +44,19 @@ export default function MonthlyFocusBanner({ pulseStyle = "glow" }: MonthlyFocus
     load();
   }, [user, currentMonth]);
 
-  // Periodic pulse animation every ~10s
+  // Periodic pulse animation every ~10s (skip if none)
   useEffect(() => {
+    if (pulseStyle === "none") return;
     const interval = setInterval(() => {
       setPulse(true);
       setTimeout(() => setPulse(false), 2000);
     }, 10000);
-    // Initial pulse after 3s
     const initial = setTimeout(() => {
       setPulse(true);
       setTimeout(() => setPulse(false), 2000);
     }, 3000);
     return () => { clearInterval(interval); clearTimeout(initial); };
-  }, []);
+  }, [pulseStyle]);
 
   const addItem = useCallback(async () => {
     if (!user || !newText.trim()) return;
