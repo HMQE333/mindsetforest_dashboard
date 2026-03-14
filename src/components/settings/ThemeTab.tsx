@@ -636,6 +636,27 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
             </motion.button>
           ))}
         </div>
+        {/* Custom Accent Hue Slider */}
+        <div className="mt-3 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground font-medium">Custom Hue</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{customHue != null ? `${customHue}°` : "—"}</span>
+          </div>
+          <div className="relative">
+            <Slider
+              min={0}
+              max={360}
+              step={1}
+              value={[customHue ?? 0]}
+              onValueChange={([v]) => handleCustomHueChange(v)}
+              className="w-full"
+            />
+            <div className="h-1.5 w-full rounded-full mt-1" style={{
+              background: "linear-gradient(90deg, hsl(0,70%,58%), hsl(60,70%,58%), hsl(120,70%,58%), hsl(180,70%,58%), hsl(240,70%,58%), hsl(300,70%,58%), hsl(360,70%,58%))",
+              opacity: 0.5,
+            }} />
+          </div>
+        </div>
         <AccentPreviewStrip accent={accent} />
       </Section>
 
