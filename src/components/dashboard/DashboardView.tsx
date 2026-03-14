@@ -16,6 +16,7 @@ import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 import ShortcutsPanel from "./ShortcutsPanel";
 import WeeklyProgress from "./WeeklyProgress";
+import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
@@ -25,6 +26,7 @@ export default function DashboardView() {
   const { getCategories, preferences } = useUserSettings();
   const categories = getCategories();
   const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
+  const showMonthlyFocus = !preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -137,6 +139,7 @@ export default function DashboardView() {
 
   return (
     <div className="relative">
+      {showMonthlyFocus && <MonthlyFocusBanner />}
       <DashboardHero state={state} onResetDay={resetDay} onShowShortcuts={() => setShowShortcuts(true)} />
 
       {/* Weekly Progress - moved to bottom */}

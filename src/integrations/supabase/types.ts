@@ -382,6 +382,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_notifications: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          month: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          month?: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          month?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_onboarding: {
         Row: {
           completed: boolean
