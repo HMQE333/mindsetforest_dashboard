@@ -223,6 +223,14 @@ function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: Acc
           boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
           borderRadius: 14,
         };
+      case "frosted":
+        return {
+          ...base,
+          backgroundColor: "rgba(200, 230, 255, 0.06)",
+          backdropFilter: "blur(28px)",
+          border: "1px solid hsla(200, 60%, 80%, 0.25)",
+          boxShadow: "inset 0 0 20px hsla(200, 70%, 80%, 0.06), 0 4px 20px rgba(0,0,0,0.2)",
+        };
       default:
         return {
           ...base,
