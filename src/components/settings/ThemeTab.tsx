@@ -519,6 +519,37 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
         </div>
       </Section>
 
+      {/* ── Card Style ── */}
+      <Section title="Card Style" icon="🃏">
+        <div className="grid grid-cols-2 gap-2">
+          {CARD_STYLES.map((c, i) => (
+            <motion.button
+              key={c.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => handleCardStyleChange(c.id)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                cardStyle === c.id
+                  ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
+                  : "border-white/5 hover:border-white/15 bg-muted/20"
+              }`}
+            >
+              <div className="mb-2">
+                <CardStylePreview styleId={c.id} accent={accent} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base">{c.icon}</span>
+                <div>
+                  <div className="text-xs font-bold text-foreground">{c.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{c.description}</div>
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </Section>
+
       {/* ── Dashboard Hero Layout ── */}
       <Section title="Dashboard Hero Layout" icon="🏠">
         <div className="grid grid-cols-2 gap-2">
