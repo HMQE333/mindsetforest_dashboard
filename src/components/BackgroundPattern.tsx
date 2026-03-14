@@ -301,6 +301,12 @@ export default function BackgroundPattern({ pattern }: Props) {
     if (!ctx) return;
 
     let animId: number;
+    let isLight = document.documentElement.classList.contains("light-theme");
+
+    const observer = new MutationObserver(() => {
+      isLight = document.documentElement.classList.contains("light-theme");
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
     interface Snowflake {
       x: number; y: number; r: number;
@@ -349,13 +355,17 @@ export default function BackgroundPattern({ pattern }: Props) {
         if (f.r > 2) {
           ctx.beginPath();
           ctx.arc(f.x, f.y, f.r * 3, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(200, 220, 255, ${f.opacity * 0.08})`;
+          ctx.fillStyle = isLight
+            ? `rgba(80, 140, 200, ${f.opacity * 0.08})`
+            : `rgba(200, 220, 255, ${f.opacity * 0.08})`;
           ctx.fill();
         }
 
         ctx.beginPath();
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(220, 235, 255, ${f.opacity})`;
+        ctx.fillStyle = isLight
+          ? `rgba(100, 160, 220, ${f.opacity})`
+          : `rgba(220, 235, 255, ${f.opacity})`;
         ctx.fill();
       }
 
@@ -366,6 +376,7 @@ export default function BackgroundPattern({ pattern }: Props) {
 
     return () => {
       cancelAnimationFrame(animId);
+      observer.disconnect();
       window.removeEventListener("resize", resize);
     };
   }, [pattern]);
