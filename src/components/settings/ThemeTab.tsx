@@ -14,6 +14,7 @@ const THEMES: { id: ThemeMode; label: string; icon: string; description: string;
   { id: "sandstone", label: "Sandstone", icon: "🏜️", description: "Warm beige light theme", preview: { bg: "#f5f0e8", card: "#faf7f0", text: "#2a2418" } },
   { id: "light", label: "Light", icon: "☀️", description: "Clean light mode", preview: { bg: "#f5f5f7", card: "#ffffff", text: "#1a1a2e" } },
   { id: "frost", label: "Frost", icon: "❄️", description: "Icy blues, crisp whites", preview: { bg: "#e8f0f8", card: "#f0f6fc", text: "#1a2a3a" } },
+  { id: "timber", label: "Timber", icon: "🪵", description: "Warm browns, cabin tones", preview: { bg: "#0e0906", card: "#1a110a", text: "#e8d8c8" } },
 ];
 
 const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light: number }[] = [
@@ -38,6 +39,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "electric", label: "Electric", icon: "⚡", description: "Animated crackling border" },
   { id: "plasma", label: "Plasma", icon: "🔮", description: "Electric + card-color border" },
   { id: "icicle", label: "Icicle", icon: "🧊", description: "Frosted ice border glow" },
+  { id: "bark", label: "Bark", icon: "🪵", description: "Organic wood-grain glow" },
 ];
 
 const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
@@ -59,6 +61,7 @@ const BACKGROUNDS: { id: BackgroundPattern; label: string; icon: string; descrip
   { id: "fireflies", label: "Fireflies", icon: "🪲", description: "Warm drifting firefly glow" },
   { id: "forest", label: "Forest", icon: "🌲", description: "Layered tree silhouettes" },
   { id: "snow", label: "Snowfall", icon: "❄️", description: "Gently falling snowflakes" },
+  { id: "leaves", label: "Falling Leaves", icon: "🍂", description: "Autumn leaves drifting down" },
 ];
 
 const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: string }[] = [
@@ -154,6 +157,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
       case "icicle":
         return { ...baseCard, borderColor: "hsl(200, 80%, 85%)", boxShadow: "0 0 16px hsla(200, 80%, 75%, 0.25), 0 0 32px hsla(200, 70%, 70%, 0.1)", backgroundColor: "rgba(200, 230, 255, 0.05)" };
+      case "bark":
+        return { ...baseCard, borderColor: "hsl(30, 50%, 35%)", boxShadow: "0 0 14px hsla(30, 50%, 30%, 0.35), 0 0 28px hsla(25, 40%, 25%, 0.15)", backgroundColor: "rgba(60, 40, 20, 0.15)" };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
@@ -877,9 +882,12 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     case "frost":
       setLightVars("205 40% 94%", "210 40% 15%", "205 50% 97%", "210 40% 15%", "205 30% 88%", "210 30% 22%", "205 30% 90%", "210 15% 48%", "205 25% 82%", "205 50% 97%", "205 30% 82%");
       break;
+    case "timber":
+      setDarkVars("25 35% 4%", "30 25% 90%", "28 30% 8%", "30 25% 90%", "25 20% 14%", "30 20% 85%", "25 22% 11%", "30 12% 48%", "25 18% 16%", "28 30% 8%");
+      break;
   }
 
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle", "frame-bark"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);
