@@ -1,61 +1,49 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+## Monthly Focus → Compact Notification Redesign
 
-### Concept
+### Current Problem
+The Monthly Focus banner takes up significant vertical space at the top of the dashboard — feels cluttered and intrusive.
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+### New Design
+Replace the banner with a **floating 🎯 icon button** positioned in the top-left area of the dashboard. It works like a notification bell:
 
-### Shortcut Map
+```text
+┌─────────────────────────────────┐
+│ 🎯 ←(icon, subtle pulse)       │
+│   ┌──────────────────┐          │
+│   │ Monthly Focus     │ ← popover appears on click
+│   │ March 2026        │
+│   │ • Focus item 1    │
+│   │ • Focus item 2    │
+│   │ [+ Add item]  [✏] │
+│   └──────────────────┘          │
+│                                 │
+│  Dashboard Hero                 │
+│  Category Grid                  │
+└─────────────────────────────────┘
+```
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+**Behavior:**
+- **Icon**: Small 🎯 button with a subtle periodic pulse/glow animation (every ~8 seconds) as a gentle reminder
+- **Badge**: Shows item count as a tiny dot/number badge when items exist
+- **Click → Popover**: Opens a compact dropdown with the focus items list, edit mode, and add input — same CRUD logic, just in a popover
+- **No banner, no dismiss** — it's always there as a small icon, never takes space
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+### Technical Plan
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+1. **Rewrite `MonthlyFocusBanner.tsx`** → rename conceptually to a compact widget
+   - Replace the full-width banner with a `Popover` (from shadcn) triggered by a 🎯 button
+   - Add a CSS `animate-pulse` variant that triggers every ~8s using a keyframe + interval toggle
+   - Show a small badge dot when `items.length > 0`
+   - Popover contains: month label, items list, edit/add controls (reuse existing logic)
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
+2. **Update `DashboardView.tsx`**
+   - Move `MonthlyFocusBanner` from above the hero to inside/beside the hero action buttons area, or as a fixed-position element in the top-left
+   - Position it as part of the dashboard header row rather than a standalone block
 
-### Implementation
+3. **Add subtle reminder animation** in CSS
+   - A gentle glow pulse on the 🎯 icon that fires periodically (not constantly) — e.g., 2s animation every 10s via a class toggle interval
 
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
-
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
-
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
-
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
-
-### File Summary
-
-| File | Change |
-|------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
-
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+No database changes needed — same data, just a different UI container.
 
