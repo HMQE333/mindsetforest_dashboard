@@ -74,8 +74,8 @@ export function useUserSettings() {
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
           setPreferences(prefs);
         }
-        if (prefs.theme || prefs.accentColor || prefs.frameStyle) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default");
+        if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair) {
+          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default");
         }
       }
 
