@@ -292,7 +292,89 @@ export default function BackgroundPattern({ pattern }: Props) {
     };
   }, [pattern]);
 
+  // Snowfall animation
+  useEffect(() => {
+    if (pattern !== "snow") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+
+    interface Snowflake {
+      x: number; y: number; r: number;
+      speed: number; wobbleSpeed: number; wobblePhase: number;
+      opacity: number;
+    }
+
+    const flakes: Snowflake[] = [];
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const count = Math.floor((canvas.width * canvas.height) / 12000) + 40;
+    for (let i = 0; i < count; i++) {
+      flakes.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: Math.random() * 2.5 + 0.8,
+        speed: Math.random() * 0.6 + 0.2,
+        wobbleSpeed: Math.random() * 0.002 + 0.001,
+        wobblePhase: Math.random() * Math.PI * 2,
+        opacity: Math.random() * 0.4 + 0.3,
+      });
+    }
+
+    const animate = (t: number) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const f of flakes) {
+        const wobble = Math.sin(t * f.wobbleSpeed + f.wobblePhase) * 0.6;
+        f.y += f.speed;
+        f.x += wobble;
+
+        if (f.y > canvas.height + 10) {
+          f.y = -10;
+          f.x = Math.random() * canvas.width;
+        }
+        if (f.x < -10) f.x = canvas.width + 10;
+        if (f.x > canvas.width + 10) f.x = -10;
+
+        // Soft glow for larger flakes
+        if (f.r > 2) {
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, f.r * 3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(200, 220, 255, ${f.opacity * 0.08})`;
+          ctx.fill();
+        }
+
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(220, 235, 255, ${f.opacity})`;
+        ctx.fill();
+      }
+
+      animId = requestAnimationFrame(animate);
+    };
+
+    animId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [pattern]);
+
   if (pattern === "none") return null;
+
+  if (pattern === "snow") {
+    return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />;
+  }
 
   if (pattern === "forest") {
     return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" />;
