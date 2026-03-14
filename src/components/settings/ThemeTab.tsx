@@ -621,8 +621,8 @@ const ACCENTS_MAP: Record<AccentColor, { hue: number; sat: number; light: number
   ACCENTS.map(a => [a.id, { hue: a.hue, sat: a.sat, light: a.light }])
 ) as any;
 
-/** Apply theme + accent + frame to CSS variables immediately (live preview) */
-export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default") {
+/** Apply theme + accent + frame + font to CSS variables immediately (live preview) */
+export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: FrameStyle = "default", font: FontPair = "default") {
   const root = document.documentElement;
   const a = ACCENTS_MAP[accent] || ACCENTS_MAP.purple;
   const h = a.hue, s = a.sat, l = a.light;
@@ -637,6 +637,22 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
   root.style.setProperty("--xp-gradient-to", `${(h + 29) % 360} ${Math.min(s + 14, 100)}% ${Math.min(l + 3, 80)}%`);
   root.style.setProperty("--sidebar-primary", `${h} ${s}% ${l}%`);
   root.style.setProperty("--sidebar-ring", `${h} ${s}% ${l}%`);
+
+  // Apply font pair
+  const fp = FONT_PAIRS.find(f => f.id === font) || FONT_PAIRS[0];
+  if (fp.googleImport) {
+    const linkId = "google-fonts-custom";
+    let link = document.getElementById(linkId) as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = linkId;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    link.href = `https://fonts.googleapis.com/css2?${fp.googleImport}&display=swap`;
+  }
+  document.body.style.fontFamily = `'${fp.body}', system-ui, -apple-system, sans-serif`;
+  root.style.setProperty("--font-display", `'${fp.display}'`);
 
   const setDarkVars = (bg: string, fg: string, card: string, cardFg: string, sec: string, secFg: string, mut: string, mutFg: string, brd: string, glass: string) => {
     root.style.setProperty("--background", bg);
