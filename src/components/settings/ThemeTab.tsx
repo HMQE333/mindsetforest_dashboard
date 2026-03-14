@@ -232,6 +232,21 @@ function CardStylePreview({ styleId, accent }: { styleId: CardStyle; accent: Acc
           border: "1px solid hsla(200, 60%, 80%, 0.25)",
           boxShadow: "inset 0 0 20px hsla(200, 70%, 80%, 0.06), 0 4px 20px rgba(0,0,0,0.2)",
         };
+      case "wood":
+        return {
+          ...base,
+          backgroundColor: "hsl(28, 40%, 18%)",
+          border: "1px solid hsl(28, 30%, 28%)",
+          boxShadow: "inset 0 1px 0 hsla(35, 40%, 30%, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
+          borderRadius: 10,
+          backgroundImage: `repeating-linear-gradient(
+            95deg,
+            transparent,
+            transparent 8px,
+            hsla(30, 30%, 22%, 0.4) 8px,
+            hsla(30, 30%, 22%, 0.4) 9px
+          )`,
+        };
       default:
         return {
           ...base,
