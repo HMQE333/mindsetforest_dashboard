@@ -159,7 +159,7 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
       case "icicle":
         return { ...baseCard, borderColor: "hsl(200, 80%, 85%)", boxShadow: "0 0 16px hsla(200, 80%, 75%, 0.25), 0 0 32px hsla(200, 70%, 70%, 0.1)", backgroundColor: "rgba(200, 230, 255, 0.05)" };
       case "bark":
-        return { ...baseCard, borderColor: "hsl(30, 50%, 35%)", boxShadow: "0 0 14px hsla(30, 50%, 30%, 0.35), 0 0 28px hsla(25, 40%, 25%, 0.15)", backgroundColor: "rgba(60, 40, 20, 0.15)" };
+        return { ...baseCard, borderColor: "hsl(28, 45%, 38%)", borderWidth: "1.5px", boxShadow: "0 0 18px hsla(30, 55%, 32%, 0.4), 0 0 36px hsla(25, 45%, 22%, 0.18), inset 0 0 14px hsla(30, 40%, 20%, 0.12)", backgroundColor: "rgba(60, 40, 20, 0.15)", backgroundImage: "repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 28%, 0.18) 10px, hsla(28, 35%, 28%, 0.18) 11.5px), repeating-linear-gradient(94deg, transparent, transparent 18px, hsla(25, 30%, 25%, 0.12) 18px, hsla(25, 30%, 25%, 0.12) 19px)" };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
