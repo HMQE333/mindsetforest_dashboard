@@ -35,6 +35,7 @@ const FRAMES: { id: FrameStyle; label: string; icon: string; description: string
   { id: "sharp", label: "Sharp", icon: "🔷", description: "Hard edges, subtle scale" },
   { id: "prism", label: "Prism", icon: "🌈", description: "Dual accent + card glow" },
   { id: "electric", label: "Electric", icon: "⚡", description: "Animated crackling border" },
+  { id: "plasma", label: "Plasma", icon: "🔮", description: "Electric + card-color border" },
 ];
 
 const FONT_PAIRS: { id: FontPair; label: string; display: string; body: string; preview: string; googleImport: string }[] = [
@@ -144,6 +145,8 @@ function FrameStylePreview({ frameId, accent }: { frameId: FrameStyle; accent: A
         return { ...baseCard, boxShadow: `4px 0 12px ${accentDim}, -4px 0 12px rgba(255,180,255,0.12)`, borderColor: accentColor };
       case "electric":
         return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite" };
+      case "plasma":
+        return { ...baseCard, borderColor: accentColor, boxShadow: `0 0 10px ${accentDim}, 0 0 20px ${accentDim}`, borderWidth: 1.5, animation: "electric-preview-pulse 1.5s infinite", background: `linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.1))` };
       default:
         return { ...baseCard, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
     }
@@ -843,7 +846,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
       break;
   }
 
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric"];
+  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);

@@ -29,7 +29,7 @@ export interface UserMetric {
 
 export type ThemeMode = "dark" | "light" | "oled" | "midnight" | "forest" | "crimson" | "cyber" | "sandstone";
 export type AccentColor = "purple" | "blue" | "green" | "orange" | "pink" | "red" | "cyan" | "gold";
-export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp" | "prism" | "electric";
+export type FrameStyle = "default" | "glow" | "aura" | "neon" | "frost" | "sharp" | "prism" | "electric" | "plasma";
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
 export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
 export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh" | "fireflies" | "forest";
