@@ -801,6 +801,16 @@
     inset 0 1px 0 hsla(35, 45%, 70%, 0.2);
 }
 
+.light-theme .frame-bark .glass-card-hover.preview-active {
+  border-color: hsl(28 40% 62%);
+  box-shadow:
+    0 0 18px hsla(30, 45%, 55%, 0.2),
+    0 0 36px hsla(25, 35%, 45%, 0.08),
+    0 2px 10px hsla(20, 30%, 40%, 0.12),
+    inset 0 0 14px hsla(30, 35%, 55%, 0.08),
+    inset 0 1px 0 hsla(35, 45%, 70%, 0.2);
+}
+
 .light-theme .frame-bark .glass-card-hover::before {
   background-image:
     repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 55%, 0.15) 10px, hsla(28, 35%, 55%, 0.15) 11.5px),
