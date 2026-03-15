@@ -1,40 +1,61 @@
 
 
-## Plan: Fix Inconsistent Card Frame Behaviors
+## Plan: Keyboard Shortcuts System for Dashboard
 
-### Issues Found
+### Concept
 
-After reviewing all frame and card style CSS, I identified these inconsistencies:
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-**1. Aura frame uses wrong CSS variable**
-The Aura frame references `--card` (the card background color — a dark/neutral value) instead of `--card-color` (the per-card category color). This makes Aura's glow nearly invisible, looking identical to having no frame at all. Both the `:hover` and `.preview-active` rules have this bug.
+### Shortcut Map
 
-**2. Glassmorphic card clips Electric, Plasma, and Bark effects**
-The Glassmorphic card style sets `overflow: hidden` on `.glass-card-hover`. Electric and Plasma use `::after` pseudo-elements with `inset: -2px` (extending 2px outside the card), and Bark uses `::before` similarly. When these frames are combined with Glassmorphic cards, the pseudo-element effects are completely clipped and invisible.
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-**3. Missing light-theme `.preview-active` for Bark**
-There is a `.light-theme .frame-bark .glass-card-hover:hover` override, but no matching `.light-theme .frame-bark .glass-card-hover.preview-active` rule — so the Bark preview looks wrong on light themes (Frost, Sandstone, Light).
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-### Changes
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-**`src/index.css`**
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-1. **Aura fix** (~4 lines): Replace `hsl(var(--card) / ...)` with `var(--card-color, hsl(var(--glow-purple) / ...))` in both the `:hover` rule (line 228-232) and the `.preview-active` rule (line 701-705). This makes Aura glow with the category color like Prism and Plasma do.
+### Implementation
 
-2. **Glassmorphic overflow fix** (~6 lines): Add override rules so that when a pseudo-element frame is combined with Glassmorphic, overflow remains visible:
-```css
-.frame-electric .glass-card-hover,
-.frame-plasma .glass-card-hover,
-.frame-bark .glass-card-hover {
-  overflow: visible;
-}
-```
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
 
-3. **Light-theme Bark preview-active** (~8 lines): Duplicate the light-theme Bark `:hover` rule for `.preview-active`:
-```css
-.light-theme .frame-bark .glass-card-hover.preview-active { /* same as :hover */ }
-```
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
 
-### Files
-- **`src/index.css`** — ~18 lines changed/added across 4 locations
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
+
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
+
+### File Summary
+
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
 
