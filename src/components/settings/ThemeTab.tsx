@@ -72,7 +72,7 @@ const CARD_STYLES: { id: CardStyle; label: string; icon: string; description: st
   { id: "elevated", label: "Elevated", icon: "📦", description: "Strong shadows, layered depth" },
   { id: "frosted", label: "Frosted", icon: "🧊", description: "Icy translucent glass" },
   { id: "wood", label: "Wood", icon: "🪵", description: "Natural wood grain texture" },
-  { id: "moss", label: "Moss", icon: "🌿", description: "Green organic moss texture" },
+  { id: "neumorphic", label: "Neumorphic", icon: "🫧", description: "Soft clay-like 3D surface" },
 ];
 
 const HERO_LAYOUTS: { id: HeroLayout; label: string; icon: string; description: string }[] = [
@@ -940,7 +940,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     root.classList.add(`frame-${frame}`);
   }
 
-  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated", "card-frosted", "card-wood", "card-moss"];
+  const cardClasses = ["card-default", "card-glassmorphic", "card-solid", "card-outline", "card-elevated", "card-frosted", "card-wood", "card-neumorphic"];
   root.classList.remove(...cardClasses);
   if (cardStyle && cardStyle !== "default") {
     root.classList.add(`card-${cardStyle}`);

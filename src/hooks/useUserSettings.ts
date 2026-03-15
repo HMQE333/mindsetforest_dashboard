@@ -34,7 +34,7 @@ export type FrameStyle = "default" | "aura" | "neon" | "frost" | "sharp" | "pris
 export type HeroLayout = "default" | "compact" | "minimal" | "command" | "solid";
 export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcraft" | "clean";
 export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh" | "fireflies" | "forest" | "snow" | "leaves";
-export type CardStyle = "default" | "glassmorphic" | "solid" | "outline" | "elevated" | "frosted" | "wood" | "moss";
+export type CardStyle = "default" | "glassmorphic" | "solid" | "outline" | "elevated" | "frosted" | "wood" | "neumorphic";
 export type FocusPulseStyle = "glow" | "ping" | "none";
 
 export interface UserPreferences {
