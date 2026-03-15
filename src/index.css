@@ -697,13 +697,6 @@
   border-color: hsl(var(--glass-border) / 0.2);
 }
 
-/* Glow */
-.frame-glow .glass-card-hover.preview-active {
-  transform: none;
-  border-color: hsl(var(--glow-purple) / 0.5);
-  box-shadow: 0 0 24px hsl(var(--glow-purple) / 0.35), 0 0 48px hsl(var(--glow-purple) / 0.15);
-}
-
 /* Aura */
 .frame-aura .glass-card-hover.preview-active {
   transform: none;
