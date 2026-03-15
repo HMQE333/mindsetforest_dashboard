@@ -1,61 +1,35 @@
 
 
-## Plan: Keyboard Shortcuts System for Dashboard
+# Improve Glassmorphic Card Style
 
-### Concept
+## Current State
+The glassmorphic style has a decent foundation — 24px blur, saturate, gradient background, shimmer border via `::before` mask trick, and a purple-tinted hover. But it feels flat and the shimmer is subtle to the point of being invisible.
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+## Improvements
 
-### Shortcut Map
+### 1. Richer glass depth
+- Increase blur to 28px and add brightness adjustment for a more convincing frosted-glass look
+- Add a subtle top highlight (specular reflection) via a second `::after` pseudo-element — a soft white-to-transparent gradient at the top edge simulating light hitting glass
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+### 2. More visible iridescent shimmer border
+- Expand the `::before` gradient to use a wider color sweep (purple → cyan → pink) with slightly higher opacity so the rainbow edge is actually perceptible
+- Add a slow 8s animation that shifts the gradient angle, creating a living iridescent edge
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+### 3. Better hover state
+- On hover, intensify the shimmer opacity and add a soft outer glow that picks up the accent color
+- Add a subtle `scale(1.005)` and refined shadow stack for depth
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+### 4. Inner light refraction
+- Add a faint diagonal highlight band across the card background gradient to simulate light refracting through glass
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
+### 5. Light theme adaptation
+- Ensure all effects remain visible on light themes by using appropriate opacity values and darker border fallbacks
 
-### Implementation
+## Files to Change
+- **`src/index.css`** — Replace lines 334-393 with improved glassmorphic CSS (shimmer animation keyframes, enhanced blur/gradient/shadow, `::after` specular highlight, animated `::before` border)
 
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
-
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
-
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
-
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
-
-### File Summary
-
-| File | Change |
-|------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
-
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+## Technical Notes
+- The `::before` is used for shimmer border, `::after` for specular highlight — both need `pointer-events: none`
+- The overflow override block for electric/plasma/bark frames will be preserved
+- Animation will use `@keyframes glassmorphic-shimmer` rotating the gradient angle
 
