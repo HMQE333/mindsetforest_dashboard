@@ -31,7 +31,6 @@ const ACCENTS: { id: AccentColor; label: string; hue: number; sat: number; light
 
 const FRAMES: { id: FrameStyle; label: string; icon: string; description: string }[] = [
   { id: "default", label: "Default", icon: "🎯", description: "Lift + shadow on hover" },
-  { id: "glow", label: "Glow", icon: "✨", description: "Accent-colored glow border" },
   { id: "aura", label: "Aura", icon: "🔆", description: "Card-color matching glow" },
   { id: "neon", label: "Neon", icon: "💡", description: "Bright neon outline" },
   { id: "frost", label: "Frost", icon: "❄️", description: "Frosted blur + white border" },
@@ -121,7 +120,6 @@ function Section({ title, icon, defaultOpen = true, children }: { title: string;
 /* ── Frame Style Preview (uses real CSS classes) ── */
 const FRAME_PREVIEW_COLORS: Record<string, string> = {
   default: "var(--glow-purple)",
-  glow: "var(--cat-mind)",
   aura: "var(--cat-spirit)",
   neon: "var(--cat-exploration)",
   frost: "var(--cat-networking)",
@@ -936,7 +934,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
       break;
   }
 
-  const frameClasses = ["frame-default", "frame-glow", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle", "frame-bark"];
+  const frameClasses = ["frame-default", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism", "frame-electric", "frame-plasma", "frame-icicle", "frame-bark"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {
     root.classList.add(`frame-${frame}`);

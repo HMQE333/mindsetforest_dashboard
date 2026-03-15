@@ -217,13 +217,6 @@
 
 /* ===== Frame Styles (card hover overrides) ===== */
 
-/* Glow — accent-colored glow border, no lift */
-.frame-glow .glass-card-hover:hover {
-  transform: none;
-  border-color: hsl(var(--glow-purple) / 0.5);
-  box-shadow: 0 0 24px hsl(var(--glow-purple) / 0.35), 0 0 48px hsl(var(--glow-purple) / 0.15);
-}
-
 /* Aura — card-color matching glow */
 .frame-aura .glass-card-hover:hover {
   transform: none;
@@ -695,13 +688,6 @@
   @apply -translate-y-1;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   border-color: hsl(var(--glass-border) / 0.2);
-}
-
-/* Glow */
-.frame-glow .glass-card-hover.preview-active {
-  transform: none;
-  border-color: hsl(var(--glow-purple) / 0.5);
-  box-shadow: 0 0 24px hsl(var(--glow-purple) / 0.35), 0 0 48px hsl(var(--glow-purple) / 0.15);
 }
 
 /* Aura */
