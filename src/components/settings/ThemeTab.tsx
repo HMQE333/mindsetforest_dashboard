@@ -133,13 +133,13 @@ const FRAME_PREVIEW_COLORS: Record<string, string> = {
   bark: "var(--cat-creation)",
 };
 
-function FrameStylePreview({ frameId }: { frameId: FrameStyle }) {
+function FrameStylePreview({ frameId, isSelected = false }: { frameId: FrameStyle; isSelected?: boolean }) {
   const wrapperCls = frameId === "default" ? "" : `frame-${frameId}`;
   const cardColor = FRAME_PREVIEW_COLORS[frameId] || "var(--glow-purple)";
   return (
     <div className={wrapperCls}>
       <div
-        className="glass-card-hover preview-active flex items-center gap-1.5 px-2.5"
+        className={`glass-card-hover flex items-center gap-1.5 px-2.5 ${isSelected ? "preview-active" : ""}`}
         style={{ height: 44, borderRadius: 8, "--card-color": `hsl(${cardColor})` } as React.CSSProperties}
       >
         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `hsl(${cardColor})` }} />
