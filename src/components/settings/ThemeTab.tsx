@@ -119,16 +119,31 @@ function Section({ title, icon, defaultOpen = true, children }: { title: string;
 }
 
 /* ── Frame Style Preview (uses real CSS classes) ── */
+const FRAME_PREVIEW_COLORS: Record<string, string> = {
+  default: "var(--glow-purple)",
+  glow: "var(--cat-mind)",
+  aura: "var(--cat-spirit)",
+  neon: "var(--cat-exploration)",
+  frost: "var(--cat-networking)",
+  sharp: "var(--cat-order)",
+  prism: "var(--cat-creation)",
+  electric: "var(--cat-mind)",
+  plasma: "var(--cat-body)",
+  icicle: "var(--cat-exploration)",
+  bark: "var(--cat-creation)",
+};
+
 function FrameStylePreview({ frameId }: { frameId: FrameStyle }) {
   const wrapperCls = frameId === "default" ? "" : `frame-${frameId}`;
+  const cardColor = FRAME_PREVIEW_COLORS[frameId] || "var(--glow-purple)";
   return (
     <div className={wrapperCls}>
       <div
         className="glass-card-hover preview-active flex items-center gap-1.5 px-2.5"
-        style={{ height: 44, borderRadius: 8 }}
+        style={{ height: 44, borderRadius: 8, "--card-color": `hsl(${cardColor})` } as React.CSSProperties}
       >
-        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-        <div className="w-6 h-[3px] rounded bg-foreground/15" />
+        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `hsl(${cardColor})` }} />
+        <div className="w-6 h-[3px] rounded" style={{ backgroundColor: `hsl(${cardColor} / 0.3)` }} />
         <div className="flex-1" />
         <div className="w-4 h-[3px] rounded bg-foreground/10" />
       </div>
