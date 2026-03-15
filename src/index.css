@@ -331,33 +331,54 @@
   50% { opacity: 1; box-shadow: 0 0 14px currentColor; }
 }
 
-/* Glassmorphic — heavy blur, iridescent shimmer, inspired by Anchored Glassmorphic Tab Indicator */
+/* Glassmorphic shimmer animation */
+@keyframes glassmorphic-shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Glassmorphic — deep frosted glass with iridescent shimmer border & specular highlight */
 .card-glassmorphic .glass-card,
 .card-glassmorphic .glass-card-hover {
-  @apply bg-card/30 border-white/15 rounded-2xl;
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  position: relative;
+  overflow: hidden;
+  @apply border-white/10 rounded-2xl;
+  backdrop-filter: blur(28px) saturate(1.7) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(1.7) brightness(1.05);
   background: linear-gradient(
     135deg,
-    hsl(var(--card) / 0.35) 0%,
-    hsl(var(--card) / 0.15) 40%,
-    hsl(var(--card) / 0.25) 100%
+    hsl(var(--card) / 0.4) 0%,
+    hsl(var(--card) / 0.15) 35%,
+    hsl(var(--card) / 0.08) 55%,
+    hsl(var(--card) / 0.3) 100%
+  ),
+  linear-gradient(
+    160deg,
+    hsl(var(--glass-border) / 0.06) 0%,
+    transparent 40%,
+    transparent 60%,
+    hsl(var(--glass-border) / 0.03) 100%
   );
   box-shadow:
-    inset 0 1px 0 hsl(var(--glass-border) / 0.12),
+    inset 0 1px 0 hsl(var(--glass-border) / 0.15),
     inset 0 -1px 0 hsl(var(--glass-border) / 0.04),
-    0 4px 24px hsl(var(--background) / 0.4);
+    0 4px 24px hsl(var(--background) / 0.4),
+    0 1px 3px hsl(var(--foreground) / 0.06);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .card-glassmorphic .glass-card-hover:hover {
-  border-color: hsl(var(--glow-purple) / 0.35);
+  transform: scale(1.005);
+  border-color: hsl(var(--glow-purple) / 0.4);
   box-shadow:
-    inset 0 1px 0 hsl(var(--glass-border) / 0.18),
-    0 0 40px hsl(var(--glow-purple) / 0.12),
-    0 8px 32px hsl(var(--background) / 0.5);
+    inset 0 1px 0 hsl(var(--glass-border) / 0.22),
+    0 0 50px hsl(var(--glow-purple) / 0.15),
+    0 0 20px hsl(var(--accent) / 0.08),
+    0 10px 40px hsl(var(--background) / 0.5);
 }
 
-/* Shimmer edge effect for glassmorphic */
+/* Iridescent shimmer border — animated gradient sweep */
 .card-glassmorphic .glass-card::before,
 .card-glassmorphic .glass-card-hover::before {
   content: '';
@@ -367,22 +388,46 @@
   padding: 1px;
   background: linear-gradient(
     135deg,
-    hsl(var(--glow-purple) / 0.2),
-    transparent 40%,
-    hsl(var(--glow-pink) / 0.15) 60%,
-    transparent
+    hsl(var(--glow-purple) / 0.35) 0%,
+    hsl(280 80% 65% / 0.2) 20%,
+    hsl(190 90% 60% / 0.3) 40%,
+    transparent 55%,
+    hsl(var(--glow-pink) / 0.25) 70%,
+    hsl(var(--glow-purple) / 0.2) 85%,
+    transparent 100%
   );
+  background-size: 200% 200%;
+  animation: glassmorphic-shimmer 8s ease-in-out infinite;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
 }
 
-.card-glassmorphic .glass-card,
-.card-glassmorphic .glass-card-hover {
-  position: relative;
-  overflow: hidden;
+.card-glassmorphic .glass-card-hover:hover::before {
+  opacity: 1;
+}
+
+/* Specular top highlight — simulates light hitting curved glass */
+.card-glassmorphic .glass-card::after,
+.card-glassmorphic .glass-card-hover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 40%;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    hsl(var(--glass-border) / 0.12) 0%,
+    hsl(var(--glass-border) / 0.04) 40%,
+    transparent 100%
+  );
+  pointer-events: none;
 }
 
 /* Override glassmorphic overflow for frames that use pseudo-elements outside the card */
