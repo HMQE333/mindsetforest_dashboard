@@ -392,6 +392,13 @@
   overflow: hidden;
 }
 
+/* Override glassmorphic overflow for frames that use pseudo-elements outside the card */
+.frame-electric .card-glassmorphic .glass-card-hover,
+.frame-plasma .card-glassmorphic .glass-card-hover,
+.frame-bark .card-glassmorphic .glass-card-hover {
+  overflow: visible;
+}
+
 /* Solid — opaque, flat, no transparency */
 .card-solid .glass-card,
 .card-solid .glass-card-hover {
