@@ -227,8 +227,8 @@
 /* Aura — card-color matching glow */
 .frame-aura .glass-card-hover:hover {
   transform: none;
-  border-color: hsl(var(--card) / 0.6);
-  box-shadow: 0 0 28px hsl(var(--card) / 0.5), 0 0 56px hsl(var(--card) / 0.25), 0 4px 16px hsl(var(--card) / 0.3);
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
+  box-shadow: 0 0 28px var(--card-color, hsl(var(--glow-purple) / 0.5)), 0 0 56px var(--card-color, hsl(var(--glow-purple) / 0.25)), 0 4px 16px var(--card-color, hsl(var(--glow-purple) / 0.3));
 }
 
 /* Neon — bright neon outline + subtle inner glow */
