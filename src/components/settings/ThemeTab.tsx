@@ -120,7 +120,6 @@ function Section({ title, icon, defaultOpen = true, children }: { title: string;
 /* ── Frame Style Preview (uses real CSS classes) ── */
 const FRAME_PREVIEW_COLORS: Record<string, string> = {
   default: "var(--glow-purple)",
-  glow: "var(--cat-mind)",
   aura: "var(--cat-spirit)",
   neon: "var(--cat-exploration)",
   frost: "var(--cat-networking)",
