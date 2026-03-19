@@ -263,6 +263,16 @@ export default function DashboardView() {
         />
       )}
 
+      {/* Category Complete Effect */}
+      {categoryComplete && (
+        <CategoryCompleteEffect
+          key={categoryComplete.key}
+          style={preferences.completionEffect || "burst"}
+          color={categoryComplete.color}
+          onDone={() => setCategoryComplete(null)}
+        />
+      )}
+
       {/* Floating XP */}
       <AnimatePresence>
         {floatingXP && (
