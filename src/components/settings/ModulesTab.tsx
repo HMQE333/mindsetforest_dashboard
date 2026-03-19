@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import type { FocusPulseStyle } from "@/hooks/useUserSettings";
+import type { FocusPulseStyle, CompletionEffect } from "@/hooks/useUserSettings";
 
 export interface ModuleConfig {
   id: string;
@@ -29,14 +29,23 @@ const PULSE_OPTIONS: { value: FocusPulseStyle; label: string; desc: string }[] =
   { value: "none", label: "🚫 None", desc: "No animation" },
 ];
 
+const COMPLETION_EFFECT_OPTIONS: { value: CompletionEffect; label: string; desc: string }[] = [
+  { value: "burst", label: "✨ Burst", desc: "Particle explosion" },
+  { value: "banner", label: "🏆 Banner", desc: "Sliding badge" },
+  { value: "fireworks", label: "🎆 Fireworks", desc: "Confetti clusters" },
+  { value: "none", label: "🚫 None", desc: "No animation" },
+];
+
 interface ModulesTabProps {
   enabledModules: string[];
   onSave: (modules: string[]) => Promise<void>;
   focusPulseStyle?: FocusPulseStyle;
   onSavePulseStyle?: (style: FocusPulseStyle) => void;
+  completionEffect?: CompletionEffect;
+  onSaveCompletionEffect?: (effect: CompletionEffect) => void;
 }
 
-export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
 
@@ -136,6 +145,27 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
           </div>
         </div>
       )}
+
+      {/* Mission Complete Effect picker — always visible */}
+      <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">
+        <div className="text-xs font-semibold text-foreground">🎉 Mission Complete Effect</div>
+        <div className="grid grid-cols-2 gap-2">
+          {COMPLETION_EFFECT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => onSaveCompletionEffect?.(opt.value)}
+              className={`p-2 rounded-lg border text-center transition-all text-xs ${
+                completionEffect === opt.value
+                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  : "border-border bg-muted/20 text-muted-foreground hover:border-white/20"
+              }`}
+            >
+              <div className="font-medium">{opt.label}</div>
+              <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {dirty && (
         <motion.button

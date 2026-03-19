@@ -14,6 +14,7 @@ import ProjectsListView from "./ProjectsListView";
 import EditMissionsModal from "./EditMissionsModal";
 import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
+import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import WeeklyProgress from "./WeeklyProgress";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
@@ -32,6 +33,7 @@ export default function DashboardView() {
   const [aiCategory, setAICategory] = useState<string | null>(null);
   const [levelUpTrigger, setLevelUpTrigger] = useState<{ level: number; key: number } | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; xp: number } | null>(null);
+  const [categoryComplete, setCategoryComplete] = useState<{ categoryId: string; color: string; key: number } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const prevLevel = useRef(state.currentLevel);
 
@@ -75,7 +77,21 @@ export default function DashboardView() {
         setLevelUpTrigger({ level: newLevel, key: Date.now() });
       }
     }, 100);
-  }, [completeMission, state.currentLevel, state.currentXP]);
+
+    // Category complete check (deferred)
+    setTimeout(() => {
+      const missions = getMissions(categoryId);
+      const completedCount = state.completedMissions.size; // before this tick resolves
+      // count how many from this category are already done (excluding current)
+      const alreadyDone = Array.from(state.completedMissions).filter(id =>
+        id.startsWith(categoryId + "-")
+      ).length;
+      if (alreadyDone + 1 === missions.length && missions.length > 0) {
+        const cat = categories.find(c => c.id === categoryId);
+        setCategoryComplete({ categoryId, color: cat?.color || "hsl(var(--primary))", key: Date.now() });
+      }
+    }, 150);
+  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories]);
 
   // Keyboard shortcuts
   const shortcutContext = selectedCategory === null ? "grid" as const
@@ -244,6 +260,16 @@ export default function DashboardView() {
           level={levelUpTrigger.level}
           show={true}
           key={levelUpTrigger.key}
+        />
+      )}
+
+      {/* Category Complete Effect */}
+      {categoryComplete && (
+        <CategoryCompleteEffect
+          key={categoryComplete.key}
+          style={preferences.completionEffect || "burst"}
+          color={categoryComplete.color}
+          onDone={() => setCategoryComplete(null)}
         />
       )}
 

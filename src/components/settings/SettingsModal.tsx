@@ -105,6 +105,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onSavePulseStyle={(style) => {
                         settings.savePreferences({ ...settings.preferences, focusPulseStyle: style });
                       }}
+                      completionEffect={settings.preferences.completionEffect || "burst"}
+                      onSaveCompletionEffect={(effect) => {
+                        settings.savePreferences({ ...settings.preferences, completionEffect: effect });
+                      }}
                     />
                   )}
                   {activeTab === "theme" && (
