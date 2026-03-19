@@ -375,8 +375,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
         open={newRecipeOpen}
         onClose={() => setNewRecipeOpen(false)}
         onSave={async (r) => { await onSaveRecipe(r); setNewRecipeOpen(false); toast.success("Recipe created from AI result!"); }}
-      initial={null}
-        prefill={prefilledRecipe}
+      initial={prefilledRecipe as unknown as CookingRecipe}
       />
     </div>
   );
