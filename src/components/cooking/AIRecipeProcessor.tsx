@@ -157,7 +157,7 @@ export default function AIRecipeProcessor() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-card rounded-2xl p-5 space-y-3 border border-green-500/20"
+              className="glass-card rounded-2xl p-5 space-y-3 border border-primary/30"
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">✨ Processed Result</h3>
