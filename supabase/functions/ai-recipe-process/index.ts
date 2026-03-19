@@ -13,16 +13,39 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = `You are an expert chef and culinary assistant. 
+    const systemPrompt = `You are an expert chef and culinary assistant.
 When given a recipe and a user request, transform the recipe accordingly and return a clean, well-structured result.
-Rules:
+
+GENERAL RULES:
 - Output plain text only. No markdown symbols like ###, **, \`, >, *.
 - Structure with simple line breaks and dashes.
 - Be precise with numbers and units.
 - If asked to convert to grams, use standard conversions (e.g. 1 cup flour = 120g, 1 tbsp butter = 14g).
 - If asked for temperatures, infer from cooking method and ingredients.
 - If asked to scale portions, multiply all quantities proportionally.
-- If the user prompt is vague or general, make the recipe clearer and more precise overall.`;
+- If the user prompt is vague or general, make the recipe clearer and more precise overall.
+
+SIMPLIFY / CLEAN MODE — activate whenever the user asks to simplify, clean, restructure, or reduce cognitive load:
+- STRIP completely: all tips ("Porada:", "Tip:", "Note:"), backstory, personal anecdotes, shopping advice, opinionated commentary, "you can also", "if you prefer", "alternatively", brand recommendations.
+- ALTERNATIVES: when the recipe lists multiple options (e.g. "chicken or turkey", "mozzarella or cheddar"), pick the most common/best single option and use only that. Never present choices to the user.
+- QUANTITIES: convert all measurements to grams using standard conversions. Do not use cups, tablespoons, handfuls, or vague terms.
+- STEPS: each step is one action only. No explanations of why. No side notes. Maximum 15 words per step.
+- OUTPUT FORMAT — use exactly this structure, nothing else:
+
+RECIPE NAME (uppercase)
+
+Ingredients
+
+- Ingredient name: Xg
+- Ingredient name: Xg
+
+Instructions
+
+1. Action.
+2. Action.
+
+- Single blank line between sections. No blank lines between ingredient list items. No blank lines between instruction steps.
+- Do not add any text before the recipe name or after the last instruction.`;
 
     const userMessage = `Recipe:
 ${recipe}
