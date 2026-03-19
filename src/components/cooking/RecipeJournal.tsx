@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp } from "lucide-react";
-import { CookingRecipe, useCookingState } from "@/hooks/useCookingState";
+import { CookingRecipe } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
 
 const STATUS_COLORS: Record<string, string> = {
