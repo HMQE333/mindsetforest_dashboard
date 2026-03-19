@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X } from "lucide-react";
+import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X, Check } from "lucide-react";
+import { toast } from "sonner";
+
+const buildShoppingPrompt = (text: string) =>
+  `Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include any instructions — only the shopping list.\n\n---\n${text.trim()}\n---`;
 import { CookingRecipe } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
 
@@ -58,7 +62,16 @@ function PhotoLightbox({ url, title, onClose }: { url: string; title: string; on
 function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const [copiedShopping, setCopiedShopping] = useState(false);
   const accent = STATUS_ACCENT[recipe.status] || STATUS_ACCENT.tried;
+
+  const handleCopyShopping = () => {
+    const text = recipe.aiProcessedContent || `${recipe.ingredients}\n\n${recipe.instructions}`.trim();
+    navigator.clipboard.writeText(buildShoppingPrompt(text));
+    setCopiedShopping(true);
+    setTimeout(() => setCopiedShopping(false), 2000);
+    toast.success("Shopping prompt copied!");
+  };
 
   return (
     <>
@@ -115,6 +128,13 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
               )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={handleCopyShopping}
+                title="Copy shopping prompt for ChatGPT / Gemini"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+              >
+                {copiedShopping ? <Check className="w-4 h-4 text-primary" /> : <span className="text-sm leading-none">🛒</span>}
+              </button>
               <button onClick={() => onEdit(recipe)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
                 <Edit2 className="w-4 h-4" />
               </button>
