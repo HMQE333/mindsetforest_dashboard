@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X } from "lucide-react";
 import { CookingRecipe } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
 
