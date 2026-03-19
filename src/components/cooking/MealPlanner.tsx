@@ -91,7 +91,7 @@ function PlanEntryModal({ open, onClose, date, recipes, onSave, existing }: Plan
 interface MealPlannerProps {
   planEntries: CookingPlanEntry[];
   recipes: CookingRecipe[];
-  onSave: (e: Partial<CookingPlanEntry>) => Promise<void>;
+  onSave: (e: Partial<CookingPlanEntry>) => Promise<unknown>;
   onDelete: (id: string) => void;
 }
 
