@@ -1,58 +1,61 @@
 
-## Plan: Save AI Result to Recipe
 
-### What this does
-Adds a "Save to Recipe" button in the AI Processor result panel. When clicked, it shows a smart inline modal letting the user:
-1. **Attach to existing recipe** — pick from their journal, with a warning if that recipe already has AI content (asks to overwrite)
-2. **Create new journal entry** — opens a pre-filled RecipeFormModal with the AI result in the `aiProcessedContent` field and the pasted recipe text split into ingredients/instructions as best as possible
+## Plan: Keyboard Shortcuts System for Dashboard
 
-### How it works
+### Concept
 
-**`AIRecipeProcessor.tsx`** needs access to the recipe list and `saveRecipe` function — currently it's a standalone component with no props. The `CookingView.tsx` already has `cooking` state so we'll pass `recipes` and `saveRecipe` down as props.
+A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
 
-**Save modal** (inline, inside AIRecipeProcessor) — triggered when result exists:
-- Two-option selector: "Attach to existing" or "Create new entry"
-- **Attach to existing**: a searchable dropdown of recipe titles. On confirm — if the recipe already has `aiProcessedContent`, show a yellow warning: "This recipe already has AI content. Overwrite?" with Cancel / Overwrite buttons. On confirm, saves and toasts success.
-- **Create new**: opens `RecipeFormModal` pre-filled with `title` extracted from the pasted recipe (first non-empty line), `aiProcessedContent` set to the result, and the raw recipe pasted into the ingredients field as a starting point.
+### Shortcut Map
 
-### Files to change
+**Grid view (default):**
+- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
+- `P` → open Projects folder
+- `R` → Reset Day
 
-**`src/components/cooking/CookingView.tsx`**
-- Pass `recipes={cooking.recipes}` and `onSaveRecipe={cooking.saveRecipe}` props to `<AIRecipeProcessor />`
+**Projects list view:**
+- `Escape` → back to grid
+- `1-9` → select project by index
 
-**`src/components/cooking/AIRecipeProcessor.tsx`**
-- Accept `recipes` and `onSaveRecipe` props
-- Add "Save to Recipe" button below the Copy button in the result panel
-- Add inline `SaveToRecipeModal` component (no separate file needed, small enough) with:
-  - Mode selector: "Attach to existing" / "Create new"
-  - Existing recipe search/select + overwrite confirmation
-  - New recipe pre-fill flow using `RecipeFormModal`
+**Mission view (inside a category/project):**
+- `1-9` → complete mission by index
+- `E` → edit tasks
+- `A` → AI suggestions
+- `D` → reset defaults
+- `Escape` → back
 
-### No DB changes needed
-`ai_processed_content` column already exists on `cooking_recipes`. Just writing to it via `onSaveRecipe`.
+**Global:**
+- `?` or `K` → open shortcuts reference panel
 
-### User flow diagram
-```text
-[Result appears]
-      ↓
-[💾 Save to Recipe button]
-      ↓
- ┌─────────────────────────┐
- │  Attach to existing     │
- │  ──────────────────     │
- │  [search recipes]       │
- │  ↓ select one           │
- │  → has AI content?      │
- │     YES → "Overwrite?"  │
- │     NO  → save directly │
- └─────────────────────────┘
- ┌─────────────────────────┐
- │  Create new entry       │
- │  ──────────────────     │
- │  Opens RecipeFormModal  │
- │  pre-filled with:       │
- │  - title (first line)   │
- │  - AI result in notes   │
- │  - raw text in ingred.  │
- └─────────────────────────┘
-```
+### Implementation
+
+**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
+- Takes current context (grid / projects / mission:categoryId) and action callbacks
+- Registers `keydown` listener with `useEffect`, cleans up on unmount
+- Ignores shortcuts when focus is inside an input/textarea/modal
+- Returns nothing — pure side-effect hook
+
+**2. `DashboardView.tsx`**
+- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
+- Add state for showing shortcuts panel
+- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
+
+**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
+- A small modal/drawer showing all available shortcuts for the current context
+- Grouped by context with key badges (like `kbd` elements)
+- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
+
+**4. `DashboardHero.tsx`**
+- Add a small ⌨️ button that opens the shortcuts panel
+
+### File Summary
+
+| File | Change |
+|------|--------|
+| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
+| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
+| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
+| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+
+No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
+
