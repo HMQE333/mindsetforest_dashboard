@@ -49,6 +49,7 @@ export interface UserPreferences {
   backgroundPattern?: BackgroundPattern;
   cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
+  completionEffect?: CompletionEffect;
   customAccentHue?: number | null;
   cardOpacity?: number;
   backgroundIntensity?: number;
