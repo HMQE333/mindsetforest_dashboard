@@ -20,7 +20,7 @@ import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking";
 
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
@@ -30,9 +30,10 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   oracle: "🔮 Oracle",
   archive: "📦 Archive",
   library: "📚 Library",
+  cooking: "🍳 Cooking",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library"];
+const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking"];
 
 const Index = () => {
   const { user } = useAuth();
