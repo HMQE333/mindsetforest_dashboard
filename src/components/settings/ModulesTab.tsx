@@ -146,6 +146,27 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
         </div>
       )}
 
+      {/* Mission Complete Effect picker — always visible */}
+      <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">
+        <div className="text-xs font-semibold text-foreground">🎉 Mission Complete Effect</div>
+        <div className="grid grid-cols-2 gap-2">
+          {COMPLETION_EFFECT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => onSaveCompletionEffect?.(opt.value)}
+              className={`p-2 rounded-lg border text-center transition-all text-xs ${
+                completionEffect === opt.value
+                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  : "border-border bg-muted/20 text-muted-foreground hover:border-white/20"
+              }`}
+            >
+              <div className="font-medium">{opt.label}</div>
+              <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {dirty && (
         <motion.button
           initial={{ opacity: 0, y: 10 }}
