@@ -40,6 +40,13 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
       <div className={`w-1 shrink-0 ${accent} opacity-70`} />
 
       <div className="flex-1 min-w-0">
+        {/* Photo banner */}
+        {recipe.photoUrl && (
+          <div className="w-full h-36 overflow-hidden">
+            <img src={recipe.photoUrl} alt={recipe.title} className="w-full h-full object-cover" />
+          </div>
+        )}
+
         {/* Header */}
         <div className="p-4">
           <div className="flex items-start gap-3">
@@ -75,7 +82,7 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
               <button onClick={() => onEdit(recipe)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button onClick={() => onDelete(recipe.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-all">
+              <button onClick={() => onDelete(recipe.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
                 <Trash2 className="w-4 h-4" />
               </button>
               <button onClick={() => setExpanded(p => !p)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">

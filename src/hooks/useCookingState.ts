@@ -18,6 +18,7 @@ export interface CookingRecipe {
   status: string;
   costPerServing: number | null;
   aiProcessedContent: string | null;
+  photoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +56,7 @@ function mapRecipe(r: Record<string, unknown>): CookingRecipe {
     status: (r.status as string) || "tried",
     costPerServing: r.cost_per_serving as number | null,
     aiProcessedContent: r.ai_processed_content as string | null,
+    photoUrl: (r.photo_url as string) || null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -117,6 +119,7 @@ export function useCookingState() {
       status: recipe.status || "tried",
       cost_per_serving: recipe.costPerServing ?? null,
       ai_processed_content: recipe.aiProcessedContent ?? null,
+      photo_url: recipe.photoUrl ?? null,
     };
 
     if (recipe.id) {

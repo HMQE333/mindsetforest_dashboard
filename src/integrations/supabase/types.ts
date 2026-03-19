@@ -174,6 +174,7 @@ export type Database = {
           ingredients: string
           instructions: string
           notes: string
+          photo_url: string | null
           rating: number | null
           servings: number
           status: string
@@ -193,6 +194,7 @@ export type Database = {
           ingredients?: string
           instructions?: string
           notes?: string
+          photo_url?: string | null
           rating?: number | null
           servings?: number
           status?: string
@@ -212,6 +214,7 @@ export type Database = {
           ingredients?: string
           instructions?: string
           notes?: string
+          photo_url?: string | null
           rating?: number | null
           servings?: number
           status?: string
