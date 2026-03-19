@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Star } from "lucide-react";
+import { X, Star, Camera, Loader2, ImagePlus } from "lucide-react";
 import { CookingRecipe } from "@/hooks/useCookingState";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 interface RecipeFormModalProps {
   open: boolean;
@@ -15,11 +18,15 @@ const STATUSES = ["tried", "want-to-try", "favourite", "failed"];
 const STATUS_LABELS: Record<string, string> = { tried: "✅ Tried", "want-to-try": "🔖 Want to Try", favourite: "⭐ Favourite", failed: "❌ Failed" };
 
 export default function RecipeFormModal({ open, onClose, onSave, initial }: RecipeFormModalProps) {
+  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: "", description: "", ingredients: "", instructions: "",
     notes: "", tags: "", rating: 0, servings: 4, cookTime: "",
     difficulty: "medium", status: "tried", costPerServing: "",
   });
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (initial) {
@@ -31,12 +38,37 @@ export default function RecipeFormModal({ open, onClose, onSave, initial }: Reci
         cookTime: initial.cookTime, difficulty: initial.difficulty,
         status: initial.status, costPerServing: initial.costPerServing?.toString() || "",
       });
+      setPhotoUrl(initial.photoUrl || null);
     } else {
       setForm({ title: "", description: "", ingredients: "", instructions: "", notes: "", tags: "", rating: 0, servings: 4, cookTime: "", difficulty: "medium", status: "tried", costPerServing: "" });
+      setPhotoUrl(null);
     }
   }, [initial, open]);
 
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("Photo must be under 5MB"); return; }
+
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage.from("recipe-photos").upload(path, file, { upsert: true });
+    if (error) { toast.error("Failed to upload photo"); setUploading(false); return; }
+
+    const { data } = supabase.storage.from("recipe-photos").getPublicUrl(path);
+    setPhotoUrl(data.publicUrl);
+    setUploading(false);
+    toast.success("Photo uploaded!");
+  };
+
+  const handleRemovePhoto = async () => {
+    setPhotoUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const handleSubmit = async () => {
     if (!form.title.trim()) return;
@@ -54,6 +86,7 @@ export default function RecipeFormModal({ open, onClose, onSave, initial }: Reci
       difficulty: form.difficulty,
       status: form.status,
       costPerServing: form.costPerServing ? parseFloat(form.costPerServing) : null,
+      photoUrl: photoUrl ?? null,
     });
     onClose();
   };
@@ -74,6 +107,52 @@ export default function RecipeFormModal({ open, onClose, onSave, initial }: Reci
           </div>
 
           <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+            {/* Photo upload */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">📸 Photo</label>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+              {photoUrl ? (
+                <div className="relative group rounded-xl overflow-hidden border border-white/10 h-40">
+                  <img src={photoUrl} alt="Recipe" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-lg bg-muted/80 text-foreground text-xs font-medium flex items-center gap-1.5"
+                    >
+                      <Camera className="w-3.5 h-3.5" /> Change
+                    </button>
+                    <button
+                      onClick={handleRemovePhoto}
+                      className="px-3 py-1.5 rounded-lg bg-destructive/80 text-white text-xs font-medium flex items-center gap-1.5"
+                    >
+                      <X className="w-3.5 h-3.5" /> Remove
+                    </button>
+                  </div>
+                  {uploading && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full h-28 rounded-xl border border-dashed border-white/20 bg-muted/10 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all"
+                >
+                  {uploading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  ) : (
+                    <>
+                      <ImagePlus className="w-5 h-5" />
+                      <span className="text-xs font-medium">Click to upload a photo</span>
+                      <span className="text-[10px] text-muted-foreground/60">JPG, PNG, WEBP · max 5MB</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
             {/* Title */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 block">Recipe Name *</label>
@@ -158,7 +237,7 @@ export default function RecipeFormModal({ open, onClose, onSave, initial }: Reci
           </div>
 
           <div className="px-5 py-4 border-t border-white/10 shrink-0">
-            <button onClick={handleSubmit} disabled={!form.title.trim()} className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all disabled:opacity-40">
+            <button onClick={handleSubmit} disabled={!form.title.trim() || uploading} className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all disabled:opacity-40">
               {initial ? "Save Changes" : "Add Recipe"}
             </button>
           </div>
