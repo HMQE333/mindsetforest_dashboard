@@ -20,3 +20,15 @@ verify_jwt = false
 
 [functions.ai-book-suggest]
 verify_jwt = false
+
+[functions.ai-habit-loop-suggest]
+verify_jwt = false
+
+[functions.ai-ladder-suggest]
+verify_jwt = false
+
+[functions.ai-mission-suggest]
+verify_jwt = false
+
+[functions.ai-recipe-process]
+verify_jwt = false

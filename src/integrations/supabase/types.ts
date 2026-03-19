@@ -91,6 +91,137 @@ export type Database = {
           },
         ]
       }
+      cooking_ingredient_costs: {
+        Row: {
+          cost_per_unit: number
+          created_at: string
+          id: string
+          ingredient_name: string
+          unit: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cost_per_unit?: number
+          created_at?: string
+          id?: string
+          ingredient_name: string
+          unit?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cost_per_unit?: number
+          created_at?: string
+          id?: string
+          ingredient_name?: string
+          unit?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cooking_plan_entries: {
+        Row: {
+          created_at: string
+          custom_label: string
+          id: string
+          meal_type: string
+          notes: string
+          plan_date: string
+          recipe_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_label?: string
+          id?: string
+          meal_type?: string
+          notes?: string
+          plan_date: string
+          recipe_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_label?: string
+          id?: string
+          meal_type?: string
+          notes?: string
+          plan_date?: string
+          recipe_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cooking_plan_entries_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "cooking_recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cooking_recipes: {
+        Row: {
+          ai_processed_content: string | null
+          cook_time: string
+          cost_per_serving: number | null
+          created_at: string
+          description: string
+          difficulty: string
+          id: string
+          ingredients: string
+          instructions: string
+          notes: string
+          rating: number | null
+          servings: number
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_processed_content?: string | null
+          cook_time?: string
+          cost_per_serving?: number | null
+          created_at?: string
+          description?: string
+          difficulty?: string
+          id?: string
+          ingredients?: string
+          instructions?: string
+          notes?: string
+          rating?: number | null
+          servings?: number
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_processed_content?: string | null
+          cook_time?: string
+          cost_per_serving?: number | null
+          created_at?: string
+          description?: string
+          difficulty?: string
+          id?: string
+          ingredients?: string
+          instructions?: string
+          notes?: string
+          rating?: number | null
+          servings?: number
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_completions: {
         Row: {
           categories_engaged: string[]
