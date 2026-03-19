@@ -36,6 +36,8 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedShopping, setCopiedShopping] = useState(false);
+  const [copiedShoppingResult, setCopiedShoppingResult] = useState(false);
   const [showChips, setShowChips] = useState(true);
 
   // Save-to-recipe state
