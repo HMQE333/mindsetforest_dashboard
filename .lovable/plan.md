@@ -1,61 +1,52 @@
 
+## What the user wants
 
-## Plan: Keyboard Shortcuts System for Dashboard
+They want the AI to produce a clean, minimal, zero-fluff recipe format when asked to simplify. The key principles:
+- Only facts about the recipe (no storytelling, no tips, no "Porada:", no backstory)
+- All quantities in grams
+- When there are alternatives (e.g. "or chicken instead of turkey"), AI picks the best one — no choices left for the user
+- Output format: title → Ingredients (one per line, name: Xg) → Instructions (numbered, one action per step, no elaboration)
 
-### Concept
+## Two changes needed
 
-A global keyboard shortcut system that is **context-aware** — shortcuts do different things depending on where you are (category grid, mission view, projects list). A small ⌨️ settings icon in the dashboard hero area opens a shortcuts reference/customization panel.
+### 1. `supabase/functions/ai-recipe-process/index.ts` — strengthen the system prompt
 
-### Shortcut Map
+The current system prompt says "be precise" but doesn't enforce zero-fluff. Add a strict rule set that activates when simplification is requested:
 
-**Grid view (default):**
-- `M` → open Mind, `B` → open Body, `C` → open Creation, `X` → open Exploration, `N` → open Networking, `T` → open Trading, `S` → open Spirit, `O` → open Order
-- `P` → open Projects folder
-- `R` → Reset Day
+- Strip all tips, alternatives, "Porada:", backstory, anecdotes, shopping advice, and opinionated commentary
+- When multiple options are listed (e.g. "or chicken, or pork"), choose the most common/best one and use it — never list alternatives
+- Enforce the exact output structure:
+  ```
+  RECIPE NAME
 
-**Projects list view:**
-- `Escape` → back to grid
-- `1-9` → select project by index
+  Ingredients
 
-**Mission view (inside a category/project):**
-- `1-9` → complete mission by index
-- `E` → edit tasks
-- `A` → AI suggestions
-- `D` → reset defaults
-- `Escape` → back
+  - Ingredient name: Xg
+  - ...
 
-**Global:**
-- `?` or `K` → open shortcuts reference panel
+  Instructions
 
-### Implementation
+  1. Step.
+  2. Step.
+  ```
+- Steps must be actions only — no explanations of why, no "you can also", no "if you prefer"
+- No blank lines between ingredient items, single blank line between sections
 
-**1. New hook: `src/hooks/useKeyboardShortcuts.ts`**
-- Takes current context (grid / projects / mission:categoryId) and action callbacks
-- Registers `keydown` listener with `useEffect`, cleans up on unmount
-- Ignores shortcuts when focus is inside an input/textarea/modal
-- Returns nothing — pure side-effect hook
+### 2. `src/components/cooking/AIRecipeProcessor.tsx` — replace the "Simplify steps" chip
 
-**2. `DashboardView.tsx`**
-- Call `useKeyboardShortcuts` with current navigation state and all action handlers (setSelectedCategory, handleComplete, setEditingCategory, setAICategory, resetDay)
-- Add state for showing shortcuts panel
-- Derive context from `selectedCategory` value (null = grid, `__projects__` = projects, other = mission)
+The current chip prompt is too vague: "Rewrite the instructions in simpler, numbered steps. Be concise and clear."
 
-**3. New component: `src/components/dashboard/ShortcutsPanel.tsx`**
-- A small modal/drawer showing all available shortcuts for the current context
-- Grouped by context with key badges (like `kbd` elements)
-- Triggered by a small ⌨️ icon button placed next to "Reset Day" in DashboardHero
+Replace it with a dedicated **"Clean & Simplify"** chip (rename from "Simplify steps") with a very explicit prompt that enforces the exact structure shown in the user's example. The prompt will instruct the AI to:
+- Convert all quantities to grams
+- Strip all tips, alternatives, backstory, porada sections
+- Pick one version when alternatives exist
+- Output the strict two-section format (Ingredients / Instructions)
 
-**4. `DashboardHero.tsx`**
-- Add a small ⌨️ button that opens the shortcuts panel
+Also add a separate "Simplify steps only" chip that just simplifies the instructions without restructuring — keeping the two behaviours distinct.
 
-### File Summary
+## Files to change
 
-| File | Change |
-|------|--------|
-| `src/hooks/useKeyboardShortcuts.ts` | **New** — context-aware keyboard listener hook |
-| `src/components/dashboard/ShortcutsPanel.tsx` | **New** — shortcuts reference overlay |
-| `src/components/dashboard/DashboardView.tsx` | Wire up hook + shortcuts panel state |
-| `src/components/dashboard/DashboardHero.tsx` | Add ⌨️ button |
+1. **`supabase/functions/ai-recipe-process/index.ts`** — extend system prompt with a "SIMPLIFY mode" ruleset that kicks in whenever simplification is requested
+2. **`src/components/cooking/AIRecipeProcessor.tsx`** — update `SUGGESTION_CHIPS`: rename "Simplify steps" → "Clean & Simplify" with a strong, format-enforcing prompt; keep a "Simplify steps" chip for light simplification only
 
-No database changes. No custom keybinding persistence for now — fixed defaults only. Customization can be added later if desired.
-
+## No DB changes, no new files
