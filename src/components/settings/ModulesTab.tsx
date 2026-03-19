@@ -47,7 +47,7 @@ interface ModulesTabProps {
   onSaveCompletionBadge?: (val: boolean) => void;
 }
 
-export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
 
