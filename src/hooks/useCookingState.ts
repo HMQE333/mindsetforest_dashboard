@@ -119,6 +119,7 @@ export function useCookingState() {
       status: recipe.status || "tried",
       cost_per_serving: recipe.costPerServing ?? null,
       ai_processed_content: recipe.aiProcessedContent ?? null,
+      photo_url: recipe.photoUrl ?? null,
     };
 
     if (recipe.id) {
