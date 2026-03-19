@@ -164,6 +164,7 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
         )}
       </div>
     </motion.div>
+    </>
   );
 }
 
