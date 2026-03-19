@@ -1,7 +1,8 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
 import { Mission } from "@/lib/dashboard-data";
 import PillarIcon from "@/components/shared/PillarIcon";
+import { Check } from "lucide-react";
 
 interface CategoryGridProps {
   getMissions: (categoryId: string) => Mission[];
@@ -9,15 +10,17 @@ interface CategoryGridProps {
   onSelectCategory: (categoryId: string) => void;
   projectCount?: number;
   categories?: Category[];
+  showCompletionBadge?: boolean;
 }
 
-export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0, categories }: CategoryGridProps) {
+export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0, categories, showCompletionBadge = true }: CategoryGridProps) {
   const cats = categories || CATEGORIES;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {cats.map((cat, i) => {
         const missions = getMissions(cat.id);
         const completed = getCompletedCount(cat.id);
+        const isAllDone = missions.length > 0 && completed === missions.length;
 
         return (
           <motion.div
@@ -34,6 +37,27 @@ export default function CategoryGrid({ getMissions, getCompletedCount, onSelectC
               className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity duration-300"
               style={{ background: `linear-gradient(135deg, ${cat.color}, transparent)` }}
             />
+
+            {/* Completion badge */}
+            <AnimatePresence>
+              {isAllDone && showCompletionBadge && (
+                <motion.div
+                  key="badge"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                  className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center z-10"
+                  style={{
+                    background: `color-mix(in srgb, ${cat.color} 20%, transparent)`,
+                    border: `1.5px solid color-mix(in srgb, ${cat.color} 60%, transparent)`,
+                    boxShadow: `0 0 10px color-mix(in srgb, ${cat.color} 40%, transparent)`,
+                  }}
+                >
+                  <Check className="w-4 h-4" style={{ color: cat.color }} strokeWidth={3} />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div
               className="block mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[5deg]"

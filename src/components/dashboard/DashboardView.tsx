@@ -211,6 +211,7 @@ export default function DashboardView() {
               onSelectCategory={setSelectedCategory}
               projectCount={showProjects ? projects.length : 0}
               categories={categories}
+              showCompletionBadge={preferences.showCompletionBadge !== false}
             />
           </motion.div>
         )}

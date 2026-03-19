@@ -43,9 +43,11 @@ interface ModulesTabProps {
   onSavePulseStyle?: (style: FocusPulseStyle) => void;
   completionEffect?: CompletionEffect;
   onSaveCompletionEffect?: (effect: CompletionEffect) => void;
+  showCompletionBadge?: boolean;
+  onSaveCompletionBadge?: (val: boolean) => void;
 }
 
-export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
 
@@ -165,6 +167,27 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Completion Badge Toggle */}
+      <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10">
+        <button
+          onClick={() => onSaveCompletionBadge?.(!showCompletionBadge)}
+          className="w-full flex items-center gap-3 text-left"
+        >
+          <span className="text-xl">✅</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-foreground">Show completion badge on cards</div>
+            <div className="text-xs text-muted-foreground">Display a ✓ checkmark when all missions in a section are done</div>
+          </div>
+          <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 shrink-0 ${
+            showCompletionBadge ? "bg-primary justify-end" : "bg-muted/50 justify-start"
+          }`}>
+            <motion.div layout className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${showCompletionBadge ? "bg-white" : "bg-white/80"}`}>
+              <span className={`block w-2 h-2 rounded-full transition-colors ${showCompletionBadge ? "bg-primary" : "bg-muted-foreground/40"}`} />
+            </motion.div>
+          </div>
+        </button>
       </div>
 
       {dirty && (

@@ -50,6 +50,7 @@ export interface UserPreferences {
   cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
   completionEffect?: CompletionEffect;
+  showCompletionBadge?: boolean;
   customAccentHue?: number | null;
   cardOpacity?: number;
   backgroundIntensity?: number;
