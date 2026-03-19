@@ -19,6 +19,7 @@ const ALL_MODULES: ModuleConfig[] = [
   { id: "archive", label: "Knowledge Archive", icon: "📦", description: "Store and organize knowledge blocks" },
   { id: "projects", label: "Projects", icon: "📂", description: "Custom project scopes for focused work" },
   { id: "library", label: "Library", icon: "📚", description: "Reading list with notes, ratings & AI suggestions" },
+  { id: "cooking", label: "Cooking Studio", icon: "🍳", description: "Recipe journal, AI processor & meal planner" },
   { id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Monthly theme reminders on dashboard" },
 ];
 
