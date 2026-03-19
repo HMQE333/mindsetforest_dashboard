@@ -33,6 +33,7 @@ export default function DashboardView() {
   const [aiCategory, setAICategory] = useState<string | null>(null);
   const [levelUpTrigger, setLevelUpTrigger] = useState<{ level: number; key: number } | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; xp: number } | null>(null);
+  const [categoryComplete, setCategoryComplete] = useState<{ categoryId: string; color: string; key: number } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const prevLevel = useRef(state.currentLevel);
 
