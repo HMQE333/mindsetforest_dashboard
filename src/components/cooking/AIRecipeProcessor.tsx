@@ -30,12 +30,17 @@ function extractTitle(raw: string): string {
   return firstLine ? firstLine.replace(/^#+\s*/, "").slice(0, 80) : "New Recipe";
 }
 
+const buildShoppingPrompt = (text: string) =>
+  `Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include any instructions — only the shopping list.\n\n---\n${text.trim()}\n---`;
+
 export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
   const [recipe, setRecipe] = useState("");
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedShoppingRaw, setCopiedShoppingRaw] = useState(false);
+  const [copiedShoppingResult, setCopiedShoppingResult] = useState(false);
   const [showChips, setShowChips] = useState(true);
 
   // Save-to-recipe state
@@ -75,6 +80,20 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     toast.success("Copied to clipboard!");
+  };
+
+  const handleCopyShoppingRaw = () => {
+    navigator.clipboard.writeText(buildShoppingPrompt(recipe));
+    setCopiedShoppingRaw(true);
+    setTimeout(() => setCopiedShoppingRaw(false), 2000);
+    toast.success("Shopping prompt copied!");
+  };
+
+  const handleCopyShoppingResult = () => {
+    navigator.clipboard.writeText(buildShoppingPrompt(result));
+    setCopiedShoppingResult(true);
+    setTimeout(() => setCopiedShoppingResult(false), 2000);
+    toast.success("Shopping prompt copied!");
   };
 
   const appendChip = (chip: typeof SUGGESTION_CHIPS[0]) => {
@@ -140,7 +159,18 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
             rows={14}
             className="w-full bg-background/50 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 resize-none"
           />
-          <div className="text-right text-[10px] text-muted-foreground/50">{recipe.length} chars</div>
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] text-muted-foreground/50">{recipe.length} chars</div>
+            {recipe.trim() && (
+              <button
+                onClick={handleCopyShoppingRaw}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/20 border border-white/10 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
+              >
+                {copiedShoppingRaw ? <Check className="w-3 h-3 text-primary" /> : <span>🛒</span>}
+                {copiedShoppingRaw ? "Copied!" : "Copy shopping prompt"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* RIGHT — Prompt + chips + result */}
@@ -210,9 +240,16 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
               animate={{ opacity: 1, y: 0 }}
               className="glass-card rounded-2xl p-5 space-y-3 border border-primary/30"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-sm font-bold text-foreground">✨ Processed Result</h3>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={handleCopyShoppingResult}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/20 border border-white/10 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
+                  >
+                    {copiedShoppingResult ? <Check className="w-3.5 h-3.5 text-primary" /> : <span>🛒</span>}
+                    {copiedShoppingResult ? "Copied!" : "Shopping prompt"}
+                  </button>
                   <button
                     onClick={handleCopy}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/30 border border-white/10 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
