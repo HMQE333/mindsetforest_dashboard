@@ -45,7 +45,7 @@ interface ModulesTabProps {
   onSaveCompletionEffect?: (effect: CompletionEffect) => void;
 }
 
-export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
 
