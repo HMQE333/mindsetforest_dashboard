@@ -1,52 +1,39 @@
 
-## What the user wants
+## Plan: "Copy Shopping Prompt" button in AI Processor
 
-They want the AI to produce a clean, minimal, zero-fluff recipe format when asked to simplify. The key principles:
-- Only facts about the recipe (no storytelling, no tips, no "Porada:", no backstory)
-- All quantities in grams
-- When there are alternatives (e.g. "or chicken instead of turkey"), AI picks the best one — no choices left for the user
-- Output format: title → Ingredients (one per line, name: Xg) → Instructions (numbered, one action per step, no elaboration)
+### What the user wants
+A small, easy-to-find button that builds a ready-made prompt the user can copy and paste directly into ChatGPT, Gemini, or any external AI to get an ordered shopping list with the right ingredient amounts from the current recipe (either raw pasted text or the processed result).
 
-## Two changes needed
+### Where it lives
+- A small secondary button in the **left panel** (below the recipe textarea, near the char count) — visible as soon as a recipe is pasted
+- If a processed result exists, also offer it in the **result panel** alongside Copy/Save buttons, so the user can generate a shopping prompt from the clean version
 
-### 1. `supabase/functions/ai-recipe-process/index.ts` — strengthen the system prompt
+### What the prompt generates
+A pre-built, copy-ready prompt string:
 
-The current system prompt says "be precise" but doesn't enforce zero-fluff. Add a strict rule set that activates when simplification is requested:
+```
+Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include instructions — only the shopping list.
 
-- Strip all tips, alternatives, "Porada:", backstory, anecdotes, shopping advice, and opinionated commentary
-- When multiple options are listed (e.g. "or chicken, or pork"), choose the most common/best one and use it — never list alternatives
-- Enforce the exact output structure:
-  ```
-  RECIPE NAME
+---
+[recipe text or processed result here]
+---
+```
 
-  Ingredients
+### Implementation — only `AIRecipeProcessor.tsx`
 
-  - Ingredient name: Xg
-  - ...
+**State**: one `copiedShoppingPrompt` boolean for the feedback tick animation (reuses same pattern as `copied` state).
 
-  Instructions
+**Helper function** `buildShoppingPrompt(text: string): string`:
+```ts
+const buildShoppingPrompt = (text: string) =>
+  `Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include any instructions — only the shopping list.\n\n---\n${text.trim()}\n---`;
+```
 
-  1. Step.
-  2. Step.
-  ```
-- Steps must be actions only — no explanations of why, no "you can also", no "if you prefer"
-- No blank lines between ingredient items, single blank line between sections
+**Two placements**:
+1. **Left panel** — below the char count line, shown when `recipe.trim()` exists. Small muted button: `🛒 Copy shopping prompt`. Uses `recipe` as the source text.
+2. **Result panel** — in the action buttons row (next to Copy / Save to Recipe). Small button: `🛒 Shopping prompt`. Uses `result` as the source text (the clean processed version is more accurate for amounts).
 
-### 2. `src/components/cooking/AIRecipeProcessor.tsx` — replace the "Simplify steps" chip
+**Copy feedback**: same pattern as existing `copied` state — shows a check icon + "Copied!" for 2 seconds then resets.
 
-The current chip prompt is too vague: "Rewrite the instructions in simpler, numbered steps. Be concise and clear."
-
-Replace it with a dedicated **"Clean & Simplify"** chip (rename from "Simplify steps") with a very explicit prompt that enforces the exact structure shown in the user's example. The prompt will instruct the AI to:
-- Convert all quantities to grams
-- Strip all tips, alternatives, backstory, porada sections
-- Pick one version when alternatives exist
-- Output the strict two-section format (Ingredients / Instructions)
-
-Also add a separate "Simplify steps only" chip that just simplifies the instructions without restructuring — keeping the two behaviours distinct.
-
-## Files to change
-
-1. **`supabase/functions/ai-recipe-process/index.ts`** — extend system prompt with a "SIMPLIFY mode" ruleset that kicks in whenever simplification is requested
-2. **`src/components/cooking/AIRecipeProcessor.tsx`** — update `SUGGESTION_CHIPS`: rename "Simplify steps" → "Clean & Simplify" with a strong, format-enforcing prompt; keep a "Simplify steps" chip for light simplification only
-
-## No DB changes, no new files
+### Files to change
+- `src/components/cooking/AIRecipeProcessor.tsx` only — no edge function changes, no DB changes, no new files. Pure UI addition.
