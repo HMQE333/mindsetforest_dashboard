@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X } from "lucide-react";
 import { CookingRecipe } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
 
@@ -25,11 +25,46 @@ interface RecipeCardProps {
   onDelete: (id: string) => void;
 }
 
+function PhotoLightbox({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="relative max-w-2xl w-full rounded-2xl overflow-hidden shadow-2xl"
+          onClick={e => e.stopPropagation()}
+        >
+          <img src={url} alt={title} className="w-full max-h-[80vh] object-contain bg-black" />
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
   const accent = STATUS_ACCENT[recipe.status] || STATUS_ACCENT.tried;
 
   return (
+    <>
+    {lightbox && recipe.photoUrl && (
+      <PhotoLightbox url={recipe.photoUrl} title={recipe.title} onClose={() => setLightbox(false)} />
+    )}
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
@@ -40,13 +75,6 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
       <div className={`w-1 shrink-0 ${accent} opacity-70`} />
 
       <div className="flex-1 min-w-0">
-        {/* Photo banner */}
-        {recipe.photoUrl && (
-          <div className="w-full h-36 overflow-hidden">
-            <img src={recipe.photoUrl} alt={recipe.title} className="w-full h-full object-cover" />
-          </div>
-        )}
-
         {/* Header */}
         <div className="p-4">
           <div className="flex items-start gap-3">
@@ -56,6 +84,14 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_COLORS[recipe.status] || STATUS_COLORS.tried}`}>
                   {STATUS_LABELS[recipe.status] || recipe.status}
                 </span>
+                {recipe.photoUrl && (
+                  <button
+                    onClick={() => setLightbox(true)}
+                    className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-muted/30 border border-white/10 text-muted-foreground hover:text-foreground hover:border-white/30 transition-all"
+                  >
+                    <ImageIcon className="w-3 h-3" /> Photo
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                 {recipe.cookTime && <span>⏱ {recipe.cookTime}</span>}
@@ -128,6 +164,7 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
         )}
       </div>
     </motion.div>
+    </>
   );
 }
 
