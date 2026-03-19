@@ -43,6 +43,8 @@ interface ModulesTabProps {
   onSavePulseStyle?: (style: FocusPulseStyle) => void;
   completionEffect?: CompletionEffect;
   onSaveCompletionEffect?: (effect: CompletionEffect) => void;
+  showCompletionBadge?: boolean;
+  onSaveCompletionBadge?: (val: boolean) => void;
 }
 
 export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect }: ModulesTabProps) {

@@ -1,7 +1,8 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
 import { Mission } from "@/lib/dashboard-data";
 import PillarIcon from "@/components/shared/PillarIcon";
+import { Check } from "lucide-react";
 
 interface CategoryGridProps {
   getMissions: (categoryId: string) => Mission[];
@@ -9,6 +10,7 @@ interface CategoryGridProps {
   onSelectCategory: (categoryId: string) => void;
   projectCount?: number;
   categories?: Category[];
+  showCompletionBadge?: boolean;
 }
 
 export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0, categories }: CategoryGridProps) {

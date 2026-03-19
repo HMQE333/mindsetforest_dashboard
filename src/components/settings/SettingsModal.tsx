@@ -109,6 +109,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onSaveCompletionEffect={(effect) => {
                         settings.savePreferences({ ...settings.preferences, completionEffect: effect });
                       }}
+                      showCompletionBadge={settings.preferences.showCompletionBadge !== false}
+                      onSaveCompletionBadge={(val) => {
+                        settings.savePreferences({ ...settings.preferences, showCompletionBadge: val });
+                      }}
                     />
                   )}
                   {activeTab === "theme" && (
