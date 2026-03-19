@@ -48,7 +48,7 @@ function mapRecipe(r: Record<string, unknown>): CookingRecipe {
     ingredients: r.ingredients as string,
     instructions: r.instructions as string,
     notes: r.notes as string,
-    tags: (r.tags as string[]) || [],
+    tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
     rating: r.rating as number | null,
     servings: (r.servings as number) || 4,
     cookTime: (r.cook_time as string) || "",

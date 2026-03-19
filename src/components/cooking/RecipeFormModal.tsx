@@ -33,7 +33,7 @@ export default function RecipeFormModal({ open, onClose, onSave, initial }: Reci
       setForm({
         title: initial.title, description: initial.description,
         ingredients: initial.ingredients, instructions: initial.instructions,
-        notes: initial.notes, tags: initial.tags.join(", "),
+        notes: initial.notes, tags: (initial.tags ?? []).join(", "),
         rating: initial.rating || 0, servings: initial.servings,
         cookTime: initial.cookTime, difficulty: initial.difficulty,
         status: initial.status, costPerServing: initial.costPerServing?.toString() || "",
