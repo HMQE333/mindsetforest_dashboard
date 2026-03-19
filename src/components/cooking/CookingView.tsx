@@ -72,7 +72,7 @@ export default function CookingView() {
         />
       </div>
       <div className={activeTab === "ai" ? "" : "hidden"}>
-        <AIRecipeProcessor />
+        <AIRecipeProcessor recipes={cooking.recipes} onSaveRecipe={cooking.saveRecipe} />
       </div>
       <div className={activeTab === "planner" ? "" : "hidden"}>
         <MealPlanner
