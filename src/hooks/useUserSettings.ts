@@ -36,6 +36,7 @@ export type FontPair = "default" | "mono" | "editorial" | "geometric" | "handcra
 export type BackgroundPattern = "none" | "grid" | "dots" | "noise" | "starry" | "mesh" | "fireflies" | "forest" | "snow" | "leaves";
 export type CardStyle = "default" | "glassmorphic" | "solid" | "outline" | "elevated" | "frosted" | "wood" | "neumorphic";
 export type FocusPulseStyle = "glow" | "ping" | "none";
+export type CompletionEffect = "burst" | "banner" | "fireworks" | "none";
 
 export interface UserPreferences {
   enabledModules: string[];
