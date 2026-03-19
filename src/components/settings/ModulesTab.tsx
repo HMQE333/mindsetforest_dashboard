@@ -29,11 +29,20 @@ const PULSE_OPTIONS: { value: FocusPulseStyle; label: string; desc: string }[] =
   { value: "none", label: "🚫 None", desc: "No animation" },
 ];
 
+const COMPLETION_EFFECT_OPTIONS: { value: CompletionEffect; label: string; desc: string }[] = [
+  { value: "burst", label: "✨ Burst", desc: "Particle explosion" },
+  { value: "banner", label: "🏆 Banner", desc: "Sliding badge" },
+  { value: "fireworks", label: "🎆 Fireworks", desc: "Confetti clusters" },
+  { value: "none", label: "🚫 None", desc: "No animation" },
+];
+
 interface ModulesTabProps {
   enabledModules: string[];
   onSave: (modules: string[]) => Promise<void>;
   focusPulseStyle?: FocusPulseStyle;
   onSavePulseStyle?: (style: FocusPulseStyle) => void;
+  completionEffect?: CompletionEffect;
+  onSaveCompletionEffect?: (effect: CompletionEffect) => void;
 }
 
 export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle }: ModulesTabProps) {
