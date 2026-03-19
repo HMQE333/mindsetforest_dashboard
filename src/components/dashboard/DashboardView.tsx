@@ -14,6 +14,7 @@ import ProjectsListView from "./ProjectsListView";
 import EditMissionsModal from "./EditMissionsModal";
 import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
+import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import WeeklyProgress from "./WeeklyProgress";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
