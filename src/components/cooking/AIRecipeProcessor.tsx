@@ -240,9 +240,16 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
               animate={{ opacity: 1, y: 0 }}
               className="glass-card rounded-2xl p-5 space-y-3 border border-primary/30"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-sm font-bold text-foreground">✨ Processed Result</h3>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={handleCopyShoppingResult}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/20 border border-white/10 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
+                  >
+                    {copiedShoppingResult ? <Check className="w-3.5 h-3.5 text-primary" /> : <span>🛒</span>}
+                    {copiedShoppingResult ? "Copied!" : "Shopping prompt"}
+                  </button>
                   <button
                     onClick={handleCopy}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/30 border border-white/10 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
