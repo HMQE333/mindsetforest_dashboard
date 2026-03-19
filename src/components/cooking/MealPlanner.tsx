@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Plus, X, Utensils } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Utensils, CalendarDays } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks, isSameDay } from "date-fns";
 import { CookingPlanEntry, CookingRecipe } from "@/hooks/useCookingState";
 
@@ -93,7 +93,8 @@ interface MealPlannerProps {
 }
 
 export default function MealPlanner({ planEntries, recipes, onSave, onDelete }: MealPlannerProps) {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const today = new Date();
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(today, { weekStartsOn: 1 }));
   const [addModalDate, setAddModalDate] = useState<Date | null>(null);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -102,18 +103,30 @@ export default function MealPlanner({ planEntries, recipes, onSave, onDelete }: 
     planEntries.filter(e => e.planDate === format(date, "yyyy-MM-dd"))
       .sort((a, b) => MEAL_TYPES.indexOf(a.mealType) - MEAL_TYPES.indexOf(b.mealType));
 
-  const today = new Date();
+  const jumpToToday = () => setWeekStart(startOfWeek(today, { weekStartsOn: 1 }));
+  const isCurrentWeek = isSameDay(weekStart, startOfWeek(today, { weekStartsOn: 1 }));
 
   return (
     <div className="space-y-4">
       {/* Week nav */}
-      <div className="flex items-center justify-between glass-card rounded-xl p-3">
+      <div className="flex items-center justify-between glass-card rounded-xl p-3 gap-2">
         <button onClick={() => setWeekStart(w => subWeeks(w, 1))} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <span className="text-sm font-bold text-foreground">
-          {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d, yyyy")}
-        </span>
+        <div className="flex items-center gap-2 flex-1 justify-center">
+          <span className="text-sm font-bold text-foreground">
+            {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d, yyyy")}
+          </span>
+          {!isCurrentWeek && (
+            <button
+              onClick={jumpToToday}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary text-xs font-medium hover:bg-primary/20 transition-all"
+            >
+              <CalendarDays className="w-3 h-3" />
+              Today
+            </button>
+          )}
+        </div>
         <button onClick={() => setWeekStart(w => addWeeks(w, 1))} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -130,7 +143,7 @@ export default function MealPlanner({ planEntries, recipes, onSave, onDelete }: 
                 <div className="text-[10px] font-medium text-muted-foreground">{format(day, "EEE")}</div>
                 <div className={`text-sm font-bold ${isToday ? "text-primary" : "text-foreground"}`}>{format(day, "d")}</div>
               </div>
-              <div className="p-1 space-y-1 min-h-[80px]">
+              <div className="p-1 space-y-1 min-h-[96px]">
                 {dayEntries.map(entry => {
                   const recipe = recipes.find(r => r.id === entry.recipeId);
                   const label = entry.customLabel || recipe?.title || entry.mealType;

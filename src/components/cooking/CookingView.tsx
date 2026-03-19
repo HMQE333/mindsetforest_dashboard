@@ -4,27 +4,22 @@ import { useCookingState } from "@/hooks/useCookingState";
 import RecipeJournal from "./RecipeJournal";
 import AIRecipeProcessor from "./AIRecipeProcessor";
 import MealPlanner from "./MealPlanner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type CookingTab = "journal" | "ai" | "planner";
 
-const TABS: { id: CookingTab; label: string; icon: string; desc: string }[] = [
-  { id: "journal", label: "Recipe Journal", icon: "📖", desc: "Log & browse your recipe trials" },
-  { id: "ai", label: "AI Processor", icon: "✨", desc: "Transform any recipe with AI" },
-  { id: "planner", label: "Meal Planner", icon: "📅", desc: "Plan your meals for the week" },
+const TABS: { id: CookingTab; label: string; icon: string }[] = [
+  { id: "journal", label: "Recipe Journal", icon: "📖" },
+  { id: "ai", label: "AI Processor", icon: "✨" },
+  { id: "planner", label: "Meal Planner", icon: "📅" },
 ];
 
 export default function CookingView() {
   const [activeTab, setActiveTab] = useState<CookingTab>("journal");
   const cooking = useCookingState();
 
-  if (cooking.loading) {
-    return (
-      <div className="text-center py-20 text-muted-foreground animate-pulse">Loading kitchen...</div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
         <h2 className="text-2xl font-bold text-foreground mb-1">🍳 Cooking Studio</h2>
@@ -33,7 +28,11 @@ export default function CookingView() {
 
       {/* Stats strip */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="grid grid-cols-3 gap-3">
-        {[
+        {cooking.loading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="rounded-xl h-[72px]" />
+          ))
+        ) : [
           { label: "Recipes", value: cooking.recipes.length, icon: "🍽" },
           { label: "Favourites", value: cooking.recipes.filter(r => r.status === "favourite").length, icon: "⭐" },
           { label: "Planned meals", value: cooking.planEntries.length, icon: "📅" },
@@ -52,42 +51,37 @@ export default function CookingView() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === tab.id
                 ? "gradient-purple text-primary-foreground glow-sm"
                 : "text-muted-foreground hover:text-foreground hover:bg-white/5"
             }`}
           >
             <span className="text-base">{tab.icon}</span>
-            <span className="hidden sm:block">{tab.label}</span>
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      <motion.div
-        key={activeTab}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
-      >
-        {activeTab === "journal" && (
-          <RecipeJournal
-            recipes={cooking.recipes}
-            onSave={async (r) => { await cooking.saveRecipe(r); }}
-            onDelete={cooking.deleteRecipe}
-          />
-        )}
-        {activeTab === "ai" && <AIRecipeProcessor />}
-        {activeTab === "planner" && (
-          <MealPlanner
-            planEntries={cooking.planEntries}
-            recipes={cooking.recipes}
-            onSave={cooking.savePlanEntry}
-            onDelete={cooking.deletePlanEntry}
-          />
-        )}
-      </motion.div>
+      {/* Tab content — all panels stay mounted to preserve state */}
+      <div className={activeTab === "journal" ? "" : "hidden"}>
+        <RecipeJournal
+          recipes={cooking.recipes}
+          onSave={async (r) => { await cooking.saveRecipe(r); }}
+          onDelete={cooking.deleteRecipe}
+        />
+      </div>
+      <div className={activeTab === "ai" ? "" : "hidden"}>
+        <AIRecipeProcessor />
+      </div>
+      <div className={activeTab === "planner" ? "" : "hidden"}>
+        <MealPlanner
+          planEntries={cooking.planEntries}
+          recipes={cooking.recipes}
+          onSave={cooking.savePlanEntry}
+          onDelete={cooking.deletePlanEntry}
+        />
+      </div>
     </div>
   );
 }
