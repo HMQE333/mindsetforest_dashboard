@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import type { FocusPulseStyle } from "@/hooks/useUserSettings";
+import type { FocusPulseStyle, CompletionEffect } from "@/hooks/useUserSettings";
 
 export interface ModuleConfig {
   id: string;
