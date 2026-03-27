@@ -282,7 +282,21 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
           <text key={i} x={e.x} y={e.y} fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">{e.char}</text>
         ))}
 
-        {/* Eye iris detail (only for eye shape) */}
+        {/* Urn decorative details */}
+        {shape === "urn" && (
+          <>
+            {/* Neck ring */}
+            <ellipse cx="100" cy="35" rx="32" ry="3" fill="none" stroke="hsla(185, 50%, 50%, 0.2)" strokeWidth="1" />
+            {/* Rim highlight */}
+            <ellipse cx="100" cy="10" rx="22" ry="2.5" fill="none" stroke="hsla(185, 60%, 60%, 0.25)" strokeWidth="0.8" />
+            {/* Belly band */}
+            <path d="M42,145 Q100,155 158,145" fill="none" stroke="hsla(185, 50%, 50%, 0.12)" strokeWidth="1" />
+            <path d="M44,155 Q100,165 156,155" fill="none" stroke="hsla(185, 50%, 50%, 0.08)" strokeWidth="0.8" />
+            {/* Handle accents (left + right) */}
+            <path d="M38,75 Q25,60 30,45 Q35,35 60,42" fill="none" stroke="hsla(185, 50%, 50%, 0.18)" strokeWidth="1.2" strokeLinecap="round" />
+            <path d="M162,75 Q175,60 170,45 Q165,35 140,42" fill="none" stroke="hsla(185, 50%, 50%, 0.18)" strokeWidth="1.2" strokeLinecap="round" />
+          </>
+        )}
         {shape === "eye" && (
           <>
             <motion.circle
