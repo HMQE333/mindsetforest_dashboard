@@ -35,7 +35,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   finance: "💰 Finance",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking"];
+const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance"];
 
 const Index = () => {
   const { user } = useAuth();
