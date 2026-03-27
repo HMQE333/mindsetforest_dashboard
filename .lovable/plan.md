@@ -1,94 +1,62 @@
 
 
-## Plan: Finance Module ("💰 Finance" tab)
+## Plan: Breathing Module — "Vessel of Air"
 
-### Overview
-A new top-level module tab for tracking income, expenses, monthly subscriptions, and loans to/from friends. Features a clean savings chart (income minus expenses over time) and organized transaction management.
+### Concept
+A gamified breathing exercise tab themed around an ancient vessel/urn that fills with luminous air-energy. Rune symbols glow around the vessel as you breathe. The vessel animates — expanding on inhale, contracting on exhale, holding steady on hold. Visual style mirrors the Oracle tab's polish (floating glow, framer-motion animations, glass-card UI).
 
-### Database tables (2 new tables + migration)
+### Breathing Patterns (built-in)
 
-**1. `finance_transactions`**
-| Column | Type | Default |
-|--------|------|---------|
-| id | uuid | gen_random_uuid() |
-| user_id | uuid | — |
-| type | text | 'expense' | — values: `income`, `expense`, `subscription`, `loan_out`, `loan_in` |
-| title | text | — |
-| amount | numeric | 0 |
-| category | text | 'other' | — e.g. food, transport, entertainment, salary, freelance, etc. |
-| date | text | today |
-| is_recurring | boolean | false |
-| recurring_day | integer | null | — day of month for subscriptions |
-| person_name | text | '' | — for loans: who borrowed/lent |
-| is_settled | boolean | false | — for loans: paid back? |
-| notes | text | '' |
-| created_at | timestamptz | now() |
+| Pattern | Inhale | Hold | Exhale | Hold |
+|---------|--------|------|--------|------|
+| Equal | 4s | 0s | 4s | 0s |
+| Box | 4s | 4s | 4s | 4s |
+| 4-7-8 | 4s | 7s | 8s | 0s |
+| Relaxing | 4s | 2s | 6s | 0s |
 
-RLS: standard user_id = auth.uid() for all CRUD.
+### The Vessel
+- Large centered SVG/CSS vessel shape (urn silhouette) with rune symbols orbiting it
+- Inner "air level" fills up during inhale (liquid-like wave animation), holds still, drains on exhale
+- Concentric glow pulses outward matching the breath phase
+- Phase label below: "breathe in" / "hold" / "breathe out" / text changes with fade
+- Elapsed timer above the vessel (MM:SS)
+- Phase progress dots below the label (like the reference screenshots)
 
-**2. `finance_summary`** — not needed, we'll compute from transactions client-side.
+### Runes
+- 6 Unicode rune characters (ᚱ ᚢ ᚾ ᛖ ᛊ ᚨ) positioned in a circle around the vessel
+- They glow/pulse in sequence during breathing cycles, creating an enchanted feel
+- Rune brightness intensifies as session progresses (more "energy" accumulated)
 
-### New files
+### Session Flow
+1. **Pattern selection screen** — 4 cards in a 2×2 grid (like reference image-56), each with name, description, icon, and a "Start" button. Duration selector (1min, 2min, 5min, 10min).
+2. **Active session** — vessel animation, timer, phase label, stop button. Countdown shows at start (3, 2, 1).
+3. **Session complete** — brief celebration, total time logged, streak count.
 
-**`src/hooks/useFinanceState.ts`**
-- CRUD hook for `finance_transactions` (fetch, add, update, delete)
-- Computed helpers: monthly totals, savings (income - expenses), active subscriptions, outstanding loans
+### Session Tracking (DB)
+New table `breathing_sessions`:
+- `id`, `user_id`, `pattern` (text), `duration_seconds` (int), `completed_at` (timestamptz)
+- RLS: user_id = auth.uid()
 
-**`src/components/finance/FinanceView.tsx`**
-- Main view with sub-tabs: **Overview**, **Transactions**, **Subscriptions**, **Loans**
-- Stats strip at top: Monthly Income, Monthly Expenses, Savings, Active Subscriptions count
+Stats computed client-side: total sessions, total minutes, current streak (consecutive days).
 
-**`src/components/finance/FinanceOverview.tsx`**
-- Savings chart (last 6 months) — bar chart using the same teal style as tracker detailed stats, showing income vs expenses vs savings per month
-- Quick summary cards: this month's balance, biggest expense category, total outstanding loans
+### Files
 
-**`src/components/finance/FinanceTransactions.tsx`**
-- List of all income/expense entries with add button
-- Filter by month, type, category
-- Each row: icon + title + amount (green for income, red for expense) + date
+1. **Migration** — `breathing_sessions` table
+2. **`src/lib/breathing-data.ts`** — pattern definitions, rune constants
+3. **`src/hooks/useBreathingState.ts`** — session logging, stats computation
+4. **`src/components/breathing/BreathingView.tsx`** — main view (pattern select vs active session)
+5. **`src/components/breathing/BreathingVessel.tsx`** — the animated vessel with runes, air fill, glow
+6. **`src/components/breathing/BreathingSession.tsx`** — active session logic (timer, phase cycling, countdown)
+7. **`src/components/breathing/BreathingPatternCard.tsx`** — card for pattern selection grid
+8. **`src/components/breathing/BreathingStats.tsx`** — simple stats strip (sessions, minutes, streak)
+9. **`src/pages/Index.tsx`** — add `"breathing"` tab
+10. **`src/hooks/useUserSettings.ts`** — add to `DEFAULT_MODULES`
+11. **`src/components/settings/ModulesTab.tsx`** — add module toggle
 
-**`src/components/finance/FinanceSubscriptions.tsx`**
-- Grid of active recurring subscriptions with monthly total
-- Add/edit/delete subscriptions
-- Visual: card per subscription with icon, name, amount, billing day
-
-**`src/components/finance/FinanceLoans.tsx`**
-- Who owes you / who you owe sections
-- Mark as settled
-- Total outstanding amount
-
-**`src/components/finance/AddTransactionModal.tsx`**
-- Modal form: type selector (income/expense/subscription/loan), title, amount, category, date, person (for loans), recurring toggle
-
-### Integration into existing app
-
-**`src/pages/Index.tsx`**
-- Add `"finance"` to the `Tab` type and `ALL_TAB_LABELS` (`"💰 Finance"`)
-- Add to `TAB_ORDER`
-- Import and render `FinanceView`
-
-**`src/components/settings/ModulesTab.tsx`**
-- Add finance to `ALL_MODULES` list
-
-**`src/hooks/useUserSettings.ts`**
-- Add `"finance"` to `DEFAULT_MODULES`
-
-### Savings chart design
-- 6-month horizontal bar chart, one group per month
-- Green bars = income, red bars = expenses, teal/accent bar = savings (net)
-- Built with plain divs + framer-motion (matching existing tracker chart style, no external chart library)
-- Persistent value labels on bars
-
-### Files changed/created summary
-1. **Migration** — 1 new table `finance_transactions`
-2. **`src/hooks/useFinanceState.ts`** — new
-3. **`src/components/finance/FinanceView.tsx`** — new
-4. **`src/components/finance/FinanceOverview.tsx`** — new
-5. **`src/components/finance/FinanceTransactions.tsx`** — new
-6. **`src/components/finance/FinanceSubscriptions.tsx`** — new
-7. **`src/components/finance/FinanceLoans.tsx`** — new
-8. **`src/components/finance/AddTransactionModal.tsx`** — new
-9. **`src/pages/Index.tsx`** — add tab
-10. **`src/components/settings/ModulesTab.tsx`** — add module entry
-11. **`src/hooks/useUserSettings.ts`** — add to defaults
+### Vessel Animation Details
+- Inhale: inner fill rises from ~20% to ~90% height with a wave surface wobble, vessel glow intensifies
+- Hold: fill stays, subtle shimmer, runes pulse slowly
+- Exhale: fill descends back to ~20%, glow dims
+- All transitions use `framer-motion` with duration matching the breath phase timing
+- Color palette: soft teal/cyan for air energy (similar to reference), with the project's theme-adaptive approach
 
