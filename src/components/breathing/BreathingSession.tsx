@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import BreathingVessel from "./BreathingVessel";
-import { BreathingPattern, BreathPhase, getPhaseLabel, getCycleDuration } from "@/lib/breathing-data";
+import { BreathingPattern, BreathPhase, getPhaseLabel, getCycleDuration, VesselShape } from "@/lib/breathing-data";
 
 interface Props {
   pattern: BreathingPattern;
   durationSeconds: number;
+  vesselShape?: VesselShape;
   onComplete: (actualSeconds: number) => void;
   onStop: () => void;
 }
