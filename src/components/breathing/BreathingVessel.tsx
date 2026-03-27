@@ -13,7 +13,7 @@ interface Props {
 }
 
 const VESSEL_PATHS: Record<VesselShape, string> = {
-  urn: "M60,30 Q60,10 80,10 L120,10 Q140,10 140,30 L145,60 Q155,80 155,120 L155,180 Q155,240 130,260 L70,260 Q45,240 45,180 L45,120 Q45,80 55,60 Z",
+  urn: "M75,15 Q75,8 85,8 L115,8 Q125,8 125,15 L125,28 Q125,35 135,40 L140,42 Q160,52 162,75 L164,110 Q165,145 160,175 Q155,210 145,235 Q138,252 125,260 L75,260 Q62,252 55,235 Q45,210 40,175 Q35,145 36,110 L38,75 Q40,52 60,42 L65,40 Q75,35 75,28 Z",
   orb: "M100,10 A90,130 0 1,1 99.99,10 Z",
   hourglass: "M55,10 L145,10 Q150,10 150,15 L150,30 Q150,50 130,80 Q110,110 105,140 Q110,170 130,200 Q150,230 150,250 L150,265 Q150,270 145,270 L55,270 Q50,270 50,265 L50,250 Q50,230 70,200 Q90,170 95,140 Q90,110 70,80 Q50,50 50,30 L50,15 Q50,10 55,10 Z",
   ampoule: "M85,10 Q80,10 80,15 L80,70 Q80,80 70,90 Q50,110 45,140 L45,200 Q45,260 70,270 L130,270 Q155,260 155,200 L155,140 Q150,110 130,90 Q120,80 120,70 L120,15 Q120,10 115,10 Z",
@@ -22,9 +22,10 @@ const VESSEL_PATHS: Record<VesselShape, string> = {
 
 const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: string }[]> = {
   urn: [
-    { x: 65, y: 150, char: "ᚱ" },
-    { x: 125, y: 150, char: "ᛊ" },
-    { x: 95, y: 250, char: "ᚾ" },
+    { x: 55, y: 140, char: "ᚱ" },
+    { x: 132, y: 140, char: "ᛊ" },
+    { x: 93, y: 75, char: "ᚨ" },
+    { x: 93, y: 245, char: "ᚾ" },
   ],
   orb: [
     { x: 60, y: 140, char: "ᚨ" },
@@ -281,7 +282,21 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
           <text key={i} x={e.x} y={e.y} fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">{e.char}</text>
         ))}
 
-        {/* Eye iris detail (only for eye shape) */}
+        {/* Urn decorative details */}
+        {shape === "urn" && (
+          <>
+            {/* Neck ring */}
+            <ellipse cx="100" cy="35" rx="32" ry="3" fill="none" stroke="hsla(185, 50%, 50%, 0.2)" strokeWidth="1" />
+            {/* Rim highlight */}
+            <ellipse cx="100" cy="10" rx="22" ry="2.5" fill="none" stroke="hsla(185, 60%, 60%, 0.25)" strokeWidth="0.8" />
+            {/* Belly band */}
+            <path d="M42,145 Q100,155 158,145" fill="none" stroke="hsla(185, 50%, 50%, 0.12)" strokeWidth="1" />
+            <path d="M44,155 Q100,165 156,155" fill="none" stroke="hsla(185, 50%, 50%, 0.08)" strokeWidth="0.8" />
+            {/* Handle accents (left + right) */}
+            <path d="M38,75 Q25,60 30,45 Q35,35 60,42" fill="none" stroke="hsla(185, 50%, 50%, 0.18)" strokeWidth="1.2" strokeLinecap="round" />
+            <path d="M162,75 Q175,60 170,45 Q165,35 140,42" fill="none" stroke="hsla(185, 50%, 50%, 0.18)" strokeWidth="1.2" strokeLinecap="round" />
+          </>
+        )}
         {shape === "eye" && (
           <>
             <motion.circle
