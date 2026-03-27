@@ -92,6 +92,7 @@ const BreathingView = () => {
             <BreathingSession
               pattern={selectedPattern}
               durationSeconds={selectedDuration}
+              vesselShape={vesselShape}
               onComplete={handleComplete}
               onStop={handleStop}
             />
