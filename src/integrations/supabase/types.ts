@@ -306,6 +306,54 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_transactions: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          date: string
+          id: string
+          is_recurring: boolean
+          is_settled: boolean
+          notes: string
+          person_name: string
+          recurring_day: number | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          created_at?: string
+          date?: string
+          id?: string
+          is_recurring?: boolean
+          is_settled?: boolean
+          notes?: string
+          person_name?: string
+          recurring_day?: number | null
+          title?: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          date?: string
+          id?: string
+          is_recurring?: boolean
+          is_settled?: boolean
+          notes?: string
+          person_name?: string
+          recurring_day?: number | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       habit_loops: {
         Row: {
           category_id: string
