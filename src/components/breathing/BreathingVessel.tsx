@@ -128,6 +128,38 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
           <text key={i} x={e.x} y={e.y} fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">{e.char}</text>
         ))}
 
+        {/* Eye iris detail (only for eye shape) */}
+        {shape === "eye" && (
+          <>
+            <motion.circle
+              cx="100"
+              cy="140"
+              r="28"
+              fill="none"
+              stroke="hsla(185, 60%, 50%, 0.3)"
+              strokeWidth="2"
+              animate={{
+                r: phase === "inhale" ? [24, 32] : phase === "exhale" ? [32, 24] : [28, 30, 28],
+                strokeOpacity: [0.3, 0.5, 0.3],
+              }}
+              transition={{ duration: phaseDuration, ease: "easeInOut" }}
+            />
+            <motion.circle
+              cx="100"
+              cy="140"
+              r="12"
+              fill="hsla(185, 80%, 40%, 0.4)"
+              animate={{
+                r: phase === "inhale" ? [10, 16] : phase === "exhale" ? [16, 10] : [12, 14, 12],
+                fill: phase === "hold1"
+                  ? ["hsla(185, 80%, 40%, 0.4)", "hsla(185, 90%, 55%, 0.6)", "hsla(185, 80%, 40%, 0.4)"]
+                  : "hsla(185, 80%, 40%, 0.4)",
+              }}
+              transition={{ duration: phaseDuration, ease: "easeInOut" }}
+            />
+          </>
+        )}
+
         {/* Air fill */}
         <g clipPath="url(#vesselClip)">
           <motion.rect
