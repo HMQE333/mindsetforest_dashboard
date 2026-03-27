@@ -21,7 +21,7 @@ function getPhaseSequence(p: BreathingPattern): { phase: BreathPhase; duration: 
   return seq;
 }
 
-const BreathingSession = ({ pattern, durationSeconds, onComplete, onStop }: Props) => {
+const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", onComplete, onStop }: Props) => {
   const [countdown, setCountdown] = useState(3);
   const [elapsed, setElapsed] = useState(0);
   const [phaseIndex, setPhaseIndex] = useState(0);
