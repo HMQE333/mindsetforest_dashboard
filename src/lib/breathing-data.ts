@@ -43,6 +43,22 @@ export const DURATION_OPTIONS = [
 
 export type BreathPhase = "inhale" | "hold1" | "exhale" | "hold2";
 
+export type VesselEffectId = "rotating-runes" | "particles" | "bursts" | "sigil" | "sparks";
+
+export interface VesselEffect {
+  id: VesselEffectId;
+  name: string;
+  icon: string;
+}
+
+export const VESSEL_EFFECTS: VesselEffect[] = [
+  { id: "rotating-runes", name: "Runes ↻", icon: "ᚱ" },
+  { id: "particles", name: "Particles", icon: "✦" },
+  { id: "bursts", name: "Bursts", icon: "⚡" },
+  { id: "sigil", name: "Sigil", icon: "⬡" },
+  { id: "sparks", name: "Sparks", icon: "✧" },
+];
+
 export function getPhaseLabel(phase: BreathPhase): string {
   switch (phase) {
     case "inhale": return "Breathe In";

@@ -1,9 +1,19 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wind, Flame, Zap, Trophy } from "lucide-react";
-import { BREATHING_PATTERNS, DURATION_OPTIONS, VESSEL_SHAPES, BreathingPattern, VesselShape } from "@/lib/breathing-data";
+import { Wind, Flame, Zap, Trophy, Sparkles, ChevronDown } from "lucide-react";
+import { BREATHING_PATTERNS, DURATION_OPTIONS, VESSEL_SHAPES, VESSEL_EFFECTS, BreathingPattern, VesselShape, VesselEffectId } from "@/lib/breathing-data";
 import { useBreathingState } from "@/hooks/useBreathingState";
 import BreathingSession from "./BreathingSession";
+
+const EFFECTS_KEY = "breathing_effects";
+
+function loadEffects(): Set<VesselEffectId> {
+  try {
+    const raw = localStorage.getItem(EFFECTS_KEY);
+    if (raw) return new Set(JSON.parse(raw) as VesselEffectId[]);
+  } catch {}
+  return new Set();
+}
 
 const BreathingView = () => {
   const { stats, logSession } = useBreathingState();
@@ -12,6 +22,21 @@ const BreathingView = () => {
   const [vesselShape, setVesselShape] = useState<VesselShape>("urn");
   const [sessionActive, setSessionActive] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
+  const [activeEffects, setActiveEffects] = useState<Set<VesselEffectId>>(loadEffects);
+  const [effectsOpen, setEffectsOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(EFFECTS_KEY, JSON.stringify([...activeEffects]));
+  }, [activeEffects]);
+
+  const toggleEffect = (id: VesselEffectId) => {
+    setActiveEffects(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleStart = (pattern: BreathingPattern) => {
     setSelectedPattern(pattern);
@@ -93,6 +118,7 @@ const BreathingView = () => {
               pattern={selectedPattern}
               durationSeconds={selectedDuration}
               vesselShape={vesselShape}
+              activeEffects={activeEffects}
               onComplete={handleComplete}
               onStop={handleStop}
             />
@@ -130,6 +156,52 @@ const BreathingView = () => {
                   <span className="hidden sm:inline">{s.name}</span>
                 </button>
               ))}
+            </div>
+
+            {/* Effects toggle */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => setEffectsOpen(o => !o)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Effects{activeEffects.size > 0 ? ` (${activeEffects.size})` : ""}</span>
+                <motion.span animate={{ rotate: effectsOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                  <ChevronDown className="w-3 h-3" />
+                </motion.span>
+              </button>
+              <AnimatePresence>
+                {effectsOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap py-1">
+                      {VESSEL_EFFECTS.map(e => (
+                        <button
+                          key={e.id}
+                          onClick={() => toggleEffect(e.id)}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                            activeEffects.has(e.id)
+                              ? "text-primary-foreground"
+                              : "glass-card text-muted-foreground hover:text-foreground"
+                          }`}
+                          style={
+                            activeEffects.has(e.id)
+                              ? { background: "hsl(185, 50%, 30%)" }
+                              : {}
+                          }
+                        >
+                          <span>{e.icon}</span>
+                          <span>{e.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Duration selector */}
