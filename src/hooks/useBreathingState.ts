@@ -23,33 +23,32 @@ export function useBreathingState() {
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
-    supabase
-      .from("breathing_sessions")
+    (supabase
+      .from("breathing_sessions" as any)
       .select("*")
       .eq("user_id", user.id)
-      .order("completed_at", { ascending: false })
-      .then(({ data }) => {
-        if (data) setSessions(data);
+      .order("completed_at", { ascending: false }) as any)
+      .then(({ data }: any) => {
+        if (data) setSessions(data as BreathingSession[]);
         setLoading(false);
       });
   }, [user]);
 
   const logSession = useCallback(async (pattern: string, durationSeconds: number) => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("breathing_sessions")
-      .insert({ user_id: user.id, pattern, duration_seconds: durationSeconds })
+    const { data, error } = await (supabase
+      .from("breathing_sessions" as any)
+      .insert({ user_id: user.id, pattern, duration_seconds: durationSeconds } as any)
       .select()
-      .single();
+      .single() as any);
     if (error) { toast.error("Failed to save session"); return; }
-    if (data) setSessions(prev => [data, ...prev]);
+    if (data) setSessions(prev => [data as BreathingSession, ...prev]);
   }, [user]);
 
   const stats: BreathingStats = (() => {
     const totalSessions = sessions.length;
     const totalMinutes = Math.round(sessions.reduce((s, e) => s + e.duration_seconds, 0) / 60);
 
-    // Streak: consecutive days with at least one session
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const daySet = new Set(sessions.map(s => {

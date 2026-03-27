@@ -91,6 +91,30 @@ export type Database = {
           },
         ]
       }
+      breathing_sessions: {
+        Row: {
+          completed_at: string
+          duration_seconds: number
+          id: string
+          pattern: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          duration_seconds?: number
+          id?: string
+          pattern?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          duration_seconds?: number
+          id?: string
+          pattern?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       cooking_ingredient_costs: {
         Row: {
           cost_per_unit: number

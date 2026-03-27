@@ -57,7 +57,7 @@ export interface UserPreferences {
   borderRadius?: number;
 }
 
-const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance"];
+const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing"];
 
 function getCachedCategories(): CustomCategory[] {
   try {

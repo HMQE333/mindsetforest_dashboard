@@ -181,6 +181,7 @@ const Index = () => {
         {activeTab === "library" && enabledModules.has("library") && (user ? <LibraryView /> : renderAuthGate("library"))}
         {activeTab === "cooking" && enabledModules.has("cooking") && (user ? <CookingView /> : renderAuthGate("cooking studio"))}
         {activeTab === "finance" && enabledModules.has("finance") && (user ? <FinanceView /> : renderAuthGate("finance tracker"))}
+        {activeTab === "breathing" && enabledModules.has("breathing") && (user ? <BreathingView /> : renderAuthGate("breathing exercises"))}
       </div>
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
