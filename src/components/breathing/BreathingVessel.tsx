@@ -15,6 +15,7 @@ const VESSEL_PATHS: Record<VesselShape, string> = {
   orb: "M100,10 Q160,10 170,80 Q180,140 170,200 Q160,270 100,270 Q40,270 30,200 Q20,140 30,80 Q40,10 100,10 Z",
   hourglass: "M55,10 L145,10 Q150,10 150,15 L150,30 Q150,50 130,80 Q110,110 105,140 Q110,170 130,200 Q150,230 150,250 L150,265 Q150,270 145,270 L55,270 Q50,270 50,265 L50,250 Q50,230 70,200 Q90,170 95,140 Q90,110 70,80 Q50,50 50,30 L50,15 Q50,10 55,10 Z",
   ampoule: "M85,10 Q80,10 80,15 L80,70 Q80,80 70,90 Q50,110 45,140 L45,200 Q45,260 70,270 L130,270 Q155,260 155,200 L155,140 Q150,110 130,90 Q120,80 120,70 L120,15 Q120,10 115,10 Z",
+  eye: "M10,140 Q50,70 100,70 Q150,70 190,140 Q150,210 100,210 Q50,210 10,140 Z",
 };
 
 const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: string }[]> = {
@@ -39,6 +40,14 @@ const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: strin
     { x: 92, y: 55, char: "ᚨ" },
     { x: 60, y: 200, char: "ᚱ" },
     { x: 130, y: 200, char: "ᛊ" },
+  ],
+  eye: [
+    { x: 30, y: 138, char: "ᚱ" },
+    { x: 160, y: 138, char: "ᛊ" },
+    { x: 75, y: 90, char: "ᚾ" },
+    { x: 115, y: 90, char: "ᛖ" },
+    { x: 75, y: 195, char: "ᚨ" },
+    { x: 115, y: 195, char: "ᚢ" },
   ],
 };
 
@@ -118,6 +127,38 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         {engravings.map((e, i) => (
           <text key={i} x={e.x} y={e.y} fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">{e.char}</text>
         ))}
+
+        {/* Eye iris detail (only for eye shape) */}
+        {shape === "eye" && (
+          <>
+            <motion.circle
+              cx="100"
+              cy="140"
+              r="28"
+              fill="none"
+              stroke="hsla(185, 60%, 50%, 0.3)"
+              strokeWidth="2"
+              animate={{
+                r: phase === "inhale" ? [24, 32] : phase === "exhale" ? [32, 24] : [28, 30, 28],
+                strokeOpacity: [0.3, 0.5, 0.3],
+              }}
+              transition={{ duration: phaseDuration, ease: "easeInOut" }}
+            />
+            <motion.circle
+              cx="100"
+              cy="140"
+              r="12"
+              fill="hsla(185, 80%, 40%, 0.4)"
+              animate={{
+                r: phase === "inhale" ? [10, 16] : phase === "exhale" ? [16, 10] : [12, 14, 12],
+                fill: phase === "hold1"
+                  ? ["hsla(185, 80%, 40%, 0.4)", "hsla(185, 90%, 55%, 0.6)", "hsla(185, 80%, 40%, 0.4)"]
+                  : "hsla(185, 80%, 40%, 0.4)",
+              }}
+              transition={{ duration: phaseDuration, ease: "easeInOut" }}
+            />
+          </>
+        )}
 
         {/* Air fill */}
         <g clipPath="url(#vesselClip)">
