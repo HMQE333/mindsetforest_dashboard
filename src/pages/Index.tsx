@@ -22,7 +22,7 @@ import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing";
 
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
