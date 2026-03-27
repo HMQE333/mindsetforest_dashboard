@@ -132,6 +132,7 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
         progress={overallProgress}
         phaseDuration={currentPhase?.duration || 4}
         shape={vesselShape}
+        activeEffects={activeEffects}
       />
 
       {/* Phase label */}
