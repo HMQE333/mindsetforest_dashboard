@@ -31,6 +31,7 @@ export const VESSEL_SHAPES: VesselShapeOption[] = [
   { id: "orb", name: "Crystal Orb", icon: "🔮" },
   { id: "hourglass", name: "Hourglass", icon: "⏳" },
   { id: "ampoule", name: "Ampoule", icon: "⚗️" },
+  { id: "eye", name: "All-Seeing Eye", icon: "👁️" },
 ];
 
 export const DURATION_OPTIONS = [

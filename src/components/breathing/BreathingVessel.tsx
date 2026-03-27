@@ -41,6 +41,14 @@ const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: strin
     { x: 60, y: 200, char: "ᚱ" },
     { x: 130, y: 200, char: "ᛊ" },
   ],
+  eye: [
+    { x: 30, y: 138, char: "ᚱ" },
+    { x: 160, y: 138, char: "ᛊ" },
+    { x: 75, y: 90, char: "ᚾ" },
+    { x: 115, y: 90, char: "ᛖ" },
+    { x: 75, y: 195, char: "ᚨ" },
+    { x: 115, y: 195, char: "ᚢ" },
+  ],
 };
 
 const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "urn" }: Props) => {
