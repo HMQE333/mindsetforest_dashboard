@@ -22,9 +22,10 @@ const VESSEL_PATHS: Record<VesselShape, string> = {
 
 const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: string }[]> = {
   urn: [
-    { x: 65, y: 150, char: "ᚱ" },
-    { x: 125, y: 150, char: "ᛊ" },
-    { x: 95, y: 250, char: "ᚾ" },
+    { x: 55, y: 140, char: "ᚱ" },
+    { x: 132, y: 140, char: "ᛊ" },
+    { x: 93, y: 75, char: "ᚨ" },
+    { x: 93, y: 245, char: "ᚾ" },
   ],
   orb: [
     { x: 60, y: 140, char: "ᚨ" },
