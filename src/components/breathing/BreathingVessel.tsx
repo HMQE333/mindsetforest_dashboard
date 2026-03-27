@@ -348,10 +348,10 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         className="absolute rounded-full z-20 pointer-events-none"
         style={{ width: 80, height: 80, top: "45%" }}
         animate={{
-          opacity: phase === "hold1" || phase === "hold2" ? [0.1, 0.25, 0.1] : 0.05,
-          background: `radial-gradient(circle, hsla(185, 90%, 70%, 0.2), transparent)`,
+          opacity: phase === "hold1" || phase === "hold2" ? [0.05, 0.15, 0.05] : 0.03,
+          background: `radial-gradient(circle, hsla(185, 90%, 70%, 0.15), transparent)`,
         }}
-        transition={{ duration: 2, repeat: Infinity }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* Ambient sparks */}
