@@ -18,7 +18,7 @@ export const BREATHING_PATTERNS: BreathingPattern[] = [
 
 export const RUNES = ["ᚱ", "ᚢ", "ᚾ", "ᛖ", "ᛊ", "ᚨ"];
 
-export type VesselShape = "urn" | "orb" | "hourglass" | "ampoule";
+export type VesselShape = "urn" | "orb" | "hourglass" | "ampoule" | "eye";
 
 export interface VesselShapeOption {
   id: VesselShape;
