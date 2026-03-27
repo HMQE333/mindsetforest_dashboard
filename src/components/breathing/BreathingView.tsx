@@ -1,21 +1,15 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wind, Flame, Zap, Trophy } from "lucide-react";
-import { BREATHING_PATTERNS, DURATION_OPTIONS, BreathingPattern } from "@/lib/breathing-data";
+import { BREATHING_PATTERNS, DURATION_OPTIONS, VESSEL_SHAPES, BreathingPattern, VesselShape } from "@/lib/breathing-data";
 import { useBreathingState } from "@/hooks/useBreathingState";
 import BreathingSession from "./BreathingSession";
-
-const PATTERN_ICONS: Record<string, string> = {
-  equal: "⚖️",
-  box: "🔲",
-  "478": "🌙",
-  relaxing: "🍃",
-};
 
 const BreathingView = () => {
   const { stats, logSession } = useBreathingState();
   const [selectedPattern, setSelectedPattern] = useState<BreathingPattern | null>(null);
   const [selectedDuration, setSelectedDuration] = useState(120);
+  const [vesselShape, setVesselShape] = useState<VesselShape>("urn");
   const [sessionActive, setSessionActive] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
 
@@ -98,6 +92,7 @@ const BreathingView = () => {
             <BreathingSession
               pattern={selectedPattern}
               durationSeconds={selectedDuration}
+              vesselShape={vesselShape}
               onComplete={handleComplete}
               onStop={handleStop}
             />
@@ -113,6 +108,30 @@ const BreathingView = () => {
             exit={{ opacity: 0 }}
             className="space-y-6"
           >
+            {/* Vessel shape selector */}
+            <div className="flex items-center justify-center gap-2">
+              {VESSEL_SHAPES.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setVesselShape(s.id)}
+                  title={s.name}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                    vesselShape === s.id
+                      ? "text-primary-foreground glow-sm"
+                      : "glass-card text-muted-foreground hover:text-foreground"
+                  }`}
+                  style={
+                    vesselShape === s.id
+                      ? { background: "hsl(185, 50%, 30%)" }
+                      : {}
+                  }
+                >
+                  <span>{s.icon}</span>
+                  <span className="hidden sm:inline">{s.name}</span>
+                </button>
+              ))}
+            </div>
+
             {/* Duration selector */}
             <div className="flex items-center justify-center gap-2">
               {DURATION_OPTIONS.map(d => (

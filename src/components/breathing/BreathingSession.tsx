@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import BreathingVessel from "./BreathingVessel";
-import { BreathingPattern, BreathPhase, getPhaseLabel, getCycleDuration } from "@/lib/breathing-data";
+import { BreathingPattern, BreathPhase, getPhaseLabel, getCycleDuration, VesselShape } from "@/lib/breathing-data";
 
 interface Props {
   pattern: BreathingPattern;
   durationSeconds: number;
+  vesselShape?: VesselShape;
   onComplete: (actualSeconds: number) => void;
   onStop: () => void;
 }
@@ -20,7 +21,7 @@ function getPhaseSequence(p: BreathingPattern): { phase: BreathPhase; duration: 
   return seq;
 }
 
-const BreathingSession = ({ pattern, durationSeconds, onComplete, onStop }: Props) => {
+const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", onComplete, onStop }: Props) => {
   const [countdown, setCountdown] = useState(3);
   const [elapsed, setElapsed] = useState(0);
   const [phaseIndex, setPhaseIndex] = useState(0);
@@ -129,6 +130,7 @@ const BreathingSession = ({ pattern, durationSeconds, onComplete, onStop }: Prop
         fillLevel={getFillLevel()}
         progress={overallProgress}
         phaseDuration={currentPhase?.duration || 4}
+        shape={vesselShape}
       />
 
       {/* Phase label */}
