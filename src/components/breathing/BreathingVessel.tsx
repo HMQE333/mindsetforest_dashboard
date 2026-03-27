@@ -126,6 +126,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
             width="160"
             height="280"
             fill="url(#airGrad)"
+            initial={{ y: 280 - fillLevel * 270 }}
             animate={{ y: 280 - fillLevel * 270 }}
             transition={{ duration: phaseDuration, ease: "easeInOut" }}
           />
@@ -135,6 +136,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
             rx="80"
             ry="6"
             fill="hsla(185, 90%, 70%, 0.4)"
+            initial={{ cy: 280 - fillLevel * 270, rx: 80 }}
             animate={{
               cy: 280 - fillLevel * 270,
               rx: isActive ? [70, 90, 70] : 80,
