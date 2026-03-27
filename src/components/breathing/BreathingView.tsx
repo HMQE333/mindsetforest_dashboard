@@ -1,21 +1,15 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wind, Flame, Zap, Trophy } from "lucide-react";
-import { BREATHING_PATTERNS, DURATION_OPTIONS, BreathingPattern } from "@/lib/breathing-data";
+import { BREATHING_PATTERNS, DURATION_OPTIONS, VESSEL_SHAPES, BreathingPattern, VesselShape } from "@/lib/breathing-data";
 import { useBreathingState } from "@/hooks/useBreathingState";
 import BreathingSession from "./BreathingSession";
-
-const PATTERN_ICONS: Record<string, string> = {
-  equal: "⚖️",
-  box: "🔲",
-  "478": "🌙",
-  relaxing: "🍃",
-};
 
 const BreathingView = () => {
   const { stats, logSession } = useBreathingState();
   const [selectedPattern, setSelectedPattern] = useState<BreathingPattern | null>(null);
   const [selectedDuration, setSelectedDuration] = useState(120);
+  const [vesselShape, setVesselShape] = useState<VesselShape>("urn");
   const [sessionActive, setSessionActive] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
 
