@@ -1,6 +1,7 @@
-import { motion } from "framer-motion";
+import { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { RUNES } from "@/lib/breathing-data";
-import type { BreathPhase, VesselShape } from "@/lib/breathing-data";
+import type { BreathPhase, VesselShape, VesselEffectId } from "@/lib/breathing-data";
 
 interface Props {
   phase: BreathPhase;
@@ -8,6 +9,7 @@ interface Props {
   progress: number;
   phaseDuration: number;
   shape?: VesselShape;
+  activeEffects?: Set<VesselEffectId>;
 }
 
 const VESSEL_PATHS: Record<VesselShape, string> = {
@@ -51,11 +53,84 @@ const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: strin
   ],
 };
 
-const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "urn" }: Props) => {
+// Generate stable particle configs
+const PARTICLES = Array.from({ length: 10 }, (_, i) => ({
+  radius: 120 + Math.random() * 40,
+  speed: 15 + Math.random() * 15,
+  startAngle: (i / 10) * Math.PI * 2,
+  size: 2 + Math.random() * 1.5,
+}));
+
+// Generate stable spark configs
+const SPARKS = Array.from({ length: 4 }, (_, i) => ({
+  xOffset: -30 + Math.random() * 60,
+  driftY: 40 + Math.random() * 40,
+  duration: 2 + Math.random() * 2,
+  delay: i * 0.8,
+}));
+
+const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "urn", activeEffects = new Set() }: Props) => {
   const isActive = phase === "inhale" || phase === "exhale";
   const glowIntensity = phase === "inhale" ? 0.6 + fillLevel * 0.4 : phase === "hold1" ? 0.8 : 0.3 + fillLevel * 0.3;
   const vesselPath = VESSEL_PATHS[shape];
   const engravings = VESSEL_ENGRAVINGS[shape];
+
+  const hasRotatingRunes = activeEffects.has("rotating-runes");
+  const hasParticles = activeEffects.has("particles");
+  const hasBursts = activeEffects.has("bursts");
+  const hasSigil = activeEffects.has("sigil");
+  const hasSparks = activeEffects.has("sparks");
+
+  // Energy burst state
+  const [burst, setBurst] = useState<{ runeIndex: number; key: number } | null>(null);
+
+  useEffect(() => {
+    if (!hasBursts) return;
+    const fire = () => {
+      const idx = Math.floor(Math.random() * RUNES.length);
+      setBurst({ runeIndex: idx, key: Date.now() });
+      setTimeout(() => setBurst(null), 800);
+    };
+    const interval = setInterval(fire, 6000 + Math.random() * 4000);
+    return () => clearInterval(interval);
+  }, [hasBursts]);
+
+  // Compute rune positions for reuse
+  const runePositions = useMemo(() =>
+    RUNES.map((rune, i) => {
+      const angle = (i / RUNES.length) * Math.PI * 2 - Math.PI / 2;
+      const radius = 140;
+      return {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius + 20,
+        rune,
+        index: i,
+      };
+    }), []
+  );
+
+  const runesContent = runePositions.map(({ x, y, rune, index: i }) => {
+    const runeActive = progress > 0 && (i / RUNES.length) <= progress;
+    return (
+      <motion.span
+        key={i}
+        className="absolute text-xl font-bold select-none"
+        style={{ left: `calc(50% + ${x}px - 12px)`, top: `calc(50% + ${y}px - 12px)` }}
+        animate={{
+          color: runeActive
+            ? `hsla(185, 90%, 70%, 0.9)`
+            : "hsla(185, 40%, 35%, 0.3)",
+          textShadow: runeActive
+            ? `0 0 12px hsla(185, 90%, 60%, 0.6)`
+            : "none",
+          scale: runeActive && phase === "inhale" ? [1, 1.15, 1] : 1,
+        }}
+        transition={{ duration: 2, repeat: runeActive ? Infinity : 0, repeatType: "reverse" }}
+      >
+        {rune}
+      </motion.span>
+    );
+  });
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: 280, height: 340 }}>
@@ -69,34 +144,112 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         transition={{ duration: phaseDuration, ease: "easeInOut" }}
       />
 
-      {/* Runes orbiting */}
-      {RUNES.map((rune, i) => {
-        const angle = (i / RUNES.length) * Math.PI * 2 - Math.PI / 2;
-        const radius = 140;
-        const x = Math.cos(angle) * radius;
-        const y = Math.sin(angle) * radius + 20;
-        const runeActive = progress > 0 && (i / RUNES.length) <= progress;
+      {/* Rune ring — optionally rotating */}
+      {hasRotatingRunes ? (
+        <motion.div
+          className="absolute inset-0"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        >
+          {runesContent}
+        </motion.div>
+      ) : (
+        <>{runesContent}</>
+      )}
 
-        return (
-          <motion.span
-            key={i}
-            className="absolute text-xl font-bold select-none"
-            style={{ left: `calc(50% + ${x}px - 12px)`, top: `calc(50% + ${y}px - 12px)` }}
-            animate={{
-              color: runeActive
-                ? `hsla(185, 90%, 70%, ${0.7 + Math.sin(Date.now() / 800 + i) * 0.3})`
-                : "hsla(185, 40%, 35%, 0.3)",
-              textShadow: runeActive
-                ? `0 0 12px hsla(185, 90%, 60%, 0.6)`
-                : "none",
-              scale: runeActive && phase === "inhale" ? [1, 1.15, 1] : 1,
-            }}
-            transition={{ duration: 2, repeat: runeActive ? Infinity : 0, repeatType: "reverse" }}
-          >
-            {rune}
-          </motion.span>
-        );
-      })}
+      {/* Sigil lines connecting runes */}
+      {hasSigil && (
+        <svg
+          className="absolute inset-0 z-0 pointer-events-none"
+          viewBox="-140 -120 280 280"
+          style={{ width: 280, height: 340, left: 0, top: 0 }}
+        >
+          <g transform="translate(140, 150)">
+            {runePositions.map(({ x, y }, i) => {
+              const next = runePositions[(i + 1) % runePositions.length];
+              const lineActive = progress > 0 && (i / RUNES.length) <= progress;
+              return (
+                <motion.line
+                  key={i}
+                  x1={x} y1={y} x2={next.x} y2={next.y}
+                  stroke="hsla(185, 70%, 55%, 0.15)"
+                  strokeWidth="1"
+                  animate={{
+                    strokeOpacity: lineActive ? [0.15, 0.5, 0.15] : 0.08,
+                  }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+              );
+            })}
+          </g>
+        </svg>
+      )}
+
+      {/* Energy particles */}
+      {hasParticles && PARTICLES.map((p, i) => (
+        <motion.div
+          key={`particle-${i}`}
+          className="absolute rounded-full pointer-events-none z-0"
+          style={{
+            width: p.size,
+            height: p.size,
+            background: "hsla(185, 90%, 65%, 0.7)",
+            boxShadow: "0 0 4px hsla(185, 90%, 65%, 0.5)",
+            left: "50%",
+            top: "50%",
+            marginLeft: -p.size / 2,
+            marginTop: -p.size / 2 + 20,
+          }}
+          animate={{
+            x: [
+              Math.cos(p.startAngle) * p.radius,
+              Math.cos(p.startAngle + Math.PI) * p.radius,
+              Math.cos(p.startAngle + Math.PI * 2) * p.radius,
+            ],
+            y: [
+              Math.sin(p.startAngle) * p.radius,
+              Math.sin(p.startAngle + Math.PI) * p.radius,
+              Math.sin(p.startAngle + Math.PI * 2) * p.radius,
+            ],
+            opacity: [0.3, 0.8, 0.3],
+          }}
+          transition={{
+            duration: p.speed,
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        />
+      ))}
+
+      {/* Energy bursts */}
+      <AnimatePresence>
+        {hasBursts && burst && (() => {
+          const rp = runePositions[burst.runeIndex];
+          return (
+            <motion.div
+              key={burst.key}
+              className="absolute rounded-full pointer-events-none z-30"
+              style={{
+                width: 6,
+                height: 6,
+                background: "hsla(185, 95%, 75%, 0.9)",
+                boxShadow: "0 0 12px hsla(185, 95%, 70%, 0.8)",
+                left: `calc(50% + ${rp.x}px - 3px)`,
+                top: `calc(50% + ${rp.y}px - 3px)`,
+              }}
+              initial={{ scale: 1, opacity: 1 }}
+              animate={{
+                left: "calc(50% - 3px)",
+                top: "calc(50% + 17px)",
+                scale: [1, 2, 0],
+                opacity: [1, 0.8, 0],
+              }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, ease: "easeIn" }}
+            />
+          );
+        })()}
+      </AnimatePresence>
 
       {/* Vessel SVG */}
       <svg viewBox="0 0 200 280" className="relative z-10" style={{ width: 180, height: 260 }}>
@@ -200,6 +353,34 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         }}
         transition={{ duration: 2, repeat: Infinity }}
       />
+
+      {/* Ambient sparks */}
+      {hasSparks && fillLevel > 0.3 && SPARKS.map((spark, i) => {
+        const surfaceY = 260 - fillLevel * 270 + 40; // approximate surface position in container coords
+        return (
+          <motion.div
+            key={`spark-${i}`}
+            className="absolute rounded-full pointer-events-none z-20"
+            style={{
+              width: 2,
+              height: 2,
+              background: "hsla(185, 95%, 80%, 0.8)",
+              boxShadow: "0 0 4px hsla(185, 95%, 70%, 0.6)",
+              left: `calc(50% + ${spark.xOffset}px)`,
+            }}
+            animate={{
+              top: [surfaceY, surfaceY - spark.driftY],
+              opacity: [0, 0.8, 0],
+            }}
+            transition={{
+              duration: spark.duration,
+              delay: spark.delay,
+              repeat: Infinity,
+              ease: "easeOut",
+            }}
+          />
+        );
+      })}
     </div>
   );
 };
