@@ -147,8 +147,8 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
           <p className="text-xl font-bold" style={{ color: "hsl(185, 80%, 60%)" }}>
             {currentPhase ? getPhaseLabel(currentPhase.phase) : ""}
           </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {currentPhase ? `${currentPhase.duration}s` : ""}
+          <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+            {currentPhase ? `${Math.max(0, Math.ceil(currentPhase.duration - phaseElapsed))}s` : ""}
           </p>
         </motion.div>
       </AnimatePresence>
