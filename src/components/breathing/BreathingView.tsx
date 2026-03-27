@@ -135,25 +135,24 @@ const BreathingView = () => {
             className="space-y-6"
           >
             {/* Vessel shape selector */}
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-1.5">
               {VESSEL_SHAPES.map(s => (
                 <button
                   key={s.id}
                   onClick={() => setVesselShape(s.id)}
                   title={s.name}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`relative w-9 h-9 flex items-center justify-center rounded-full text-lg transition-all duration-200 ${
                     vesselShape === s.id
-                      ? "text-primary-foreground glow-sm"
-                      : "glass-card text-muted-foreground hover:text-foreground"
+                      ? "scale-110"
+                      : "opacity-50 hover:opacity-80 hover:scale-105"
                   }`}
                   style={
                     vesselShape === s.id
-                      ? { background: "hsl(185, 50%, 30%)" }
+                      ? { background: "hsla(185, 50%, 30%, 0.6)", boxShadow: "0 0 12px hsla(185, 70%, 50%, 0.3)" }
                       : {}
                   }
                 >
-                  <span>{s.icon}</span>
-                  <span className="hidden sm:inline">{s.name}</span>
+                  {s.icon}
                 </button>
               ))}
             </div>
