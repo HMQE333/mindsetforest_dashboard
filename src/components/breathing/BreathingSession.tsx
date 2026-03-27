@@ -130,6 +130,7 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", onCom
         fillLevel={getFillLevel()}
         progress={overallProgress}
         phaseDuration={currentPhase?.duration || 4}
+        shape={vesselShape}
       />
 
       {/* Phase label */}

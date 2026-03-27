@@ -18,6 +18,21 @@ export const BREATHING_PATTERNS: BreathingPattern[] = [
 
 export const RUNES = ["ᚱ", "ᚢ", "ᚾ", "ᛖ", "ᛊ", "ᚨ"];
 
+export type VesselShape = "urn" | "orb" | "hourglass" | "ampoule";
+
+export interface VesselShapeOption {
+  id: VesselShape;
+  name: string;
+  icon: string;
+}
+
+export const VESSEL_SHAPES: VesselShapeOption[] = [
+  { id: "urn", name: "Ancient Urn", icon: "🏺" },
+  { id: "orb", name: "Crystal Orb", icon: "🔮" },
+  { id: "hourglass", name: "Hourglass", icon: "⏳" },
+  { id: "ampoule", name: "Ampoule", icon: "⚗️" },
+];
+
 export const DURATION_OPTIONS = [
   { label: "1 min", seconds: 60 },
   { label: "2 min", seconds: 120 },

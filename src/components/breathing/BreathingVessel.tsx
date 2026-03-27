@@ -1,17 +1,52 @@
 import { motion } from "framer-motion";
 import { RUNES } from "@/lib/breathing-data";
-import type { BreathPhase } from "@/lib/breathing-data";
+import type { BreathPhase, VesselShape } from "@/lib/breathing-data";
 
 interface Props {
   phase: BreathPhase;
-  fillLevel: number; // 0-1
-  progress: number; // 0-1 overall session progress
+  fillLevel: number;
+  progress: number;
   phaseDuration: number;
+  shape?: VesselShape;
 }
 
-const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration }: Props) => {
+const VESSEL_PATHS: Record<VesselShape, string> = {
+  urn: "M60,30 Q60,10 80,10 L120,10 Q140,10 140,30 L145,60 Q155,80 155,120 L155,180 Q155,240 130,260 L70,260 Q45,240 45,180 L45,120 Q45,80 55,60 Z",
+  orb: "M100,10 Q160,10 170,80 Q180,140 170,200 Q160,270 100,270 Q40,270 30,200 Q20,140 30,80 Q40,10 100,10 Z",
+  hourglass: "M55,10 L145,10 Q150,10 150,15 L150,30 Q150,50 130,80 Q110,110 105,140 Q110,170 130,200 Q150,230 150,250 L150,265 Q150,270 145,270 L55,270 Q50,270 50,265 L50,250 Q50,230 70,200 Q90,170 95,140 Q90,110 70,80 Q50,50 50,30 L50,15 Q50,10 55,10 Z",
+  ampoule: "M85,10 Q80,10 80,15 L80,70 Q80,80 70,90 Q50,110 45,140 L45,200 Q45,260 70,270 L130,270 Q155,260 155,200 L155,140 Q150,110 130,90 Q120,80 120,70 L120,15 Q120,10 115,10 Z",
+};
+
+const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: string }[]> = {
+  urn: [
+    { x: 65, y: 150, char: "ᚱ" },
+    { x: 125, y: 150, char: "ᛊ" },
+    { x: 95, y: 250, char: "ᚾ" },
+  ],
+  orb: [
+    { x: 60, y: 140, char: "ᚨ" },
+    { x: 130, y: 140, char: "ᛖ" },
+    { x: 95, y: 60, char: "ᚱ" },
+    { x: 95, y: 240, char: "ᚢ" },
+  ],
+  hourglass: [
+    { x: 65, y: 45, char: "ᚱ" },
+    { x: 120, y: 45, char: "ᛊ" },
+    { x: 65, y: 250, char: "ᚾ" },
+    { x: 120, y: 250, char: "ᛖ" },
+  ],
+  ampoule: [
+    { x: 92, y: 55, char: "ᚨ" },
+    { x: 60, y: 200, char: "ᚱ" },
+    { x: 130, y: 200, char: "ᛊ" },
+  ],
+};
+
+const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "urn" }: Props) => {
   const isActive = phase === "inhale" || phase === "exhale";
   const glowIntensity = phase === "inhale" ? 0.6 + fillLevel * 0.4 : phase === "hold1" ? 0.8 : 0.3 + fillLevel * 0.3;
+  const vesselPath = VESSEL_PATHS[shape];
+  const engravings = VESSEL_ENGRAVINGS[shape];
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: 280, height: 340 }}>
@@ -58,8 +93,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration }: Props) =
       <svg viewBox="0 0 200 280" className="relative z-10" style={{ width: 180, height: 260 }}>
         <defs>
           <clipPath id="vesselClip">
-            {/* Urn shape */}
-            <path d="M60,30 Q60,10 80,10 L120,10 Q140,10 140,30 L145,60 Q155,80 155,120 L155,180 Q155,240 130,260 L70,260 Q45,240 45,180 L45,120 Q45,80 55,60 Z" />
+            <path d={vesselPath} />
           </clipPath>
           <linearGradient id="vesselGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="hsla(185, 60%, 25%, 0.3)" />
@@ -74,36 +108,36 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration }: Props) =
 
         {/* Vessel outline */}
         <path
-          d="M60,30 Q60,10 80,10 L120,10 Q140,10 140,30 L145,60 Q155,80 155,120 L155,180 Q155,240 130,260 L70,260 Q45,240 45,180 L45,120 Q45,80 55,60 Z"
+          d={vesselPath}
           fill="url(#vesselGrad)"
           stroke="hsla(185, 50%, 45%, 0.4)"
           strokeWidth="1.5"
         />
 
         {/* Rune engravings on vessel */}
-        <text x="65" y="150" fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">ᚱ</text>
-        <text x="125" y="150" fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">ᛊ</text>
-        <text x="95" y="250" fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">ᚾ</text>
+        {engravings.map((e, i) => (
+          <text key={i} x={e.x} y={e.y} fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">{e.char}</text>
+        ))}
 
         {/* Air fill */}
         <g clipPath="url(#vesselClip)">
           <motion.rect
-            x="40"
-            width="120"
-            height="260"
+            x="20"
+            width="160"
+            height="280"
             fill="url(#airGrad)"
-            animate={{ y: 260 - fillLevel * 250 }}
+            animate={{ y: 280 - fillLevel * 270 }}
             transition={{ duration: phaseDuration, ease: "easeInOut" }}
           />
           {/* Wave surface */}
           <motion.ellipse
             cx="100"
-            rx="60"
+            rx="80"
             ry="6"
             fill="hsla(185, 90%, 70%, 0.4)"
             animate={{
-              cy: 260 - fillLevel * 250,
-              rx: isActive ? [55, 65, 55] : 60,
+              cy: 280 - fillLevel * 270,
+              rx: isActive ? [70, 90, 70] : 80,
             }}
             transition={{
               cy: { duration: phaseDuration, ease: "easeInOut" },
