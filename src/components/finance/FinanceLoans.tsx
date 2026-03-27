@@ -12,8 +12,6 @@ interface Props {
 export default function FinanceLoans({ loans, onSettle, onDelete, onAdd }: Props) {
   const theyOwe = loans.filter(l => l.type === "loan_out");
   const youOwe = loans.filter(l => l.type === "loan_in");
-  const theyOweTotal = theyOwe.reduce((s, l) => s + l.amount, 0);
-  const youOweTotal = youOwe.reduce((s, l) => s + l.amount, 0);
 
   const renderList = (items: FinanceTransaction[], label: string, color: string) => (
     <div className="space-y-2">

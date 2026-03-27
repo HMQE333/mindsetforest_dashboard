@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
-import { format, subMonths, startOfMonth } from "date-fns";
+import { format, subMonths } from "date-fns";
 
 export type TransactionType = "income" | "expense" | "subscription" | "loan_out" | "loan_in";
 
