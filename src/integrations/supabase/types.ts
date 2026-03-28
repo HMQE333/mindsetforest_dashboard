@@ -115,6 +115,39 @@ export type Database = {
         }
         Relationships: []
       }
+      calendar_events: {
+        Row: {
+          color: string
+          created_at: string
+          date: string
+          id: string
+          notes: string
+          tag: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          date: string
+          id?: string
+          notes?: string
+          tag?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string
+          tag?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       cooking_ingredient_costs: {
         Row: {
           cost_per_unit: number
