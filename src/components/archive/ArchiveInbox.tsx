@@ -132,18 +132,34 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
     }
   }, [uploadImage, insertImageUrl]);
 
+  // Extract #hashtags from text, return { cleanContent, tags }
+  const extractHashtags = (raw: string): { cleanContent: string; tags: string[] } => {
+    const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+    const tags: string[] = [];
+    let match;
+    while ((match = tagRegex.exec(raw)) !== null) {
+      const tag = match[1].toLowerCase();
+      if (!tags.includes(tag)) tags.push(tag);
+    }
+    const cleanContent = raw.replace(tagRegex, "").replace(/  +/g, " ").trim();
+    return { cleanContent, tags };
+  };
+
   // Quick Save
   const handleQuickSave = async () => {
     if (items.length === 0) return;
     setProcessing(true);
     try {
-      const blocks: Partial<ArchiveBlock>[] = items.map((content) => ({
-        title: content.slice(0, 60).replace(/\n/g, " "),
-        content,
-        pillars: [],
-        directions: [],
-        tags: [],
-      }));
+      const blocks: Partial<ArchiveBlock>[] = items.map((content) => {
+        const { cleanContent, tags } = extractHashtags(content);
+        return {
+          title: cleanContent.slice(0, 60).replace(/\n/g, " "),
+          content: cleanContent,
+          pillars: [],
+          directions: [],
+          tags,
+        };
+      });
       await addBlocks(blocks);
       toast.success(`${blocks.length} block(s) saved`);
       clearDraft();
