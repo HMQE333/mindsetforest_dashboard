@@ -100,8 +100,8 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
 
   // Build cost chip dynamically with known prices
   const costChipPrompt = ingredientCosts.length > 0
-    ? `Calculate total recipe cost and cost per serving using these known prices:\n${ingredientCosts.map(c => `- ${c.ingredientName}: ${c.costPerUnit} PLN per ${c.unit}`).join("\n")}\nFor any ingredient NOT in this list, flag it as "price unknown". Show a cost breakdown table.`
-    : "If ingredient costs are known, estimate the total recipe cost and cost per serving. Otherwise, flag which ingredients need pricing.";
+    ? `Calculate total recipe cost and cost per serving using these known prices (in ${currency}):\n${ingredientCosts.map(c => `- ${c.ingredientName}: ${c.costPerUnit} ${currency} per ${c.unit}`).join("\n")}\nFor any ingredient NOT in this list, flag it as "price unknown". Show a cost breakdown table in ${currency}.`
+    : `If ingredient costs are known, estimate the total recipe cost and cost per serving in ${currency}. Otherwise, flag which ingredients need pricing.`;
 
   const SUGGESTION_CHIPS = [
     ...BASE_CHIPS,
