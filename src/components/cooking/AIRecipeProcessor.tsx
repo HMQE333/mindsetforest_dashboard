@@ -31,8 +31,8 @@ function extractTitle(raw: string): string {
   return firstLine ? firstLine.replace(/^#+\s*/, "").slice(0, 80) : "New Recipe";
 }
 
-const buildShoppingPrompt = (text: string) =>
-  `Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include any instructions — only the shopping list.\n\n---\n${text.trim()}\n---`;
+// Shopping prompt modal targets
+type ShoppingTarget = "raw" | "result" | null;
 
 export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
   const [recipe, setRecipe] = useState("");
