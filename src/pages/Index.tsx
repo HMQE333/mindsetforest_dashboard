@@ -18,6 +18,7 @@ import LibraryView from "@/components/library/LibraryView";
 import CookingView from "@/components/cooking/CookingView";
 import FinanceView from "@/components/finance/FinanceView";
 import BreathingView from "@/components/breathing/BreathingView";
+import CalendarView from "@/components/calendar/CalendarView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
