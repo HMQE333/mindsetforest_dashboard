@@ -22,6 +22,9 @@ const SUGGESTION_CHIPS = [
 interface Props {
   recipes: CookingRecipe[];
   onSaveRecipe: (recipe: Partial<CookingRecipe> & { id?: string }) => Promise<CookingRecipe | null>;
+  ingredientCosts: IngredientCost[];
+  onSaveIngredientCost: (cost: Omit<IngredientCost, "id"> & { id?: string }) => Promise<void>;
+  onDeleteIngredientCost: (id: string) => Promise<void>;
 }
 
 type SaveMode = "choose" | "attach" | "new";
