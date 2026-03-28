@@ -1,11 +1,8 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X, Check } from "lucide-react";
-import { toast } from "sonner";
-
-const buildShoppingPrompt = (text: string) =>
-  `Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include any instructions — only the shopping list.\n\n---\n${text.trim()}\n---`;
+import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X } from "lucide-react";
 import { CookingRecipe } from "@/hooks/useCookingState";
+import ShoppingPromptModal from "./ShoppingPromptModal";
 import RecipeFormModal from "./RecipeFormModal";
 
 const STATUS_COLORS: Record<string, string> = {
