@@ -255,7 +255,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
       {/* Vessel SVG */}
       <svg viewBox="0 0 200 280" className="relative z-10" style={{ width: 180, height: 260 }}>
         <defs>
-          <clipPath id="vesselClip">
+          <clipPath id={`vesselClip-${shape}`}>
             <path d={vesselPath} />
           </clipPath>
           <linearGradient id="vesselGrad" x1="0" y1="0" x2="0" y2="1">
