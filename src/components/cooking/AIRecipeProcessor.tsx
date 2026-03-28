@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CookingRecipe } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
+import ShoppingPromptModal from "./ShoppingPromptModal";
 
 const SUGGESTION_CHIPS = [
   { label: "✨ Clean & Simplify", prompt: "Clean and simplify this recipe completely. Strip all tips, backstory, alternatives, and commentary. Convert all quantities to grams. Pick one option when alternatives are listed. Output only: RECIPE NAME (uppercase), then Ingredients section (one item per line as '- Name: Xg'), then Instructions section (numbered, one action per step, max 15 words each). No blank lines within sections." },
@@ -30,8 +31,8 @@ function extractTitle(raw: string): string {
   return firstLine ? firstLine.replace(/^#+\s*/, "").slice(0, 80) : "New Recipe";
 }
 
-const buildShoppingPrompt = (text: string) =>
-  `Here is a recipe. Please generate a clean, ordered shopping list with all ingredients grouped by category (produce, dairy, meat, dry goods, etc.) and exact amounts in grams. Do not include any instructions — only the shopping list.\n\n---\n${text.trim()}\n---`;
+// Shopping prompt modal targets
+type ShoppingTarget = "raw" | "result" | null;
 
 export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
   const [recipe, setRecipe] = useState("");
@@ -39,8 +40,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [copiedShoppingRaw, setCopiedShoppingRaw] = useState(false);
-  const [copiedShoppingResult, setCopiedShoppingResult] = useState(false);
+  const [shoppingTarget, setShoppingTarget] = useState<ShoppingTarget>(null);
   const [showChips, setShowChips] = useState(true);
 
   // Save-to-recipe state
@@ -82,19 +82,8 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
     toast.success("Copied to clipboard!");
   };
 
-  const handleCopyShoppingRaw = () => {
-    navigator.clipboard.writeText(buildShoppingPrompt(recipe));
-    setCopiedShoppingRaw(true);
-    setTimeout(() => setCopiedShoppingRaw(false), 2000);
-    toast.success("Shopping prompt copied!");
-  };
-
-  const handleCopyShoppingResult = () => {
-    navigator.clipboard.writeText(buildShoppingPrompt(result));
-    setCopiedShoppingResult(true);
-    setTimeout(() => setCopiedShoppingResult(false), 2000);
-    toast.success("Shopping prompt copied!");
-  };
+  const handleShoppingRaw = () => setShoppingTarget("raw");
+  const handleShoppingResult = () => setShoppingTarget("result");
 
   const appendChip = (chip: typeof SUGGESTION_CHIPS[0]) => {
     setPrompt(prev => prev ? `${prev}. ${chip.prompt}` : chip.prompt);
@@ -163,11 +152,10 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
             <div className="text-[10px] text-muted-foreground/50">{recipe.length} chars</div>
             {recipe.trim() && (
               <button
-                onClick={handleCopyShoppingRaw}
+                onClick={handleShoppingRaw}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/20 border border-white/10 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
               >
-                {copiedShoppingRaw ? <Check className="w-3 h-3 text-primary" /> : <span>🛒</span>}
-                {copiedShoppingRaw ? "Copied!" : "Copy shopping prompt"}
+                <span>🛒</span> Shopping prompt
               </button>
             )}
           </div>
@@ -244,11 +232,10 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
                 <h3 className="text-sm font-bold text-foreground">✨ Processed Result</h3>
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={handleCopyShoppingResult}
+                    onClick={handleShoppingResult}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/20 border border-white/10 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
                   >
-                    {copiedShoppingResult ? <Check className="w-3.5 h-3.5 text-primary" /> : <span>🛒</span>}
-                    {copiedShoppingResult ? "Copied!" : "Shopping prompt"}
+                    <span>🛒</span> Shopping prompt
                   </button>
                   <button
                     onClick={handleCopy}
@@ -413,7 +400,15 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
         open={newRecipeOpen}
         onClose={() => setNewRecipeOpen(false)}
         onSave={async (r) => { await onSaveRecipe(r); setNewRecipeOpen(false); toast.success("Recipe created from AI result!"); }}
-      initial={prefilledRecipe as unknown as CookingRecipe}
+        initial={prefilledRecipe as unknown as CookingRecipe}
+      />
+
+      {/* Shopping prompt modal */}
+      <ShoppingPromptModal
+        open={shoppingTarget !== null}
+        onClose={() => setShoppingTarget(null)}
+        recipeText={shoppingTarget === "result" ? result : recipe}
+        recipeTitle={shoppingTarget === "result" ? extractTitle(result) : extractTitle(recipe)}
       />
     </div>
   );
