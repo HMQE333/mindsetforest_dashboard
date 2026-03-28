@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CookingRecipe } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
+import ShoppingPromptModal from "./ShoppingPromptModal";
 
 const SUGGESTION_CHIPS = [
   { label: "✨ Clean & Simplify", prompt: "Clean and simplify this recipe completely. Strip all tips, backstory, alternatives, and commentary. Convert all quantities to grams. Pick one option when alternatives are listed. Output only: RECIPE NAME (uppercase), then Ingredients section (one item per line as '- Name: Xg'), then Instructions section (numbered, one action per step, max 15 words each). No blank lines within sections." },
