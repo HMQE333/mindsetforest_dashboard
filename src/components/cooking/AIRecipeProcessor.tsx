@@ -400,7 +400,15 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
         open={newRecipeOpen}
         onClose={() => setNewRecipeOpen(false)}
         onSave={async (r) => { await onSaveRecipe(r); setNewRecipeOpen(false); toast.success("Recipe created from AI result!"); }}
-      initial={prefilledRecipe as unknown as CookingRecipe}
+        initial={prefilledRecipe as unknown as CookingRecipe}
+      />
+
+      {/* Shopping prompt modal */}
+      <ShoppingPromptModal
+        open={shoppingTarget !== null}
+        onClose={() => setShoppingTarget(null)}
+        recipeText={shoppingTarget === "result" ? result : recipe}
+        recipeTitle={shoppingTarget === "result" ? extractTitle(result) : extractTitle(recipe)}
       />
     </div>
   );
