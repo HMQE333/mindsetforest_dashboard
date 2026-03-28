@@ -48,6 +48,13 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
   const [newIngName, setNewIngName] = useState("");
   const [newIngPrice, setNewIngPrice] = useState("");
   const [newIngUnit, setNewIngUnit] = useState("g");
+  const [currency, setCurrencyState] = useState(() => {
+    try { return localStorage.getItem("cooking_currency") || "PLN"; } catch { return "PLN"; }
+  });
+  const setCurrency = (c: string) => {
+    setCurrencyState(c);
+    try { localStorage.setItem("cooking_currency", c); } catch {}
+  };
 
   // Save-to-recipe state
   const [saveMode, setSaveMode] = useState<SaveMode | null>(null);
