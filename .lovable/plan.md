@@ -1,25 +1,51 @@
 
 
-## Plan: Add New Breathing Patterns
+## Plan: Add Calendar Module
 
-### What fits the current system
-The existing engine cycles through inhale → hold → exhale → hold with fixed durations. These patterns map cleanly:
+### Overview
+Add a new "Calendar" tab as a module where users can view a monthly calendar, add important events, and filter them. Events will be stored in the database.
 
-| Pattern | In | Hold | Out | Hold | Icon | Description |
-|---|---|---|---|---|---|---|
-| **Alternate Nostril** (Nadi Shodhana) | 4 | 2 | 4 | 2 | 🫁 | Yogic balance — alternate nostrils each cycle |
-| **Coherent Breathing** | 5 | 0 | 5 | 0 | 💓 | 6 breaths/min for heart rate variability |
-| **Wim Hof Power Round** | 2 | 0 | 2 | 0 | 🧊 | Rapid deep cycles — energizing & alkalizing |
-| **Physiological Sigh** | 2 | 1 | 8 | 0 | 😮‍💨 | Double-inhale + long exhale for instant calm |
+### Database
+Create a `calendar_events` table:
+- `id` (uuid, PK)
+- `user_id` (uuid, NOT NULL)
+- `title` (text, NOT NULL)
+- `date` (text, NOT NULL, format YYYY-MM-DD)
+- `color` (text, default '#8B5CF6')
+- `tag` (text, default '')
+- `notes` (text, default '')
+- `created_at` (timestamptz, default now())
 
-> Kapalabhati and Holotropic are too rapid/unstructured for a timed vessel model — skipping those.
+RLS: standard owner-only policies for SELECT, INSERT, UPDATE, DELETE.
 
-### Changes
+### Files to Create
 
-**File: `src/lib/breathing-data.ts`** — Add 4 new entries to `BREATHING_PATTERNS` array.
+**`src/components/calendar/CalendarView.tsx`**
+- Full-month grid calendar (custom-built, not the shadcn DayPicker)
+- Month navigation (prev/next)
+- Days show colored dots for events
+- Click a day to see/add events in a side panel or inline expandable
+- Filter bar at top: text search + color/tag filter
+- Minimalist aesthetic matching the app's glass-card style
 
-**File: `src/components/breathing/BreathingView.tsx`** — The grid already maps over the array, so no changes needed. The `sm:grid-cols-2` layout will accommodate 8 cards naturally.
+**`src/hooks/useCalendarEvents.ts`**
+- CRUD hook for `calendar_events` table
+- Fetches events for visible month range
+- Add, update, delete events
 
-### No DB or migration changes needed
-Pattern IDs are stored as strings in `breathing_sessions.pattern` — new IDs just work.
+**`src/components/calendar/CalendarEventModal.tsx`**
+- Small modal/sheet to add or edit an event
+- Fields: title, date (pre-filled from clicked day), color picker (few preset colors), tag, notes
+
+### Files to Modify
+
+**`src/pages/Index.tsx`**
+- Add `"calendar"` to the `Tab` type, `ALL_TAB_LABELS`, and `TAB_ORDER`
+- Import and render `CalendarView` in tab content section
+
+**`src/components/settings/ModulesTab.tsx`**
+- Add calendar to `ALL_MODULES` array so it can be toggled on/off
+
+### No edge functions needed
+All operations are direct database CRUD.
 
