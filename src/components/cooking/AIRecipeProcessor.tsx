@@ -340,7 +340,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
                   <div key={c.id} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-muted/20 border border-white/5 group">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-foreground font-medium">{c.ingredientName}</span>
-                      <span className="text-muted-foreground">{c.costPerUnit} PLN / {c.unit}</span>
+                      <span className="text-muted-foreground">{c.costPerUnit} {currency} / {c.unit}</span>
                     </div>
                     <button
                       onClick={() => onDeleteIngredientCost(c.id)}
