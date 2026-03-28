@@ -69,6 +69,13 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
     {lightbox && recipe.photoUrl && (
       <PhotoLightbox url={recipe.photoUrl} title={recipe.title} onClose={() => setLightbox(false)} />
     )}
+    <ShoppingPromptModal
+      open={shoppingOpen}
+      onClose={() => setShoppingOpen(false)}
+      recipeText={shoppingText}
+      recipeTitle={recipe.title}
+      defaultServings={recipe.servings}
+    />
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
