@@ -37,7 +37,7 @@ function extractTitle(raw: string): string {
 // Shopping prompt modal targets
 type ShoppingTarget = "raw" | "result" | null;
 
-export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
+export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCosts, onSaveIngredientCost, onDeleteIngredientCost }: Props) {
   const [recipe, setRecipe] = useState("");
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState("");
@@ -45,6 +45,10 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
   const [copied, setCopied] = useState(false);
   const [shoppingTarget, setShoppingTarget] = useState<ShoppingTarget>(null);
   const [showChips, setShowChips] = useState(true);
+  const [showPrices, setShowPrices] = useState(false);
+  const [newIngName, setNewIngName] = useState("");
+  const [newIngPrice, setNewIngPrice] = useState("");
+  const [newIngUnit, setNewIngUnit] = useState("g");
 
   // Save-to-recipe state
   const [saveMode, setSaveMode] = useState<SaveMode | null>(null);
