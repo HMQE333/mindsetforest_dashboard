@@ -58,7 +58,7 @@ export const REWARDS: Reward[] = [
   { id: "entertainment", name: "Entertainment", icon: "📺", description: "30 minutes of fun (timer ON).", cost: 20, category: "instant" },
   { id: "snack", name: "Sweet Snack", icon: "🍫", description: "Small dessert/snack.", cost: 25, category: "instant" },
   // Medium (30-60)
-  { id: "treat", name: "Small Treat", icon: "🎁", description: "Buy something small (under 50 PLN).", cost: 30, category: "medium" },
+  { id: "treat", name: "Small Treat", icon: "🎁", description: "Buy something small for yourself.", cost: 30, category: "medium" },
   { id: "meal", name: "Guilt-Free Meal", icon: "🍜", description: "Eat something tasty.", cost: 40, category: "medium" },
   { id: "gaming", name: "Gaming Session", icon: "🎮", description: "60 minutes gaming. Stop on time.", cost: 50, category: "medium" },
   { id: "movie", name: "Movie Night", icon: "🍿", description: "One movie. No random videos after.", cost: 60, category: "medium" },
