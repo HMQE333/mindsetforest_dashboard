@@ -127,11 +127,11 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
-                onClick={handleCopyShopping}
-                title="Copy shopping prompt for ChatGPT / Gemini"
+                onClick={() => setShoppingOpen(true)}
+                title="Shopping prompt for ChatGPT"
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
               >
-                {copiedShopping ? <Check className="w-4 h-4 text-primary" /> : <span className="text-sm leading-none">🛒</span>}
+                <span className="text-sm leading-none">🛒</span>
               </button>
               <button onClick={() => onEdit(recipe)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
                 <Edit2 className="w-4 h-4" />
