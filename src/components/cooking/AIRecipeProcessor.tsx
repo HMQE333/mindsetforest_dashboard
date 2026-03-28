@@ -232,11 +232,10 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
                 <h3 className="text-sm font-bold text-foreground">✨ Processed Result</h3>
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={handleCopyShoppingResult}
+                    onClick={handleShoppingResult}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/20 border border-white/10 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
                   >
-                    {copiedShoppingResult ? <Check className="w-3.5 h-3.5 text-primary" /> : <span>🛒</span>}
-                    {copiedShoppingResult ? "Copied!" : "Shopping prompt"}
+                    <span>🛒</span> Shopping prompt
                   </button>
                   <button
                     onClick={handleCopy}
