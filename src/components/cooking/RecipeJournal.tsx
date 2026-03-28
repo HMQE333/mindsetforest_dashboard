@@ -59,16 +59,10 @@ function PhotoLightbox({ url, title, onClose }: { url: string; title: string; on
 function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [lightbox, setLightbox] = useState(false);
-  const [copiedShopping, setCopiedShopping] = useState(false);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
   const accent = STATUS_ACCENT[recipe.status] || STATUS_ACCENT.tried;
 
-  const handleCopyShopping = () => {
-    const text = recipe.aiProcessedContent || `${recipe.ingredients}\n\n${recipe.instructions}`.trim();
-    navigator.clipboard.writeText(buildShoppingPrompt(text));
-    setCopiedShopping(true);
-    setTimeout(() => setCopiedShopping(false), 2000);
-    toast.success("Shopping prompt copied!");
-  };
+  const shoppingText = recipe.aiProcessedContent || `${recipe.ingredients}\n\n${recipe.instructions}`.trim();
 
   return (
     <>
