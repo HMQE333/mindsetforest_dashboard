@@ -35,6 +35,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   cooking: "🍳 Cooking",
   finance: "💰 Finance",
   breathing: "🌬️ Breathe",
+  calendar: "📅 Calendar",
 };
 
 const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing"];
