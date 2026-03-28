@@ -365,7 +365,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
                 />
               </div>
               <div className="w-20">
-                <label className="text-[10px] text-muted-foreground font-medium">PLN</label>
+                <label className="text-[10px] text-muted-foreground font-medium">{currency}</label>
                 <input
                   type="number"
                   step="0.01"
