@@ -288,6 +288,100 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
         </div>
       </div>
 
+      {/* 💰 Price List Panel */}
+      <div className="glass-card rounded-2xl border border-white/8 overflow-hidden">
+        <button
+          onClick={() => setShowPrices(p => !p)}
+          className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-base">💰</span>
+            <span className="text-sm font-bold text-foreground">Price List</span>
+            {ingredientCosts.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/15 text-primary font-medium">
+                {ingredientCosts.length} item{ingredientCosts.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showPrices ? "rotate-180" : ""}`} />
+        </button>
+
+        {showPrices && (
+          <div className="px-5 pb-4 space-y-3 border-t border-white/8 pt-3">
+            <p className="text-[11px] text-muted-foreground">
+              Add ingredient prices so the AI can calculate accurate recipe costs.
+            </p>
+
+            {ingredientCosts.length > 0 && (
+              <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                {ingredientCosts.map(c => (
+                  <div key={c.id} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-muted/20 border border-white/5 group">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-foreground font-medium">{c.ingredientName}</span>
+                      <span className="text-muted-foreground">{c.costPerUnit} PLN / {c.unit}</span>
+                    </div>
+                    <button
+                      onClick={() => onDeleteIngredientCost(c.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="text-[10px] text-muted-foreground font-medium">Ingredient</label>
+                <input
+                  value={newIngName}
+                  onChange={e => setNewIngName(e.target.value)}
+                  placeholder="e.g. Chicken breast"
+                  onKeyDown={e => e.key === "Enter" && handleAddIngredient()}
+                  className="w-full bg-background/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
+                />
+              </div>
+              <div className="w-20">
+                <label className="text-[10px] text-muted-foreground font-medium">PLN</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newIngPrice}
+                  onChange={e => setNewIngPrice(e.target.value)}
+                  placeholder="12.99"
+                  onKeyDown={e => e.key === "Enter" && handleAddIngredient()}
+                  className="w-full bg-background/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
+                />
+              </div>
+              <div className="w-16">
+                <label className="text-[10px] text-muted-foreground font-medium">Per</label>
+                <select
+                  value={newIngUnit}
+                  onChange={e => setNewIngUnit(e.target.value)}
+                  className="w-full bg-background/50 border border-white/10 rounded-lg px-1.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/40"
+                >
+                  <option value="g">g</option>
+                  <option value="kg">kg</option>
+                  <option value="ml">ml</option>
+                  <option value="L">L</option>
+                  <option value="pcs">pcs</option>
+                  <option value="pack">pack</option>
+                </select>
+              </div>
+              <button
+                onClick={handleAddIngredient}
+                disabled={!newIngName.trim() || !newIngPrice}
+                className="p-2 rounded-lg bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 transition-all disabled:opacity-30"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Save-to-recipe inline modal */}
       <AnimatePresence>
         {saveMode && (
