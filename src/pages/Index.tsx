@@ -183,6 +183,7 @@ const Index = () => {
         {activeTab === "cooking" && enabledModules.has("cooking") && (user ? <CookingView /> : renderAuthGate("cooking studio"))}
         {activeTab === "finance" && enabledModules.has("finance") && (user ? <FinanceView /> : renderAuthGate("finance tracker"))}
         {activeTab === "breathing" && enabledModules.has("breathing") && (user ? <BreathingView /> : renderAuthGate("breathing exercises"))}
+        {activeTab === "calendar" && enabledModules.has("calendar") && (user ? <CalendarView /> : renderAuthGate("calendar"))}
       </div>
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
