@@ -315,9 +315,24 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
 
         {showPrices && (
           <div className="px-5 pb-4 space-y-3 border-t border-white/8 pt-3">
-            <p className="text-[11px] text-muted-foreground">
-              Add ingredient prices so the AI can calculate accurate recipe costs.
-            </p>
+            {/* Currency selector */}
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-muted-foreground">
+                Add ingredient prices for accurate cost calculations.
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">Currency:</span>
+                <select
+                  value={currency}
+                  onChange={e => setCurrency(e.target.value)}
+                  className="bg-background/50 border border-white/10 rounded-lg px-1.5 py-1 text-xs text-foreground focus:outline-none focus:border-primary/40"
+                >
+                  {["PLN", "EUR", "USD", "GBP", "CHF", "CZK", "UAH", "SEK", "NOK", "DKK", "HUF", "RON", "BGN", "TRY", "JPY", "CAD", "AUD", "BRL", "INR"].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             {ingredientCosts.length > 0 && (
               <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
