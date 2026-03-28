@@ -7,14 +7,13 @@ import { CookingRecipe, IngredientCost } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
 import ShoppingPromptModal from "./ShoppingPromptModal";
 
-const SUGGESTION_CHIPS = [
+const BASE_CHIPS = [
   { label: "✨ Clean & Simplify", prompt: "Clean and simplify this recipe completely. Strip all tips, backstory, alternatives, and commentary. Convert all quantities to grams. Pick one option when alternatives are listed. Output only: RECIPE NAME (uppercase), then Ingredients section (one item per line as '- Name: Xg'), then Instructions section (numbered, one action per step, max 15 words each). No blank lines within sections." },
   { label: "Convert to grams", prompt: "Convert all ingredient measurements to grams using standard conversions." },
   { label: "Scale to 2 portions", prompt: "Scale all ingredient quantities for exactly 2 portions." },
   { label: "Scale to 6 portions", prompt: "Scale all ingredient quantities for exactly 6 portions." },
   { label: "Suggest temperatures", prompt: "Add precise cooking temperatures in Celsius for every step that involves heat." },
   { label: "Simplify steps", prompt: "Rewrite only the instructions in simpler, shorter numbered steps. Keep ingredient list unchanged. Be concise — one action per step." },
-  { label: "Calculate total cost", prompt: "If ingredient costs are known, estimate the total recipe cost and cost per serving. Otherwise, flag which ingredients need pricing." },
   { label: "Add nutritional estimate", prompt: "Provide a rough nutritional estimate per serving (calories, protein, carbs, fat)." },
   { label: "Make it healthier", prompt: "Suggest ingredient substitutions to make this recipe healthier while keeping the same dish." },
 ];
