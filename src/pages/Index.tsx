@@ -38,7 +38,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   calendar: "📅 Calendar",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing"];
+const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar"];
 
 const Index = () => {
   const { user } = useAuth();
