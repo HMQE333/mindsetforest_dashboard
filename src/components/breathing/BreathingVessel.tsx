@@ -329,10 +329,10 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         )}
 
         {/* Air fill */}
-        <g clipPath="url(#vesselClip)">
+        <g clipPath={`url(#vesselClip-${shape})`}>
           <motion.rect
-            x="20"
-            width="160"
+            x="0"
+            width="200"
             height="280"
             fill="url(#airGrad)"
             initial={{ y: 280 - fillLevel * 270 }}
