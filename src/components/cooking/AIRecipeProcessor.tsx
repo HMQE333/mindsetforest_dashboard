@@ -48,6 +48,13 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
   const [newIngName, setNewIngName] = useState("");
   const [newIngPrice, setNewIngPrice] = useState("");
   const [newIngUnit, setNewIngUnit] = useState("g");
+  const [currency, setCurrencyState] = useState(() => {
+    try { return localStorage.getItem("cooking_currency") || "PLN"; } catch { return "PLN"; }
+  });
+  const setCurrency = (c: string) => {
+    setCurrencyState(c);
+    try { localStorage.setItem("cooking_currency", c); } catch {}
+  };
 
   // Save-to-recipe state
   const [saveMode, setSaveMode] = useState<SaveMode | null>(null);
@@ -93,8 +100,8 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
 
   // Build cost chip dynamically with known prices
   const costChipPrompt = ingredientCosts.length > 0
-    ? `Calculate total recipe cost and cost per serving using these known prices:\n${ingredientCosts.map(c => `- ${c.ingredientName}: ${c.costPerUnit} PLN per ${c.unit}`).join("\n")}\nFor any ingredient NOT in this list, flag it as "price unknown". Show a cost breakdown table.`
-    : "If ingredient costs are known, estimate the total recipe cost and cost per serving. Otherwise, flag which ingredients need pricing.";
+    ? `Calculate total recipe cost and cost per serving using these known prices (in ${currency}):\n${ingredientCosts.map(c => `- ${c.ingredientName}: ${c.costPerUnit} ${currency} per ${c.unit}`).join("\n")}\nFor any ingredient NOT in this list, flag it as "price unknown". Show a cost breakdown table in ${currency}.`
+    : `If ingredient costs are known, estimate the total recipe cost and cost per serving in ${currency}. Otherwise, flag which ingredients need pricing.`;
 
   const SUGGESTION_CHIPS = [
     ...BASE_CHIPS,
@@ -308,9 +315,24 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
 
         {showPrices && (
           <div className="px-5 pb-4 space-y-3 border-t border-white/8 pt-3">
-            <p className="text-[11px] text-muted-foreground">
-              Add ingredient prices so the AI can calculate accurate recipe costs.
-            </p>
+            {/* Currency selector */}
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-muted-foreground">
+                Add ingredient prices for accurate cost calculations.
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">Currency:</span>
+                <select
+                  value={currency}
+                  onChange={e => setCurrency(e.target.value)}
+                  className="bg-background/50 border border-white/10 rounded-lg px-1.5 py-1 text-xs text-foreground focus:outline-none focus:border-primary/40"
+                >
+                  {["PLN", "EUR", "USD", "GBP", "CHF", "CZK", "UAH", "SEK", "NOK", "DKK", "HUF", "RON", "BGN", "TRY", "JPY", "CAD", "AUD", "BRL", "INR"].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             {ingredientCosts.length > 0 && (
               <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
@@ -318,7 +340,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
                   <div key={c.id} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-muted/20 border border-white/5 group">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-foreground font-medium">{c.ingredientName}</span>
-                      <span className="text-muted-foreground">{c.costPerUnit} PLN / {c.unit}</span>
+                      <span className="text-muted-foreground">{c.costPerUnit} {currency} / {c.unit}</span>
                     </div>
                     <button
                       onClick={() => onDeleteIngredientCost(c.id)}
@@ -343,7 +365,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
                 />
               </div>
               <div className="w-20">
-                <label className="text-[10px] text-muted-foreground font-medium">PLN</label>
+                <label className="text-[10px] text-muted-foreground font-medium">{currency}</label>
                 <input
                   type="number"
                   step="0.01"
