@@ -82,19 +82,8 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe }: Props) {
     toast.success("Copied to clipboard!");
   };
 
-  const handleCopyShoppingRaw = () => {
-    navigator.clipboard.writeText(buildShoppingPrompt(recipe));
-    setCopiedShoppingRaw(true);
-    setTimeout(() => setCopiedShoppingRaw(false), 2000);
-    toast.success("Shopping prompt copied!");
-  };
-
-  const handleCopyShoppingResult = () => {
-    navigator.clipboard.writeText(buildShoppingPrompt(result));
-    setCopiedShoppingResult(true);
-    setTimeout(() => setCopiedShoppingResult(false), 2000);
-    toast.success("Shopping prompt copied!");
-  };
+  const handleShoppingRaw = () => setShoppingTarget("raw");
+  const handleShoppingResult = () => setShoppingTarget("result");
 
   const appendChip = (chip: typeof SUGGESTION_CHIPS[0]) => {
     setPrompt(prev => prev ? `${prev}. ${chip.prompt}` : chip.prompt);
