@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Copy, Check, ChevronDown, X, Save, AlertTriangle, Search, Plus } from "lucide-react";
+import { Sparkles, Copy, Check, ChevronDown, X, Save, AlertTriangle, Search, Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CookingRecipe } from "@/hooks/useCookingState";
+import { CookingRecipe, IngredientCost } from "@/hooks/useCookingState";
 import RecipeFormModal from "./RecipeFormModal";
 import ShoppingPromptModal from "./ShoppingPromptModal";
 
