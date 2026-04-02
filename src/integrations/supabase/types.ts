@@ -585,6 +585,63 @@ export type Database = {
         }
         Relationships: []
       }
+      user_courses: {
+        Row: {
+          cover_color: string
+          created_at: string
+          directions: string[]
+          id: string
+          instructor: string
+          notes: string
+          pillars: string[]
+          platform: string
+          progress_pct: number
+          rating: number | null
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          cover_color?: string
+          created_at?: string
+          directions?: string[]
+          id?: string
+          instructor?: string
+          notes?: string
+          pillars?: string[]
+          platform?: string
+          progress_pct?: number
+          rating?: number | null
+          status?: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+          url?: string
+          user_id: string
+        }
+        Update: {
+          cover_color?: string
+          created_at?: string
+          directions?: string[]
+          id?: string
+          instructor?: string
+          notes?: string
+          pillars?: string[]
+          platform?: string
+          progress_pct?: number
+          rating?: number | null
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_metrics: {
         Row: {
           category_id: string
