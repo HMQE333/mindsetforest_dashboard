@@ -58,6 +58,21 @@ const Index = () => {
   // Filter tabs based on enabled modules
   const enabledModules = new Set(preferences.enabledModules);
   const visibleTabs = TAB_ORDER.filter(t => enabledModules.has(t));
+  const inlineTabs = visibleTabs.slice(0, 8);
+  const hasOverflow = visibleTabs.length > 8;
+  const isOverflowActive = hasOverflow && !inlineTabs.includes(activeTab);
+
+  // Split tab icons/labels for the grid
+  const TAB_ICONS: Record<Tab, string> = {
+    dashboard: "🎮", tracker: "📊", ladder: "🪜", habitloop: "🔄",
+    oracle: "🔮", archive: "📦", library: "📚", cooking: "🍳",
+    finance: "💰", breathing: "🌬️", calendar: "📅", planning: "🧠",
+  };
+  const TAB_SHORT_LABELS: Record<Tab, string> = {
+    dashboard: "Home", tracker: "Stats", ladder: "Ladder", habitloop: "Habit Loop",
+    oracle: "Oracle", archive: "Archive", library: "Library", cooking: "Cooking",
+    finance: "Finance", breathing: "Breathe", calendar: "Calendar", planning: "Planning",
+  };
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {
