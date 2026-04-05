@@ -268,7 +268,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         </div>
       </div>
       <div className="flex-1 relative">
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent">
+        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent" onPaneContextMenu={(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); setShowMobileFab(false); }} onPaneClick={() => { setContextMenuPos(null); setShowMobileFab(false); }}>
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--muted-foreground) / 0.15)" />
           <Controls className="!bg-background !border-white/10 !rounded-lg [&>button]:!bg-muted/30 [&>button]:!border-white/10 [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/50 [&>button]:!rounded-md" />
           <MiniMap
@@ -284,6 +284,25 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
             style={{ height: 100, width: 150 }}
           />
         </ReactFlow>
+        {/* Right-click context menu */}
+        {contextMenuPos && (
+          <div className="fixed z-[200]" style={{ left: contextMenuPos.x, top: contextMenuPos.y }}>
+            <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setContextMenuPos(null); }} onAddLink={u => { handleAddLink(null, u); setContextMenuPos(null); }} onClose={() => setContextMenuPos(null)} />
+          </div>
+        )}
+        {/* Mobile FAB */}
+        {isMobile && (
+          <div className="absolute bottom-6 right-6 z-[100]">
+            <button onClick={() => setShowMobileFab(!showMobileFab)} className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${showMobileFab ? "gradient-purple text-primary-foreground rotate-45" : "bg-primary text-primary-foreground"}`}>
+              <Plus className="h-5 w-5" />
+            </button>
+            {showMobileFab && (
+              <div className="absolute bottom-14 right-0">
+                <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setShowMobileFab(false); }} onAddLink={u => { handleAddLink(null, u); setShowMobileFab(false); }} onClose={() => setShowMobileFab(false)} />
+              </div>
+            )}
+          </div>
+        )}
         <PlanningNodeDetail task={tasks.find(t => t.id === selectedTaskId) || null} open={!!selectedTaskId} onClose={() => setSelectedTaskId(null)} onUpdate={handleUpdateTask} />
       </div>
     </div>
