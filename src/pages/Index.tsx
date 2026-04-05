@@ -53,6 +53,7 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Filter tabs based on enabled modules
   const enabledModules = new Set(preferences.enabledModules);
