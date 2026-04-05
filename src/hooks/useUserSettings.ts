@@ -55,6 +55,7 @@ export interface UserPreferences {
   cardOpacity?: number;
   backgroundIntensity?: number;
   borderRadius?: number;
+  moduleOrder?: string[];
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing"];
@@ -256,8 +257,10 @@ export function useUserSettings() {
     else toast.success("Preferences saved");
   }, [user, customCategories]);
 
-  const saveEnabledModules = useCallback(async (modules: string[]) => {
-    await savePreferences({ ...preferences, enabledModules: modules });
+  const saveEnabledModules = useCallback(async (modules: string[], order?: string[]) => {
+    const newPrefs = { ...preferences, enabledModules: modules };
+    if (order) newPrefs.moduleOrder = order;
+    await savePreferences(newPrefs);
   }, [savePreferences, preferences]);
 
   const saveTheme = useCallback(async (theme: ThemeMode, accentColor: AccentColor, frameStyle?: FrameStyle, heroLayout?: HeroLayout, fontPair?: FontPair, backgroundPattern?: BackgroundPattern, cardStyle?: CardStyle, extraPrefs?: Partial<UserPreferences>) => {

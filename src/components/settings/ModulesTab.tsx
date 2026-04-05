@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { GripVertical } from "lucide-react";
 import type { FocusPulseStyle, CompletionEffect } from "@/hooks/useUserSettings";
 
 export interface ModuleConfig {
@@ -42,7 +43,8 @@ const COMPLETION_EFFECT_OPTIONS: { value: CompletionEffect; label: string; desc:
 
 interface ModulesTabProps {
   enabledModules: string[];
-  onSave: (modules: string[]) => Promise<void>;
+  moduleOrder?: string[];
+  onSave: (modules: string[], order: string[]) => Promise<void>;
   focusPulseStyle?: FocusPulseStyle;
   onSavePulseStyle?: (style: FocusPulseStyle) => void;
   completionEffect?: CompletionEffect;
@@ -51,18 +53,37 @@ interface ModulesTabProps {
   onSaveCompletionBadge?: (val: boolean) => void;
 }
 
-export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
+function getOrderedModules(order?: string[]): ModuleConfig[] {
+  if (!order || order.length === 0) return ALL_MODULES;
+  const byId = new Map(ALL_MODULES.map(m => [m.id, m]));
+  const ordered: ModuleConfig[] = [];
+  for (const id of order) {
+    const mod = byId.get(id);
+    if (mod) { ordered.push(mod); byId.delete(id); }
+  }
+  // Append any new modules not in order
+  byId.forEach(mod => ordered.push(mod));
+  return ordered;
+}
+
+export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
+  const [orderedModules, setOrderedModules] = useState<ModuleConfig[]>(() => getOrderedModules(moduleOrder));
   const [dirty, setDirty] = useState(false);
+  const dragItem = useRef<number | null>(null);
+  const dragOver = useRef<number | null>(null);
 
   useEffect(() => {
     if (enabledModules.length > 0) {
       setEnabled(new Set(enabledModules));
     } else {
-      // Default: all enabled
       setEnabled(new Set(ALL_MODULES.map(m => m.id)));
     }
   }, [enabledModules]);
+
+  useEffect(() => {
+    setOrderedModules(getOrderedModules(moduleOrder));
+  }, [moduleOrder]);
 
   const toggle = (id: string) => {
     const mod = ALL_MODULES.find(m => m.id === id);
@@ -76,58 +97,140 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
     setDirty(true);
   };
 
+  const handleDragStart = (idx: number) => {
+    dragItem.current = idx;
+  };
+
+  const handleDragEnter = (idx: number) => {
+    dragOver.current = idx;
+  };
+
+  const handleDragEnd = () => {
+    if (dragItem.current === null || dragOver.current === null || dragItem.current === dragOver.current) {
+      dragItem.current = null;
+      dragOver.current = null;
+      return;
+    }
+    setOrderedModules(prev => {
+      const next = [...prev];
+      const [removed] = next.splice(dragItem.current!, 1);
+      next.splice(dragOver.current!, 0, removed);
+      return next;
+    });
+    dragItem.current = null;
+    dragOver.current = null;
+    setDirty(true);
+  };
+
+  // Touch drag support
+  const touchStartY = useRef<number>(0);
+  const touchIdx = useRef<number | null>(null);
+
+  const handleTouchStart = (idx: number, e: React.TouchEvent) => {
+    touchIdx.current = idx;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchIdx.current === null) return;
+    const endY = e.changedTouches[0].clientY;
+    const diff = endY - touchStartY.current;
+    const threshold = 40;
+    if (Math.abs(diff) > threshold) {
+      const direction = diff > 0 ? 1 : -1;
+      const fromIdx = touchIdx.current;
+      const toIdx = Math.max(0, Math.min(orderedModules.length - 1, fromIdx + direction));
+      if (fromIdx !== toIdx) {
+        setOrderedModules(prev => {
+          const next = [...prev];
+          const [removed] = next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, removed);
+          return next;
+        });
+        setDirty(true);
+      }
+    }
+    touchIdx.current = null;
+  };
+
   const handleSave = async () => {
-    await onSave(Array.from(enabled));
+    const order = orderedModules.map(m => m.id);
+    await onSave(Array.from(enabled), order);
     setDirty(false);
     window.location.reload();
   };
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground mb-2">Choose which modules appear in your navigation. Home is always visible.</p>
+      <p className="text-xs text-muted-foreground mb-2">Drag to reorder · toggle to show/hide modules.</p>
 
       <div className="space-y-2">
-        {ALL_MODULES.map((mod, i) => {
+        {orderedModules.map((mod, i) => {
           const isOn = enabled.has(mod.id);
           return (
-            <motion.button
+            <motion.div
               key={mod.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.03 }}
-              onClick={() => toggle(mod.id)}
-              disabled={mod.alwaysOn}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
+              draggable
+              onDragStart={() => handleDragStart(i)}
+              onDragEnter={() => handleDragEnter(i)}
+              onDragEnd={handleDragEnd}
+              onDragOver={e => e.preventDefault()}
+              onTouchStart={e => handleTouchStart(i, e)}
+              onTouchEnd={handleTouchEnd}
+              className={`w-full flex items-center gap-2 p-3 rounded-xl border transition-all ${
                 isOn
                   ? "glass-card border-primary/30 bg-primary/5"
                   : "border-white/5 bg-muted/20 opacity-50"
-              } ${mod.alwaysOn ? "cursor-default" : "cursor-pointer hover:border-white/20"}`}
+              }`}
             >
-              <span className="text-2xl">{mod.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-foreground">{mod.label}</div>
-                <div className="text-xs text-muted-foreground truncate">{mod.description}</div>
+              {/* Drag handle */}
+              <div className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground transition-colors touch-none">
+                <GripVertical className="h-4 w-4" />
               </div>
-              <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 ${
-                isOn ? "bg-primary justify-end" : "bg-muted/50 justify-start"
-              }`}>
-                <motion.div
-                  layout
-                  className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${
-                    isOn ? "bg-white" : "bg-white/80"
-                  }`}
-                >
-                  <span className={`block w-2 h-2 rounded-full transition-colors ${
-                    isOn ? "bg-primary" : "bg-muted-foreground/40"
-                  }`} />
-                </motion.div>
-              </div>
-            </motion.button>
+
+              {/* Content — clickable to toggle */}
+              <button
+                onClick={() => toggle(mod.id)}
+                disabled={mod.alwaysOn}
+                className={`flex-1 flex items-center gap-3 text-left ${mod.alwaysOn ? "cursor-default" : "cursor-pointer"}`}
+              >
+                <span className="text-2xl">{mod.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-foreground">{mod.label}</div>
+                  <div className="text-xs text-muted-foreground truncate">{mod.description}</div>
+                </div>
+              </button>
+
+              {/* Toggle */}
+              <button
+                onClick={() => toggle(mod.id)}
+                disabled={mod.alwaysOn}
+                className={mod.alwaysOn ? "cursor-default" : "cursor-pointer"}
+              >
+                <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 ${
+                  isOn ? "bg-primary justify-end" : "bg-muted/50 justify-start"
+                }`}>
+                  <motion.div
+                    layout
+                    className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${
+                      isOn ? "bg-white" : "bg-white/80"
+                    }`}
+                  >
+                    <span className={`block w-2 h-2 rounded-full transition-colors ${
+                      isOn ? "bg-primary" : "bg-muted-foreground/40"
+                    }`} />
+                  </motion.div>
+                </div>
+              </button>
+            </motion.div>
           );
         })}
       </div>
 
-      {/* Focus Pulse Style picker — only if monthly-focus is enabled */}
+      {/* Focus Pulse Style picker */}
       {enabled.has("monthly-focus") && (
         <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">
           <div className="text-xs font-semibold text-foreground">🎯 Focus Reminder Effect</div>
@@ -135,9 +238,7 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
             {PULSE_OPTIONS.map(opt => (
               <button
                 key={opt.value}
-                onClick={() => {
-                  onSavePulseStyle?.(opt.value);
-                }}
+                onClick={() => onSavePulseStyle?.(opt.value)}
                 className={`flex-1 p-2 rounded-lg border text-center transition-all text-xs ${
                   focusPulseStyle === opt.value
                     ? "border-primary/50 bg-primary/10 text-foreground"
@@ -152,7 +253,7 @@ export default function ModulesTab({ enabledModules, onSave, focusPulseStyle = "
         </div>
       )}
 
-      {/* Mission Complete Effect picker — always visible */}
+      {/* Mission Complete Effect picker */}
       <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">
         <div className="text-xs font-semibold text-foreground">🎉 Mission Complete Effect</div>
         <div className="grid grid-cols-2 gap-2">

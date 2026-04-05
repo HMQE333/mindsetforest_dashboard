@@ -42,7 +42,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   planning: "🧠 Planning",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning"];
+const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning"];
 
 const Index = () => {
   const { user } = useAuth();
@@ -55,6 +55,13 @@ const Index = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+
+  // Respect saved module order
+  const moduleOrder = preferences.moduleOrder;
+  const TAB_ORDER: Tab[] = moduleOrder && moduleOrder.length > 0
+    ? (moduleOrder.filter(id => DEFAULT_TAB_ORDER.includes(id as Tab)) as Tab[])
+        .concat(DEFAULT_TAB_ORDER.filter(id => !moduleOrder.includes(id)))
+    : DEFAULT_TAB_ORDER;
 
   // Filter tabs based on enabled modules
   const enabledModules = new Set(preferences.enabledModules);
