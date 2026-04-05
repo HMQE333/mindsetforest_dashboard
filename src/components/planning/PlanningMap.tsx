@@ -286,8 +286,10 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         </ReactFlow>
         {/* Right-click context menu */}
         {contextMenuPos && (
-          <div className="fixed z-[200]" style={{ left: contextMenuPos.x, top: contextMenuPos.y }}>
-            <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setContextMenuPos(null); }} onAddLink={u => { handleAddLink(null, u); setContextMenuPos(null); }} onClose={() => setContextMenuPos(null)} />
+          <div className="fixed z-[200]" style={{ left: contextMenuPos.x, top: contextMenuPos.y }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+            <div className="w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-3 shadow-lg">
+              <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setContextMenuPos(null); }} onAddLink={u => { handleAddLink(null, u); setContextMenuPos(null); }} onClose={() => setContextMenuPos(null)} />
+            </div>
           </div>
         )}
         {/* Mobile FAB */}
