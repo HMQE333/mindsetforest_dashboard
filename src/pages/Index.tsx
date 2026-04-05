@@ -42,7 +42,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   planning: "🧠 Planning",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning"];
+const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning"];
 
 const Index = () => {
   const { user } = useAuth();
