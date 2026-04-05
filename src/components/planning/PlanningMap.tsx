@@ -10,7 +10,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
-import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 
@@ -210,7 +210,6 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState(selectedProjectId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [showMobileFab, setShowMobileFab] = useState(false);
   const isMobile = useIsMobile();
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos = useRef<{ x: number; y: number } | null>(null);
@@ -250,22 +249,39 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
 
   useMemo(() => { setNodes(initialNodes); setEdges(initialEdges); }, [initialNodes, initialEdges, setNodes, setEdges]);
 
+  const totalTasks = tasks.filter(t => t.level !== "link").length;
+  const doneTasks = tasks.filter(t => t.level !== "link" && t.done).length;
+  const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
   if (activeProjects.length === 0) {
-    return <div className="flex items-center justify-center h-[400px] text-muted-foreground text-sm">Create a project first to see its map.</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground gap-3">
+        <Map className="h-10 w-10 opacity-30" />
+        <p className="text-sm">Create a project first to see its map.</p>
+      </div>
+    );
   }
 
   return (
     <div className="h-[600px] flex flex-col rounded-2xl overflow-hidden border border-white/10">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
-        <h3 className="text-sm font-semibold text-foreground">Project Map</h3>
+        <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
         <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="h-8 text-xs bg-muted/30 border border-white/10 rounded-lg px-2 text-foreground outline-none">
           {activeProjects.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
         </select>
-        <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">Right-click canvas to add · Double-click to edit · Hover for actions</p>
+        {totalTasks > 0 && (
+          <div className="flex items-center gap-2 ml-1">
+            <div className="h-1.5 w-16 rounded-full bg-muted/30 overflow-hidden hidden sm:block">
+              <div className="h-full rounded-full bg-gradient-to-r from-primary to-green-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+            </div>
+            <span className="text-[10px] text-muted-foreground font-medium">{doneTasks}/{totalTasks}</span>
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">{isMobile ? "Long-press canvas to add" : "Right-click canvas to add · Double-click to edit"}</p>
         <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground ml-auto">
-          {(Object.entries(levelMeta) as [TaskLevel, typeof levelMeta[TaskLevel]][]).map(([level, meta]) => (
-            <span key={level} className="flex items-center gap-1.5"><div className={`w-3 h-3 rounded bg-gradient-to-br ${meta.gradient}`} />{meta.label}</span>
+          {(Object.entries(levelMeta) as [TaskLevel, typeof levelMeta[TaskLevel]][]).filter(([level]) => level !== "link").map(([level, meta]) => (
+            <span key={level} className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-sm bg-gradient-to-br ${meta.gradient}`} />{meta.label}</span>
           ))}
         </div>
       </div>
@@ -276,7 +292,6 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           longPressTimer.current = setTimeout(() => {
             if (longPressPos.current) {
               setContextMenuPos(longPressPos.current);
-              setShowMobileFab(false);
             }
           }, 600);
         }}
@@ -287,27 +302,39 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
         }}
       >
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent" onPaneContextMenu={(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); setShowMobileFab(false); }} onPaneClick={() => { setContextMenuPos(null); setShowMobileFab(false); }}>
+        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent" onPaneContextMenu={(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); }} onPaneClick={() => { setContextMenuPos(null); }}>
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--muted-foreground) / 0.15)" />
           <Controls className="!bg-background !border-white/10 !rounded-lg [&>button]:!bg-muted/30 [&>button]:!border-white/10 [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/50 [&>button]:!rounded-md" />
-          <MiniMap
-            nodeColor={(node) => {
-              if (node.type === "projectNode") return "hsl(var(--primary))";
-              const task = (node.data as { task?: PlanningTask })?.task;
-              if (!task) return "hsl(var(--muted))";
-              const colors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
-              return colors[task.level as TaskLevel];
-            }}
-            maskColor="hsl(var(--background) / 0.85)"
-            className="!bg-background !border-white/10 !rounded-lg"
-            style={{ height: 100, width: 150 }}
-          />
+          {!isMobile && (
+            <MiniMap
+              nodeColor={(node) => {
+                if (node.type === "projectNode") return "hsl(var(--primary))";
+                const task = (node.data as { task?: PlanningTask })?.task;
+                if (!task) return "hsl(var(--muted))";
+                const colors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
+                return colors[task.level as TaskLevel];
+              }}
+              maskColor="hsl(var(--background) / 0.85)"
+              className="!bg-background !border-white/10 !rounded-lg"
+              style={{ height: 100, width: 150 }}
+            />
+          )}
         </ReactFlow>
-        {/* Right-click context menu */}
+        {/* Context menu (right-click / long-press) */}
         {contextMenuPos && (
           <div className="fixed z-[200]" style={{ left: contextMenuPos.x, top: contextMenuPos.y }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
             <div className="w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-3 shadow-lg">
               <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setContextMenuPos(null); }} onAddLink={u => { handleAddLink(null, u); setContextMenuPos(null); }} onClose={() => setContextMenuPos(null)} />
+            </div>
+          </div>
+        )}
+        {/* Empty state hint when project has no tasks */}
+        {tasks.length === 0 && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+            <div className="text-center space-y-2 opacity-50">
+              <Plus className="h-8 w-8 mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{isMobile ? "Long-press to add your first node" : "Right-click to add your first node"}</p>
+              <p className="text-[10px] text-muted-foreground">Or use the + button on the project node above</p>
             </div>
           </div>
         )}
