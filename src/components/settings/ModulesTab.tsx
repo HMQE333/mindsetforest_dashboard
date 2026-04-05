@@ -106,21 +106,22 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
     dragOver.current = idx;
   };
 
-  const handleDragEnd = () => {
-    if (dragItem.current === null || dragOver.current === null || dragItem.current === dragOver.current) {
-      dragItem.current = null;
-      dragOver.current = null;
-      return;
-    }
+  const handleDrop = (dropIdx: number) => {
+    const fromIdx = dragItem.current;
+    if (fromIdx === null || fromIdx === dropIdx) return;
     setOrderedModules(prev => {
       const next = [...prev];
-      const [removed] = next.splice(dragItem.current!, 1);
-      next.splice(dragOver.current!, 0, removed);
+      const [removed] = next.splice(fromIdx, 1);
+      next.splice(dropIdx, 0, removed);
       return next;
     });
+    setDirty(true);
+  };
+
+  const handleDragEnd = () => {
     dragItem.current = null;
     dragOver.current = null;
-    setDirty(true);
+    setDragOverIdx(null);
   };
 
   // Touch drag support
@@ -158,7 +159,7 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
     const order = orderedModules.map(m => m.id);
     await onSave(Array.from(enabled), order);
     setDirty(false);
-    window.location.reload();
+    
   };
 
   return (
@@ -186,15 +187,19 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
                   e.currentTarget.style.opacity = "1";
                 }
                 handleDragEnd();
-                setDragOverIdx(null);
               }}
-              onDragEnter={() => {
-                dragOver.current = i;
-                setDragOverIdx(i);
+              onDragEnter={(e) => {
+                e.preventDefault();
+                if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+                  dragOver.current = i;
+                  setDragOverIdx(i);
+                }
               }}
               onDragOver={e => e.preventDefault()}
-              onDragLeave={() => {
-                if (dragOverIdx === i) setDragOverIdx(null);
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDrop(i);
+                setDragOverIdx(null);
               }}
               onTouchStart={e => handleTouchStart(i, e)}
               onTouchEnd={handleTouchEnd}
