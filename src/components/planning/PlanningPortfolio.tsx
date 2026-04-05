@@ -71,7 +71,7 @@ export default function PlanningPortfolio({ onOpenProject }: Props) {
         return (
           <div key={pillar.id} className="glass-card p-5 space-y-3">
             <div className="flex items-center gap-2.5">
-              <PillarIcon pillar={pillar} size={20} />
+              <PillarIcon icon={pillar.icon} iconUrl={pillar.iconUrl} size={20} />
               <h3 className="text-sm font-semibold text-foreground">{pillar.name}</h3>
               <span className="text-xs text-muted-foreground ml-auto px-2 py-0.5 rounded-full bg-muted/30">
                 {pillarProjects.length}
