@@ -212,6 +212,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [showMobileFab, setShowMobileFab] = useState(false);
   const isMobile = useIsMobile();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressPos = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!selectedProjectId && activeProjects.length > 0) setSelectedProjectId(activeProjects[0].id);
