@@ -106,21 +106,22 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
     dragOver.current = idx;
   };
 
-  const handleDragEnd = () => {
-    if (dragItem.current === null || dragOver.current === null || dragItem.current === dragOver.current) {
-      dragItem.current = null;
-      dragOver.current = null;
-      return;
-    }
+  const handleDrop = (dropIdx: number) => {
+    const fromIdx = dragItem.current;
+    if (fromIdx === null || fromIdx === dropIdx) return;
     setOrderedModules(prev => {
       const next = [...prev];
-      const [removed] = next.splice(dragItem.current!, 1);
-      next.splice(dragOver.current!, 0, removed);
+      const [removed] = next.splice(fromIdx, 1);
+      next.splice(dropIdx, 0, removed);
       return next;
     });
+    setDirty(true);
+  };
+
+  const handleDragEnd = () => {
     dragItem.current = null;
     dragOver.current = null;
-    setDirty(true);
+    setDragOverIdx(null);
   };
 
   // Touch drag support
