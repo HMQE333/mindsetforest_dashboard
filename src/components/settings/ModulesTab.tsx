@@ -159,7 +159,7 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
     const order = orderedModules.map(m => m.id);
     await onSave(Array.from(enabled), order);
     setDirty(false);
-    window.location.reload();
+    
   };
 
   return (
