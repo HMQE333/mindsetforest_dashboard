@@ -19,11 +19,12 @@ import CookingView from "@/components/cooking/CookingView";
 import FinanceView from "@/components/finance/FinanceView";
 import BreathingView from "@/components/breathing/BreathingView";
 import CalendarView from "@/components/calendar/CalendarView";
+import PlanningView from "@/components/planning/PlanningView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning";
 
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
@@ -37,9 +38,10 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   finance: "💰 Finance",
   breathing: "🌬️ Breathe",
   calendar: "📅 Calendar",
+  planning: "🧠 Planning",
 };
 
-const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar"];
+const TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning"];
 
 const Index = () => {
   const { user } = useAuth();
@@ -185,6 +187,7 @@ const Index = () => {
         {activeTab === "finance" && enabledModules.has("finance") && (user ? <FinanceView /> : renderAuthGate("finance tracker"))}
         {activeTab === "breathing" && enabledModules.has("breathing") && (user ? <BreathingView /> : renderAuthGate("breathing exercises"))}
         {activeTab === "calendar" && enabledModules.has("calendar") && (user ? <CalendarView /> : renderAuthGate("calendar"))}
+        {activeTab === "planning" && enabledModules.has("planning") && (user ? <PlanningView /> : renderAuthGate("planning board"))}
       </div>
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}

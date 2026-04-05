@@ -23,6 +23,7 @@ const ALL_MODULES: ModuleConfig[] = [
   { id: "finance", label: "Finance", icon: "💰", description: "Track income, expenses, subscriptions & loans" },
   { id: "breathing", label: "Breathing", icon: "🌬️", description: "Guided breathing exercises with the Vessel of Air" },
   { id: "calendar", label: "Calendar", icon: "📅", description: "Monthly calendar with events, tags & filters" },
+  { id: "planning", label: "Planning", icon: "🧠", description: "Mind-board with project maps, task decomposition & actions" },
   { id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Monthly theme reminders on dashboard" },
 ];
 
