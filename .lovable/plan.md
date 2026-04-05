@@ -1,28 +1,35 @@
 
 
-## Plan: Add Mobile FAB + Right-Click Context Menu on Map
+## Fix: Module Drag-and-Drop Reordering
 
-Two changes to `src/components/planning/PlanningMap.tsx`:
+### Root Causes
 
-### 1. Right-click context menu on map canvas
-- Add `onPaneContextMenu` handler to ReactFlow that captures the click position and shows the `AddChildPopover` at that screen coordinate
-- The popover adds a root-level node (no parent) at the clicked position
-- State: `contextMenu: { x: number; y: number } | null`
+From the session replay, I can see drag events fire (opacity changes, scale flickers) but the reorder doesn't actually take effect. Three issues:
 
-### 2. Floating "+" button on mobile
-- Add a fixed FAB (bottom-right corner) visible only on mobile (`sm:hidden`)
-- Tapping it opens the same `AddChildPopover` anchored near the button to add a root-level node
-- State: `showMobileFab: boolean`
+1. **Missing `onDrop` handler** — Without `onDrop` + `preventDefault()` on the drop target, the browser cancels the drop and `onDragEnd` fires with the drop considered "failed." The `dragOver.current` may get stale.
 
-### Technical details
+2. **Child element event bubbling** — `onDragEnter`/`onDragLeave` fire rapidly as the cursor moves between child elements (buttons, spans) inside each row, causing `dragOverIdx` to flicker and potentially corrupting `dragOver.current`.
 
-**File: `src/components/planning/PlanningMap.tsx`**
+3. **`window.location.reload()` after save** — This is jarring and unnecessary; state should update in-place.
 
-- Import `useIsMobile` from `@/hooks/use-mobile`
-- Add `contextMenuPos` state in `MapViewInner`
-- Add `onPaneContextMenu` callback: `(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); }`
-- Pass `onPaneContextMenu` to `<ReactFlow>`
-- Render a portal/fixed-position `AddChildPopover` at `contextMenuPos` when set, with `parentLevel={null}` so it adds root goals
-- Add a `showMobileFab` state, render a `Plus` FAB button (`fixed bottom-6 right-6 sm:hidden`) that toggles the popover
-- Click anywhere on canvas (`onPaneClick`) dismisses both the context menu and mobile FAB popover
+### Fix Plan
+
+**File: `src/components/settings/ModulesTab.tsx`**
+
+- Add an `onDrop` handler on each draggable row that calls `e.preventDefault()` and executes the reorder logic
+- Move the actual reorder into the `onDrop` handler (not `onDragEnd`), since `onDrop` only fires on successful drops
+- Use `onDragEnd` only for cleanup (reset opacity, clear refs)
+- Fix `onDragEnter` to check `e.currentTarget.contains(e.relatedTarget)` to ignore child-to-child transitions within the same row
+- Remove `window.location.reload()` from `handleSave` — the state is already updated in memory
+
+### Technical Details
+
+```
+onDrop → preventDefault + execute reorder (splice logic)
+onDragEnd → cleanup only (opacity reset, clear refs)
+onDragEnter → guard with relatedTarget check to prevent flicker
+handleSave → remove window.location.reload()
+```
+
+Single file change, no backend modifications needed.
 
