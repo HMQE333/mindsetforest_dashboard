@@ -70,6 +70,7 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [orderedModules, setOrderedModules] = useState<ModuleConfig[]>(() => getOrderedModules(moduleOrder));
   const [dirty, setDirty] = useState(false);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const dragItem = useRef<number | null>(null);
   const dragOver = useRef<number | null>(null);
 
