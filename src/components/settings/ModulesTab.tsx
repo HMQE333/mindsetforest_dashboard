@@ -187,15 +187,19 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
                   e.currentTarget.style.opacity = "1";
                 }
                 handleDragEnd();
-                setDragOverIdx(null);
               }}
-              onDragEnter={() => {
-                dragOver.current = i;
-                setDragOverIdx(i);
+              onDragEnter={(e) => {
+                e.preventDefault();
+                if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+                  dragOver.current = i;
+                  setDragOverIdx(i);
+                }
               }}
               onDragOver={e => e.preventDefault()}
-              onDragLeave={() => {
-                if (dragOverIdx === i) setDragOverIdx(null);
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDrop(i);
+                setDragOverIdx(null);
               }}
               onTouchStart={e => handleTouchStart(i, e)}
               onTouchEnd={handleTouchEnd}
