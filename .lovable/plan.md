@@ -1,51 +1,76 @@
 
-
-## Plan: Add Calendar Module
+## Plan: Add Planning Mind-Board Module
 
 ### Overview
-Add a new "Calendar" tab as a module where users can view a monthly calendar, add important events, and filter them. Events will be stored in the database.
+Add a new "Planning" tab that provides a full project planning system with 4 sub-views (Portfolio, Stack, Actions, Map), inspired by the Life Compass project but using MindsetForest's pillars, Supabase persistence, glass-card styling, and AI features.
 
 ### Database
-Create a `calendar_events` table:
+Create a `planning_tasks` table for the hierarchical task tree:
 - `id` (uuid, PK)
 - `user_id` (uuid, NOT NULL)
-- `title` (text, NOT NULL)
-- `date` (text, NOT NULL, format YYYY-MM-DD)
-- `color` (text, default '#8B5CF6')
-- `tag` (text, default '')
+- `project_id` (uuid, references user_projects)
+- `parent_id` (uuid, nullable, self-reference)
+- `level` (text: 'goal' | 'phase' | 'task' | 'action' | 'link')
+- `title` (text)
+- `done` (boolean, default false)
+- `deadline` (text, nullable)
+- `leverage` (text, nullable: 'low'|'medium'|'high')
+- `energy` (text, nullable)
+- `time_minutes` (integer, nullable)
+- `url` (text, nullable — for link nodes)
+- `icon` (text, nullable)
 - `notes` (text, default '')
-- `created_at` (timestamptz, default now())
+- `sort_order` (integer, default 0)
+- `created_at` (timestamptz)
 
-RLS: standard owner-only policies for SELECT, INSERT, UPDATE, DELETE.
+RLS: owner-only policies for all operations.
 
-### Files to Create
+### New Files
 
-**`src/components/calendar/CalendarView.tsx`**
-- Full-month grid calendar (custom-built, not the shadcn DayPicker)
-- Month navigation (prev/next)
-- Days show colored dots for events
-- Click a day to see/add events in a side panel or inline expandable
-- Filter bar at top: text search + color/tag filter
-- Minimalist aesthetic matching the app's glass-card style
+**`src/hooks/usePlanningState.ts`**
+- CRUD hook for `planning_tasks`
+- Fetches all tasks for a project, add/update/delete/toggle
 
-**`src/hooks/useCalendarEvents.ts`**
-- CRUD hook for `calendar_events` table
-- Fetches events for visible month range
-- Add, update, delete events
+**`src/components/planning/PlanningView.tsx`**
+- Main container with 4 sub-views: Portfolio, Stack, Actions, Map
+- Top toolbar with sub-view switcher
+- Uses existing `user_projects` for project management
 
-**`src/components/calendar/CalendarEventModal.tsx`**
-- Small modal/sheet to add or edit an event
-- Fields: title, date (pre-filled from clicked day), color picker (few preset colors), tag, notes
+**`src/components/planning/PlanningPortfolio.tsx`**
+- Projects grouped by parent pillar/category
+- Progress bars, "New Project" dialog
+- Click project → opens Stack view
+
+**`src/components/planning/PlanningStack.tsx`**
+- Hierarchical collapsible list (Goal → Phase → Task → Action)
+- Inline add, toggle done, delete
+- AI decompose button (uses existing AI edge function pattern)
+
+**`src/components/planning/PlanningActions.tsx`**
+- Flat list of all action-level tasks across projects
+- Sort by pillar, project, leverage
+- Batch select + mark done
+- Hide completed toggle
+
+**`src/components/planning/PlanningMap.tsx`**
+- ReactFlow-based node map (requires `@xyflow/react`)
+- Project root node → task tree with colored edges
+- Add child popover, inline edit, context menu
+- Node detail sheet panel
+
+**`src/components/planning/PlanningNodeDetail.tsx`**
+- Side sheet for editing task details (notes, deadline, leverage, energy, icon)
 
 ### Files to Modify
 
-**`src/pages/Index.tsx`**
-- Add `"calendar"` to the `Tab` type, `ALL_TAB_LABELS`, and `TAB_ORDER`
-- Import and render `CalendarView` in tab content section
+**`src/pages/Index.tsx`** — Add "planning" to Tab type, labels, order, render
 
-**`src/components/settings/ModulesTab.tsx`**
-- Add calendar to `ALL_MODULES` array so it can be toggled on/off
+**`src/components/settings/ModulesTab.tsx`** — Add planning to ALL_MODULES
 
-### No edge functions needed
-All operations are direct database CRUD.
+### Dependencies
+- `@xyflow/react` — for the Map view
 
+### Notes
+- Reuses existing `user_projects` table (already has parent_category linking to pillars)
+- AI features will use existing Lovable AI edge function patterns
+- Map view will have the same node types (ProjectNode, TaskNode, LinkNode) adapted to MindsetForest's design tokens
