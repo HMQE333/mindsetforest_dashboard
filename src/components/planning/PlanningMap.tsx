@@ -311,19 +311,6 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
             </div>
           </div>
         )}
-        {/* Mobile FAB */}
-        {isMobile && (
-          <div className="absolute bottom-6 right-6 z-[100]">
-            <button onClick={() => setShowMobileFab(!showMobileFab)} className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${showMobileFab ? "gradient-purple text-primary-foreground rotate-45" : "bg-primary text-primary-foreground"}`}>
-              <Plus className="h-5 w-5" />
-            </button>
-            {showMobileFab && (
-              <div className="absolute bottom-14 right-0">
-                <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setShowMobileFab(false); }} onAddLink={u => { handleAddLink(null, u); setShowMobileFab(false); }} onClose={() => setShowMobileFab(false)} />
-              </div>
-            )}
-          </div>
-        )}
         <PlanningNodeDetail task={tasks.find(t => t.id === selectedTaskId) || null} open={!!selectedTaskId} onClose={() => setSelectedTaskId(null)} onUpdate={handleUpdateTask} />
       </div>
     </div>
