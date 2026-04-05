@@ -1,34 +1,28 @@
 
 
-## Problem
+## Plan: Add Mobile FAB + Right-Click Context Menu on Map
 
-The desktop tab bar shows all enabled modules inline. With 10+ modules, it overflows and becomes unwieldy. The user wants a maximum of ~8-9 visible tabs, with the rest accessible via an expandable overflow menu.
+Two changes to `src/components/planning/PlanningMap.tsx`:
 
-## Solution: Overflow "More" Button with Grid Popup
+### 1. Right-click context menu on map canvas
+- Add `onPaneContextMenu` handler to ReactFlow that captures the click position and shows the `AddChildPopover` at that screen coordinate
+- The popover adds a root-level node (no parent) at the clicked position
+- State: `contextMenu: { x: number; y: number } | null`
 
-Show the first N tabs (e.g. 8) directly in the bar. If there are more, render a **"⋯" (more) button** at the end that opens an animated popover grid showing ALL modules — like a quick app-launcher screen.
+### 2. Floating "+" button on mobile
+- Add a fixed FAB (bottom-right corner) visible only on mobile (`sm:hidden`)
+- Tapping it opens the same `AddChildPopover` anchored near the button to add a root-level node
+- State: `showMobileFab: boolean`
 
-### Desktop Tab Bar Behavior
-- Show the first 8 visible tabs inline as today
-- If `visibleTabs.length > 8`, show a "⋯" pill button at the end
-- Clicking "⋯" opens a popover/overlay grid (3-4 columns) with all modules as icon+label cards
-- The active tab is highlighted in the grid
-- Clicking a module switches to it and closes the grid
-- If the active tab is in the overflow, the "⋯" button gets a subtle highlight to indicate "you're in an overflow tab"
+### Technical details
 
-### Grid Popup Design
-- Glassmorphism card matching existing `glass-card` / `bg-card/90 backdrop-blur-xl` style
-- Each module rendered as a square-ish tile: emoji icon on top, label below
-- Active module gets `gradient-purple` highlight
-- Animated entrance with framer-motion (scale + fade)
+**File: `src/components/planning/PlanningMap.tsx`**
 
-### Technical Changes
-
-**`src/pages/Index.tsx`**
-1. Add state: `const [moreOpen, setMoreOpen] = useState(false)`
-2. Split `visibleTabs` into `inlineTabs = visibleTabs.slice(0, 8)` and `hasOverflow = visibleTabs.length > 8`
-3. In the desktop branch, render `inlineTabs` then conditionally render a "⋯" button
-4. The "⋯" button toggles a positioned popover with a grid of ALL `visibleTabs`
-5. Active-in-overflow detection: highlight the "⋯" button when `activeTab` is not in `inlineTabs`
-6. Mobile dropdown already shows all tabs — no changes needed there
+- Import `useIsMobile` from `@/hooks/use-mobile`
+- Add `contextMenuPos` state in `MapViewInner`
+- Add `onPaneContextMenu` callback: `(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); }`
+- Pass `onPaneContextMenu` to `<ReactFlow>`
+- Render a portal/fixed-position `AddChildPopover` at `contextMenuPos` when set, with `parentLevel={null}` so it adds root goals
+- Add a `showMobileFab` state, render a `Plus` FAB button (`fixed bottom-6 right-6 sm:hidden`) that toggles the popover
+- Click anywhere on canvas (`onPaneClick`) dismisses both the context menu and mobile FAB popover
 
