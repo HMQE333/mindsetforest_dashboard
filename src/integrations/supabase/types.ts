@@ -501,6 +501,78 @@ export type Database = {
         }
         Relationships: []
       }
+      planning_tasks: {
+        Row: {
+          created_at: string
+          deadline: string | null
+          done: boolean
+          energy: string | null
+          icon: string | null
+          id: string
+          level: string
+          leverage: string | null
+          notes: string
+          parent_id: string | null
+          project_id: string
+          sort_order: number
+          time_minutes: number | null
+          title: string
+          url: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deadline?: string | null
+          done?: boolean
+          energy?: string | null
+          icon?: string | null
+          id?: string
+          level?: string
+          leverage?: string | null
+          notes?: string
+          parent_id?: string | null
+          project_id: string
+          sort_order?: number
+          time_minutes?: number | null
+          title?: string
+          url?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deadline?: string | null
+          done?: boolean
+          energy?: string | null
+          icon?: string | null
+          id?: string
+          level?: string
+          leverage?: string | null
+          notes?: string
+          parent_id?: string | null
+          project_id?: string
+          sort_order?: number
+          time_minutes?: number | null
+          title?: string
+          url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planning_tasks_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "planning_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planning_tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "user_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tracker_entries: {
         Row: {
           created_at: string
