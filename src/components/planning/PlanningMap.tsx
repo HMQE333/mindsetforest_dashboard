@@ -210,7 +210,6 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState(selectedProjectId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [showMobileFab, setShowMobileFab] = useState(false);
   const isMobile = useIsMobile();
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos = useRef<{ x: number; y: number } | null>(null);
