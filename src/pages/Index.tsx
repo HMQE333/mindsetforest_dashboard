@@ -178,8 +178,8 @@ const Index = () => {
               </AnimatePresence>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10 max-w-full overflow-x-auto scrollbar-hide">
-              {visibleTabs.map(id => {
+            <div className="relative inline-flex items-center gap-1.5 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-lg border border-white/10 max-w-full overflow-x-auto scrollbar-hide">
+              {inlineTabs.map(id => {
                 if (id === "tracker") {
                   return tabButton(id, ALL_TAB_LABELS[id], () => {
                     if (user) navigate("/tracker");
@@ -188,6 +188,47 @@ const Index = () => {
                 }
                 return tabButton(id, ALL_TAB_LABELS[id]);
               })}
+              {hasOverflow && (
+                <button
+                  onClick={() => setMoreOpen(prev => !prev)}
+                  className={`px-4 py-2.5 rounded-xl text-sm whitespace-nowrap font-bold transition-all duration-300 ${
+                    isOverflowActive || moreOpen
+                      ? "gradient-purple text-primary-foreground glow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  ⋯
+                </button>
+              )}
+              <AnimatePresence>
+                {moreOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-[340px] p-3 rounded-2xl bg-card/90 backdrop-blur-xl border border-white/10 shadow-lg z-50 grid grid-cols-4 gap-2"
+                  >
+                    {visibleTabs.map(id => (
+                      <button
+                        key={id}
+                        onClick={() => {
+                          handleTabClick(id);
+                          setMoreOpen(false);
+                        }}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all text-center ${
+                          activeTab === id
+                            ? "gradient-purple text-primary-foreground glow-sm"
+                            : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                        }`}
+                      >
+                        <span className="text-2xl">{TAB_ICONS[id]}</span>
+                        <span className="text-[11px] font-semibold leading-tight">{TAB_SHORT_LABELS[id]}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </motion.div>
