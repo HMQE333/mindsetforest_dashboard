@@ -55,6 +55,7 @@ export interface UserPreferences {
   cardOpacity?: number;
   backgroundIntensity?: number;
   borderRadius?: number;
+  moduleOrder?: string[];
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing"];
