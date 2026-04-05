@@ -269,7 +269,24 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           ))}
         </div>
       </div>
-      <div className="flex-1 relative">
+      <div className="flex-1 relative"
+        onTouchStart={(e) => {
+          const touch = e.touches[0];
+          longPressPos.current = { x: touch.clientX, y: touch.clientY };
+          longPressTimer.current = setTimeout(() => {
+            if (longPressPos.current) {
+              setContextMenuPos(longPressPos.current);
+              setShowMobileFab(false);
+            }
+          }, 600);
+        }}
+        onTouchMove={() => {
+          if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+        }}
+        onTouchEnd={() => {
+          if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+        }}
+      >
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent" onPaneContextMenu={(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); setShowMobileFab(false); }} onPaneClick={() => { setContextMenuPos(null); setShowMobileFab(false); }}>
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--muted-foreground) / 0.15)" />
           <Controls className="!bg-background !border-white/10 !rounded-lg [&>button]:!bg-muted/30 [&>button]:!border-white/10 [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/50 [&>button]:!rounded-md" />
