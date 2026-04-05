@@ -164,27 +164,44 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground mb-2">Drag to reorder · toggle to show/hide modules.</p>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {orderedModules.map((mod, i) => {
           const isOn = enabled.has(mod.id);
+          const isDraggedOver = dragOverIdx === i;
           return (
-            <motion.div
+            <div
               key={mod.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.03 }}
               draggable
-              onDragStart={() => handleDragStart(i)}
-              onDragEnter={() => handleDragEnter(i)}
-              onDragEnd={handleDragEnd}
+              onDragStart={(e) => {
+                dragItem.current = i;
+                e.dataTransfer.effectAllowed = "move";
+                // Make ghost semi-transparent
+                if (e.currentTarget instanceof HTMLElement) {
+                  e.currentTarget.style.opacity = "0.5";
+                }
+              }}
+              onDragEnd={(e) => {
+                if (e.currentTarget instanceof HTMLElement) {
+                  e.currentTarget.style.opacity = "1";
+                }
+                handleDragEnd();
+                setDragOverIdx(null);
+              }}
+              onDragEnter={() => {
+                dragOver.current = i;
+                setDragOverIdx(i);
+              }}
               onDragOver={e => e.preventDefault()}
+              onDragLeave={() => {
+                if (dragOverIdx === i) setDragOverIdx(null);
+              }}
               onTouchStart={e => handleTouchStart(i, e)}
               onTouchEnd={handleTouchEnd}
               className={`w-full flex items-center gap-2 p-3 rounded-xl border transition-all ${
                 isOn
                   ? "glass-card border-primary/30 bg-primary/5"
                   : "border-white/5 bg-muted/20 opacity-50"
-              }`}
+              } ${isDraggedOver ? "border-primary/60 bg-primary/10 scale-[1.02]" : ""}`}
             >
               {/* Drag handle */}
               <div className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground transition-colors touch-none">
@@ -225,7 +242,7 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
                   </motion.div>
                 </div>
               </button>
-            </motion.div>
+            </div>
           );
         })}
       </div>
