@@ -11,6 +11,7 @@ import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 
 /* ── Level styling ─────────────────────────────────────────── */
