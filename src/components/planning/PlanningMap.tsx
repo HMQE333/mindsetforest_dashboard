@@ -208,6 +208,9 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId || activeProjects[0]?.id || "");
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState(selectedProjectId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [showMobileFab, setShowMobileFab] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!selectedProjectId && activeProjects.length > 0) setSelectedProjectId(activeProjects[0].id);
