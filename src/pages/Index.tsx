@@ -199,7 +199,7 @@ const Index = () => {
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      ⋯
+                      ∞
                     </button>
                   </PopoverTrigger>
                   <PopoverContent
