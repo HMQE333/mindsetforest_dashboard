@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { GripVertical } from "lucide-react";
 import type { FocusPulseStyle, CompletionEffect } from "@/hooks/useUserSettings";
