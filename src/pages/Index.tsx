@@ -56,6 +56,13 @@ const Index = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
+  // Respect saved module order
+  const moduleOrder = preferences.moduleOrder;
+  const TAB_ORDER: Tab[] = moduleOrder && moduleOrder.length > 0
+    ? (moduleOrder.filter(id => DEFAULT_TAB_ORDER.includes(id as Tab)) as Tab[])
+        .concat(DEFAULT_TAB_ORDER.filter(id => !moduleOrder.includes(id)))
+    : DEFAULT_TAB_ORDER;
+
   // Filter tabs based on enabled modules
   const enabledModules = new Set(preferences.enabledModules);
   const visibleTabs = TAB_ORDER.filter(t => enabledModules.has(t));
