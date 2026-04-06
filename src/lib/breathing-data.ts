@@ -9,6 +9,7 @@ export interface BreathingPattern {
   hold2: number;
   hue: number;
   suggestedEffects: VesselEffectId[];
+  tip?: string;
 }
 
 export const BREATHING_PATTERNS: BreathingPattern[] = [
