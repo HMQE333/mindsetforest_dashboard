@@ -403,7 +403,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
             fill={`url(#${airGradId})`}
             initial={{ y: 280 - fillLevel * 270 }}
             animate={{ y: 280 - fillLevel * 270 }}
-            transition={{ duration: phaseDuration, ease: "easeInOut" }}
+            transition={{ duration: 0.1, ease: "linear" }}
           />
           {/* Wave surface */}
           <motion.ellipse
@@ -417,7 +417,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
               rx: isActive ? [70, 90, 70] : 80,
             }}
             transition={{
-              cy: { duration: phaseDuration, ease: "easeInOut" },
+              cy: { duration: 0.1, ease: "linear" },
               rx: { duration: behavior.waveSpeed, repeat: Infinity, repeatType: "reverse" },
             }}
           />
