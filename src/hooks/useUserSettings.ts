@@ -189,37 +189,77 @@ export function useUserSettings() {
     else toast.success("Categories saved");
   }, [user, preferences]);
 
-  const saveMetrics = useCallback(async (metrics: Omit<UserMetric, "id">[]) => {
+  const saveMetrics = useCallback(async (metrics: (Omit<UserMetric, "id"> & { existingId?: string })[]) => {
     if (!user) return;
-    await supabase.from("user_metrics").delete().eq("user_id", user.id);
-    if (metrics.length > 0) {
-      const rows = metrics.map((m, i) => ({
+
+    // Separate existing (update) vs new (insert)
+    const toUpdate = metrics.filter(m => m.existingId);
+    const toInsert = metrics.filter(m => !m.existingId);
+
+    // Find metrics to delete (existing IDs not in the save list)
+    const keepIds = new Set(toUpdate.map(m => m.existingId!));
+    const currentIds = userMetrics.map(m => m.id);
+    const toDeleteIds = currentIds.filter(id => !keepIds.has(id));
+
+    // Delete removed metrics
+    if (toDeleteIds.length > 0) {
+      await supabase.from("user_metrics").delete().in("id", toDeleteIds);
+    }
+
+    // Update existing metrics
+    for (const m of toUpdate) {
+      await supabase.from("user_metrics").update({
+        label: m.label,
+        unit: m.unit,
+        icon: m.icon,
+        category_id: m.categoryId,
+        color_var: m.colorVar,
+        sort_order: m.sortOrder,
+      }).eq("id", m.existingId!);
+    }
+
+    // Insert new metrics
+    let insertedData: any[] = [];
+    if (toInsert.length > 0) {
+      const rows = toInsert.map(m => ({
         user_id: user.id,
         label: m.label,
         unit: m.unit,
         icon: m.icon,
         category_id: m.categoryId,
         color_var: m.colorVar,
-        sort_order: i,
+        sort_order: m.sortOrder,
       }));
       const { data, error } = await supabase.from("user_metrics").insert(rows).select();
       if (error) { toast.error("Failed to save metrics"); return; }
-      if (data) {
-        setUserMetrics(data.map(d => ({
-          id: d.id,
-          label: d.label,
-          unit: d.unit,
-          icon: d.icon,
-          categoryId: d.category_id,
-          colorVar: d.color_var,
-          sortOrder: d.sort_order,
-        })));
-      }
-    } else {
-      setUserMetrics([]);
+      insertedData = data || [];
     }
+
+    // Rebuild local state from kept + inserted
+    const updatedMetrics: UserMetric[] = [
+      ...toUpdate.map(m => ({
+        id: m.existingId!,
+        label: m.label,
+        unit: m.unit,
+        icon: m.icon,
+        categoryId: m.categoryId,
+        colorVar: m.colorVar,
+        sortOrder: m.sortOrder,
+      })),
+      ...insertedData.map((d: any) => ({
+        id: d.id,
+        label: d.label,
+        unit: d.unit,
+        icon: d.icon,
+        categoryId: d.category_id,
+        colorVar: d.color_var,
+        sortOrder: d.sort_order,
+      })),
+    ].sort((a, b) => a.sortOrder - b.sortOrder);
+
+    setUserMetrics(updatedMetrics);
     toast.success("Metrics saved");
-  }, [user]);
+  }, [user, userMetrics]);
 
   const saveRewards = useCallback(async (rewards: Reward[] | null) => {
     if (!user) return;

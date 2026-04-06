@@ -7,7 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 interface MetricsTabProps {
   userMetrics: UserMetric[];
-  onSave: (metrics: Omit<UserMetric, "id">[]) => Promise<void>;
+  onSave: (metrics: (Omit<UserMetric, "id"> & { existingId?: string })[]) => Promise<void>;
   onReset: () => Promise<void>;
 }
 
@@ -24,6 +24,7 @@ const CATEGORY_COLOR_MAP: Record<string, string> = {
 
 interface EditableMetric {
   tempId: string;
+  existingId?: string; // preserve DB id for existing metrics
   label: string;
   unit: string;
   icon: string;
@@ -38,6 +39,7 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
     const source = userMetrics.length > 0 ? userMetrics : TRACKER_METRICS;
     setMetrics(source.map((m, i) => ({
       tempId: `m-${i}-${Date.now()}`,
+      existingId: 'id' in m ? (m as UserMetric).id : undefined,
       label: m.label,
       unit: m.unit,
       icon: m.icon,
@@ -75,6 +77,7 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
       categoryId: m.categoryId,
       colorVar: CATEGORY_COLOR_MAP[m.categoryId] || "cat-mind",
       sortOrder: i,
+      existingId: m.existingId,
     })));
     setDirty(false);
   };
