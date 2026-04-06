@@ -1,35 +1,72 @@
 
 
-## Fix: Module Drag-and-Drop Reordering
+## Polish Breathing Module & Per-Pattern Visual Identity
 
-### Root Causes
+### Concept
 
-From the session replay, I can see drag events fire (opacity changes, scale flickers) but the reorder doesn't actually take effect. Three issues:
+Each breathing pattern gets a unique **color accent** and **recommended default effects** so they feel distinct during a session, while keeping the user's manual effect toggles respected.
 
-1. **Missing `onDrop` handler** — Without `onDrop` + `preventDefault()` on the drop target, the browser cancels the drop and `onDragEnd` fires with the drop considered "failed." The `dragOver.current` may get stale.
+### Changes
 
-2. **Child element event bubbling** — `onDragEnter`/`onDragLeave` fire rapidly as the cursor moves between child elements (buttons, spans) inside each row, causing `dragOverIdx` to flicker and potentially corrupting `dragOver.current`.
+**1. Pattern-specific color themes** (`src/lib/breathing-data.ts`)
 
-3. **`window.location.reload()` after save** — This is jarring and unnecessary; state should update in-place.
+Add a `hue` and `mood` to each pattern:
 
-### Fix Plan
+| Pattern | Hue | Mood color |
+|---------|-----|-----------|
+| Equal Breath | 185 (teal) | Calm balance |
+| Box Breathing | 220 (steel blue) | Disciplined |
+| 4-7-8 | 260 (violet) | Sleepy/deep |
+| Relaxing Flow | 160 (mint) | Soft/natural |
+| Alternate Nostril | 35 (amber) | Warm/yogic |
+| Coherent | 330 (rose) | Heart-centered |
+| Wim Hof | 200 (ice blue) | Energizing/cold |
+| Physiological Sigh | 280 (lavender) | Instant relief |
 
-**File: `src/components/settings/ModulesTab.tsx`**
+Each pattern also gets a `suggestedEffects` array (e.g., Wim Hof → particles + sparks; 4-7-8 → sigil; Box → rotating-runes).
 
-- Add an `onDrop` handler on each draggable row that calls `e.preventDefault()` and executes the reorder logic
-- Move the actual reorder into the `onDrop` handler (not `onDragEnd`), since `onDrop` only fires on successful drops
-- Use `onDragEnd` only for cleanup (reset opacity, clear refs)
-- Fix `onDragEnter` to check `e.currentTarget.contains(e.relatedTarget)` to ignore child-to-child transitions within the same row
-- Remove `window.location.reload()` from `handleSave` — the state is already updated in memory
+**2. Pass pattern hue into BreathingVessel** (`BreathingSession.tsx` → `BreathingVessel.tsx`)
 
-### Technical Details
+- Add a `hue` prop to `BreathingVessel`
+- Replace all hardcoded `hsl(185, ...)` colors with the dynamic hue so the glow, fill gradient, rune highlights, wave surface, and sparks all shift per pattern
+- Adjust gradient stops for the air fill to use the pattern's hue
 
-```
-onDrop → preventDefault + execute reorder (splice logic)
-onDragEnd → cleanup only (opacity reset, clear refs)
-onDragEnter → guard with relatedTarget check to prevent flicker
-handleSave → remove window.location.reload()
-```
+**3. Pattern-specific ambient behavior** (`BreathingVessel.tsx`)
 
-Single file change, no backend modifications needed.
+- **Wim Hof**: Faster wave oscillation (rapid breathing), more particles, slight vessel shake
+- **4-7-8 / Relaxing**: Slower, gentler wave, deeper glow bloom during long exhale
+- **Physiological Sigh**: Double-pulse on inhale (two quick fills then slow drain)
+- **Box Breathing**: Crisp phase transitions with a brief flash at each corner
+- **Coherent**: Smooth sinusoidal fill, subtle heartbeat pulse on the vessel outline
+
+Implemented via a `patternBehavior` config object derived from `pattern.id` inside `BreathingVessel`, controlling:
+- Wave `rx` animation speed
+- Glow intensity multiplier
+- Optional vessel scale pulse
+- Fill easing curve
+
+**4. Visual polish pass** (`BreathingVessel.tsx` + `BreathingSession.tsx`)
+
+- Add a subtle radial gradient background behind the vessel that uses the pattern hue (soft vignette)
+- Smooth the phase label transition (crossfade instead of slide)
+- Add a gentle pulse animation to the active phase dot
+- Make the progress bar gradient match the pattern hue
+- Add a faint "breath sound" visual indicator — a small animated ring that expands on inhale and contracts on exhale around the vessel
+
+**5. Pattern card polish** (`BreathingView.tsx`)
+
+- Add a subtle left-border accent on each pattern card using its hue color
+- On hover, show a faint glow matching the pattern's hue
+- Add the pattern's suggested effects as tiny dot indicators on the card
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/lib/breathing-data.ts` | Add `hue`, `suggestedEffects` to `BreathingPattern` |
+| `src/components/breathing/BreathingVessel.tsx` | Dynamic hue prop, pattern-specific behaviors, visual polish |
+| `src/components/breathing/BreathingSession.tsx` | Pass hue, polish phase labels/dots/progress bar, breath ring |
+| `src/components/breathing/BreathingView.tsx` | Pattern card accent colors, hover glows |
+
+No backend or database changes needed.
 
