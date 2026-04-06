@@ -77,6 +77,7 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
       categoryId: m.categoryId,
       colorVar: CATEGORY_COLOR_MAP[m.categoryId] || "cat-mind",
       sortOrder: i,
+      existingId: m.existingId,
     })));
     setDirty(false);
   };
