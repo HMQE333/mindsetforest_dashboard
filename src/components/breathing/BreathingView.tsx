@@ -248,6 +248,9 @@ const BreathingView = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-foreground group-hover:text-foreground/90">{p.name}</p>
                       <p className="text-xs text-muted-foreground mt-1">{p.description}</p>
+                      {p.tip && (
+                        <p className="text-[10px] italic text-muted-foreground/70 mt-1">{p.tip}</p>
+                      )}
                       <div className="flex items-center gap-1.5 mt-3">
                         {[
                           { l: "In", v: p.inhale },
