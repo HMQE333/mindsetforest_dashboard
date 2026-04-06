@@ -15,12 +15,12 @@ export interface BreathingPattern {
 export const BREATHING_PATTERNS: BreathingPattern[] = [
   { id: "equal", name: "Equal Breath", description: "Balanced inhale and exhale for calm focus", icon: "⚖️", inhale: 4, hold1: 0, exhale: 4, hold2: 0, hue: 185, suggestedEffects: ["sigil"] },
   { id: "box", name: "Box Breathing", description: "Military technique for stress control", icon: "🔲", inhale: 4, hold1: 4, exhale: 4, hold2: 4, hue: 220, suggestedEffects: ["rotating-runes"] },
-  { id: "478", name: "4-7-8 Technique", description: "Deep relaxation and sleep preparation", icon: "🌙", inhale: 4, hold1: 7, exhale: 8, hold2: 0, hue: 260, suggestedEffects: ["sigil", "particles"] },
+  { id: "478", name: "4-7-8 Technique", description: "Deep relaxation and sleep preparation", icon: "🌙", inhale: 4, hold1: 7, exhale: 8, hold2: 0, hue: 260, suggestedEffects: ["sigil", "particles"], tip: "Place tongue behind upper teeth. Exhale through mouth." },
   { id: "relaxing", name: "Relaxing Flow", description: "Extended exhale for parasympathetic activation", icon: "🍃", inhale: 4, hold1: 2, exhale: 6, hold2: 0, hue: 160, suggestedEffects: ["particles"] },
-  { id: "alternate-nostril", name: "Alternate Nostril", description: "Yogic balance — alternate nostrils each cycle", icon: "🫁", inhale: 4, hold1: 2, exhale: 4, hold2: 2, hue: 35, suggestedEffects: ["rotating-runes", "sigil"] },
-  { id: "coherent", name: "Coherent Breathing", description: "6 breaths/min for heart rate variability", icon: "💓", inhale: 5, hold1: 0, exhale: 5, hold2: 0, hue: 330, suggestedEffects: ["bursts"] },
-  { id: "wim-hof", name: "Wim Hof Power", description: "Rapid deep cycles — energizing & alkalizing", icon: "🧊", inhale: 2, hold1: 0, exhale: 2, hold2: 0, hue: 200, suggestedEffects: ["particles", "sparks"] },
-  { id: "physiological-sigh", name: "Physiological Sigh", description: "Double-inhale + long exhale for instant calm", icon: "😮‍💨", inhale: 2, hold1: 1, exhale: 8, hold2: 0, hue: 280, suggestedEffects: ["sigil", "sparks"] },
+  { id: "alternate-nostril", name: "Alternate Nostril", description: "Yogic balance — alternate nostrils each cycle", icon: "🫁", inhale: 4, hold1: 2, exhale: 4, hold2: 2, hue: 35, suggestedEffects: ["rotating-runes", "sigil"], tip: "Use thumb for right nostril, ring finger for left." },
+  { id: "coherent", name: "Coherent Breathing", description: "6 breaths/min for heart rate variability", icon: "💓", inhale: 5, hold1: 0, exhale: 5, hold2: 0, hue: 330, suggestedEffects: ["bursts"], tip: "Breathe gently through the nose. No effort, just rhythm." },
+  { id: "wim-hof", name: "Wim Hof Power", description: "Rapid deep cycles — energizing & alkalizing", icon: "🧊", inhale: 2, hold1: 0, exhale: 2, hold2: 0, hue: 200, suggestedEffects: ["particles", "sparks"], tip: "Breathe deep into belly, then chest. Let exhale fall naturally." },
+  { id: "physiological-sigh", name: "Physiological Sigh", description: "Double-inhale + long exhale for instant calm", icon: "😮‍💨", inhale: 2, hold1: 1, exhale: 8, hold2: 0, hue: 280, suggestedEffects: ["sigil", "sparks"], tip: "Two quick sniffs in through nose, then one long exhale through mouth." },
 ];
 
 export const RUNES = ["ᚱ", "ᚢ", "ᚾ", "ᛖ", "ᛊ", "ᚨ"];
