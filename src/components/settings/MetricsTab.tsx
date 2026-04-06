@@ -24,6 +24,7 @@ const CATEGORY_COLOR_MAP: Record<string, string> = {
 
 interface EditableMetric {
   tempId: string;
+  existingId?: string; // preserve DB id for existing metrics
   label: string;
   unit: string;
   icon: string;
