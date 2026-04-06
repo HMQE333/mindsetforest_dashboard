@@ -35,8 +35,8 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
   const currentPhase = phases[phaseIndex % phases.length];
   const cycleDuration = getCycleDuration(pattern);
   const overallProgress = Math.min(elapsed / durationSeconds, 1);
+  const h = pattern.hue;
 
-  // Fill level based on phase
   const getFillLevel = () => {
     if (!currentPhase) return 0.2;
     const t = Math.min(phaseElapsed / currentPhase.duration, 1);
@@ -106,7 +106,8 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 1.5, opacity: 0 }}
-          className="text-7xl font-bold text-primary"
+          className="text-7xl font-bold"
+          style={{ color: `hsl(${h}, 80%, 60%)` }}
         >
           {countdown}
         </motion.div>
@@ -133,18 +134,21 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
         phaseDuration={currentPhase?.duration || 4}
         shape={vesselShape}
         activeEffects={activeEffects}
+        hue={h}
+        patternId={pattern.id}
       />
 
-      {/* Phase label */}
+      {/* Phase label — crossfade */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentPhase?.phase + "-" + phaseIndex}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4 }}
           className="text-center"
         >
-          <p className="text-xl font-bold" style={{ color: "hsl(185, 80%, 60%)" }}>
+          <p className="text-xl font-bold" style={{ color: `hsl(${h}, 80%, 60%)` }}>
             {currentPhase ? getPhaseLabel(currentPhase.phase) : ""}
           </p>
           <p className="text-xs text-muted-foreground mt-1 tabular-nums">
@@ -155,28 +159,32 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
 
       {/* Phase dots */}
       <div className="flex items-center gap-2">
-        {phases.map((p, i) => (
-          <motion.div
-            key={i}
-            className="w-2.5 h-2.5 rounded-full"
-            animate={{
-              backgroundColor: i === phaseIndex % phases.length
-                ? "hsl(185, 80%, 60%)"
-                : i < phaseIndex % phases.length
-                ? "hsl(185, 50%, 40%)"
-                : "hsl(230, 15%, 20%)",
-              scale: i === phaseIndex % phases.length ? 1.3 : 1,
-            }}
-            transition={{ duration: 0.3 }}
-          />
-        ))}
+        {phases.map((p, i) => {
+          const isCurrent = i === phaseIndex % phases.length;
+          const isPast = i < phaseIndex % phases.length;
+          return (
+            <motion.div
+              key={i}
+              className="w-2.5 h-2.5 rounded-full"
+              animate={{
+                backgroundColor: isCurrent
+                  ? `hsl(${h}, 80%, 60%)`
+                  : isPast
+                  ? `hsl(${h}, 50%, 40%)`
+                  : "hsl(230, 15%, 20%)",
+                scale: isCurrent ? [1.0, 1.4, 1.0] : 1,
+              }}
+              transition={isCurrent ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+            />
+          );
+        })}
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — gradient matches pattern hue */}
       <div className="w-48 h-1 rounded-full bg-muted overflow-hidden">
         <motion.div
           className="h-full rounded-full"
-          style={{ background: "hsl(185, 80%, 55%)" }}
+          style={{ background: `linear-gradient(90deg, hsl(${h}, 70%, 45%), hsl(${h}, 90%, 60%))` }}
           animate={{ width: `${overallProgress * 100}%` }}
         />
       </div>

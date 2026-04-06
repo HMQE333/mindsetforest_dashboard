@@ -234,7 +234,14 @@ const BreathingView = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.08 }}
                   onClick={() => handleStart(p)}
-                  className="glass-card p-5 rounded-2xl text-left hover:bg-white/5 transition-all group border border-white/5 hover:border-white/10"
+                  className="glass-card p-5 rounded-2xl text-left hover:bg-white/5 transition-all group border border-white/5 hover:border-white/10 relative overflow-hidden"
+                  style={{
+                    borderLeftWidth: 3,
+                    borderLeftColor: `hsl(${p.hue}, 65%, 50%)`,
+                  }}
+                  whileHover={{
+                    boxShadow: `0 0 20px hsla(${p.hue}, 70%, 50%, 0.15)`,
+                  }}
                 >
                   <div className="flex items-start gap-3">
                     <span className="text-2xl">{p.icon}</span>
@@ -252,6 +259,18 @@ const BreathingView = () => {
                             {s.l} {s.v}s
                           </span>
                         ))}
+                        {/* Suggested effect dots */}
+                        {p.suggestedEffects.length > 0 && (
+                          <span className="ml-auto flex items-center gap-0.5">
+                            {p.suggestedEffects.slice(0, 3).map((_, ei) => (
+                              <span
+                                key={ei}
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ background: `hsl(${p.hue}, 60%, 50%)`, opacity: 0.5 }}
+                              />
+                            ))}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
