@@ -3,6 +3,29 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RUNES } from "@/lib/breathing-data";
 import type { BreathPhase, VesselShape, VesselEffectId } from "@/lib/breathing-data";
 
+interface PatternBehavior {
+  waveSpeed: number;
+  glowMultiplier: number;
+  particleCount: number;
+  vesselPulse: boolean;
+}
+
+const PATTERN_BEHAVIORS: Record<string, Partial<PatternBehavior>> = {
+  "wim-hof": { waveSpeed: 0.8, glowMultiplier: 1.4, particleCount: 14, vesselPulse: true },
+  "478": { waveSpeed: 2.5, glowMultiplier: 1.2, particleCount: 8 },
+  "relaxing": { waveSpeed: 2.2, glowMultiplier: 1.1, particleCount: 8 },
+  "box": { waveSpeed: 1.5, glowMultiplier: 1.0, particleCount: 10 },
+  "coherent": { waveSpeed: 2.0, glowMultiplier: 1.0, particleCount: 10, vesselPulse: true },
+  "physiological-sigh": { waveSpeed: 2.0, glowMultiplier: 1.3, particleCount: 10 },
+};
+
+const DEFAULT_BEHAVIOR: PatternBehavior = {
+  waveSpeed: 1.5,
+  glowMultiplier: 1.0,
+  particleCount: 10,
+  vesselPulse: false,
+};
+
 interface Props {
   phase: BreathPhase;
   fillLevel: number;
@@ -10,6 +33,8 @@ interface Props {
   phaseDuration: number;
   shape?: VesselShape;
   activeEffects?: Set<VesselEffectId>;
+  hue?: number;
+  patternId?: string;
 }
 
 const VESSEL_PATHS: Record<VesselShape, string> = {
@@ -54,15 +79,14 @@ const VESSEL_ENGRAVINGS: Record<VesselShape, { x: number; y: number; char: strin
   ],
 };
 
-// Generate stable particle configs
-const PARTICLES = Array.from({ length: 10 }, (_, i) => ({
+// Generate stable particle configs (max count, we'll slice per pattern)
+const ALL_PARTICLES = Array.from({ length: 16 }, (_, i) => ({
   radius: 120 + Math.random() * 40,
   speed: 15 + Math.random() * 15,
-  startAngle: (i / 10) * Math.PI * 2,
+  startAngle: (i / 16) * Math.PI * 2,
   size: 2 + Math.random() * 1.5,
 }));
 
-// Generate stable spark configs
 const SPARKS = Array.from({ length: 4 }, (_, i) => ({
   xOffset: -30 + Math.random() * 60,
   driftY: 40 + Math.random() * 40,
@@ -70,11 +94,14 @@ const SPARKS = Array.from({ length: 4 }, (_, i) => ({
   delay: i * 0.8,
 }));
 
-const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "urn", activeEffects = new Set() }: Props) => {
+const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "urn", activeEffects = new Set(), hue = 185, patternId = "equal" }: Props) => {
+  const behavior = { ...DEFAULT_BEHAVIOR, ...PATTERN_BEHAVIORS[patternId] };
   const isActive = phase === "inhale" || phase === "exhale";
-  const glowIntensity = phase === "inhale" ? 0.6 + fillLevel * 0.4 : phase === "hold1" ? 0.8 : 0.3 + fillLevel * 0.3;
+  const baseGlow = phase === "inhale" ? 0.6 + fillLevel * 0.4 : phase === "hold1" ? 0.8 : 0.3 + fillLevel * 0.3;
+  const glowIntensity = baseGlow * behavior.glowMultiplier;
   const vesselPath = VESSEL_PATHS[shape];
   const engravings = VESSEL_ENGRAVINGS[shape];
+  const particles = ALL_PARTICLES.slice(0, behavior.particleCount);
 
   const hasRotatingRunes = activeEffects.has("rotating-runes");
   const hasParticles = activeEffects.has("particles");
@@ -82,7 +109,10 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
   const hasSigil = activeEffects.has("sigil");
   const hasSparks = activeEffects.has("sparks");
 
-  // Energy burst state
+  // Dynamic HSL helpers
+  const h = hue;
+  const hsl = (s: number, l: number, a: number) => `hsla(${h}, ${s}%, ${l}%, ${a})`;
+
   const [burst, setBurst] = useState<{ runeIndex: number; key: number } | null>(null);
 
   useEffect(() => {
@@ -96,7 +126,6 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
     return () => clearInterval(interval);
   }, [hasBursts]);
 
-  // Compute rune positions for reuse
   const runePositions = useMemo(() =>
     RUNES.map((rune, i) => {
       const angle = (i / RUNES.length) * Math.PI * 2 - Math.PI / 2;
@@ -118,12 +147,8 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         className="absolute text-xl font-bold select-none"
         style={{ left: `calc(50% + ${x}px - 12px)`, top: `calc(50% + ${y}px - 12px)` }}
         animate={{
-          color: runeActive
-            ? `hsla(185, 90%, 70%, 0.9)`
-            : "hsla(185, 40%, 35%, 0.3)",
-          textShadow: runeActive
-            ? `0 0 12px hsla(185, 90%, 60%, 0.6)`
-            : "none",
+          color: runeActive ? hsl(90, 70, 0.9) : hsl(40, 35, 0.3),
+          textShadow: runeActive ? `0 0 12px ${hsl(90, 60, 0.6)}` : "none",
           scale: runeActive && phase === "inhale" ? [1, 1.15, 1] : 1,
         }}
         transition={{ duration: 2, repeat: runeActive ? Infinity : 0, repeatType: "reverse" }}
@@ -133,19 +158,64 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
     );
   });
 
+  // Gradient IDs unique per hue to avoid conflicts
+  const gradId = `vesselGrad-${h}`;
+  const airGradId = `airGrad-${h}`;
+  const clipId = `vesselClip-${shape}-${h}`;
+
   return (
     <div className="relative flex items-center justify-center" style={{ width: 280, height: 340 }}>
+      {/* Radial vignette background */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          width: 300,
+          height: 300,
+          top: 20,
+          background: `radial-gradient(circle, ${hsl(60, 30, 0.12)} 0%, transparent 70%)`,
+          pointerEvents: "none",
+        }}
+      />
+
       {/* Outer glow */}
       <motion.div
         className="absolute rounded-full"
         style={{ width: 260, height: 260, top: 40 }}
         animate={{
-          boxShadow: `0 0 ${40 + glowIntensity * 60}px ${10 + glowIntensity * 20}px hsla(185, 80%, 55%, ${glowIntensity * 0.35})`,
+          boxShadow: `0 0 ${40 + glowIntensity * 60}px ${10 + glowIntensity * 20}px ${hsl(80, 55, glowIntensity * 0.35)}`,
         }}
         transition={{ duration: phaseDuration, ease: "easeInOut" }}
       />
 
-      {/* Rune ring — optionally rotating */}
+      {/* Breath ring indicator */}
+      <motion.div
+        className="absolute rounded-full border pointer-events-none"
+        style={{
+          top: 40,
+          borderColor: hsl(70, 50, 0.15),
+        }}
+        animate={{
+          width: phase === "inhale" ? [220, 270] : phase === "exhale" ? [270, 220] : [245, 250, 245],
+          height: phase === "inhale" ? [220, 270] : phase === "exhale" ? [270, 220] : [245, 250, 245],
+          opacity: isActive ? [0.2, 0.4, 0.2] : 0.1,
+        }}
+        transition={{ duration: phaseDuration, ease: "easeInOut" }}
+      />
+
+      {/* Vessel pulse for specific patterns */}
+      {behavior.vesselPulse && (
+        <motion.div
+          className="absolute rounded-full pointer-events-none"
+          style={{ width: 190, height: 270, top: 35, border: `1px solid ${hsl(60, 45, 0.1)}` }}
+          animate={{
+            scale: [1, 1.02, 1],
+            opacity: [0.15, 0.3, 0.15],
+          }}
+          transition={{ duration: patternId === "coherent" ? 1.6 : 1, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+
+      {/* Rune ring */}
       {hasRotatingRunes ? (
         <motion.div
           className="absolute inset-0"
@@ -158,7 +228,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         <>{runesContent}</>
       )}
 
-      {/* Sigil lines connecting runes */}
+      {/* Sigil lines */}
       {hasSigil && (
         <svg
           className="absolute inset-0 z-0 pointer-events-none"
@@ -173,7 +243,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
                 <motion.line
                   key={i}
                   x1={x} y1={y} x2={next.x} y2={next.y}
-                  stroke="hsla(185, 70%, 55%, 0.15)"
+                  stroke={hsl(70, 55, 0.15)}
                   strokeWidth="1"
                   animate={{
                     strokeOpacity: lineActive ? [0.15, 0.5, 0.15] : 0.08,
@@ -187,15 +257,15 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
       )}
 
       {/* Energy particles */}
-      {hasParticles && PARTICLES.map((p, i) => (
+      {hasParticles && particles.map((p, i) => (
         <motion.div
           key={`particle-${i}`}
           className="absolute rounded-full pointer-events-none z-0"
           style={{
             width: p.size,
             height: p.size,
-            background: "hsla(185, 90%, 65%, 0.7)",
-            boxShadow: "0 0 4px hsla(185, 90%, 65%, 0.5)",
+            background: hsl(90, 65, 0.7),
+            boxShadow: `0 0 4px ${hsl(90, 65, 0.5)}`,
             left: "50%",
             top: "50%",
             marginLeft: -p.size / 2,
@@ -233,8 +303,8 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
               style={{
                 width: 6,
                 height: 6,
-                background: "hsla(185, 95%, 75%, 0.9)",
-                boxShadow: "0 0 12px hsla(185, 95%, 70%, 0.8)",
+                background: hsl(95, 75, 0.9),
+                boxShadow: `0 0 12px ${hsl(95, 70, 0.8)}`,
                 left: `calc(50% + ${rp.x}px - 3px)`,
                 top: `calc(50% + ${rp.y}px - 3px)`,
               }}
@@ -255,46 +325,42 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
       {/* Vessel SVG */}
       <svg viewBox="0 0 200 280" className="relative z-10" style={{ width: 180, height: 260 }}>
         <defs>
-          <clipPath id={`vesselClip-${shape}`}>
+          <clipPath id={clipId}>
             <path d={vesselPath} />
           </clipPath>
-          <linearGradient id="vesselGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsla(185, 60%, 25%, 0.3)" />
-            <stop offset="100%" stopColor="hsla(185, 60%, 15%, 0.5)" />
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={hsl(60, 25, 0.3)} />
+            <stop offset="100%" stopColor={hsl(60, 15, 0.5)} />
           </linearGradient>
-          <linearGradient id="airGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsla(185, 90%, 65%, 0.7)" />
-            <stop offset="50%" stopColor="hsla(190, 85%, 50%, 0.5)" />
-            <stop offset="100%" stopColor="hsla(195, 80%, 40%, 0.6)" />
+          <linearGradient id={airGradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={hsl(90, 65, 0.7)} />
+            <stop offset="50%" stopColor={`hsla(${h + 5}, 85%, 50%, 0.5)`} />
+            <stop offset="100%" stopColor={`hsla(${h + 10}, 80%, 40%, 0.6)`} />
           </linearGradient>
         </defs>
 
         {/* Vessel outline */}
         <path
           d={vesselPath}
-          fill="url(#vesselGrad)"
-          stroke="hsla(185, 50%, 45%, 0.4)"
+          fill={`url(#${gradId})`}
+          stroke={hsl(50, 45, 0.4)}
           strokeWidth="1.5"
         />
 
-        {/* Rune engravings on vessel */}
+        {/* Rune engravings */}
         {engravings.map((e, i) => (
-          <text key={i} x={e.x} y={e.y} fill="hsla(185, 50%, 50%, 0.15)" fontSize="14" fontWeight="bold">{e.char}</text>
+          <text key={i} x={e.x} y={e.y} fill={hsl(50, 50, 0.15)} fontSize="14" fontWeight="bold">{e.char}</text>
         ))}
 
         {/* Urn decorative details */}
         {shape === "urn" && (
           <>
-            {/* Neck ring */}
-            <ellipse cx="100" cy="35" rx="32" ry="3" fill="none" stroke="hsla(185, 50%, 50%, 0.2)" strokeWidth="1" />
-            {/* Rim highlight */}
-            <ellipse cx="100" cy="10" rx="22" ry="2.5" fill="none" stroke="hsla(185, 60%, 60%, 0.25)" strokeWidth="0.8" />
-            {/* Belly band */}
-            <path d="M42,145 Q100,155 158,145" fill="none" stroke="hsla(185, 50%, 50%, 0.12)" strokeWidth="1" />
-            <path d="M44,155 Q100,165 156,155" fill="none" stroke="hsla(185, 50%, 50%, 0.08)" strokeWidth="0.8" />
-            {/* Handle accents (left + right) */}
-            <path d="M38,75 Q25,60 30,45 Q35,35 60,42" fill="none" stroke="hsla(185, 50%, 50%, 0.18)" strokeWidth="1.2" strokeLinecap="round" />
-            <path d="M162,75 Q175,60 170,45 Q165,35 140,42" fill="none" stroke="hsla(185, 50%, 50%, 0.18)" strokeWidth="1.2" strokeLinecap="round" />
+            <ellipse cx="100" cy="35" rx="32" ry="3" fill="none" stroke={hsl(50, 50, 0.2)} strokeWidth="1" />
+            <ellipse cx="100" cy="10" rx="22" ry="2.5" fill="none" stroke={hsl(60, 60, 0.25)} strokeWidth="0.8" />
+            <path d="M42,145 Q100,155 158,145" fill="none" stroke={hsl(50, 50, 0.12)} strokeWidth="1" />
+            <path d="M44,155 Q100,165 156,155" fill="none" stroke={hsl(50, 50, 0.08)} strokeWidth="0.8" />
+            <path d="M38,75 Q25,60 30,45 Q35,35 60,42" fill="none" stroke={hsl(50, 50, 0.18)} strokeWidth="1.2" strokeLinecap="round" />
+            <path d="M162,75 Q175,60 170,45 Q165,35 140,42" fill="none" stroke={hsl(50, 50, 0.18)} strokeWidth="1.2" strokeLinecap="round" />
           </>
         )}
         {shape === "eye" && (
@@ -304,7 +370,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
               cy="140"
               r="28"
               fill="none"
-              stroke="hsla(185, 60%, 50%, 0.3)"
+              stroke={hsl(60, 50, 0.3)}
               strokeWidth="2"
               animate={{
                 r: phase === "inhale" ? [24, 32] : phase === "exhale" ? [32, 24] : [28, 30, 28],
@@ -316,12 +382,12 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
               cx="100"
               cy="140"
               r="12"
-              fill="hsla(185, 80%, 40%, 0.4)"
+              fill={hsl(80, 40, 0.4)}
               animate={{
                 r: phase === "inhale" ? [10, 16] : phase === "exhale" ? [16, 10] : [12, 14, 12],
                 fill: phase === "hold1"
-                  ? ["hsla(185, 80%, 40%, 0.4)", "hsla(185, 90%, 55%, 0.6)", "hsla(185, 80%, 40%, 0.4)"]
-                  : "hsla(185, 80%, 40%, 0.4)",
+                  ? [hsl(80, 40, 0.4), hsl(90, 55, 0.6), hsl(80, 40, 0.4)]
+                  : hsl(80, 40, 0.4),
               }}
               transition={{ duration: phaseDuration, ease: "easeInOut" }}
             />
@@ -329,12 +395,12 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
         )}
 
         {/* Air fill */}
-        <g clipPath={`url(#vesselClip-${shape})`}>
+        <g clipPath={`url(#${clipId})`}>
           <motion.rect
             x="0"
             width="200"
             height="280"
-            fill="url(#airGrad)"
+            fill={`url(#${airGradId})`}
             initial={{ y: 280 - fillLevel * 270 }}
             animate={{ y: 280 - fillLevel * 270 }}
             transition={{ duration: phaseDuration, ease: "easeInOut" }}
@@ -344,7 +410,7 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
             cx="100"
             rx="80"
             ry="6"
-            fill="hsla(185, 90%, 70%, 0.4)"
+            fill={hsl(90, 70, 0.4)}
             initial={{ cy: 280 - fillLevel * 270, rx: 80 }}
             animate={{
               cy: 280 - fillLevel * 270,
@@ -352,16 +418,15 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
             }}
             transition={{
               cy: { duration: phaseDuration, ease: "easeInOut" },
-              rx: { duration: 1.5, repeat: Infinity, repeatType: "reverse" },
+              rx: { duration: behavior.waveSpeed, repeat: Infinity, repeatType: "reverse" },
             }}
           />
         </g>
       </svg>
 
-
       {/* Ambient sparks */}
       {hasSparks && fillLevel > 0.3 && SPARKS.map((spark, i) => {
-        const surfaceY = 260 - fillLevel * 270 + 40; // approximate surface position in container coords
+        const surfaceY = 260 - fillLevel * 270 + 40;
         return (
           <motion.div
             key={`spark-${i}`}
@@ -369,8 +434,8 @@ const BreathingVessel = ({ phase, fillLevel, progress, phaseDuration, shape = "u
             style={{
               width: 2,
               height: 2,
-              background: "hsla(185, 95%, 80%, 0.8)",
-              boxShadow: "0 0 4px hsla(185, 95%, 70%, 0.6)",
+              background: hsl(95, 80, 0.8),
+              boxShadow: `0 0 4px ${hsl(95, 70, 0.6)}`,
               left: `calc(50% + ${spark.xOffset}px)`,
             }}
             animate={{
