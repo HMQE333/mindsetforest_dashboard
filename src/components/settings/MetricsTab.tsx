@@ -7,7 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 interface MetricsTabProps {
   userMetrics: UserMetric[];
-  onSave: (metrics: Omit<UserMetric, "id">[]) => Promise<void>;
+  onSave: (metrics: (Omit<UserMetric, "id"> & { existingId?: string })[]) => Promise<void>;
   onReset: () => Promise<void>;
 }
 
