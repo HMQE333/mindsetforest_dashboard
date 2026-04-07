@@ -186,12 +186,13 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
   const edges: Edge[] = [];
   const rootId = `project-${project.id}`;
   const projectTasks = tasks.filter(t => t.project_id === project.id);
-  const rootTasks = projectTasks.filter(t => t.parent_id === null);
+  const treeTasks = projectTasks.filter(t => !t.standalone);
+  const standaloneTasks = projectTasks.filter(t => t.standalone);
+  const rootTasks = treeTasks.filter(t => t.parent_id === null);
   const X_SPACING = 260;
   const Y_SPACING = 120;
 
-  // Calculate total tree width first
-  const totalLeaves = rootTasks.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, projectTasks)), 0);
+  const totalLeaves = rootTasks.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, treeTasks)), 0);
   const treeWidth = Math.max(1, totalLeaves) * X_SPACING;
 
   const treeCenterX = xOffset + treeWidth / 2;
@@ -200,11 +201,11 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentX: number): number {
     if (children.length === 0) return parentX;
-    const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, projectTasks)) * X_SPACING, 0);
+    const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, treeTasks)) * X_SPACING, 0);
     let currentX = parentX - totalWidth / 2 + X_SPACING / 2;
     children.forEach(child => {
-      const grandchildren = projectTasks.filter(t => t.parent_id === child.id);
-      const leafCount = Math.max(1, countLeaves(child.id, projectTasks));
+      const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
+      const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
       const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
@@ -218,6 +219,24 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
   }
 
   layoutChildren(rootId, rootTasks, 1, treeCenterX);
+
+  // Add standalone nodes at their stored positions
+  standaloneTasks.forEach(task => {
+    const nodeId = `task-${task.id}`;
+    const isLink = task.level === "link";
+    const posX = task.position_x ?? xOffset + Math.random() * 300;
+    const posY = task.position_y ?? 400 + Math.random() * 200;
+    nodes.push({
+      id: nodeId,
+      type: isLink ? "linkNode" : "taskNode",
+      position: { x: posX, y: posY },
+      draggable: true,
+      data: isLink
+        ? { task, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect }
+        : { task, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect },
+    });
+  });
+
   return { nodes, edges, treeWidth };
 }
 
