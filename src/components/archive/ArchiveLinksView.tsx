@@ -58,12 +58,15 @@ function extractLinks(block: ArchiveBlock): ExtractedLink[] {
   const matches = block.content.match(URL_REGEX) || [];
   matches.forEach((u) => urls.add(u));
   if (block.source_url) urls.add(block.source_url);
+  // Strip URLs from content to get the plain note text
+  const note = block.content.replace(URL_REGEX, "").replace(/\n{2,}/g, "\n").trim();
   return Array.from(urls).map((url) => ({
     url,
     type: classifyUrl(url),
     blockTitle: block.title,
     blockId: block.id,
     block,
+    note,
   }));
 }
 
