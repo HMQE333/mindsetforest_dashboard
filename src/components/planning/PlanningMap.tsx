@@ -471,7 +471,42 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  useMemo(() => { setNodes(initialNodes); setEdges(initialEdges); }, [initialNodes, initialEdges, setNodes, setEdges]);
+  // Smart merge: preserve dragged positions for standalone nodes instead of full reset
+  const prevLayoutRef = useRef<{ nodeIds: string[]; taskHash: string }>({ nodeIds: [], taskHash: "" });
+  useEffect(() => {
+    // Build a structural hash: ids + standalone status + parent relationships
+    const taskHash = filteredTasks.map(t => `${t.id}:${t.parent_id}:${t.standalone}:${t.done}`).join("|");
+    const newNodeIds = initialNodes.map(n => n.id).sort().join(",");
+    const prev = prevLayoutRef.current;
+
+    // If structure changed (new/removed nodes, parent changes), do full layout
+    if (prev.taskHash !== taskHash || prev.nodeIds !== newNodeIds) {
+      setNodes(currentNodes => {
+        return initialNodes.map(newNode => {
+          // For standalone nodes, preserve their current ReactFlow position if they already exist
+          // (avoids snapping back during drag interactions)
+          const existing = currentNodes.find(n => n.id === newNode.id);
+          const taskId = newNode.id.replace("task-", "");
+          const task = filteredTasks.find(t => t.id === taskId);
+          if (existing && task?.standalone) {
+            return { ...newNode, position: existing.position };
+          }
+          return newNode;
+        });
+      });
+      setEdges(initialEdges);
+      prevLayoutRef.current = { nodeIds: newNodeIds, taskHash };
+    } else {
+      // Only data changed (title, done status etc.) — update data without resetting positions
+      setNodes(currentNodes =>
+        currentNodes.map(n => {
+          const updated = initialNodes.find(u => u.id === n.id);
+          return updated ? { ...n, data: updated.data } : n;
+        })
+      );
+      setEdges(initialEdges);
+    }
+  }, [initialNodes, initialEdges]);
 
   const totalTasks = filteredTasks.filter(t => t.level !== "link").length;
   const doneTasks = filteredTasks.filter(t => t.level !== "link" && t.done).length;
