@@ -28,10 +28,12 @@ export function useUserProjects() {
     load();
   }, [user]);
 
-  const addProject = useCallback(async (name: string, emoji: string = "📁") => {
+  const addProject = useCallback(async (name: string, emoji: string = "📁", parentCategory?: string) => {
     if (!user) return null;
+    const insertData: Record<string, string> = { user_id: user.id, name, emoji };
+    if (parentCategory) insertData.parent_category = parentCategory;
     const { data, error } = await (supabase.from("user_projects" as any) as any)
-      .insert([{ user_id: user.id, name, emoji }])
+      .insert([insertData])
       .select("id, name, emoji, parent_category")
       .single();
     if (error) {
