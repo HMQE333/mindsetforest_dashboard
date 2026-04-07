@@ -2,16 +2,16 @@ import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   ReactFlow, Background, Controls, MiniMap,
-  type Node, type Edge,
+  type Node, type Edge, type Connection,
   useNodesState, useEdgesState,
   Handle, Position,
   type NodeProps, MarkerType, BackgroundVariant,
-  ReactFlowProvider,
+  ReactFlowProvider, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
-import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 import { toast } from "@/hooks/use-toast";
