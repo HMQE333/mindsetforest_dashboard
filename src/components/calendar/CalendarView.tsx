@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Plus, Search, X } from "lucide-react";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isToday } from "date-fns";
 import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 import CalendarEventModal from "./CalendarEventModal";
 import type { CalendarEvent } from "@/hooks/useCalendarEvents";
@@ -15,8 +15,8 @@ export default function CalendarView() {
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTag, setFilterTag] = useState("");
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
 
-  // Build calendar grid (Mon-Sun)
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
@@ -31,13 +31,11 @@ export default function CalendarView() {
     return days;
   }, [currentMonth]);
 
-  // All unique tags
   const allTags = useMemo(() => {
     const tags = new Set(events.map(e => e.tag).filter(Boolean));
     return Array.from(tags);
   }, [events]);
 
-  // Filtered events
   const filteredEvents = useMemo(() => {
     let filtered = events;
     if (searchQuery) {
@@ -53,8 +51,7 @@ export default function CalendarView() {
   const eventsForDate = (dateStr: string) => filteredEvents.filter(e => e.date === dateStr);
 
   const handleDayClick = (date: Date) => {
-    const dateStr = format(date, "yyyy-MM-dd");
-    setSelectedDate(dateStr);
+    setSelectedDate(format(date, "yyyy-MM-dd"));
   };
 
   const handleAddNew = () => {
@@ -67,6 +64,33 @@ export default function CalendarView() {
     setSelectedDate(evt.date);
     setModalOpen(true);
   };
+
+  // Drag & Drop
+  const handleDragStart = useCallback((e: React.DragEvent, evt: CalendarEvent) => {
+    e.dataTransfer.setData("text/plain", JSON.stringify({ id: evt.id, date: evt.date }));
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, dateStr: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverDate(dateStr);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverDate(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetDateStr: string) => {
+    e.preventDefault();
+    setDragOverDate(null);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+      if (data.id && data.date !== targetDateStr) {
+        updateEvent(data.id, { date: targetDateStr });
+      }
+    } catch {}
+  }, [updateEvent]);
 
   const selectedDateEvents = selectedDate ? eventsForDate(selectedDate) : [];
 
@@ -127,14 +151,12 @@ export default function CalendarView() {
 
       {/* Calendar grid */}
       <div className="rounded-2xl glass-card border border-border overflow-hidden">
-        {/* Weekday headers */}
         <div className="grid grid-cols-7 border-b border-border">
           {WEEKDAYS.map(d => (
             <div key={d} className="py-2 text-center text-xs font-semibold text-muted-foreground">{d}</div>
           ))}
         </div>
 
-        {/* Day cells */}
         <div className="grid grid-cols-7">
           {calendarDays.map((day, i) => {
             const dateStr = format(day, "yyyy-MM-dd");
@@ -142,21 +164,26 @@ export default function CalendarView() {
             const inMonth = isSameMonth(day, currentMonth);
             const today = isToday(day);
             const isSelected = selectedDate === dateStr;
+            const isDragOver = dragOverDate === dateStr;
 
             return (
-              <button
+              <div
                 key={i}
                 onClick={() => handleDayClick(day)}
-                className={`relative min-h-[72px] sm:min-h-[80px] p-1.5 border-b border-r border-border text-left transition-all hover:bg-muted/20 ${
+                onDragOver={(e) => handleDragOver(e, dateStr)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, dateStr)}
+                className={`relative min-h-[72px] sm:min-h-[80px] p-1.5 border-b border-r border-border text-left transition-all hover:bg-muted/20 cursor-pointer ${
                   !inMonth ? "opacity-30" : ""
-                } ${isSelected ? "bg-primary/10 ring-1 ring-primary/30" : ""}`}
+                } ${isSelected ? "bg-primary/10 ring-1 ring-primary/30" : ""} ${
+                  isDragOver ? "bg-primary/20 ring-2 ring-primary/50" : ""
+                }`}
               >
                 <span className={`text-xs font-medium block mb-1 ${
                   today ? "bg-primary text-primary-foreground w-6 h-6 rounded-full flex items-center justify-center" : "text-foreground"
                 }`}>
                   {format(day, "d")}
                 </span>
-                {/* Event dots */}
                 <div className="flex flex-wrap gap-0.5">
                   {dayEvents.slice(0, 3).map(evt => (
                     <span
@@ -170,20 +197,22 @@ export default function CalendarView() {
                     <span className="text-[9px] text-muted-foreground">+{dayEvents.length - 3}</span>
                   )}
                 </div>
-                {/* Event titles on desktop */}
+                {/* Draggable event titles (desktop) */}
                 <div className="hidden sm:block space-y-0.5 mt-0.5">
                   {dayEvents.slice(0, 2).map(evt => (
                     <div
                       key={evt.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, evt)}
                       onClick={(e) => { e.stopPropagation(); handleEventClick(evt); }}
-                      className="text-[10px] leading-tight truncate px-1 py-0.5 rounded cursor-pointer hover:opacity-80"
+                      className="text-[10px] leading-tight truncate px-1 py-0.5 rounded cursor-grab active:cursor-grabbing hover:opacity-80 select-none"
                       style={{ backgroundColor: evt.color + "22", color: evt.color }}
                     >
                       {evt.title}
                     </div>
                   ))}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -213,10 +242,12 @@ export default function CalendarView() {
           ) : (
             <div className="space-y-2">
               {selectedDateEvents.map(evt => (
-                <button
+                <div
                   key={evt.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, evt)}
                   onClick={() => handleEventClick(evt)}
-                  className="w-full text-left p-3 rounded-xl border border-border hover:bg-muted/20 transition-all flex items-start gap-3"
+                  className="w-full text-left p-3 rounded-xl border border-border hover:bg-muted/20 transition-all flex items-start gap-3 cursor-grab active:cursor-grabbing"
                 >
                   <span className="w-3 h-3 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: evt.color }} />
                   <div className="flex-1 min-w-0">
@@ -224,14 +255,13 @@ export default function CalendarView() {
                     {evt.tag && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground">{evt.tag}</span>}
                     {evt.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{evt.notes}</p>}
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
         </motion.div>
       )}
 
-      {/* Modal */}
       <CalendarEventModal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditEvent(null); }}
