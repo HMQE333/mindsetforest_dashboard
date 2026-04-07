@@ -429,11 +429,12 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
   }, [tasks, updateTask]);
 
-  // Drag stop — persist position for standalone nodes
+  // Drag stop — persist position for standalone nodes (silent DB update, no local re-render)
   const handleNodeDragStop = useCallback((_: any, node: Node) => {
     const taskId = node.id.replace("task-", "");
     const task = tasks.find(t => t.id === taskId);
     if (task?.standalone) {
+      // Update local task state quietly so the ref hash stays correct
       updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
     }
   }, [tasks, updateTask]);
