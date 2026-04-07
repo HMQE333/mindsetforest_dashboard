@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   ReactFlow, Background, Controls, MiniMap,
   type Node, type Edge,
@@ -216,13 +217,28 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 /* ── Multi-Select Dropdown ──────────────────────────────────── */
 function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { projects: UserProject[]; selectedIds: string[]; onToggle: (id: string) => void; max: number }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as HTMLElement)) setOpen(false); };
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (triggerRef.current?.contains(e.target as HTMLElement)) return;
+      if (menuRef.current?.contains(e.target as HTMLElement)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [open]);
+
+  const openDropdown = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(o => !o);
+  };
 
   const selectedProjects = projects.filter(p => selectedIds.includes(p.id));
   const label = selectedProjects.length === 0
@@ -232,19 +248,21 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
       : `${selectedProjects.length} projects`;
 
   return (
-    <div className="relative" ref={ref} style={{ zIndex: open ? 200 : "auto" }}>
+    <div className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        ref={triggerRef}
+        onClick={openDropdown}
         className="flex items-center gap-2 h-8 px-3 text-xs bg-muted/30 border border-white/10 rounded-lg text-foreground hover:bg-muted/50 transition-all min-w-[140px]"
       >
         <span className="truncate flex-1 text-left">{label}</span>
         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && (
+      {open && createPortal(
         <div
-          className="absolute z-[200] top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-1.5 shadow-lg max-h-[240px] overflow-y-auto"
+          ref={menuRef}
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+          className="w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-1.5 shadow-lg max-h-[240px] overflow-y-auto"
           onWheel={e => e.stopPropagation()}
-          onTouchMove={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
           onPointerDown={e => e.stopPropagation()}
         >
@@ -273,7 +291,8 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
