@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronRight, FolderOpen } from "lucide-react";
+import { Plus, ChevronRight, FolderOpen, Trash2 } from "lucide-react";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { usePlanningState } from "@/hooks/usePlanningState";
 import { usePillars } from "@/hooks/usePillars";
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function PlanningPortfolio({ onOpenProject }: Props) {
-  const { projects, addProject } = useUserProjects();
+  const { projects, addProject, deleteProject } = useUserProjects();
   const { tasks } = usePlanningState();
   const pillars = usePillars();
   const [showAdd, setShowAdd] = useState(false);
@@ -120,6 +120,12 @@ export default function PlanningPortfolio({ onOpenProject }: Props) {
                           <span className="text-xs text-muted-foreground w-8 text-right font-mono">{pct}%</span>
                         </div>
                       )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${project.name}"?`)) deleteProject(project.id); }}
+                        className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                       <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
                     </button>
                   );
@@ -163,6 +169,12 @@ export default function PlanningPortfolio({ onOpenProject }: Props) {
                       <span className="text-xs text-muted-foreground w-8 text-right font-mono">{pct}%</span>
                     </div>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${project.name}"?`)) deleteProject(project.id); }}
+                    className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                   <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
                 </button>
               );
