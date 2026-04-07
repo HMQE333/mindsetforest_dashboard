@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { UserMetric } from "@/hooks/useUserSettings";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, XCircle } from "lucide-react";
 
 interface MetricsTabProps {
   userMetrics: UserMetric[];
@@ -34,6 +34,7 @@ interface EditableMetric {
 export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabProps) {
   const [metrics, setMetrics] = useState<EditableMetric[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     const source = userMetrics.length > 0 ? userMetrics : TRACKER_METRICS;
@@ -98,9 +99,22 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-2">
         <p className="text-xs text-muted-foreground">Define what you track daily</p>
-        <button onClick={handleReset} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-          Reset to defaults
-        </button>
+        <div className="flex gap-3">
+          {confirmClear ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-destructive">Clear all?</span>
+              <button onClick={() => { setMetrics([]); setDirty(true); setConfirmClear(false); }} className="text-xs font-semibold text-destructive hover:text-destructive/80 transition-colors">Yes</button>
+              <button onClick={() => setConfirmClear(false)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">No</button>
+            </span>
+          ) : (
+            <button onClick={() => setConfirmClear(true)} className="text-xs text-destructive/70 hover:text-destructive transition-colors flex items-center gap-1">
+              <XCircle className="w-3 h-3" /> Clear all
+            </button>
+          )}
+          <button onClick={handleReset} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Reset to defaults
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
