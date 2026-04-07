@@ -61,7 +61,7 @@ const ArchiveAIPreviewModal = ({ open, data, onAccept, onReject }: Props) => {
               <p className="text-xs text-muted-foreground mb-2 font-semibold">Current tags</p>
               <div className="flex flex-wrap gap-1.5">
                 {(data.original.pillars || []).map((p) => {
-                  const pl = PILLARS.find((x) => x.id === p);
+                  const pl = pillars.find((x) => x.id === p);
                   return pl ? (
                     <span key={p} className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: pl.color + "22", color: pl.color }}>
                       {pl.icon} {pl.name}
@@ -85,7 +85,7 @@ const ArchiveAIPreviewModal = ({ open, data, onAccept, onReject }: Props) => {
               <p className="text-xs text-muted-foreground mb-2 font-semibold">AI suggests →</p>
               <div className="flex flex-wrap gap-1.5">
                 {(data.proposed.pillars || []).map((p) => {
-                  const pl = PILLARS.find((x) => x.id === p);
+                  const pl = pillars.find((x) => x.id === p);
                   return pl ? (
                     <span key={p} className="text-[11px] px-2.5 py-1 rounded-full font-semibold border-2 border-dashed" style={{ borderColor: pl.color, color: pl.color }}>
                       {pl.icon} {pl.name}
