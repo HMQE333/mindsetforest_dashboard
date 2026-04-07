@@ -267,8 +267,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
         <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
-        <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="h-8 text-xs bg-muted/30 border border-white/10 rounded-lg px-2 text-foreground outline-none">
-          {activeProjects.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+        <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="h-8 text-xs bg-muted/30 border border-white/10 rounded-lg px-2 text-foreground outline-none [&>option]:bg-card [&>option]:text-foreground">
+          {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-card text-foreground">{p.emoji} {p.name}</option>)}
         </select>
         {totalTasks > 0 && (
           <div className="flex items-center gap-2 ml-1">

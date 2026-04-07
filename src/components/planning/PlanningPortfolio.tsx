@@ -62,11 +62,11 @@ export default function PlanningPortfolio({ onOpenProject }: Props) {
           <select
             value={newPillar}
             onChange={e => setNewPillar(e.target.value)}
-            className="w-full bg-muted/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+            className="w-full bg-muted/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground outline-none focus:border-primary/50 [&>option]:bg-card [&>option]:text-foreground"
           >
-            <option value="">No category (Uncategorized)</option>
+            <option value="" className="bg-card text-foreground">No category (Uncategorized)</option>
             {pillars.map(p => (
-              <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
+              <option key={p.id} value={p.id} className="bg-card text-foreground">{p.icon} {p.name}</option>
             ))}
           </select>
           <div className="flex gap-2">

@@ -154,7 +154,7 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
                   <select
                     value={metric.categoryId}
                     onChange={e => update(metric.tempId, "categoryId", e.target.value)}
-                    className="bg-transparent text-xs text-muted-foreground border border-white/10 rounded-lg px-2 py-0.5 focus:outline-none"
+                    className="bg-transparent text-xs text-muted-foreground border border-white/10 rounded-lg px-2 py-0.5 focus:outline-none [&>option]:bg-card [&>option]:text-foreground"
                   >
                     {CATEGORIES.map(c => (
                       <option key={c.id} value={c.id} className="bg-card text-foreground">
