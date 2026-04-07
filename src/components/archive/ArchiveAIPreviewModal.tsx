@@ -26,6 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ArchiveAIPreviewModal = ({ open, data, onAccept, onReject }: Props) => {
+  const pillars = usePillars();
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");

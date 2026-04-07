@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { UserMetric } from "@/hooks/useUserSettings";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, XCircle } from "lucide-react";
 
 interface MetricsTabProps {
   userMetrics: UserMetric[];
