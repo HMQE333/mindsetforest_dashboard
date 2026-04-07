@@ -21,6 +21,9 @@ export interface PlanningTask {
   notes: string;
   sort_order: number;
   created_at: string;
+  standalone: boolean;
+  position_x: number | null;
+  position_y: number | null;
 }
 
 export function usePlanningState(projectId?: string) {
