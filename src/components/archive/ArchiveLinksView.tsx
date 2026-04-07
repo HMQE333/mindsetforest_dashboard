@@ -50,6 +50,7 @@ interface ExtractedLink {
   blockTitle: string;
   blockId: string;
   block: ArchiveBlock;
+  note: string;
 }
 
 function extractLinks(block: ArchiveBlock): ExtractedLink[] {
