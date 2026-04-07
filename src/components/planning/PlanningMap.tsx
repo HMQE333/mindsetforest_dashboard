@@ -209,7 +209,7 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
       const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
-      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
+      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, style: { transition: 'transform 0.3s ease' }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect, parentId: child.parent_id } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect, parentId: child.parent_id } });
       const edgeColors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
       edges.push({ id: `e-${parentNodeId}-${nodeId}`, source: parentNodeId, target: nodeId, type: "smoothstep", animated: !child.done, style: { stroke: edgeColors[child.level as TaskLevel], strokeWidth: 2, opacity: child.done ? 0.3 : 0.7 }, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors[child.level as TaskLevel], width: 15, height: 15 } });
       if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, nodeX);
@@ -472,36 +472,45 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Smart merge: preserve dragged positions for standalone nodes instead of full reset
-  const prevLayoutRef = useRef<{ nodeIds: string; taskHash: string }>({ nodeIds: "", taskHash: "" });
+  // Smart merge: track per-node parent_id to only reposition nodes whose structure changed
+  const prevParentMapRef = useRef<Record<string, string | null>>({});
   useEffect(() => {
-    const taskHash = filteredTasks.map(t => `${t.id}:${t.parent_id}:${t.standalone}:${t.done}`).join("|");
-    const newNodeIds = initialNodes.map(n => n.id).sort().join(",");
-    const prev = prevLayoutRef.current;
+    // Build current parent map from tasks
+    const currentParentMap: Record<string, string | null> = {};
+    filteredTasks.forEach(t => { currentParentMap[t.id] = t.parent_id; });
+    const prevParentMap = prevParentMapRef.current;
 
-    if (prev.taskHash !== taskHash || prev.nodeIds !== newNodeIds) {
-      setNodes(currentNodes => {
-        return initialNodes.map(newNode => {
-          const existing = currentNodes.find(n => n.id === newNode.id);
-          const taskId = newNode.id.replace("task-", "");
-          const task = filteredTasks.find(t => t.id === taskId);
-          if (existing && task?.standalone) {
+    setNodes(currentNodes => {
+      const currentNodeMap: Record<string, (typeof currentNodes)[number]> = {};
+      currentNodes.forEach(n => { currentNodeMap[n.id] = n; });
+      return initialNodes.map(newNode => {
+        const existing = currentNodeMap[newNode.id];
+        const taskId = newNode.id.replace("task-", "").replace("project-", "");
+        const task = filteredTasks.find(t => t.id === taskId);
+
+        // Standalone nodes: always keep their current dragged position
+        if (existing && task?.standalone) {
+          return { ...newNode, position: existing.position };
+        }
+
+        // Existing tree node whose parent didn't change: keep current position (stable)
+        if (existing && !newNode.id.startsWith("project-")) {
+          const prevParent = prevParentMap[taskId];
+          const curParent = currentParentMap[taskId];
+          const parentChanged = prevParent !== undefined && prevParent !== curParent;
+          const isNew = prevParent === undefined;
+          if (!parentChanged && !isNew) {
+            // Keep existing position — the tree layout shift is suppressed
             return { ...newNode, position: existing.position };
           }
-          return newNode;
-        });
+        }
+
+        // New nodes or nodes whose parent changed: use layout-computed position
+        return newNode;
       });
-      setEdges(initialEdges);
-      prevLayoutRef.current = { nodeIds: newNodeIds, taskHash };
-    } else {
-      setNodes(currentNodes =>
-        currentNodes.map(n => {
-          const updated = initialNodes.find(u => u.id === n.id);
-          return updated ? { ...n, data: updated.data } : n;
-        })
-      );
-      setEdges(initialEdges);
-    }
+    });
+    setEdges(initialEdges);
+    prevParentMapRef.current = currentParentMap;
   }, [initialNodes, initialEdges]);
 
   const totalTasks = filteredTasks.filter(t => t.level !== "link").length;
