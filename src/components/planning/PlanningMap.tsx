@@ -291,7 +291,8 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
