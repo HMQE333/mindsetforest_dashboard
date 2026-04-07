@@ -1,32 +1,25 @@
 
 
-## Add Breathing Tips to Pattern Cards
+## Analysis & Fix Plan: Pillars Propagation + Metrics Clear
 
-### What
+### Findings
 
-Add a short practical tip to select breathing patterns — displayed as a subtle text line on the pattern selection cards. Only patterns where a tip genuinely helps (technique cues, posture, or nostril instructions) get one.
+**1. Pillars bug found:** `ArchiveAIPreviewModal.tsx` imports the static `PILLARS` array from `@/lib/archive-data` instead of using the reactive `usePillars()` hook. This means when a user customizes pillar names/icons, the AI organize preview still shows the old default names and emojis. All other consumers (ArchiveLibrary, ArchiveEditModal, LinkContextMenu, LibraryView, BookCard, CourseCard, PlanningPortfolio, etc.) correctly use `usePillars()`.
 
-### Tips
-
-| Pattern | Tip |
-|---------|-----|
-| 4-7-8 | "Place tongue behind upper teeth. Exhale through mouth." |
-| Alternate Nostril | "Use thumb for right nostril, ring finger for left." |
-| Wim Hof | "Breathe deep into belly, then chest. Let exhale fall naturally." |
-| Physiological Sigh | "Two quick sniffs in through nose, then one long exhale through mouth." |
-| Coherent | "Breathe gently through the nose. No effort, just rhythm." |
-
-Equal, Box, and Relaxing are intuitive enough not to need tips.
+**2. Metrics — no "clear all" option:** Users can delete metrics one-by-one via the trash icon, and "Reset to defaults" restores the built-in set. But there's no way to clear/empty all metrics at once if a user wants a blank slate.
 
 ### Changes
 
-**`src/lib/breathing-data.ts`**
-- Add optional `tip?: string` field to `BreathingPattern`
-- Add tip strings to the 5 patterns listed above
+**`src/components/archive/ArchiveAIPreviewModal.tsx`**
+- Replace `import { PILLARS, DIRECTIONS }` with `import { DIRECTIONS }` + `import { usePillars }` hook
+- Use `usePillars()` inside the component to get the reactive pillar list
+- Update the two `PILLARS.find()` calls to use the hook's array instead
 
-**`src/components/breathing/BreathingView.tsx`**
-- Render `p.tip` as a small italic text line below the description on each pattern card, only when present
-- Styled as `text-[10px] italic text-muted-foreground/70` to keep it subtle
+**`src/components/settings/MetricsTab.tsx`**
+- Add a "Clear All" button next to "Reset to defaults" that empties the metrics list entirely
+- When clicked, set `metrics` to `[]` and mark dirty, so the user can save an empty state
+- Add a confirmation step (simple state toggle) before clearing
 
-Two files, minimal change.
+**`src/hooks/useUserSettings.ts`**
+- No changes needed — `saveMetrics([])` already works correctly (deletes all existing, inserts none)
 
