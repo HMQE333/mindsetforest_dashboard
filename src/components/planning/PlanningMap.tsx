@@ -394,18 +394,49 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const handleSelect = useCallback((taskId: string) => setSelectedTaskId(taskId), []);
   const handleUpdateTask = useCallback((taskId: string, updates: Partial<PlanningTask>) => updateTask(taskId, updates), [updateTask]);
 
-  // Context menu add — use first selected project
+  // Context menu add — creates standalone node at click position
   const handleContextAddChild = useCallback((parentId: string | null, level: TaskLevel, title: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
-    handleAddChildForProject(pid, parentId, level, title);
-  }, [selectedProjectIds, handleAddChildForProject]);
+    if (parentId === null && contextMenuPos) {
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
+      addTask({ project_id: pid, parent_id: null, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "", standalone: true, position_x: flowPos.x, position_y: flowPos.y });
+    } else {
+      handleAddChildForProject(pid, parentId, level, title);
+    }
+  }, [selectedProjectIds, handleAddChildForProject, contextMenuPos, reactFlowInstance, addTask]);
 
   const handleContextAddLink = useCallback((parentId: string | null, url: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
-    handleAddLinkForProject(pid, parentId, url);
-  }, [selectedProjectIds, handleAddLinkForProject]);
+    if (parentId === null && contextMenuPos) {
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
+      addTask({ project_id: pid, parent_id: null, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "", standalone: true, position_x: flowPos.x, position_y: flowPos.y });
+    } else {
+      handleAddLinkForProject(pid, parentId, url);
+    }
+  }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask]);
+
+  // Connect handler — adopt standalone node into tree
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+    const sourceTaskId = connection.source.replace("task-", "").replace("project-", "");
+    const targetTaskId = connection.target.replace("task-", "");
+    const targetTask = tasks.find(t => t.id === targetTaskId);
+    if (!targetTask) return;
+    // Set parent and remove standalone flag
+    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false, position_x: null, position_y: null });
+    toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
+  }, [tasks, updateTask]);
+
+  // Drag stop — persist position for standalone nodes
+  const handleNodeDragStop = useCallback((_: any, node: Node) => {
+    const taskId = node.id.replace("task-", "");
+    const task = tasks.find(t => t.id === taskId);
+    if (task?.standalone) {
+      updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
+    }
+  }, [tasks, updateTask]);
 
   const callbacks = useMemo(() => ({
     makeOnAddChild: (projectId: string) => (parentId: string | null, level: TaskLevel, title: string) => handleAddChildForProject(projectId, parentId, level, title),
