@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronRight, FolderOpen } from "lucide-react";
+import { Plus, ChevronRight, FolderOpen, Trash2 } from "lucide-react";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { usePlanningState } from "@/hooks/usePlanningState";
 import { usePillars } from "@/hooks/usePillars";
