@@ -481,9 +481,10 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     const prevParentMap = prevParentMapRef.current;
 
     setNodes(currentNodes => {
-      const currentNodeMap = new Map(currentNodes.map(n => [n.id, n]));
+      const currentNodeMap: Record<string, (typeof currentNodes)[number]> = {};
+      currentNodes.forEach(n => { currentNodeMap[n.id] = n; });
       return initialNodes.map(newNode => {
-        const existing = currentNodeMap.get(newNode.id);
+        const existing = currentNodeMap[newNode.id];
         const taskId = newNode.id.replace("task-", "").replace("project-", "");
         const task = filteredTasks.find(t => t.id === taskId);
 
