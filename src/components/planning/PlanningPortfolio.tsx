@@ -20,8 +20,9 @@ export default function PlanningPortfolio({ onOpenProject }: Props) {
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
-    await addProject(newName.trim(), "📂");
+    await addProject(newName.trim(), "📂", newPillar || undefined);
     setNewName("");
+    setNewPillar("");
     setShowAdd(false);
   };
 
@@ -58,9 +59,19 @@ export default function PlanningPortfolio({ onOpenProject }: Props) {
             className="w-full bg-muted/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
             autoFocus
           />
+          <select
+            value={newPillar}
+            onChange={e => setNewPillar(e.target.value)}
+            className="w-full bg-muted/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+          >
+            <option value="">No category (Uncategorized)</option>
+            {pillars.map(p => (
+              <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
+            ))}
+          </select>
           <div className="flex gap-2">
             <button onClick={handleAdd} className="px-4 py-2 rounded-xl gradient-purple text-primary-foreground font-bold text-xs">Create</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl bg-muted/30 text-muted-foreground text-xs">Cancel</button>
+            <button onClick={() => { setShowAdd(false); setNewPillar(""); }} className="px-4 py-2 rounded-xl bg-muted/30 text-muted-foreground text-xs">Cancel</button>
           </div>
         </motion.div>
       )}
