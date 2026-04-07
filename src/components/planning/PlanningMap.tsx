@@ -232,7 +232,7 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
       : `${selectedProjects.length} projects`;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={ref} style={{ zIndex: open ? 200 : "auto" }}>
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 h-8 px-3 text-xs bg-muted/30 border border-white/10 rounded-lg text-foreground hover:bg-muted/50 transition-all min-w-[140px]"
@@ -241,7 +241,13 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute z-[100] top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-1.5 shadow-lg max-h-[240px] overflow-y-auto">
+        <div
+          className="absolute z-[200] top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-1.5 shadow-lg max-h-[240px] overflow-y-auto"
+          onWheel={e => e.stopPropagation()}
+          onTouchMove={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
+        >
           <p className="text-[9px] text-muted-foreground px-2 py-1 font-medium">{selectedIds.length}/{max} selected</p>
           {projects.map(p => {
             const isSelected = selectedIds.includes(p.id);
@@ -249,7 +255,7 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
             return (
               <button
                 key={p.id}
-                onClick={() => { if (!disabled) onToggle(p.id); }}
+                onClick={(e) => { e.stopPropagation(); if (!disabled) onToggle(p.id); }}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all ${
                   isSelected
                     ? "bg-primary/15 text-foreground"
