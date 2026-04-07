@@ -21,6 +21,9 @@ export interface PlanningTask {
   notes: string;
   sort_order: number;
   created_at: string;
+  standalone: boolean;
+  position_x: number | null;
+  position_y: number | null;
 }
 
 export function usePlanningState(projectId?: string) {
@@ -43,10 +46,10 @@ export function usePlanningState(projectId?: string) {
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-  const addTask = useCallback(async (task: Omit<PlanningTask, "id" | "user_id" | "created_at" | "sort_order">) => {
+  const addTask = useCallback(async (task: Omit<PlanningTask, "id" | "user_id" | "created_at" | "sort_order" | "standalone" | "position_x" | "position_y"> & { standalone?: boolean; position_x?: number | null; position_y?: number | null }) => {
     if (!user) return null;
     const { data, error } = await (supabase.from("planning_tasks" as any) as any)
-      .insert([{ ...task, user_id: user.id }])
+      .insert([{ ...task, user_id: user.id, standalone: task.standalone ?? false, position_x: task.position_x ?? null, position_y: task.position_y ?? null }])
       .select("*")
       .single();
     if (error) return null;

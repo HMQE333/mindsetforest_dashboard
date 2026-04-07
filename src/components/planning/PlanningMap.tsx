@@ -2,16 +2,16 @@ import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   ReactFlow, Background, Controls, MiniMap,
-  type Node, type Edge,
+  type Node, type Edge, type Connection,
   useNodesState, useEdgesState,
   Handle, Position,
   type NodeProps, MarkerType, BackgroundVariant,
-  ReactFlowProvider,
+  ReactFlowProvider, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
-import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 import { toast } from "@/hooks/use-toast";
@@ -88,11 +88,18 @@ function TaskNode({ data }: NodeProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const isStandalone = !!task.standalone;
 
   return (
-    <div className={`relative px-4 py-3 rounded-xl border ${meta.borderColor} ${meta.glow} bg-background/90 backdrop-blur-md min-w-[160px] max-w-[220px] transition-all duration-200 hover:scale-105 ${task.done ? "opacity-50" : ""}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onDoubleClick={e => { e.stopPropagation(); setEditing(true); }} onClick={e => { e.stopPropagation(); if (!editing) onSelect(task.id); }}>
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
+    <div className={`relative px-4 py-3 rounded-xl border ${isStandalone ? "border-dashed border-muted-foreground/40" : meta.borderColor} ${isStandalone ? "" : meta.glow} bg-background/90 backdrop-blur-md min-w-[160px] max-w-[220px] transition-all duration-200 hover:scale-105 ${task.done ? "opacity-50" : ""}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onDoubleClick={e => { e.stopPropagation(); setEditing(true); }} onClick={e => { e.stopPropagation(); if (!editing) onSelect(task.id); }}>
+      <Handle type="target" position={Position.Top} className="!bg-primary/60 !border-primary/40 !w-3 !h-3" />
       <div className={`absolute top-0 left-3 right-3 h-[2px] rounded-full bg-gradient-to-r ${meta.gradient}`} />
+      {isStandalone && (
+        <div className="absolute -top-2.5 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted/60 border border-white/10 backdrop-blur-md">
+          <Unlink className="h-2.5 w-2.5 text-muted-foreground" />
+          <span className="text-[8px] text-muted-foreground font-medium">Standalone</span>
+        </div>
+      )}
       {hovered && !editing && (
         <div className="absolute -top-2 -right-2 flex gap-1 z-10">
           <button onClick={e => { e.stopPropagation(); onToggle(task.id); }} className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${task.done ? "bg-green-500 text-white" : "bg-muted border border-white/10 text-muted-foreground hover:text-foreground"}`}><Check className="h-3 w-3" /></button>
@@ -111,7 +118,7 @@ function TaskNode({ data }: NodeProps) {
         <button onClick={e => { e.stopPropagation(); setShowAdd(!showAdd); }} className={`w-6 h-6 rounded-full flex items-center justify-center transition-all border ${showAdd ? "gradient-purple border-transparent text-white scale-110" : "bg-muted/30 border-white/10 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>{showAdd ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}</button>
       </div>
       {showAdd && <AddChildPopover parentLevel={task.level} onAdd={(t, l) => onAddChild(task.id, l, t)} onAddLink={u => onAddLink(task.id, u)} onClose={() => setShowAdd(false)} />}
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="source" position={Position.Bottom} className="!bg-primary/60 !border-primary/40 !w-3 !h-3" />
     </div>
   );
 }
@@ -179,12 +186,13 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
   const edges: Edge[] = [];
   const rootId = `project-${project.id}`;
   const projectTasks = tasks.filter(t => t.project_id === project.id);
-  const rootTasks = projectTasks.filter(t => t.parent_id === null);
+  const treeTasks = projectTasks.filter(t => !t.standalone);
+  const standaloneTasks = projectTasks.filter(t => t.standalone);
+  const rootTasks = treeTasks.filter(t => t.parent_id === null);
   const X_SPACING = 260;
   const Y_SPACING = 120;
 
-  // Calculate total tree width first
-  const totalLeaves = rootTasks.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, projectTasks)), 0);
+  const totalLeaves = rootTasks.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, treeTasks)), 0);
   const treeWidth = Math.max(1, totalLeaves) * X_SPACING;
 
   const treeCenterX = xOffset + treeWidth / 2;
@@ -193,11 +201,11 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentX: number): number {
     if (children.length === 0) return parentX;
-    const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, projectTasks)) * X_SPACING, 0);
+    const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, treeTasks)) * X_SPACING, 0);
     let currentX = parentX - totalWidth / 2 + X_SPACING / 2;
     children.forEach(child => {
-      const grandchildren = projectTasks.filter(t => t.parent_id === child.id);
-      const leafCount = Math.max(1, countLeaves(child.id, projectTasks));
+      const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
+      const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
       const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
@@ -211,6 +219,24 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
   }
 
   layoutChildren(rootId, rootTasks, 1, treeCenterX);
+
+  // Add standalone nodes at their stored positions
+  standaloneTasks.forEach(task => {
+    const nodeId = `task-${task.id}`;
+    const isLink = task.level === "link";
+    const posX = task.position_x ?? xOffset + Math.random() * 300;
+    const posY = task.position_y ?? 400 + Math.random() * 200;
+    nodes.push({
+      id: nodeId,
+      type: isLink ? "linkNode" : "taskNode",
+      position: { x: posX, y: posY },
+      draggable: true,
+      data: isLink
+        ? { task, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect }
+        : { task, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect },
+    });
+  });
+
   return { nodes, edges, treeWidth };
 }
 
@@ -315,6 +341,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   });
 
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
+  const reactFlowInstance = useReactFlow();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const isMobile = useIsMobile();
@@ -367,18 +394,49 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const handleSelect = useCallback((taskId: string) => setSelectedTaskId(taskId), []);
   const handleUpdateTask = useCallback((taskId: string, updates: Partial<PlanningTask>) => updateTask(taskId, updates), [updateTask]);
 
-  // Context menu add — use first selected project
+  // Context menu add — creates standalone node at click position
   const handleContextAddChild = useCallback((parentId: string | null, level: TaskLevel, title: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
-    handleAddChildForProject(pid, parentId, level, title);
-  }, [selectedProjectIds, handleAddChildForProject]);
+    if (parentId === null && contextMenuPos) {
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
+      addTask({ project_id: pid, parent_id: null, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "", standalone: true, position_x: flowPos.x, position_y: flowPos.y });
+    } else {
+      handleAddChildForProject(pid, parentId, level, title);
+    }
+  }, [selectedProjectIds, handleAddChildForProject, contextMenuPos, reactFlowInstance, addTask]);
 
   const handleContextAddLink = useCallback((parentId: string | null, url: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
-    handleAddLinkForProject(pid, parentId, url);
-  }, [selectedProjectIds, handleAddLinkForProject]);
+    if (parentId === null && contextMenuPos) {
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
+      addTask({ project_id: pid, parent_id: null, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "", standalone: true, position_x: flowPos.x, position_y: flowPos.y });
+    } else {
+      handleAddLinkForProject(pid, parentId, url);
+    }
+  }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask]);
+
+  // Connect handler — adopt standalone node into tree
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+    const sourceTaskId = connection.source.replace("task-", "").replace("project-", "");
+    const targetTaskId = connection.target.replace("task-", "");
+    const targetTask = tasks.find(t => t.id === targetTaskId);
+    if (!targetTask) return;
+    // Set parent and remove standalone flag
+    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false, position_x: null, position_y: null });
+    toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
+  }, [tasks, updateTask]);
+
+  // Drag stop — persist position for standalone nodes
+  const handleNodeDragStop = useCallback((_: any, node: Node) => {
+    const taskId = node.id.replace("task-", "");
+    const task = tasks.find(t => t.id === taskId);
+    if (task?.standalone) {
+      updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
+    }
+  }, [tasks, updateTask]);
 
   const callbacks = useMemo(() => ({
     makeOnAddChild: (projectId: string) => (parentId: string | null, level: TaskLevel, title: string) => handleAddChildForProject(projectId, parentId, level, title),
@@ -472,7 +530,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
         }}
       >
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent" onPaneContextMenu={(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); }} onPaneClick={() => { setContextMenuPos(null); }}>
+        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={handleConnect} onNodeDragStop={handleNodeDragStop} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.3 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }} className="bg-transparent" onPaneContextMenu={(e) => { e.preventDefault(); setContextMenuPos({ x: e.clientX, y: e.clientY }); }} onPaneClick={() => { setContextMenuPos(null); }}>
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--muted-foreground) / 0.15)" />
           <Controls className="!bg-background !border-white/10 !rounded-lg [&>button]:!bg-muted/30 [&>button]:!border-white/10 [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/50 [&>button]:!rounded-md" />
           {!isMobile && (

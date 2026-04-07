@@ -513,8 +513,11 @@ export type Database = {
           leverage: string | null
           notes: string
           parent_id: string | null
+          position_x: number | null
+          position_y: number | null
           project_id: string
           sort_order: number
+          standalone: boolean
           time_minutes: number | null
           title: string
           url: string | null
@@ -531,8 +534,11 @@ export type Database = {
           leverage?: string | null
           notes?: string
           parent_id?: string | null
+          position_x?: number | null
+          position_y?: number | null
           project_id: string
           sort_order?: number
+          standalone?: boolean
           time_minutes?: number | null
           title?: string
           url?: string | null
@@ -549,8 +555,11 @@ export type Database = {
           leverage?: string | null
           notes?: string
           parent_id?: string | null
+          position_x?: number | null
+          position_y?: number | null
           project_id?: string
           sort_order?: number
+          standalone?: boolean
           time_minutes?: number | null
           title?: string
           url?: string | null
