@@ -13,6 +13,7 @@ import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
+import { toast } from "@/hooks/use-toast";
 
 /* ── Level styling ─────────────────────────────────────────── */
 const levelMeta: Record<TaskLevel, { label: string; icon: React.ComponentType<{ className?: string }>; gradient: string; glow: string; borderColor: string }> = {
@@ -30,6 +31,8 @@ function extractDomain(url: string): string {
   try { return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 function normalizeUrl(url: string): string { return url.startsWith("http") ? url : `https://${url}`; }
+
+const MAX_SELECTED = 5;
 
 /* ── Add Popover ─────────────────────────────────────────────── */
 function AddChildPopover({ parentLevel, onAdd, onAddLink, onClose }: { parentLevel: TaskLevel | null; onAdd: (title: string, level: TaskLevel) => void; onAddLink: (url: string) => void; onClose: () => void }) {
@@ -170,26 +173,34 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
   return children.reduce((sum, c) => sum + countLeaves(c.id, allTasks), 0);
 }
 
-function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any): { nodes: Node[]; edges: Edge[] } {
+function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const rootId = `project-${project.id}`;
-  nodes.push({ id: rootId, type: "projectNode", position: { x: 0, y: 0 }, data: { project, onAddChild: callbacks.onAddChild, onAddLink: callbacks.onAddLink } });
-  const rootTasks = tasks.filter(t => t.project_id === project.id && t.parent_id === null);
+  const projectTasks = tasks.filter(t => t.project_id === project.id);
+  const rootTasks = projectTasks.filter(t => t.parent_id === null);
   const X_SPACING = 260;
   const Y_SPACING = 120;
 
+  // Calculate total tree width first
+  const totalLeaves = rootTasks.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, projectTasks)), 0);
+  const treeWidth = Math.max(1, totalLeaves) * X_SPACING;
+
+  const treeCenterX = xOffset + treeWidth / 2;
+
+  nodes.push({ id: rootId, type: "projectNode", position: { x: treeCenterX - 100, y: 0 }, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } });
+
   function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentX: number): number {
     if (children.length === 0) return parentX;
-    const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, tasks)) * X_SPACING, 0);
+    const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, projectTasks)) * X_SPACING, 0);
     let currentX = parentX - totalWidth / 2 + X_SPACING / 2;
     children.forEach(child => {
-      const grandchildren = tasks.filter(t => t.parent_id === child.id);
-      const leafCount = Math.max(1, countLeaves(child.id, tasks));
+      const grandchildren = projectTasks.filter(t => t.parent_id === child.id);
+      const leafCount = Math.max(1, countLeaves(child.id, projectTasks));
       const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
-      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.onAddChild, onAddLink: callbacks.onAddLink, onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
+      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
       const edgeColors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
       edges.push({ id: `e-${parentNodeId}-${nodeId}`, source: parentNodeId, target: nodeId, type: "smoothstep", animated: !child.done, style: { stroke: edgeColors[child.level as TaskLevel], strokeWidth: 2, opacity: child.done ? 0.3 : 0.7 }, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors[child.level as TaskLevel], width: 15, height: 15 } });
       if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, nodeX);
@@ -198,37 +209,50 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any)
     return currentX;
   }
 
-  layoutChildren(rootId, rootTasks, 1, 0);
-  return { nodes, edges };
+  layoutChildren(rootId, rootTasks, 1, treeCenterX);
+  return { nodes, edges, treeWidth };
 }
 
 /* ── Inner MapView ─────────────────────────────────────────── */
 function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
   const { projects } = useUserProjects();
   const activeProjects = projects;
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId || activeProjects[0]?.id || "");
-  const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState(selectedProjectId);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(initialProjectId ? [initialProjectId] : []);
+  const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const isMobile = useIsMobile();
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos = useRef<{ x: number; y: number } | null>(null);
 
+  // Auto-select first project if none selected
   useEffect(() => {
-    if (!selectedProjectId && activeProjects.length > 0) setSelectedProjectId(activeProjects[0].id);
-  }, [activeProjects, selectedProjectId]);
+    if (selectedProjectIds.length === 0 && activeProjects.length > 0) {
+      setSelectedProjectIds([activeProjects[0].id]);
+    }
+  }, [activeProjects, selectedProjectIds.length]);
 
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const toggleProjectSelection = useCallback((projectId: string) => {
+    setSelectedProjectIds(prev => {
+      if (prev.includes(projectId)) {
+        if (prev.length === 1) return prev; // keep at least one
+        return prev.filter(id => id !== projectId);
+      }
+      if (prev.length >= MAX_SELECTED) {
+        toast({ title: `Maximum ${MAX_SELECTED} projects`, description: "Deselect one first", variant: "destructive" });
+        return prev;
+      }
+      return [...prev, projectId];
+    });
+  }, []);
 
-  const handleAddChild = useCallback((parentId: string | null, level: TaskLevel, title: string) => {
-    if (!selectedProjectId) return;
-    addTask({ project_id: selectedProjectId, parent_id: parentId, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "" });
-  }, [addTask, selectedProjectId]);
+  const handleAddChildForProject = useCallback((projectId: string, parentId: string | null, level: TaskLevel, title: string) => {
+    addTask({ project_id: projectId, parent_id: parentId, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "" });
+  }, [addTask]);
 
-  const handleAddLink = useCallback((parentId: string | null, url: string) => {
-    if (!selectedProjectId) return;
-    addTask({ project_id: selectedProjectId, parent_id: parentId, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "" });
-  }, [addTask, selectedProjectId]);
+  const handleAddLinkForProject = useCallback((projectId: string, parentId: string | null, url: string) => {
+    addTask({ project_id: projectId, parent_id: parentId, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "" });
+  }, [addTask]);
 
   const handleDelete = useCallback((taskId: string) => deleteTask(taskId), [deleteTask]);
   const handleToggle = useCallback((taskId: string) => toggleTask(taskId), [toggleTask]);
@@ -236,21 +260,56 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const handleSelect = useCallback((taskId: string) => setSelectedTaskId(taskId), []);
   const handleUpdateTask = useCallback((taskId: string, updates: Partial<PlanningTask>) => updateTask(taskId, updates), [updateTask]);
 
-  const callbacks = useMemo(() => ({ onAddChild: handleAddChild, onAddLink: handleAddLink, onDelete: handleDelete, onToggle: handleToggle, onRename: handleRename, onSelect: handleSelect }), [handleAddChild, handleAddLink, handleDelete, handleToggle, handleRename, handleSelect]);
+  // Context menu add — use first selected project
+  const handleContextAddChild = useCallback((parentId: string | null, level: TaskLevel, title: string) => {
+    const pid = selectedProjectIds[0];
+    if (!pid) return;
+    handleAddChildForProject(pid, parentId, level, title);
+  }, [selectedProjectIds, handleAddChildForProject]);
+
+  const handleContextAddLink = useCallback((parentId: string | null, url: string) => {
+    const pid = selectedProjectIds[0];
+    if (!pid) return;
+    handleAddLinkForProject(pid, parentId, url);
+  }, [selectedProjectIds, handleAddLinkForProject]);
+
+  const callbacks = useMemo(() => ({
+    makeOnAddChild: (projectId: string) => (parentId: string | null, level: TaskLevel, title: string) => handleAddChildForProject(projectId, parentId, level, title),
+    makeOnAddLink: (projectId: string) => (parentId: string | null, url: string) => handleAddLinkForProject(projectId, parentId, url),
+    onDelete: handleDelete,
+    onToggle: handleToggle,
+    onRename: handleRename,
+    onSelect: handleSelect,
+  }), [handleAddChildForProject, handleAddLinkForProject, handleDelete, handleToggle, handleRename, handleSelect]);
+
+  const filteredTasks = useMemo(() => tasks.filter(t => selectedProjectIds.includes(t.project_id)), [tasks, selectedProjectIds]);
 
   const { initialNodes, initialEdges } = useMemo(() => {
-    if (!selectedProject) return { initialNodes: [], initialEdges: [] };
-    const { nodes, edges } = layoutTree(selectedProject, tasks, callbacks);
-    return { initialNodes: nodes, initialEdges: edges };
-  }, [selectedProject, tasks, callbacks]);
+    const selectedProjects = activeProjects.filter(p => selectedProjectIds.includes(p.id));
+    if (selectedProjects.length === 0) return { initialNodes: [], initialEdges: [] };
+
+    const allNodes: Node[] = [];
+    const allEdges: Edge[] = [];
+    let xOffset = 0;
+    const GAP = 300;
+
+    for (const project of selectedProjects) {
+      const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOffset);
+      allNodes.push(...nodes);
+      allEdges.push(...edges);
+      xOffset += treeWidth + GAP;
+    }
+
+    return { initialNodes: allNodes, initialEdges: allEdges };
+  }, [activeProjects, selectedProjectIds, tasks, callbacks]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useMemo(() => { setNodes(initialNodes); setEdges(initialEdges); }, [initialNodes, initialEdges, setNodes, setEdges]);
 
-  const totalTasks = tasks.filter(t => t.level !== "link").length;
-  const doneTasks = tasks.filter(t => t.level !== "link" && t.done).length;
+  const totalTasks = filteredTasks.filter(t => t.level !== "link").length;
+  const doneTasks = filteredTasks.filter(t => t.level !== "link" && t.done).length;
   const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   if (activeProjects.length === 0) {
@@ -264,12 +323,29 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
 
   return (
     <div className="h-[600px] flex flex-col rounded-2xl overflow-hidden border border-white/10">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md flex-wrap">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
         <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
-        <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="h-8 text-xs bg-muted/30 border border-white/10 rounded-lg px-2 text-foreground outline-none [&>option]:bg-card [&>option]:text-foreground">
-          {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-card text-foreground">{p.emoji} {p.name}</option>)}
-        </select>
+        {/* Multi-select project chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {activeProjects.map(p => {
+            const isSelected = selectedProjectIds.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                onClick={() => toggleProjectSelection(p.id)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
+                  isSelected
+                    ? "border-primary/50 bg-primary/15 text-foreground shadow-[0_0_10px_hsl(var(--primary)/0.2)]"
+                    : "border-white/10 bg-muted/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                }`}
+              >
+                {p.emoji} {p.name}
+              </button>
+            );
+          })}
+          <span className="text-[9px] text-muted-foreground/60 ml-1">{selectedProjectIds.length}/{MAX_SELECTED}</span>
+        </div>
         {totalTasks > 0 && (
           <div className="flex items-center gap-2 ml-1">
             <div className="h-1.5 w-16 rounded-full bg-muted/30 overflow-hidden hidden sm:block">
@@ -324,12 +400,12 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         {contextMenuPos && (
           <div className="fixed z-[200]" style={{ left: contextMenuPos.x, top: contextMenuPos.y }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
             <div className="w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-3 shadow-lg">
-              <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleAddChild(null, l, t); setContextMenuPos(null); }} onAddLink={u => { handleAddLink(null, u); setContextMenuPos(null); }} onClose={() => setContextMenuPos(null)} />
+              <AddChildPopover parentLevel={null} onAdd={(t, l) => { handleContextAddChild(null, l, t); setContextMenuPos(null); }} onAddLink={u => { handleContextAddLink(null, u); setContextMenuPos(null); }} onClose={() => setContextMenuPos(null)} />
             </div>
           </div>
         )}
-        {/* Empty state hint when project has no tasks */}
-        {tasks.length === 0 && (
+        {/* Empty state hint when no tasks across all selected projects */}
+        {filteredTasks.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
             <div className="text-center space-y-2 opacity-50">
               <Plus className="h-8 w-8 mx-auto text-muted-foreground" />
@@ -338,7 +414,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
             </div>
           </div>
         )}
-        <PlanningNodeDetail task={tasks.find(t => t.id === selectedTaskId) || null} open={!!selectedTaskId} onClose={() => setSelectedTaskId(null)} onUpdate={handleUpdateTask} />
+        <PlanningNodeDetail task={filteredTasks.find(t => t.id === selectedTaskId) || null} open={!!selectedTaskId} onClose={() => setSelectedTaskId(null)} onUpdate={handleUpdateTask} />
       </div>
     </div>
   );
