@@ -10,7 +10,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
-import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 import { toast } from "@/hooks/use-toast";
@@ -213,7 +213,67 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
   return { nodes, edges, treeWidth };
 }
 
-/* ── Inner MapView ─────────────────────────────────────────── */
+/* ── Multi-Select Dropdown ──────────────────────────────────── */
+function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { projects: UserProject[]; selectedIds: string[]; onToggle: (id: string) => void; max: number }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as HTMLElement)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selectedProjects = projects.filter(p => selectedIds.includes(p.id));
+  const label = selectedProjects.length === 0
+    ? "Select projects"
+    : selectedProjects.length === 1
+      ? `${selectedProjects[0].emoji} ${selectedProjects[0].name}`
+      : `${selectedProjects.length} projects`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 h-8 px-3 text-xs bg-muted/30 border border-white/10 rounded-lg text-foreground hover:bg-muted/50 transition-all min-w-[140px]"
+      >
+        <span className="truncate flex-1 text-left">{label}</span>
+        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute z-[100] top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-background/95 backdrop-blur-xl p-1.5 shadow-lg max-h-[240px] overflow-y-auto">
+          <p className="text-[9px] text-muted-foreground px-2 py-1 font-medium">{selectedIds.length}/{max} selected</p>
+          {projects.map(p => {
+            const isSelected = selectedIds.includes(p.id);
+            const disabled = !isSelected && selectedIds.length >= max;
+            return (
+              <button
+                key={p.id}
+                onClick={() => { if (!disabled) onToggle(p.id); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all ${
+                  isSelected
+                    ? "bg-primary/15 text-foreground"
+                    : disabled
+                      ? "text-muted-foreground/40 cursor-not-allowed"
+                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                }`}
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                  isSelected ? "border-primary bg-primary" : "border-white/20 bg-transparent"
+                }`}>
+                  {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                </div>
+                <span className="truncate">{p.emoji} {p.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
   const { projects } = useUserProjects();
   const activeProjects = projects;
@@ -326,26 +386,13 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md flex-wrap">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
         <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
-        {/* Multi-select project chips */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {activeProjects.map(p => {
-            const isSelected = selectedProjectIds.includes(p.id);
-            return (
-              <button
-                key={p.id}
-                onClick={() => toggleProjectSelection(p.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
-                  isSelected
-                    ? "border-primary/50 bg-primary/15 text-foreground shadow-[0_0_10px_hsl(var(--primary)/0.2)]"
-                    : "border-white/10 bg-muted/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                }`}
-              >
-                {p.emoji} {p.name}
-              </button>
-            );
-          })}
-          <span className="text-[9px] text-muted-foreground/60 ml-1">{selectedProjectIds.length}/{MAX_SELECTED}</span>
-        </div>
+        {/* Multi-select dropdown */}
+        <MultiSelectDropdown
+          projects={activeProjects}
+          selectedIds={selectedProjectIds}
+          onToggle={toggleProjectSelection}
+          max={MAX_SELECTED}
+        />
         {totalTasks > 0 && (
           <div className="flex items-center gap-2 ml-1">
             <div className="h-1.5 w-16 rounded-full bg-muted/30 overflow-hidden hidden sm:block">
