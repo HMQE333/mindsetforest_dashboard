@@ -88,11 +88,18 @@ function TaskNode({ data }: NodeProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const isStandalone = !!task.standalone;
 
   return (
-    <div className={`relative px-4 py-3 rounded-xl border ${meta.borderColor} ${meta.glow} bg-background/90 backdrop-blur-md min-w-[160px] max-w-[220px] transition-all duration-200 hover:scale-105 ${task.done ? "opacity-50" : ""}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onDoubleClick={e => { e.stopPropagation(); setEditing(true); }} onClick={e => { e.stopPropagation(); if (!editing) onSelect(task.id); }}>
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
+    <div className={`relative px-4 py-3 rounded-xl border ${isStandalone ? "border-dashed border-muted-foreground/40" : meta.borderColor} ${isStandalone ? "" : meta.glow} bg-background/90 backdrop-blur-md min-w-[160px] max-w-[220px] transition-all duration-200 hover:scale-105 ${task.done ? "opacity-50" : ""}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onDoubleClick={e => { e.stopPropagation(); setEditing(true); }} onClick={e => { e.stopPropagation(); if (!editing) onSelect(task.id); }}>
+      <Handle type="target" position={Position.Top} className="!bg-primary/60 !border-primary/40 !w-3 !h-3" />
       <div className={`absolute top-0 left-3 right-3 h-[2px] rounded-full bg-gradient-to-r ${meta.gradient}`} />
+      {isStandalone && (
+        <div className="absolute -top-2.5 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted/60 border border-white/10 backdrop-blur-md">
+          <Unlink className="h-2.5 w-2.5 text-muted-foreground" />
+          <span className="text-[8px] text-muted-foreground font-medium">Standalone</span>
+        </div>
+      )}
       {hovered && !editing && (
         <div className="absolute -top-2 -right-2 flex gap-1 z-10">
           <button onClick={e => { e.stopPropagation(); onToggle(task.id); }} className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${task.done ? "bg-green-500 text-white" : "bg-muted border border-white/10 text-muted-foreground hover:text-foreground"}`}><Check className="h-3 w-3" /></button>
@@ -111,7 +118,7 @@ function TaskNode({ data }: NodeProps) {
         <button onClick={e => { e.stopPropagation(); setShowAdd(!showAdd); }} className={`w-6 h-6 rounded-full flex items-center justify-center transition-all border ${showAdd ? "gradient-purple border-transparent text-white scale-110" : "bg-muted/30 border-white/10 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>{showAdd ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}</button>
       </div>
       {showAdd && <AddChildPopover parentLevel={task.level} onAdd={(t, l) => onAddChild(task.id, l, t)} onAddLink={u => onAddLink(task.id, u)} onClose={() => setShowAdd(false)} />}
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="source" position={Position.Bottom} className="!bg-primary/60 !border-primary/40 !w-3 !h-3" />
     </div>
   );
 }
