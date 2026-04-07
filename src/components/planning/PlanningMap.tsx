@@ -299,10 +299,21 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
 }
 
 
+const STORAGE_KEY = "planning-map-selected-projects";
+
 function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
   const { projects } = useUserProjects();
   const activeProjects = projects;
-  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(initialProjectId ? [initialProjectId] : []);
+
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(() => {
+    if (initialProjectId) return [initialProjectId];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -310,12 +321,23 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Auto-select first project if none selected
+  // Persist selection to localStorage
   useEffect(() => {
-    if (selectedProjectIds.length === 0 && activeProjects.length > 0) {
-      setSelectedProjectIds([activeProjects[0].id]);
+    if (selectedProjectIds.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedProjectIds));
     }
-  }, [activeProjects, selectedProjectIds.length]);
+  }, [selectedProjectIds]);
+
+  // Auto-select first project if none selected (or saved ones no longer exist)
+  useEffect(() => {
+    if (activeProjects.length === 0) return;
+    const valid = selectedProjectIds.filter(id => activeProjects.some(p => p.id === id));
+    if (valid.length === 0) {
+      setSelectedProjectIds([activeProjects[0].id]);
+    } else if (valid.length !== selectedProjectIds.length) {
+      setSelectedProjectIds(valid);
+    }
+  }, [activeProjects]);
 
   const toggleProjectSelection = useCallback((projectId: string) => {
     setSelectedProjectIds(prev => {
