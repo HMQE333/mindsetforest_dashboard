@@ -50,6 +50,7 @@ interface ExtractedLink {
   blockTitle: string;
   blockId: string;
   block: ArchiveBlock;
+  note: string;
 }
 
 function extractLinks(block: ArchiveBlock): ExtractedLink[] {
@@ -57,12 +58,15 @@ function extractLinks(block: ArchiveBlock): ExtractedLink[] {
   const matches = block.content.match(URL_REGEX) || [];
   matches.forEach((u) => urls.add(u));
   if (block.source_url) urls.add(block.source_url);
+  // Strip URLs from content to get the plain note text
+  const note = block.content.replace(URL_REGEX, "").replace(/\n{2,}/g, "\n").trim();
   return Array.from(urls).map((url) => ({
     url,
     type: classifyUrl(url),
     blockTitle: block.title,
     blockId: block.id,
     block,
+    note,
   }));
 }
 
@@ -126,6 +130,9 @@ function ListItem({ link, onContextMenu }: { link: ExtractedLink; onContextMenu:
             </Badge>
             <span className="text-[10px] text-muted-foreground truncate">from: {link.blockTitle}</span>
           </div>
+          {link.note && (
+            <p className="text-[10px] text-muted-foreground/70 mt-1 line-clamp-2 italic">{link.note}</p>
+          )}
         </div>
       </div>
     </a>
@@ -167,6 +174,9 @@ function GridCard({ link, onContextMenu }: { link: ExtractedLink; onContextMenu:
           </Badge>
           <span className="text-[9px] text-muted-foreground truncate">{link.blockTitle}</span>
         </div>
+        {link.note && (
+          <p className="text-[9px] text-muted-foreground/70 mt-1 line-clamp-1 italic">{link.note}</p>
+        )}
       </div>
     </a>
   );
@@ -189,6 +199,9 @@ function CompactRow({ link, onContextMenu }: { link: ExtractedLink; onContextMen
       </div>
       <span className="text-xs font-semibold text-foreground w-28 truncate shrink-0 group-hover:text-primary transition-colors">{hostname}</span>
       <span className="text-xs text-muted-foreground truncate flex-1">{link.url}</span>
+      {link.note && (
+        <span className="text-[9px] text-muted-foreground/60 truncate max-w-[180px] italic shrink-0">{link.note}</span>
+      )}
       <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-white/10 shrink-0">
         {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
       </Badge>
