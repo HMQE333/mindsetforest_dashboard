@@ -1,47 +1,37 @@
 
 
-## Standalone Nodes in Planning Map
+## Fix: Stable Node Positioning After Attach/Detach
 
 ### Problem
-Every node created on the canvas (via right-click or long-press) is automatically connected to the project root because `parent_id: null` tasks are treated as root children in the tree layout. The user wants freely-placed "standalone" nodes that float independently unless manually connected.
+When any new node is added or a standalone node gets connected, the entire tree re-layouts from scratch via `layoutTree()`. This causes all previously-connected nodes (including formerly-standalone ones) to jump to new positions because the leaf-count-based algorithm redistributes horizontal space every time.
 
-### Approach
-Use a **client-side-only** approach — no DB migration needed. We'll treat context-menu-created nodes differently from `+` button nodes by giving them a special marker, and use ReactFlow's built-in `onConnect` to let users drag edges between any nodes.
+### Root Cause
+The `initialNodes` memo recalculates all positions on every `tasks` change. The sync `useEffect` detects a `taskHash` change and replaces all non-standalone node positions with freshly computed ones. There's no position stability — it's a full recompute every time.
 
-### Changes
+### Solution: Two-part fix
 
-**1. Add `standalone` flag to PlanningTask interface** (`usePlanningState.ts`)
-- Add optional `standalone: boolean` field. Store it in the existing `notes` field as a JSON flag (or add a DB column). Since we want to avoid fighting the DB, we'll add an actual `standalone` boolean column via migration — it's cleaner.
+**1. Animate node position changes (CSS transition)**
+- Add `style: { transition: 'transform 0.3s ease' }` to all nodes produced by `layoutTree()`. ReactFlow uses CSS `transform` for positioning, so this makes any position shift smooth instead of instant. This alone eliminates the "teleport" feeling.
 
-**2. DB Migration**
-- Add `standalone boolean default false` column to `planning_tasks`.
+**2. Smarter sync merge — preserve positions for nodes whose parent didn't change**
+- Track each node's `parent_id` in the previous render. When syncing, only reposition a node if its `parent_id` actually changed (meaning it was attached/detached) or if it's a brand new node. Nodes whose structure didn't change keep their current ReactFlow position, letting the animation handle gradual drift only when needed.
+- Specifically in the `useEffect` sync block (lines 477-505):
+  - Build a map of `taskId → parent_id` from the previous render
+  - For each node in the new layout, if it existed before with the same `parent_id`, keep `existing.position`
+  - If `parent_id` changed (attach/detach) or node is new, use the layout-computed position
+  - Standalone nodes always keep their current dragged position (already handled)
 
-**3. Update `layoutTree` in `PlanningMap.tsx`**
-- Filter out standalone tasks from the tree layout (skip them from `rootTasks`).
-- After tree layout, position standalone tasks at their stored coordinates (we'll store `position_x` and `position_y` in the DB too, so standalone nodes remember where the user dragged them).
+**3. Stabilize layout after connect**
+- When `handleConnect` fires, the target node's `standalone` flips to `false` and `parent_id` is set. The layout will compute a proper tree position for it. With the animation from step 1, this will glide smoothly into place instead of teleporting.
 
-**4. DB Migration (combined with step 2)**
-- Add `position_x float`, `position_y float` columns to `planning_tasks` (nullable, only used by standalone nodes).
+### Files to change
+- `src/components/planning/PlanningMap.tsx`:
+  - Add `style: { transition: 'transform 0.3s ease' }` to all nodes in `layoutTree()`
+  - Refactor the sync `useEffect` to track previous `parent_id` per node and only reposition nodes whose parent changed
+  - Remove the overly broad `taskHash` check; use a per-node structural diff instead
 
-**5. Context menu creates standalone nodes** (`PlanningMap.tsx`)
-- When adding via right-click/long-press on canvas, set `standalone: true` and store the click position as `position_x`/`position_y`.
-- When adding via the `+` button on an existing node, keep current behavior (`standalone: false`, `parent_id` set).
-
-**6. Enable manual edge connections** (`PlanningMap.tsx`)
-- Add `onConnect` handler to ReactFlow that updates the dragged-to node's `parent_id` to the source node's task ID, effectively "adopting" it into the tree. Set `standalone: false` on the target.
-- This converts a standalone node into a connected child naturally.
-
-**7. Allow node dragging for standalone nodes** (`PlanningMap.tsx`)
-- On `onNodeDragStop`, if the node is standalone, persist its new position to the DB (`position_x`, `position_y`).
-- Tree-connected nodes remain auto-positioned by the layout algorithm.
-
-**8. Visual distinction**
-- Standalone nodes get a subtle dashed border to indicate they're unconnected.
-- A small "unlinked" icon badge on standalone nodes.
-
-### UX Summary
-- **Right-click / long-press canvas** → creates a standalone floating node at that position
-- **Click `+` on existing node** → creates a connected child (unchanged)
-- **Drag from a node's handle to a standalone node** → connects them (standalone becomes a child)
-- Standalone nodes are freely draggable and remember their position
+### Expected behavior
+- Adding a new node: existing tree nodes stay put (or shift minimally with animation)
+- Connecting a standalone node: it glides into its tree position; other nodes stay stable
+- Disconnecting a node: it stays at its current position as a standalone; tree adjusts smoothly
 
