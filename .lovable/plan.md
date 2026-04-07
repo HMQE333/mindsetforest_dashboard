@@ -1,25 +1,33 @@
 
 
-## Analysis & Fix Plan: Pillars Propagation + Metrics Clear
+## Multi-Select Projects on Map
 
-### Findings
+### What changes
+Replace the single project dropdown with a multi-select toggle (up to 5 projects). All selected projects render on the same ReactFlow canvas, each tree offset horizontally by ~300px+ gap.
 
-**1. Pillars bug found:** `ArchiveAIPreviewModal.tsx` imports the static `PILLARS` array from `@/lib/archive-data` instead of using the reactive `usePillars()` hook. This means when a user customizes pillar names/icons, the AI organize preview still shows the old default names and emojis. All other consumers (ArchiveLibrary, ArchiveEditModal, LinkContextMenu, LibraryView, BookCard, CourseCard, PlanningPortfolio, etc.) correctly use `usePillars()`.
+### Technical approach
 
-**2. Metrics — no "clear all" option:** Users can delete metrics one-by-one via the trash icon, and "Reset to defaults" restores the built-in set. But there's no way to clear/empty all metrics at once if a user wants a blank slate.
+**1. Replace single select with multi-select chips** (`PlanningMap.tsx`)
+- Replace `selectedProjectId` (string) with `selectedProjectIds` (string[], max 5)
+- Replace the `<select>` dropdown with clickable project chips/badges that toggle selection
+- Show a visual indicator (highlighted border/gradient) for selected projects
+- Cap at 5 with a toast or disabled state when limit reached
 
-### Changes
+**2. Fetch tasks for all selected projects** (`PlanningMap.tsx`)
+- Change `usePlanningState(selectedProjectId)` → `usePlanningState()` (no filter, fetch all)
+- Filter tasks client-side: `tasks.filter(t => selectedProjectIds.includes(t.project_id))`
 
-**`src/components/archive/ArchiveAIPreviewModal.tsx`**
-- Replace `import { PILLARS, DIRECTIONS }` with `import { DIRECTIONS }` + `import { usePillars }` hook
-- Use `usePillars()` inside the component to get the reactive pillar list
-- Update the two `PILLARS.find()` calls to use the hook's array instead
+**3. Layout multiple project trees side-by-side** (`PlanningMap.tsx`)
+- Modify the `useMemo` that builds nodes/edges to loop over each selected project
+- Call `layoutTree()` for each project, applying a cumulative X offset (tracking the max width of each tree + 300px gap)
+- Merge all nodes and edges arrays together
 
-**`src/components/settings/MetricsTab.tsx`**
-- Add a "Clear All" button next to "Reset to defaults" that empties the metrics list entirely
-- When clicked, set `metrics` to `[]` and mark dirty, so the user can save an empty state
-- Add a confirmation step (simple state toggle) before clearing
+**4. Update progress bar** (`PlanningMap.tsx`)
+- Aggregate `totalTasks` and `doneTasks` across all selected projects' tasks
 
-**`src/hooks/useUserSettings.ts`**
-- No changes needed — `saveMetrics([])` already works correctly (deletes all existing, inserts none)
+**5. Update callbacks** (`PlanningMap.tsx`)
+- `handleAddChild` and `handleAddLink` need to know which project the node belongs to — derive from the parent task's `project_id` or from the project node ID clicked
+
+### Files modified
+- `src/components/planning/PlanningMap.tsx` — all changes in this single file
 
