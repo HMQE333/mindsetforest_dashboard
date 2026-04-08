@@ -505,8 +505,6 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           if (!updated) return existing;
           return { ...existing, data: updated.data };
         });
-          return { ...existing, data: updated.data };
-        });
       });
     }
     setEdges(initialEdges);
