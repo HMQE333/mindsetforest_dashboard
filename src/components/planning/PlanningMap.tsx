@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
+import { supabase } from "@/integrations/supabase/client";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -114,10 +115,12 @@ function TaskNode({ data }: NodeProps) {
         </div>
         {task.done && !hovered && <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-cyan-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
       </div>
-      <div className="flex justify-center mt-2">
-        <button onClick={e => { e.stopPropagation(); setShowAdd(!showAdd); }} className={`w-6 h-6 rounded-full flex items-center justify-center transition-all border ${showAdd ? "gradient-purple border-transparent text-white scale-110" : "bg-muted/30 border-white/10 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>{showAdd ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}</button>
-      </div>
-      {showAdd && <AddChildPopover parentLevel={task.level} onAdd={(t, l) => onAddChild(task.id, l, t)} onAddLink={u => onAddLink(task.id, u)} onClose={() => setShowAdd(false)} />}
+      {!isStandalone && (
+        <div className="flex justify-center mt-2">
+          <button onClick={e => { e.stopPropagation(); setShowAdd(!showAdd); }} className={`w-6 h-6 rounded-full flex items-center justify-center transition-all border ${showAdd ? "gradient-purple border-transparent text-white scale-110" : "bg-muted/30 border-white/10 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>{showAdd ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}</button>
+        </div>
+      )}
+      {!isStandalone && showAdd && <AddChildPopover parentLevel={task.level} onAdd={(t, l) => onAddChild(task.id, l, t)} onAddLink={u => onAddLink(task.id, u)} onClose={() => setShowAdd(false)} />}
       <Handle type="source" position={Position.Bottom} className="!bg-primary/60 !border-primary/40 !w-3 !h-3" />
     </div>
   );
@@ -344,7 +347,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     return [];
   });
 
-  const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
+  const { tasks, addTask, updateTask, deleteTask, toggleTask, refetch } = usePlanningState();
   const reactFlowInstance = useReactFlow();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [forceAutoLayout, setForceAutoLayout] = useState(false);
@@ -475,15 +478,21 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   // Auto-organize: clear all saved positions and re-layout
   const handleAutoOrganize = useCallback(async () => {
     // Clear positions in DB for all visible tasks
-    const updatePromises = filteredTasks.map(t =>
-      updateTask(t.id, { position_x: null, position_y: null })
-    );
-    await Promise.all(updatePromises);
-    // Force a clean layout
+    const taskIds = filteredTasks.map(t => t.id);
+    if (taskIds.length === 0) return;
+    // Batch clear via individual updates
+    await Promise.all(taskIds.map(id =>
+      (supabase.from("planning_tasks" as any) as any)
+        .update({ position_x: null, position_y: null })
+        .eq("id", id)
+    ));
+    // Force clean layout and refetch
     setForceAutoLayout(true);
-    setTimeout(() => setForceAutoLayout(false), 100);
+    await refetch();
+    // Apply clean layout from initialNodes after refetch
+    setTimeout(() => setForceAutoLayout(false), 200);
     toast({ title: "Auto-organized", description: "Nodes reset to standard layout" });
-  }, [filteredTasks, updateTask]);
+  }, [filteredTasks, refetch]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -492,6 +501,14 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const prevStructureRef = useRef<string>("");
 
   useEffect(() => {
+    // If forceAutoLayout is active, do a full reset with computed positions
+    if (forceAutoLayout) {
+      prevStructureRef.current = "";
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+      return;
+    }
+
     // Build a structural fingerprint: node IDs + parent relationships
     const structureKey = filteredTasks
       .filter(t => !t.standalone)
@@ -517,10 +534,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         return initialNodes.map(newNode => {
           const existing = prevMap[newNode.id];
           if (existing) {
-            // Keep the position the user dragged to, update data
             return { ...newNode, position: existing.position, data: newNode.data };
           }
-          // New node — use the computed position from layoutTree
           return newNode;
         });
       });
