@@ -501,8 +501,10 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         const nodeMap: Record<string, Node> = {};
         initialNodes.forEach(n => { nodeMap[n.id] = n; });
         return prev.map(existing => {
-          const updated = newMap.get(existing.id);
+          const updated = nodeMap[existing.id];
           if (!updated) return existing;
+          return { ...existing, data: updated.data };
+        });
           return { ...existing, data: updated.data };
         });
       });
