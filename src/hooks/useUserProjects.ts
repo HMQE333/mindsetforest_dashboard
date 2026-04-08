@@ -98,5 +98,5 @@ export function useUserProjects() {
     return projects.find(p => p.id === id) || null;
   };
 
-  return { projects, loading, addProject, deleteProject, renameProject, projectKey, isProjectKey, getProjectFromKey };
+  return { projects, loading, addProject, deleteProject, renameProject, moveProject, projectKey, isProjectKey, getProjectFromKey };
 }
