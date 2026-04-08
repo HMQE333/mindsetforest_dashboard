@@ -477,15 +477,21 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   // Auto-organize: clear all saved positions and re-layout
   const handleAutoOrganize = useCallback(async () => {
     // Clear positions in DB for all visible tasks
-    const updatePromises = filteredTasks.map(t =>
-      updateTask(t.id, { position_x: null, position_y: null })
-    );
-    await Promise.all(updatePromises);
-    // Force a clean layout
+    const taskIds = filteredTasks.map(t => t.id);
+    if (taskIds.length === 0) return;
+    // Batch clear via individual updates
+    await Promise.all(taskIds.map(id =>
+      (supabase.from("planning_tasks" as any) as any)
+        .update({ position_x: null, position_y: null })
+        .eq("id", id)
+    ));
+    // Force clean layout and refetch
     setForceAutoLayout(true);
-    setTimeout(() => setForceAutoLayout(false), 100);
+    await refetch();
+    // Apply clean layout from initialNodes after refetch
+    setTimeout(() => setForceAutoLayout(false), 200);
     toast({ title: "Auto-organized", description: "Nodes reset to standard layout" });
-  }, [filteredTasks, updateTask]);
+  }, [filteredTasks, refetch]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
