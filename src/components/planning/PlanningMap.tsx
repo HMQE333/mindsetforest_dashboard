@@ -510,8 +510,20 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     prevStructureRef.current = fullKey;
 
     if (structureChanged) {
-      // Tree structure changed — full re-layout
-      setNodes(initialNodes);
+      // Tree structure changed — merge: keep existing manually-placed positions, use computed for new nodes
+      setNodes(prev => {
+        const prevMap: Record<string, Node> = {};
+        prev.forEach(n => { prevMap[n.id] = n; });
+        return initialNodes.map(newNode => {
+          const existing = prevMap[newNode.id];
+          if (existing) {
+            // Keep the position the user dragged to, update data
+            return { ...newNode, position: existing.position, data: newNode.data };
+          }
+          // New node — use the computed position from layoutTree
+          return newNode;
+        });
+      });
     } else {
       // Only data changed (title, done, etc.) — update data in place, keep positions
       setNodes(prev => {
