@@ -459,68 +459,82 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
 
   const filteredTasks = useMemo(() => tasks.filter(t => selectedProjectIds.includes(t.project_id)), [tasks, selectedProjectIds]);
 
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const selectedProjects = activeProjects.filter(p => selectedProjectIds.includes(p.id));
-    if (selectedProjects.length === 0) return { initialNodes: [], initialEdges: [] };
+  // No more initialNodes/initialEdges memo — layout is computed inside the sync effect
 
-    const allNodes: Node[] = [];
-    const allEdges: Edge[] = [];
-    let xOffset = 0;
-    const GAP = 300;
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-    for (const project of selectedProjects) {
-      const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOffset);
-      allNodes.push(...nodes);
-      allEdges.push(...edges);
-      xOffset += treeWidth + GAP;
-    }
+  // Structural fingerprints ref for selective repositioning
+  const prevFingerprintsRef = useRef<Record<string, string>>({});
+  const rafRef = useRef<number>(0);
 
-    return { initialNodes: allNodes, initialEdges: allEdges };
-  }, [activeProjects, selectedProjectIds, tasks, callbacks]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  // Smart merge: track per-node parent_id to only reposition nodes whose structure changed
-  const prevParentMapRef = useRef<Record<string, string | null>>({});
   useEffect(() => {
-    // Build current parent map from tasks
-    const currentParentMap: Record<string, string | null> = {};
-    filteredTasks.forEach(t => { currentParentMap[t.id] = t.parent_id; });
-    const prevParentMap = prevParentMapRef.current;
+    // Cancel any pending RAF to batch rapid updates
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
-    setNodes(currentNodes => {
-      const currentNodeMap: Record<string, (typeof currentNodes)[number]> = {};
-      currentNodes.forEach(n => { currentNodeMap[n.id] = n; });
-      return initialNodes.map(newNode => {
-        const existing = currentNodeMap[newNode.id];
-        const taskId = newNode.id.replace("task-", "").replace("project-", "");
-        const task = filteredTasks.find(t => t.id === taskId);
+    rafRef.current = requestAnimationFrame(() => {
+      const selectedProjects = activeProjects.filter(p => selectedProjectIds.includes(p.id));
+      if (selectedProjects.length === 0) {
+        setNodes([]);
+        setEdges([]);
+        return;
+      }
 
-        // Standalone nodes: always keep their current dragged position
-        if (existing && task?.standalone) {
-          return { ...newNode, position: existing.position };
-        }
+      const allNodes: Node[] = [];
+      const allEdges: Edge[] = [];
+      const allFingerprints: Record<string, string> = {};
+      let xOffset = 0;
+      const GAP = 300;
 
-        // Existing tree node whose parent didn't change: keep current position (stable)
-        if (existing && !newNode.id.startsWith("project-")) {
-          const prevParent = prevParentMap[taskId];
-          const curParent = currentParentMap[taskId];
-          const parentChanged = prevParent !== undefined && prevParent !== curParent;
-          const isNew = prevParent === undefined;
-          if (!parentChanged && !isNew) {
-            // Keep existing position — the tree layout shift is suppressed
+      for (const project of selectedProjects) {
+        const { nodes: n, edges: e, treeWidth, fingerprints } = layoutTree(project, tasks, callbacks, xOffset);
+        allNodes.push(...n);
+        allEdges.push(...e);
+        Object.assign(allFingerprints, fingerprints);
+        xOffset += treeWidth + GAP;
+      }
+
+      const prevFingerprints = prevFingerprintsRef.current;
+
+      setNodes(currentNodes => {
+        const currentNodeMap: Record<string, Node> = {};
+        currentNodes.forEach(n => { currentNodeMap[n.id] = n; });
+
+        return allNodes.map(newNode => {
+          const existing = currentNodeMap[newNode.id];
+          const taskId = newNode.id.replace("task-", "").replace("project-", "");
+          const task = filteredTasks.find(t => t.id === taskId);
+
+          // Standalone nodes: always keep their current dragged position if they exist
+          if (existing && task?.standalone) {
             return { ...newNode, position: existing.position };
           }
-        }
 
-        // New nodes or nodes whose parent changed: use layout-computed position
-        return newNode;
+          // For tree nodes: only reposition if structural fingerprint changed
+          if (existing && !newNode.id.startsWith("project-")) {
+            const prevFP = prevFingerprints[taskId];
+            const curFP = allFingerprints[taskId];
+            const isNew = prevFP === undefined;
+            const fpChanged = prevFP !== curFP;
+
+            if (!isNew && !fpChanged) {
+              // Structure unchanged — keep current position for stability
+              return { ...newNode, position: existing.position };
+            }
+            // Fingerprint changed (attach/detach/sibling shift) — use layout position (CSS transition will animate)
+          }
+
+          // New nodes or structurally changed: use layout-computed position
+          return newNode;
+        });
       });
+
+      setEdges(allEdges);
+      prevFingerprintsRef.current = allFingerprints;
     });
-    setEdges(initialEdges);
-    prevParentMapRef.current = currentParentMap;
-  }, [initialNodes, initialEdges]);
+
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [activeProjects, selectedProjectIds, tasks, callbacks, filteredTasks]);
 
   const totalTasks = filteredTasks.filter(t => t.level !== "link").length;
   const doneTasks = filteredTasks.filter(t => t.level !== "link" && t.done).length;
