@@ -501,6 +501,14 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const prevStructureRef = useRef<string>("");
 
   useEffect(() => {
+    // If forceAutoLayout is active, do a full reset with computed positions
+    if (forceAutoLayout) {
+      prevStructureRef.current = "";
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+      return;
+    }
+
     // Build a structural fingerprint: node IDs + parent relationships
     const structureKey = filteredTasks
       .filter(t => !t.standalone)
@@ -526,10 +534,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         return initialNodes.map(newNode => {
           const existing = prevMap[newNode.id];
           if (existing) {
-            // Keep the position the user dragged to, update data
             return { ...newNode, position: existing.position, data: newNode.data };
           }
-          // New node — use the computed position from layoutTree
           return newNode;
         });
       });
