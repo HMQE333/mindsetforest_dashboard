@@ -1,47 +1,36 @@
 
 
-## Standalone Nodes in Planning Map
+## Persistent Node Positions with Auto-Organize Button
 
 ### Problem
-Every node created on the canvas (via right-click or long-press) is automatically connected to the project root because `parent_id: null` tasks are treated as root children in the tree layout. The user wants freely-placed "standalone" nodes that float independently unless manually connected.
+Currently, all tree-connected nodes get their positions recalculated by `layoutTree` every time the task list changes. This means adding a child, toggling done, or changing parent relationships causes the entire tree to snap back to its algorithmically computed layout. Only standalone nodes persist their positions.
 
-### Approach
-Use a **client-side-only** approach — no DB migration needed. We'll treat context-menu-created nodes differently from `+` button nodes by giving them a special marker, and use ReactFlow's built-in `onConnect` to let users drag edges between any nodes.
+### Solution
+Store `position_x` / `position_y` for **all** nodes (not just standalone ones), and use those saved positions whenever available. The auto-layout algorithm becomes opt-in via an "Auto-Organize" button in the toolbar.
 
 ### Changes
 
-**1. Add `standalone` flag to PlanningTask interface** (`usePlanningState.ts`)
-- Add optional `standalone: boolean` field. Store it in the existing `notes` field as a JSON flag (or add a DB column). Since we want to avoid fighting the DB, we'll add an actual `standalone` boolean column via migration — it's cleaner.
+**1. Extend `onNodeDragStop` to save positions for ALL nodes** (`PlanningMap.tsx`)
+- Remove the `if (task?.standalone)` guard — persist position for every dragged node (including project root nodes, which we can store via a separate mechanism or skip).
 
-**2. DB Migration**
-- Add `standalone boolean default false` column to `planning_tasks`.
+**2. Update `layoutTree` to respect saved positions** (`PlanningMap.tsx`)
+- When building tree nodes, check if a task has `position_x` and `position_y` set. If so, use those instead of the computed layout position.
+- Project root nodes will still use computed positions (or we can persist those too via localStorage keyed by project ID).
 
-**3. Update `layoutTree` in `PlanningMap.tsx`**
-- Filter out standalone tasks from the tree layout (skip them from `rootTasks`).
-- After tree layout, position standalone tasks at their stored coordinates (we'll store `position_x` and `position_y` in the DB too, so standalone nodes remember where the user dragged them).
+**3. Save positions on drag for tree nodes too** (`PlanningMap.tsx`)
+- On `onNodeDragStop`, update `position_x` / `position_y` in the DB for any task node that gets dragged.
 
-**4. DB Migration (combined with step 2)**
-- Add `position_x float`, `position_y float` columns to `planning_tasks` (nullable, only used by standalone nodes).
+**4. Add "Auto-Organize" button to toolbar** (`PlanningMap.tsx`)
+- A small button (e.g., grid/layout icon) in the top bar next to the legend.
+- Clicking it clears all `position_x` / `position_y` for the currently visible tasks (sets them to `null` in DB), then triggers a re-layout using the algorithm.
+- This gives users a way to "reset to clean layout" when things get messy.
 
-**5. Context menu creates standalone nodes** (`PlanningMap.tsx`)
-- When adding via right-click/long-press on canvas, set `standalone: true` and store the click position as `position_x`/`position_y`.
-- When adding via the `+` button on an existing node, keep current behavior (`standalone: false`, `parent_id` set).
-
-**6. Enable manual edge connections** (`PlanningMap.tsx`)
-- Add `onConnect` handler to ReactFlow that updates the dragged-to node's `parent_id` to the source node's task ID, effectively "adopting" it into the tree. Set `standalone: false` on the target.
-- This converts a standalone node into a connected child naturally.
-
-**7. Allow node dragging for standalone nodes** (`PlanningMap.tsx`)
-- On `onNodeDragStop`, if the node is standalone, persist its new position to the DB (`position_x`, `position_y`).
-- Tree-connected nodes remain auto-positioned by the layout algorithm.
-
-**8. Visual distinction**
-- Standalone nodes get a subtle dashed border to indicate they're unconnected.
-- A small "unlinked" icon badge on standalone nodes.
+**5. Structural change handling** (`PlanningMap.tsx`)
+- When new nodes are added (structure changes), only the **new** node gets an auto-computed position; existing nodes keep their saved positions.
+- The current `structureKey` diffing logic gets updated: on structure change, merge new layout positions only for nodes that don't have saved positions.
 
 ### UX Summary
-- **Right-click / long-press canvas** → creates a standalone floating node at that position
-- **Click `+` on existing node** → creates a connected child (unchanged)
-- **Drag from a node's handle to a standalone node** → connects them (standalone becomes a child)
-- Standalone nodes are freely draggable and remember their position
+- Drag any node → it stays where you put it, even after edits or navigation
+- Click "Auto-Organize" → everything snaps back to the clean tree layout
+- New nodes appear at computed positions until you drag them somewhere
 
