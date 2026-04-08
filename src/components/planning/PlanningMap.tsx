@@ -471,7 +471,44 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  useMemo(() => { setNodes(initialNodes); setEdges(initialEdges); }, [initialNodes, initialEdges, setNodes, setEdges]);
+  // Track previous tree structure to detect real layout changes
+  const prevStructureRef = useRef<string>("");
+
+  useEffect(() => {
+    // Build a structural fingerprint: node IDs + parent relationships
+    const structureKey = filteredTasks
+      .filter(t => !t.standalone)
+      .map(t => `${t.id}:${t.parent_id ?? "root"}`)
+      .sort()
+      .join("|");
+    const standaloneKey = filteredTasks
+      .filter(t => t.standalone)
+      .map(t => t.id)
+      .sort()
+      .join("|");
+    const projectKey = selectedProjectIds.sort().join(",");
+    const fullKey = `${projectKey}||${structureKey}||${standaloneKey}`;
+
+    const structureChanged = fullKey !== prevStructureRef.current;
+    prevStructureRef.current = fullKey;
+
+    if (structureChanged) {
+      // Tree structure changed — full re-layout
+      setNodes(initialNodes);
+    } else {
+      // Only data changed (title, done, etc.) — update data in place, keep positions
+      setNodes(prev => {
+        const nodeMap: Record<string, Node> = {};
+        initialNodes.forEach(n => { nodeMap[n.id] = n; });
+        return prev.map(existing => {
+          const updated = nodeMap[existing.id];
+          if (!updated) return existing;
+          return { ...existing, data: updated.data };
+        });
+      });
+    }
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges]);
 
   const totalTasks = filteredTasks.filter(t => t.level !== "link").length;
   const doneTasks = filteredTasks.filter(t => t.level !== "link" && t.done).length;
