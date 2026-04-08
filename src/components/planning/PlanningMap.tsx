@@ -347,6 +347,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
   const reactFlowInstance = useReactFlow();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [forceAutoLayout, setForceAutoLayout] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const isMobile = useIsMobile();
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
