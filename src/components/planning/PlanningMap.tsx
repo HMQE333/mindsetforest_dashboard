@@ -433,14 +433,12 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
   }, [tasks, updateTask]);
 
-  // Drag stop — persist position for standalone nodes
+  // Drag stop — persist position for ALL nodes
   const handleNodeDragStop = useCallback((_: any, node: Node) => {
     const taskId = node.id.replace("task-", "");
-    const task = tasks.find(t => t.id === taskId);
-    if (task?.standalone) {
-      updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
-    }
-  }, [tasks, updateTask]);
+    if (node.id.startsWith("project-")) return; // skip project root nodes
+    updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
+  }, [updateTask]);
 
   const callbacks = useMemo(() => ({
     makeOnAddChild: (projectId: string) => (parentId: string | null, level: TaskLevel, title: string) => handleAddChildForProject(projectId, parentId, level, title),
