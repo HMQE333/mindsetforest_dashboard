@@ -429,8 +429,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     const targetTaskId = connection.target.replace("task-", "");
     const targetTask = tasks.find(t => t.id === targetTaskId);
     if (!targetTask) return;
-    // Set parent and remove standalone flag
-    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false, position_x: null, position_y: null });
+    // Set parent and remove standalone flag, keep position
+    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false });
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
   }, [tasks, updateTask]);
 
