@@ -21,7 +21,7 @@ function ProjectRow({
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const projectTasks = tasks.filter((t: any) => t.project_id === project.id);
+  const projectTasks = tasks.filter((t: any) => t.project_id === project.id && t.level !== "link");
   const done = projectTasks.filter((t: any) => t.done).length;
   const total = projectTasks.length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
