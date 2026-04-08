@@ -11,7 +11,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
-import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 import { toast } from "@/hooks/use-toast";
@@ -181,7 +181,7 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
   return children.reduce((sum, c) => sum + countLeaves(c.id, allTasks), 0);
 }
 
-function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
+function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0, usePersistedPositions: boolean = true): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const rootId = `project-${project.id}`;
@@ -206,13 +206,17 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
     children.forEach(child => {
       const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
       const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
-      const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
+      const computedX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
+      const computedY = depth * Y_SPACING;
+      // Use persisted position if available, otherwise use computed
+      const nodeX = (usePersistedPositions && child.position_x != null) ? child.position_x : computedX;
+      const nodeY = (usePersistedPositions && child.position_y != null) ? child.position_y : computedY;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
-      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
+      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: nodeY }, draggable: true, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
       const edgeColors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
       edges.push({ id: `e-${parentNodeId}-${nodeId}`, source: parentNodeId, target: nodeId, type: "smoothstep", animated: !child.done, style: { stroke: edgeColors[child.level as TaskLevel], strokeWidth: 2, opacity: child.done ? 0.3 : 0.7 }, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors[child.level as TaskLevel], width: 15, height: 15 } });
-      if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, nodeX);
+      if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, computedX);
       currentX += leafCount * X_SPACING;
     });
     return currentX;
@@ -343,6 +347,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
   const reactFlowInstance = useReactFlow();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [forceAutoLayout, setForceAutoLayout] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const isMobile = useIsMobile();
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -424,19 +429,17 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     const targetTaskId = connection.target.replace("task-", "");
     const targetTask = tasks.find(t => t.id === targetTaskId);
     if (!targetTask) return;
-    // Set parent and remove standalone flag
-    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false, position_x: null, position_y: null });
+    // Set parent and remove standalone flag, keep position
+    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false });
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
   }, [tasks, updateTask]);
 
-  // Drag stop — persist position for standalone nodes
+  // Drag stop — persist position for ALL nodes
   const handleNodeDragStop = useCallback((_: any, node: Node) => {
     const taskId = node.id.replace("task-", "");
-    const task = tasks.find(t => t.id === taskId);
-    if (task?.standalone) {
-      updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
-    }
-  }, [tasks, updateTask]);
+    if (node.id.startsWith("project-")) return; // skip project root nodes
+    updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
+  }, [updateTask]);
 
   const callbacks = useMemo(() => ({
     makeOnAddChild: (projectId: string) => (parentId: string | null, level: TaskLevel, title: string) => handleAddChildForProject(projectId, parentId, level, title),
@@ -457,16 +460,30 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     const allEdges: Edge[] = [];
     let xOffset = 0;
     const GAP = 300;
+    const usePersistedPos = !forceAutoLayout;
 
     for (const project of selectedProjects) {
-      const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOffset);
+      const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOffset, usePersistedPos);
       allNodes.push(...nodes);
       allEdges.push(...edges);
       xOffset += treeWidth + GAP;
     }
 
     return { initialNodes: allNodes, initialEdges: allEdges };
-  }, [activeProjects, selectedProjectIds, tasks, callbacks]);
+  }, [activeProjects, selectedProjectIds, tasks, callbacks, forceAutoLayout]);
+
+  // Auto-organize: clear all saved positions and re-layout
+  const handleAutoOrganize = useCallback(async () => {
+    // Clear positions in DB for all visible tasks
+    const updatePromises = filteredTasks.map(t =>
+      updateTask(t.id, { position_x: null, position_y: null })
+    );
+    await Promise.all(updatePromises);
+    // Force a clean layout
+    setForceAutoLayout(true);
+    setTimeout(() => setForceAutoLayout(false), 100);
+    toast({ title: "Auto-organized", description: "Nodes reset to standard layout" });
+  }, [filteredTasks, updateTask]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -493,8 +510,20 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     prevStructureRef.current = fullKey;
 
     if (structureChanged) {
-      // Tree structure changed — full re-layout
-      setNodes(initialNodes);
+      // Tree structure changed — merge: keep existing manually-placed positions, use computed for new nodes
+      setNodes(prev => {
+        const prevMap: Record<string, Node> = {};
+        prev.forEach(n => { prevMap[n.id] = n; });
+        return initialNodes.map(newNode => {
+          const existing = prevMap[newNode.id];
+          if (existing) {
+            // Keep the position the user dragged to, update data
+            return { ...newNode, position: existing.position, data: newNode.data };
+          }
+          // New node — use the computed position from layoutTree
+          return newNode;
+        });
+      });
     } else {
       // Only data changed (title, done, etc.) — update data in place, keep positions
       setNodes(prev => {
@@ -543,7 +572,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
             <span className="text-[10px] text-muted-foreground font-medium">{doneTasks}/{totalTasks}</span>
           </div>
         )}
-        <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">{isMobile ? "Long-press canvas to add" : "Right-click canvas to add · Double-click to edit"}</p>
+        <button onClick={handleAutoOrganize} className="flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-medium bg-muted/30 border border-white/10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all" title="Auto-organize nodes"><LayoutGrid className="h-3.5 w-3.5" /><span className="hidden sm:inline">Organize</span></button>
+        <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">{isMobile ? "Long-press canvas to add" : "Right-click canvas to add · Double-click to edit · Drag to reposition"}</p>
         <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground ml-auto">
           {(Object.entries(levelMeta) as [TaskLevel, typeof levelMeta[TaskLevel]][]).filter(([level]) => level !== "link").map(([level, meta]) => (
             <span key={level} className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-sm bg-gradient-to-br ${meta.gradient}`} />{meta.label}</span>
