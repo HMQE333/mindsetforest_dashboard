@@ -72,19 +72,6 @@ export function useUserProjects() {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name, ...(emoji ? { emoji } : {}) } : p));
   }, [user]);
 
-  const moveProject = useCallback(async (id: string, parentCategory: string | null) => {
-    if (!user) return;
-    const { error } = await (supabase.from("user_projects" as any) as any)
-      .update({ parent_category: parentCategory })
-      .eq("id", id)
-      .eq("user_id", user.id);
-    if (error) {
-      toast({ title: "Failed to move project", variant: "destructive" });
-      return;
-    }
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, parent_category: parentCategory } : p));
-  }, [user]);
-
   /** Convert a project to the key used in ladder/habit loop data */
   const projectKey = (id: string) => `project-${id}`;
 
@@ -98,5 +85,5 @@ export function useUserProjects() {
     return projects.find(p => p.id === id) || null;
   };
 
-  return { projects, loading, addProject, deleteProject, renameProject, moveProject, projectKey, isProjectKey, getProjectFromKey };
+  return { projects, loading, addProject, deleteProject, renameProject, projectKey, isProjectKey, getProjectFromKey };
 }

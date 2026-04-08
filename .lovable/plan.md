@@ -1,56 +1,33 @@
 
 
-## Rebuild: Smooth, Stable Node Positioning
+## Multi-Select Projects on Map
 
-### Problems Identified
+### What changes
+Replace the single project dropdown with a multi-select toggle (up to 5 projects). All selected projects render on the same ReactFlow canvas, each tree offset horizontally by ~300px+ gap.
 
-1. **Position thrashing**: The `initialNodes` useMemo recomputes ALL positions every render. The sync useEffect tries to preserve positions but has conflicting logic — it keeps tree nodes frozen even when siblings change (so the tree never properly rebalances), yet standalone nodes get random positions on each memo recompute before the effect can rescue them.
+### Technical approach
 
-2. **Standalone nodes re-randomize**: `layoutTree` generates `Math.random()` positions for standalone nodes whose `position_x`/`position_y` are null. Since `initialNodes` is a memo that runs on every `tasks` change, this produces new random coords each cycle, causing flicker until the effect patches them.
+**1. Replace single select with multi-select chips** (`PlanningMap.tsx`)
+- Replace `selectedProjectId` (string) with `selectedProjectIds` (string[], max 5)
+- Replace the `<select>` dropdown with clickable project chips/badges that toggle selection
+- Show a visual indicator (highlighted border/gradient) for selected projects
+- Cap at 5 with a toast or disabled state when limit reached
 
-3. **Connect causes full rebuild**: `handleConnect` updates `standalone: false` + `parent_id`, which changes the task hash, triggers a full layout recompute, and all nodes shift because the leaf-count algorithm redistributes space.
+**2. Fetch tasks for all selected projects** (`PlanningMap.tsx`)
+- Change `usePlanningState(selectedProjectId)` → `usePlanningState()` (no filter, fetch all)
+- Filter tasks client-side: `tasks.filter(t => selectedProjectIds.includes(t.project_id))`
 
-### Solution: Decouple Layout from React State
+**3. Layout multiple project trees side-by-side** (`PlanningMap.tsx`)
+- Modify the `useMemo` that builds nodes/edges to loop over each selected project
+- Call `layoutTree()` for each project, applying a cumulative X offset (tracking the max width of each tree + 300px gap)
+- Merge all nodes and edges arrays together
 
-**1. Move layout computation into the sync effect, not a memo**
-- Remove the `initialNodes`/`initialEdges` useMemo entirely
-- Compute layout inside the `useEffect` directly, so we have access to `currentNodes` at the same time
-- This eliminates the "compute then patch" two-step that causes flicker
+**4. Update progress bar** (`PlanningMap.tsx`)
+- Aggregate `totalTasks` and `doneTasks` across all selected projects' tasks
 
-**2. Per-node structural fingerprint for selective repositioning**
-- For each node, compute a fingerprint: `parentId + siblingCount + siblingIndex`
-- Only reposition a node if its fingerprint changed (meaning its place in the tree actually shifted)
-- New nodes get layout-computed positions; unchanged nodes keep their current ReactFlow position
-- This means adding a distant cousin won't shift unrelated branches
+**5. Update callbacks** (`PlanningMap.tsx`)
+- `handleAddChild` and `handleAddLink` need to know which project the node belongs to — derive from the parent task's `project_id` or from the project node ID clicked
 
-**3. Standalone position stability**
-- Never generate random positions — if `position_x`/`position_y` are null, place at a deterministic offset (e.g., `xOffset + index * 200, treeBottom + 100`)
-- Always prefer the existing ReactFlow node position for standalone nodes (already dragged)
-- On connect: the node gets a layout-computed position and smoothly transitions via CSS
-
-**4. CSS transitions for all position changes**
-- Keep `style: { transition: 'transform 0.3s ease' }` on all nodes
-- This makes any remaining shifts (sibling rebalancing) feel smooth rather than jarring
-
-**5. Debounce edge case: rapid task additions**
-- Wrap the sync effect body in a `requestAnimationFrame` to batch rapid state changes into a single layout pass
-
-### Files to Change
-
-**`src/components/planning/PlanningMap.tsx`**:
-- Remove `initialNodes`/`initialEdges` useMemo (lines 453-470)
-- Rewrite sync useEffect (lines 477-514) to:
-  - Compute layout inline
-  - Build per-node structural fingerprint (`parentId:siblingIndex:siblingCount`)
-  - Compare against previous fingerprints (stored in ref)
-  - Only update position for nodes with changed fingerprints or new nodes
-  - Standalone nodes always keep existing ReactFlow position
-- Fix `layoutTree` standalone section: use deterministic positioning instead of `Math.random()`
-- Ensure all nodes get `style: { transition: 'transform 0.3s ease' }`
-
-### Expected Behavior
-- Adding a node: only its direct siblings shift slightly (with animation); distant branches stay put
-- Connecting a standalone: it glides to its tree position; other nodes stay stable
-- Dragging a standalone: position persists across all re-renders
-- Disconnecting: node stays at current position as standalone
+### Files modified
+- `src/components/planning/PlanningMap.tsx` — all changes in this single file
 
