@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
+import { supabase } from "@/integrations/supabase/client";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
