@@ -346,7 +346,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     return [];
   });
 
-  const { tasks, addTask, updateTask, deleteTask, toggleTask } = usePlanningState();
+  const { tasks, addTask, updateTask, deleteTask, toggleTask, refetch } = usePlanningState();
   const reactFlowInstance = useReactFlow();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [forceAutoLayout, setForceAutoLayout] = useState(false);
