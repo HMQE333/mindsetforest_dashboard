@@ -1,37 +1,56 @@
 
 
-## Fix: Stable Node Positioning After Attach/Detach
+## Rebuild: Smooth, Stable Node Positioning
 
-### Problem
-When any new node is added or a standalone node gets connected, the entire tree re-layouts from scratch via `layoutTree()`. This causes all previously-connected nodes (including formerly-standalone ones) to jump to new positions because the leaf-count-based algorithm redistributes horizontal space every time.
+### Problems Identified
 
-### Root Cause
-The `initialNodes` memo recalculates all positions on every `tasks` change. The sync `useEffect` detects a `taskHash` change and replaces all non-standalone node positions with freshly computed ones. There's no position stability — it's a full recompute every time.
+1. **Position thrashing**: The `initialNodes` useMemo recomputes ALL positions every render. The sync useEffect tries to preserve positions but has conflicting logic — it keeps tree nodes frozen even when siblings change (so the tree never properly rebalances), yet standalone nodes get random positions on each memo recompute before the effect can rescue them.
 
-### Solution: Two-part fix
+2. **Standalone nodes re-randomize**: `layoutTree` generates `Math.random()` positions for standalone nodes whose `position_x`/`position_y` are null. Since `initialNodes` is a memo that runs on every `tasks` change, this produces new random coords each cycle, causing flicker until the effect patches them.
 
-**1. Animate node position changes (CSS transition)**
-- Add `style: { transition: 'transform 0.3s ease' }` to all nodes produced by `layoutTree()`. ReactFlow uses CSS `transform` for positioning, so this makes any position shift smooth instead of instant. This alone eliminates the "teleport" feeling.
+3. **Connect causes full rebuild**: `handleConnect` updates `standalone: false` + `parent_id`, which changes the task hash, triggers a full layout recompute, and all nodes shift because the leaf-count algorithm redistributes space.
 
-**2. Smarter sync merge — preserve positions for nodes whose parent didn't change**
-- Track each node's `parent_id` in the previous render. When syncing, only reposition a node if its `parent_id` actually changed (meaning it was attached/detached) or if it's a brand new node. Nodes whose structure didn't change keep their current ReactFlow position, letting the animation handle gradual drift only when needed.
-- Specifically in the `useEffect` sync block (lines 477-505):
-  - Build a map of `taskId → parent_id` from the previous render
-  - For each node in the new layout, if it existed before with the same `parent_id`, keep `existing.position`
-  - If `parent_id` changed (attach/detach) or node is new, use the layout-computed position
-  - Standalone nodes always keep their current dragged position (already handled)
+### Solution: Decouple Layout from React State
 
-**3. Stabilize layout after connect**
-- When `handleConnect` fires, the target node's `standalone` flips to `false` and `parent_id` is set. The layout will compute a proper tree position for it. With the animation from step 1, this will glide smoothly into place instead of teleporting.
+**1. Move layout computation into the sync effect, not a memo**
+- Remove the `initialNodes`/`initialEdges` useMemo entirely
+- Compute layout inside the `useEffect` directly, so we have access to `currentNodes` at the same time
+- This eliminates the "compute then patch" two-step that causes flicker
 
-### Files to change
-- `src/components/planning/PlanningMap.tsx`:
-  - Add `style: { transition: 'transform 0.3s ease' }` to all nodes in `layoutTree()`
-  - Refactor the sync `useEffect` to track previous `parent_id` per node and only reposition nodes whose parent changed
-  - Remove the overly broad `taskHash` check; use a per-node structural diff instead
+**2. Per-node structural fingerprint for selective repositioning**
+- For each node, compute a fingerprint: `parentId + siblingCount + siblingIndex`
+- Only reposition a node if its fingerprint changed (meaning its place in the tree actually shifted)
+- New nodes get layout-computed positions; unchanged nodes keep their current ReactFlow position
+- This means adding a distant cousin won't shift unrelated branches
 
-### Expected behavior
-- Adding a new node: existing tree nodes stay put (or shift minimally with animation)
-- Connecting a standalone node: it glides into its tree position; other nodes stay stable
-- Disconnecting a node: it stays at its current position as a standalone; tree adjusts smoothly
+**3. Standalone position stability**
+- Never generate random positions — if `position_x`/`position_y` are null, place at a deterministic offset (e.g., `xOffset + index * 200, treeBottom + 100`)
+- Always prefer the existing ReactFlow node position for standalone nodes (already dragged)
+- On connect: the node gets a layout-computed position and smoothly transitions via CSS
+
+**4. CSS transitions for all position changes**
+- Keep `style: { transition: 'transform 0.3s ease' }` on all nodes
+- This makes any remaining shifts (sibling rebalancing) feel smooth rather than jarring
+
+**5. Debounce edge case: rapid task additions**
+- Wrap the sync effect body in a `requestAnimationFrame` to batch rapid state changes into a single layout pass
+
+### Files to Change
+
+**`src/components/planning/PlanningMap.tsx`**:
+- Remove `initialNodes`/`initialEdges` useMemo (lines 453-470)
+- Rewrite sync useEffect (lines 477-514) to:
+  - Compute layout inline
+  - Build per-node structural fingerprint (`parentId:siblingIndex:siblingCount`)
+  - Compare against previous fingerprints (stored in ref)
+  - Only update position for nodes with changed fingerprints or new nodes
+  - Standalone nodes always keep existing ReactFlow position
+- Fix `layoutTree` standalone section: use deterministic positioning instead of `Math.random()`
+- Ensure all nodes get `style: { transition: 'transform 0.3s ease' }`
+
+### Expected Behavior
+- Adding a node: only its direct siblings shift slightly (with animation); distant branches stay put
+- Connecting a standalone: it glides to its tree position; other nodes stay stable
+- Dragging a standalone: position persists across all re-renders
+- Disconnecting: node stays at current position as standalone
 
