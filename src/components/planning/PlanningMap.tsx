@@ -498,7 +498,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     } else {
       // Only data changed (title, done, etc.) — update data in place, keep positions
       setNodes(prev => {
-        const newMap = new Map(initialNodes.map(n => [n.id, n]));
+        const nodeMap: Record<string, Node> = {};
+        initialNodes.forEach(n => { nodeMap[n.id] = n; });
         return prev.map(existing => {
           const updated = newMap.get(existing.id);
           if (!updated) return existing;
