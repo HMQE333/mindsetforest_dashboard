@@ -560,7 +560,8 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
             <span className="text-[10px] text-muted-foreground font-medium">{doneTasks}/{totalTasks}</span>
           </div>
         )}
-        <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">{isMobile ? "Long-press canvas to add" : "Right-click canvas to add · Double-click to edit"}</p>
+        <button onClick={handleAutoOrganize} className="flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-medium bg-muted/30 border border-white/10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all" title="Auto-organize nodes"><LayoutGrid className="h-3.5 w-3.5" /><span className="hidden sm:inline">Organize</span></button>
+        <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">{isMobile ? "Long-press canvas to add" : "Right-click canvas to add · Double-click to edit · Drag to reposition"}</p>
         <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground ml-auto">
           {(Object.entries(levelMeta) as [TaskLevel, typeof levelMeta[TaskLevel]][]).filter(([level]) => level !== "link").map(([level, meta]) => (
             <span key={level} className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-sm bg-gradient-to-br ${meta.gradient}`} />{meta.label}</span>
