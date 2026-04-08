@@ -181,7 +181,7 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
   return children.reduce((sum, c) => sum + countLeaves(c.id, allTasks), 0);
 }
 
-function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
+function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0, usePersistedPositions: boolean = true): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const rootId = `project-${project.id}`;
@@ -206,13 +206,17 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
     children.forEach(child => {
       const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
       const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
-      const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
+      const computedX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
+      const computedY = depth * Y_SPACING;
+      // Use persisted position if available, otherwise use computed
+      const nodeX = (usePersistedPositions && child.position_x != null) ? child.position_x : computedX;
+      const nodeY = (usePersistedPositions && child.position_y != null) ? child.position_y : computedY;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
-      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
+      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: nodeY }, draggable: true, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
       const edgeColors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
       edges.push({ id: `e-${parentNodeId}-${nodeId}`, source: parentNodeId, target: nodeId, type: "smoothstep", animated: !child.done, style: { stroke: edgeColors[child.level as TaskLevel], strokeWidth: 2, opacity: child.done ? 0.3 : 0.7 }, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors[child.level as TaskLevel], width: 15, height: 15 } });
-      if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, nodeX);
+      if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, computedX);
       currentX += leafCount * X_SPACING;
     });
     return currentX;
