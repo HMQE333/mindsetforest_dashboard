@@ -181,9 +181,10 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
   return children.reduce((sum, c) => sum + countLeaves(c.id, allTasks), 0);
 }
 
-function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
+function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0): { nodes: Node[]; edges: Edge[]; treeWidth: number; fingerprints: Record<string, string> } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
+  const fingerprints: Record<string, string> = {};
   const rootId = `project-${project.id}`;
   const projectTasks = tasks.filter(t => t.project_id === project.id);
   const treeTasks = projectTasks.filter(t => !t.standalone);
@@ -197,18 +198,22 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   const treeCenterX = xOffset + treeWidth / 2;
 
-  nodes.push({ id: rootId, type: "projectNode", position: { x: treeCenterX - 100, y: 0 }, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } });
+  nodes.push({ id: rootId, type: "projectNode", position: { x: treeCenterX - 100, y: 0 }, style: { transition: 'transform 0.3s ease' }, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } });
 
   function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentX: number): number {
     if (children.length === 0) return parentX;
     const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, treeTasks)) * X_SPACING, 0);
     let currentX = parentX - totalWidth / 2 + X_SPACING / 2;
-    children.forEach(child => {
+    children.forEach((child, siblingIndex) => {
       const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
       const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
       const nodeX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
+
+      // Structural fingerprint: parentId:siblingIndex:siblingCount
+      fingerprints[child.id] = `${child.parent_id}:${siblingIndex}:${children.length}`;
+
       nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: depth * Y_SPACING }, style: { transition: 'transform 0.3s ease' }, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect, parentId: child.parent_id } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect, parentId: child.parent_id } });
       const edgeColors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
       edges.push({ id: `e-${parentNodeId}-${nodeId}`, source: parentNodeId, target: nodeId, type: "smoothstep", animated: !child.done, style: { stroke: edgeColors[child.level as TaskLevel], strokeWidth: 2, opacity: child.done ? 0.3 : 0.7 }, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors[child.level as TaskLevel], width: 15, height: 15 } });
@@ -220,24 +225,28 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   layoutChildren(rootId, rootTasks, 1, treeCenterX);
 
-  // Add standalone nodes at their stored positions
-  standaloneTasks.forEach(task => {
+  // Add standalone nodes at deterministic positions (no randomness)
+  standaloneTasks.forEach((task, index) => {
     const nodeId = `task-${task.id}`;
     const isLink = task.level === "link";
-    const posX = task.position_x ?? xOffset + Math.random() * 300;
-    const posY = task.position_y ?? 400 + Math.random() * 200;
+    const posX = task.position_x ?? xOffset + 50 + index * 220;
+    const posY = task.position_y ?? Math.max(400, (rootTasks.length > 0 ? 3 : 1) * 120 + 100);
+
+    fingerprints[task.id] = `standalone:${index}`;
+
     nodes.push({
       id: nodeId,
       type: isLink ? "linkNode" : "taskNode",
       position: { x: posX, y: posY },
       draggable: true,
+      style: { transition: 'transform 0.3s ease' },
       data: isLink
         ? { task, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect }
         : { task, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect },
     });
   });
 
-  return { nodes, edges, treeWidth };
+  return { nodes, edges, treeWidth, fingerprints };
 }
 
 /* ── Multi-Select Dropdown ──────────────────────────────────── */
