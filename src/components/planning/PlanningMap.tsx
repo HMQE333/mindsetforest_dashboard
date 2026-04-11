@@ -339,6 +339,12 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const activeProjects = projects;
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isFullscreen) setIsFullscreen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isFullscreen]);
+
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(() => {
     if (initialProjectId) return [initialProjectId];
     try {
