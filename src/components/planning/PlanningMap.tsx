@@ -337,6 +337,7 @@ const STORAGE_KEY = "planning-map-selected-projects";
 function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
   const { projects } = useUserProjects();
   const activeProjects = projects;
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(() => {
     if (initialProjectId) return [initialProjectId];
