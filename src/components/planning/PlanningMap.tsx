@@ -12,7 +12,7 @@ import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
-import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid, Maximize2, Minimize2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
 import { toast } from "@/hooks/use-toast";
@@ -330,13 +330,20 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
     </div>
   );
 }
-
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
 const STORAGE_KEY = "planning-map-selected-projects";
 
 function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
   const { projects } = useUserProjects();
   const activeProjects = projects;
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isFullscreen) setIsFullscreen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isFullscreen]);
 
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(() => {
     if (initialProjectId) return [initialProjectId];
@@ -568,7 +575,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   }
 
   return (
-    <div className="h-[600px] flex flex-col rounded-2xl overflow-hidden border border-white/10">
+    <div className={`flex flex-col rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-50 rounded-none border-none bg-background" : "h-[600px]"}`}>
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md flex-wrap">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
         <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
@@ -588,6 +595,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           </div>
         )}
         <button onClick={handleAutoOrganize} className="flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-medium bg-muted/30 border border-white/10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all" title="Auto-organize nodes"><LayoutGrid className="h-3.5 w-3.5" /><span className="hidden sm:inline">Organize</span></button>
+        <button onClick={() => setIsFullscreen(f => !f)} className="flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-medium bg-muted/30 border border-white/10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all" title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>{isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}</button>
         <p className="text-[10px] text-muted-foreground hidden lg:block ml-auto">{isMobile ? "Long-press canvas to add" : "Right-click canvas to add · Double-click to edit · Drag to reposition"}</p>
         <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground ml-auto">
           {(Object.entries(levelMeta) as [TaskLevel, typeof levelMeta[TaskLevel]][]).filter(([level]) => level !== "link").map(([level, meta]) => (
