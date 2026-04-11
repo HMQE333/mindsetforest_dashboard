@@ -569,7 +569,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   }
 
   return (
-    <div className="h-[600px] flex flex-col rounded-2xl overflow-hidden border border-white/10">
+    <div className={`flex flex-col rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-50 rounded-none border-none" : "h-[600px]"}`}>
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md flex-wrap">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
         <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
