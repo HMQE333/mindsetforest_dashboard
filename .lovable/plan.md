@@ -1,36 +1,50 @@
 
 
-## Persistent Node Positions with Auto-Organize Button
+## Import Notion "Mastery List" into Library
 
-### Problem
-Currently, all tree-connected nodes get their positions recalculated by `layoutTree` every time the task list changes. This means adding a child, toggling done, or changing parent relationships causes the entire tree to snap back to its algorithmically computed layout. Only standalone nodes persist their positions.
+### What was scraped
+The Notion page contains a table called "Mastery List" with columns: Name, Type, Status, Score, Author, Pages, Category tags, and Owned status. It includes:
+- ~200+ Books
+- ~30+ Courses (MasterClass, Great Courses Plus, Coursera platforms)
+- Films and Academic Journals (will be skipped unless you want them)
 
-### Solution
-Store `position_x` / `position_y` for **all** nodes (not just standalone ones), and use those saved positions whenever available. The auto-layout algorithm becomes opt-in via an "Auto-Organize" button in the toolbar.
+### Plan
 
-### Changes
+**1. Parse the scraped markdown into structured data**
+- Write a Python script to extract each entry from the markdown
+- Identify type (Book, Masterclass, Greatcoursesplus, Coursea, Academic Journal, Film)
+- Extract: title, author, status, score, tags/categories, pages if available
 
-**1. Extend `onNodeDragStop` to save positions for ALL nodes** (`PlanningMap.tsx`)
-- Remove the `if (task?.standalone)` guard — persist position for every dragged node (including project root nodes, which we can store via a separate mechanism or skip).
+**2. Map to your database schema**
 
-**2. Update `layoutTree` to respect saved positions** (`PlanningMap.tsx`)
-- When building tree nodes, check if a task has `position_x` and `position_y` set. If so, use those instead of the computed layout position.
-- Project root nodes will still use computed positions (or we can persist those too via localStorage keyed by project ID).
+Books → `user_books` table:
+- `title`, `author` from Notion
+- `status`: "Done" → "finished", "Not started" → "to-read"
+- `rating`: score mapped to 1-5 scale (scores like 4.5 → 5, 3.5 → 4, etc.)
+- `tags`: category tags from Notion (e.g., "strategy", "philosophy", "power")
+- `total_pages` / `pages_read`: parsed from "256/256" format where available
+- `format`: "owned" by default
+- `cover_color`: random from existing palette
 
-**3. Save positions on drag for tree nodes too** (`PlanningMap.tsx`)
-- On `onNodeDragStop`, update `position_x` / `position_y` in the DB for any task node that gets dragged.
+Courses → `user_courses` table:
+- `title`, `instructor` (author) from Notion
+- `platform`: "Masterclass" / "Great Courses Plus" / "Coursera"
+- `status`: "Done" → "completed", "Not started" → "to-start"
+- `rating`: same mapping as books
+- `tags`: category tags
+- `progress_pct`: 100 if completed, 0 otherwise
 
-**4. Add "Auto-Organize" button to toolbar** (`PlanningMap.tsx`)
-- A small button (e.g., grid/layout icon) in the top bar next to the legend.
-- Clicking it clears all `position_x` / `position_y` for the currently visible tasks (sets them to `null` in DB), then triggers a re-layout using the algorithm.
-- This gives users a way to "reset to clean layout" when things get messy.
+**3. Insert via database** using an edge function or direct insert script
+- Batch insert all books and courses
+- Skip duplicates (Films, Academic Journals unless requested)
 
-**5. Structural change handling** (`PlanningMap.tsx`)
-- When new nodes are added (structure changes), only the **new** node gets an auto-computed position; existing nodes keep their saved positions.
-- The current `structureKey` diffing logic gets updated: on structure change, merge new layout positions only for nodes that don't have saved positions.
+### Technical Details
+- Script runs via `code--exec` using the Supabase client
+- Will need the user's auth session — so we'll use an edge function that accepts the parsed data and inserts it under the authenticated user
+- Alternative: use `psql` direct insert if DB access is available
 
-### UX Summary
-- Drag any node → it stays where you put it, even after edits or navigation
-- Click "Auto-Organize" → everything snaps back to the clean tree layout
-- New nodes appear at computed positions until you drag them somewhere
+### Items skipped by default
+- Films (e.g., "Wolfs of Wall Street", "Openheimer", "haibane renmei")
+- Academic Journals (e.g., "Things that make us smart", "Visual Language...")
+- Entries with no clear title
 
