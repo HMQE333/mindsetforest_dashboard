@@ -4,6 +4,7 @@ export interface Mission {
   duration: string;
   xp: number;
   persistent?: boolean;
+  url?: string;
 }
 
 export interface Category {

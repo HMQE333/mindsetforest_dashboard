@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Paperclip } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { DashboardState } from "@/hooks/useDashboardState";
 import { useUserSettings } from "@/hooks/useUserSettings";
@@ -151,6 +152,15 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {mission.url && (
+                    <button
+                      onClick={() => window.open(mission.url!.startsWith("http") ? mission.url! : `https://${mission.url!}`, "_blank", "noopener,noreferrer")}
+                      className="w-8 h-8 rounded-lg border-2 border-white/15 bg-white/5 flex items-center justify-center hover:bg-primary/15 hover:border-primary/30 transition-all"
+                      title="Open linked URL"
+                    >
+                      <Paperclip className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  )}
                   {!isCompleted && (
                     <button
                       onClick={() => handleSplit(index, mission)}
