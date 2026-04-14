@@ -155,10 +155,10 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   {mission.url && (
                     <button
                       onClick={() => window.open(mission.url!.startsWith("http") ? mission.url! : `https://${mission.url!}`, "_blank", "noopener,noreferrer")}
-                      className="w-8 h-8 rounded-lg border-2 border-white/15 bg-white/5 flex items-center justify-center hover:bg-primary/15 hover:border-primary/30 transition-all"
+                      className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.12] flex items-center justify-center hover:bg-white/[0.12] hover:border-white/[0.2] transition-all group"
                       title="Open linked URL"
                     >
-                      <Paperclip className="h-4 w-4 text-muted-foreground" />
+                      <Paperclip className="h-4 w-4 text-foreground/50 group-hover:text-foreground/80 transition-colors" />
                     </button>
                   )}
                   {!isCompleted && (
