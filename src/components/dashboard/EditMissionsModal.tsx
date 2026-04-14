@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Paperclip } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 
 interface EditMissionsModalProps {
@@ -26,7 +27,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
   };
 
   const addRow = () => {
-    setBuffer(prev => [...prev, { title: "", description: "", duration: "", xp: 10, persistent: false }]);
+    setBuffer(prev => [...prev, { title: "", description: "", duration: "", xp: 10, persistent: false, url: "" }]);
   };
 
   const togglePersistent = (index: number) => {
@@ -35,7 +36,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
 
   const handleSave = () => {
     const cleaned = buffer
-      .map(m => ({ ...m, title: m.title.trim(), description: m.description.trim(), duration: m.duration.trim() || "—", xp: Number(m.xp) || 10, persistent: !!m.persistent }))
+      .map(m => ({ ...m, title: m.title.trim(), description: m.description.trim(), duration: m.duration.trim() || "—", xp: Number(m.xp) || 10, persistent: !!m.persistent, url: m.url?.trim() || undefined }))
       .filter(m => m.title.length > 0);
     onSave(categoryId, cleaned);
     onClose();
@@ -102,6 +103,15 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                   value={mission.description}
                   onChange={e => updateField(index, "description", e.target.value)}
                 />
+                <div className="flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  <input
+                    className="w-full rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-1.5 text-xs outline-none focus:border-primary/90 placeholder:text-muted-foreground"
+                    placeholder="Link URL (optional)"
+                    value={mission.url || ""}
+                    onChange={e => updateField(index, "url", e.target.value)}
+                  />
+                </div>
               </div>
               <div className="flex flex-col gap-2">
                 <div className="grid grid-cols-[1.3fr_0.8fr_auto] gap-2 items-center">
