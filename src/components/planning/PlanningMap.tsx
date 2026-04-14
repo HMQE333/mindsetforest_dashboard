@@ -334,7 +334,6 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
     </div>
   );
 }
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
 const STORAGE_KEY = "planning-map-selected-projects";
 
