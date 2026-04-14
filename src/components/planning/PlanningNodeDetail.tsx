@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Target, Flag, ListChecks, Zap, Check, Calendar, Gauge, BatteryMedium, Pencil, Globe, ExternalLink } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Calendar, Gauge, BatteryMedium, Pencil, Globe, ExternalLink, Paperclip } from "lucide-react";
 import { PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 
 const levelMeta: Record<TaskLevel, { label: string; icon: React.ComponentType<{ className?: string }>; gradient: string }> = {
@@ -33,6 +33,8 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
   const [notes, setNotes] = useState("");
   const [title, setTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
+  const [taskUrl, setTaskUrl] = useState("");
+  const [editingUrl, setEditingUrl] = useState(false);
   const notesRef = useRef("");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,8 +42,10 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
     if (task) {
       setNotes(task.notes || "");
       setTitle(task.title);
+      setTaskUrl(task.url || "");
       notesRef.current = task.notes || "";
       setEditingTitle(false);
+      setEditingUrl(false);
     }
   }, [task]);
 
