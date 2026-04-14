@@ -103,6 +103,9 @@ function TaskNode({ data }: NodeProps) {
       )}
       {hovered && !editing && (
         <div className="absolute -top-2 -right-2 flex gap-1 z-10">
+          {task.url && (
+            <button onClick={e => { e.stopPropagation(); window.open(task.url.startsWith("http") ? task.url : `https://${task.url}`, "_blank", "noopener,noreferrer"); }} className="w-5 h-5 rounded-full bg-muted border border-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all" title="Open link"><Paperclip className="h-3 w-3" /></button>
+          )}
           <button onClick={e => { e.stopPropagation(); onToggle(task.id); }} className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${task.done ? "bg-green-500 text-white" : "bg-muted border border-white/10 text-muted-foreground hover:text-foreground"}`}><Check className="h-3 w-3" /></button>
           <button onClick={e => { e.stopPropagation(); onDelete(task.id); }} className="w-5 h-5 rounded-full bg-destructive/80 text-white flex items-center justify-center hover:bg-destructive transition-all"><Trash2 className="h-3 w-3" /></button>
         </div>
@@ -113,7 +116,8 @@ function TaskNode({ data }: NodeProps) {
           <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-0.5">{meta.label}</p>
           {editing ? <InlineEditor value={task.title} onSave={t => { onRename(task.id, t); setEditing(false); }} onCancel={() => setEditing(false)} /> : <p className={`text-xs font-medium leading-snug ${task.done ? "line-through text-muted-foreground" : "text-foreground"}`}>{task.title}</p>}
         </div>
-        {task.done && !hovered && <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-cyan-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
+        {task.url && !hovered && <button onClick={e => { e.stopPropagation(); window.open(task.url.startsWith("http") ? task.url : `https://${task.url}`, "_blank", "noopener,noreferrer"); }} className="flex-shrink-0 w-5 h-5 rounded-full bg-muted/40 border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-all" title="Open link"><Paperclip className="h-3 w-3" /></button>}
+        {task.done && !hovered && !task.url && <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-cyan-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
       </div>
       {!isStandalone && (
         <div className="flex justify-center mt-2">
