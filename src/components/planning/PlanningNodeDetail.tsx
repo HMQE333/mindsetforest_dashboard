@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Target, Flag, ListChecks, Zap, Check, Calendar, Gauge, BatteryMedium, Pencil, Globe, ExternalLink } from "lucide-react";
+import { Target, Flag, ListChecks, Zap, Check, Calendar, Gauge, BatteryMedium, Pencil, Globe, ExternalLink, Paperclip } from "lucide-react";
 import { PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 
 const levelMeta: Record<TaskLevel, { label: string; icon: React.ComponentType<{ className?: string }>; gradient: string }> = {
@@ -33,6 +33,8 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
   const [notes, setNotes] = useState("");
   const [title, setTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
+  const [taskUrl, setTaskUrl] = useState("");
+  const [editingUrl, setEditingUrl] = useState(false);
   const notesRef = useRef("");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,8 +42,10 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
     if (task) {
       setNotes(task.notes || "");
       setTitle(task.title);
+      setTaskUrl(task.url || "");
       notesRef.current = task.notes || "";
       setEditingTitle(false);
+      setEditingUrl(false);
     }
   }, [task]);
 
@@ -142,44 +146,85 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
           )}
 
           {!isLink && (
-            <div className="grid grid-cols-2 gap-2">
-              {task.deadline && (
-                <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Deadline</p>
-                    <p className="text-xs text-foreground">{new Date(task.deadline).toLocaleDateString()}</p>
-                  </div>
+            <>
+              {/* URL / Link field */}
+              <div className="rounded-xl bg-muted/10 border border-white/5 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Linked URL</p>
                 </div>
-              )}
-              {task.leverage && (
-                <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
-                  <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Leverage</p>
-                    <p className="text-xs text-foreground capitalize">{task.leverage}</p>
+                {editingUrl ? (
+                  <input
+                    autoFocus
+                    value={taskUrl}
+                    onChange={e => setTaskUrl(e.target.value)}
+                    onBlur={() => { onUpdate(task.id, { url: taskUrl.trim() || null }); setEditingUrl(false); }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { onUpdate(task.id, { url: taskUrl.trim() || null }); setEditingUrl(false); }
+                      if (e.key === "Escape") { setTaskUrl(task.url || ""); setEditingUrl(false); }
+                    }}
+                    placeholder="https://..."
+                    className="w-full bg-muted/20 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
+                  />
+                ) : taskUrl ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => window.open(taskUrl.startsWith("http") ? taskUrl : `https://${taskUrl}`, "_blank")}
+                      className="flex-1 flex items-center gap-1.5 text-xs text-primary hover:underline truncate text-left"
+                    >
+                      <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{taskUrl}</span>
+                    </button>
+                    <button onClick={() => setEditingUrl(true)} className="text-muted-foreground hover:text-foreground transition-colors">
+                      <Pencil className="h-3 w-3" />
+                    </button>
                   </div>
-                </div>
-              )}
-              {task.energy && (
-                <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
-                  <BatteryMedium className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Energy</p>
-                    <p className="text-xs text-foreground capitalize">{task.energy}</p>
+                ) : (
+                  <button onClick={() => setEditingUrl(true)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    + Add link
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {task.deadline && (
+                  <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Deadline</p>
+                      <p className="text-xs text-foreground">{new Date(task.deadline).toLocaleDateString()}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {task.time_minutes && (
-                <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
-                  <Zap className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Time</p>
-                    <p className="text-xs text-foreground">{task.time_minutes}m</p>
+                )}
+                {task.leverage && (
+                  <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
+                    <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Leverage</p>
+                      <p className="text-xs text-foreground capitalize">{task.leverage}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+                {task.energy && (
+                  <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
+                    <BatteryMedium className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Energy</p>
+                      <p className="text-xs text-foreground capitalize">{task.energy}</p>
+                    </div>
+                  </div>
+                )}
+                {task.time_minutes && (
+                  <div className="rounded-xl bg-muted/10 p-3 flex items-center gap-2">
+                    <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Time</p>
+                      <p className="text-xs text-foreground">{task.time_minutes}m</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           <div>
