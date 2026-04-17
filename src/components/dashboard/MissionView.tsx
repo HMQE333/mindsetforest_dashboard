@@ -126,7 +126,8 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
 
       {/* Mission Cards */}
       <div className="grid gap-5">
-        {missions.map((baseMission, index) => {
+        {missions.map((baseMission, displayIdx) => {
+          const index = baseMission.__originalIndex ?? displayIdx;
           const missionId = `${categoryId}-${index}`;
           const isCompleted = state.completedMissions.has(missionId);
           const hasVariants = !!(baseMission.variants && baseMission.variants.length > 0);
@@ -135,6 +136,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
           const mission: Mission = variant
             ? { ...baseMission, title: variant.title, description: variant.description, duration: variant.duration, xp: variant.xp, url: variant.url }
             : baseMission;
+          const hasSchedule = !!(baseMission.daysOfWeek && baseMission.daysOfWeek.length > 0 && baseMission.daysOfWeek.length < 7);
 
           return (
             <motion.div
@@ -152,8 +154,13 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   <span>1 of {baseMission.variants!.length}</span>
                 </div>
               )}
+              {hasSchedule && (
+                <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300 backdrop-blur-md">
+                  📅 <span>{formatDays(baseMission.daysOfWeek!)}</span>
+                </div>
+              )}
               <div className="flex justify-between items-start gap-4">
-                <div className={`flex-1 ${hasVariants ? "pt-5" : ""}`}>
+                <div className={`flex-1 ${hasVariants || hasSchedule ? "pt-5" : ""}`}>
                   <h4 className="text-lg font-semibold text-foreground mb-2">{mission.title}</h4>
                   <p className="text-sm text-foreground/70 mb-3 leading-relaxed">{mission.description}</p>
                   <div className="flex gap-4 text-sm">
@@ -220,4 +227,15 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
       </div>
     </motion.div>
   );
+}
+
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function formatDays(days: number[]): string {
+  if (days.length === 0 || days.length === 7) return "Every day";
+  const sorted = [...days].sort((a, b) => a - b);
+  const isWeekdays = sorted.length === 5 && sorted.every(d => d >= 1 && d <= 5);
+  if (isWeekdays) return "Weekdays";
+  const isWeekends = sorted.length === 2 && sorted.includes(0) && sorted.includes(6);
+  if (isWeekends) return "Weekends";
+  return sorted.map(d => DAY_SHORT[d]).join("·");
 }
