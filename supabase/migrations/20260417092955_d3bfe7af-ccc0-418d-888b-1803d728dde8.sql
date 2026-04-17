@@ -1,0 +1,1 @@
+ALTER TABLE public.dashboard_state ADD COLUMN IF NOT EXISTS rolled_variants jsonb NOT NULL DEFAULT '{}'::jsonb;
