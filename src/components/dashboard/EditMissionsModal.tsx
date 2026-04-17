@@ -368,3 +368,84 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
     </motion.div>
   );
 }
+
+const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const DAY_FULL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+interface DayPickerProps {
+  days: number[] | undefined;
+  onToggle: (d: number) => void;
+  onSetAll: () => void;
+  onWeekdays: () => void;
+  onWeekends: () => void;
+}
+
+function DayPicker({ days, onToggle, onSetAll, onWeekdays, onWeekends }: DayPickerProps) {
+  const isAll = !days || days.length === 0 || days.length === 7;
+  const active = isAll ? [0, 1, 2, 3, 4, 5, 6] : days;
+  const sorted = [...active].sort((a, b) => a - b);
+  const isWeekdays = !isAll && sorted.length === 5 && sorted.every(d => d >= 1 && d <= 5);
+  const isWeekends = !isAll && sorted.length === 2 && sorted.includes(0) && sorted.includes(6);
+  const label = isAll
+    ? "Every day"
+    : isWeekdays
+      ? "Weekdays only"
+      : isWeekends
+        ? "Weekends only"
+        : sorted.map(d => DAY_FULL[d]).join(", ");
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/10">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-foreground/50 font-semibold mr-1">Days:</span>
+          {DAY_LABELS.map((lbl, d) => {
+            const on = active.includes(d);
+            return (
+              <button
+                key={d}
+                onClick={() => onToggle(d)}
+                title={DAY_FULL[d]}
+                className={`w-7 h-7 rounded-full text-[11px] font-bold transition-all border ${
+                  on
+                    ? "border-primary/60 bg-primary/25 text-primary"
+                    : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
+                }`}
+              >
+                {lbl}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onSetAll}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+              isAll ? "border-primary/60 bg-primary/20 text-primary" : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
+            }`}
+          >
+            Every day
+          </button>
+          <button
+            onClick={onWeekdays}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+              isWeekdays ? "border-primary/60 bg-primary/20 text-primary" : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
+            }`}
+          >
+            Weekdays
+          </button>
+          <button
+            onClick={onWeekends}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
+              isWeekends ? "border-primary/60 bg-primary/20 text-primary" : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
+            }`}
+          >
+            Weekends
+          </button>
+        </div>
+      </div>
+      <p className="text-[10px] text-foreground/50 mt-1.5">📅 {label}</p>
+    </div>
+  );
+}
+
