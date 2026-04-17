@@ -1,87 +1,79 @@
 
 
-## Randomized Task Variants
+## Day-of-Week Scheduled Tasks
 
-Add a feature where a single mission slot can hold multiple "variants" with weighted probabilities. Each day (on reset), the system rolls the dice and picks one variant to display. Perfect for users who want variety or can't decide between two similar tasks.
+Let users mark a task to appear only on specific weekdays (e.g., only Saturdays). On hidden days, the task doesn't exist for the user — it's invisible, not counted in totals, doesn't affect "X/3 completed" math, doesn't roll variants, doesn't appear at all.
 
 ### Concept
 
-Instead of a fixed task like "Push-ups + Warm-up", a slot could contain:
-- 60% → "Push-ups + Warm-up" (15 min, 25 XP)
-- 30% → "Pull-ups Practice" (15 min, 25 XP)  
-- 10% → "Full Body Stretch" (15 min, 20 XP)
+Each task gets an optional `daysOfWeek` array (0=Sunday … 6=Saturday). Default = undefined → shows every day (current behavior). If set (e.g. `[6, 0]` for weekends), the task only renders on those days.
 
-Each morning (or on day reset), one variant is rolled and shown for the day.
+### Data Model
 
-### Data Model Changes
-
-Update `Mission` interface in `src/lib/dashboard-data.ts`:
+Update `Mission` in `src/lib/dashboard-data.ts`:
 ```ts
-interface MissionVariant {
-  title: string;
-  description: string;
-  duration: string;
-  xp: number;
-  url?: string;
-  weight: number; // probability weight (1-100)
-}
-
 interface Mission {
   // ...existing fields
-  variants?: MissionVariant[]; // if present, daily roll picks one
+  daysOfWeek?: number[]; // [0..6]; undefined = every day
 }
 ```
 
-Add to `DashboardState`:
+No DB schema change needed — `custom_missions` JSONB already stores arbitrary mission shape.
+
+### Filter Logic
+
+Add a helper in `useDashboardState.ts`:
 ```ts
-rolledVariants: Record<string, number>; // missionId -> chosen variant index for the day
+function isVisibleToday(mission: Mission, today = new Date().getDay()): boolean {
+  if (!mission.daysOfWeek || mission.daysOfWeek.length === 0) return true;
+  return mission.daysOfWeek.includes(today);
+}
 ```
+
+Apply it inside `getMissions(categoryId)` so the filtered list is the single source of truth. This automatically fixes:
+- Mission cards in `MissionView`
+- "X/3 completed" counters (CategoryGrid uses filtered count)
+- XP totals & category-complete detection
+- Variant rolling (only rolls for visible missions)
 
 ### UI Changes
 
-**1. Edit Missions Modal** (`EditMissionsModal.tsx`)
-- Add a small "🎲 Variants" toggle button per task (next to the persistent toggle)
-- When enabled, expand the row to show a variants sub-list:
-  - Each variant has: title, description, duration, XP, weight (%)
-  - "Add variant" button
-  - Auto-normalize weights display (show "60%" if weights sum doesn't equal 100)
-  - Delete variant button (must keep at least 1)
-
-**2. Mission Card** (`MissionView.tsx`)
-- Show a small 🎲 dice badge in the corner of cards that have variants
-- Show the currently rolled variant's content (title, description, duration, XP)
-- Add a "Reroll" button (small, subtle) next to the dice badge — costs nothing but only available if mission isn't completed yet today
-
-**3. Daily Reset Logic** (`useDashboardState.ts`)
-- On `resetDay` (and on first load of a new day), iterate through all missions with `variants` and roll a new variant index based on weights
-- Store rolls in `rolledVariants` map, keyed by `${categoryId}-${missionIndex}`
-- Persist to DB
-
-### Helper Function
-```ts
-function rollVariant(variants: MissionVariant[]): number {
-  const total = variants.reduce((s, v) => s + v.weight, 0);
-  let r = Math.random() * total;
-  for (let i = 0; i < variants.length; i++) {
-    r -= variants[i].weight;
-    if (r <= 0) return i;
-  }
-  return 0;
-}
+**1. EditMissionsModal.tsx**
+Add a compact day picker row per task (small, subtle, below the existing toggles):
 ```
+Days:  [S] [M] [T] [W] [T] [F] [S]   ← seven small pill toggles
+       (all selected or none = "Every day")
+```
+- Click toggles individual day on/off
+- "Every day" preset button to clear all selections
+- Quick presets: "Weekdays" (Mon–Fri) / "Weekends" (Sat–Sun)
+- When fewer than 7 days are selected, show a small label: "Mon, Wed, Fri" or "Weekends only"
 
-### Database
-The `dashboard_state.custom_missions` JSONB column already stores arbitrary mission shape, so `variants` field will be persisted automatically. Need a new column `rolled_variants JSONB` on `dashboard_state` table to store the daily rolls.
+**2. MissionView.tsx**
+Optional: small calendar badge `📅 Sat·Sun` in the top-right of mission cards that have `daysOfWeek` set, so users remember why a task is special. Same style as the dice variant badge.
+
+**3. CategoryGrid.tsx**
+No change needed if `getMissions()` already returns filtered list — counters will follow automatically. Will verify during implementation.
+
+### Edge Cases
+
+- **All 7 days selected** → treat same as undefined (every day) for cleaner UI
+- **Zero days selected** → block save in modal, show inline warning ("Select at least one day or 'Every day'")
+- **Variants** → variant rolling only iterates visible missions, no orphan rolls
+- **Completion IDs** → unchanged (still `${categoryId}-${index}`); hidden tasks just aren't shown but their old completion records remain harmless
+- **Reset defaults** → unchanged behavior
 
 ### Files to Modify
-1. `src/lib/dashboard-data.ts` — add `MissionVariant` type and `variants` field
-2. `src/hooks/useDashboardState.ts` — add `rolledVariants` state, roll logic on reset, `rerollMission` function, persist new field
-3. `src/components/dashboard/EditMissionsModal.tsx` — add variants UI editor
-4. `src/components/dashboard/MissionView.tsx` — read rolled variant, show dice badge + reroll button
-5. New migration to add `rolled_variants` JSONB column to `dashboard_state` table
+
+1. `src/lib/dashboard-data.ts` — add `daysOfWeek?: number[]` to `Mission`
+2. `src/hooks/useDashboardState.ts` — add `isVisibleToday` helper, filter inside `getMissions`, skip hidden in variant roll loop
+3. `src/components/dashboard/EditMissionsModal.tsx` — add day picker UI per task
+4. `src/components/dashboard/MissionView.tsx` — optional schedule badge on cards
+5. `src/components/dashboard/CategoryGrid.tsx` — verify counter uses filtered list (likely already does)
 
 ### Out of Scope
-- Manual variant picker (always random, by design — that's the point)
-- Per-variant statistics / "this variant rolled X times"
-- Locking a specific variant for N days
+
+- Date-range scheduling (e.g., "only next month")
+- Different tasks per day in the same slot (variants already cover that)
+- Timezone handling beyond browser-local `new Date().getDay()`
 
