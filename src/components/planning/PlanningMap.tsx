@@ -188,7 +188,7 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
   return children.reduce((sum, c) => sum + countLeaves(c.id, allTasks), 0);
 }
 
-function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0, usePersistedPositions: boolean = true): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
+function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0, yOffset: number = 0, usePersistedPositions: boolean = true): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const rootId = `project-${project.id}`;
@@ -204,7 +204,12 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   const treeCenterX = xOffset + treeWidth / 2;
 
-  nodes.push({ id: rootId, type: "projectNode", position: { x: treeCenterX - 100, y: 0 }, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } });
+  // Project root placeholder — we may overwrite its X below to anchor to children centroid
+  const rootNode: Node = { id: rootId, type: "projectNode", position: { x: treeCenterX - 100, y: yOffset }, draggable: true, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } };
+  nodes.push(rootNode);
+
+  // Track first-row child X positions to centroid-anchor the project root when persisted
+  const firstRowXs: number[] = [];
 
   function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentX: number): number {
     if (children.length === 0) return parentX;
@@ -214,10 +219,11 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
       const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
       const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
       const computedX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
-      const computedY = depth * Y_SPACING;
+      const computedY = yOffset + depth * Y_SPACING;
       // Use persisted position if available, otherwise use computed
       const nodeX = (usePersistedPositions && child.position_x != null) ? child.position_x : computedX;
       const nodeY = (usePersistedPositions && child.position_y != null) ? child.position_y : computedY;
+      if (depth === 1) firstRowXs.push(nodeX);
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
       nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: nodeY }, draggable: true, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
@@ -231,12 +237,21 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   layoutChildren(rootId, rootTasks, 1, treeCenterX);
 
+  // Anchor the project root to the centroid of its first-row children — keeps the root above its task cluster
+  // even when persisted positions skew the layout left/right
+  if (firstRowXs.length > 0) {
+    const minX = Math.min(...firstRowXs);
+    const maxX = Math.max(...firstRowXs);
+    const centroid = (minX + maxX) / 2;
+    rootNode.position = { x: centroid - 100, y: yOffset };
+  }
+
   // Add standalone nodes at their stored positions
   standaloneTasks.forEach(task => {
     const nodeId = `task-${task.id}`;
     const isLink = task.level === "link";
     const posX = task.position_x ?? xOffset + Math.random() * 300;
-    const posY = task.position_y ?? 400 + Math.random() * 200;
+    const posY = task.position_y ?? yOffset + 400 + Math.random() * 200;
     nodes.push({
       id: nodeId,
       type: isLink ? "linkNode" : "taskNode",
@@ -249,6 +264,20 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
   });
 
   return { nodes, edges, treeWidth };
+}
+
+/** Find a free horizontal slot for a new project of given width that doesn't overlap existing project boxes. */
+function findFreeSlot(existingBoxes: Array<{ minX: number; maxX: number }>, newWidth: number, gap: number): number {
+  if (existingBoxes.length === 0) return 0;
+  const sorted = [...existingBoxes].sort((a, b) => a.minX - b.minX);
+  // Try gaps between projects
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gapStart = sorted[i].maxX + gap;
+    const gapEnd = sorted[i + 1].minX - gap;
+    if (gapEnd - gapStart >= newWidth) return gapStart;
+  }
+  // Append after the rightmost
+  return sorted[sorted.length - 1].maxX + gap;
 }
 
 /* ── Multi-Select Dropdown ──────────────────────────────────── */
