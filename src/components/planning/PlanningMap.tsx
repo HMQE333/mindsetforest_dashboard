@@ -549,8 +549,9 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     }
 
     // Preserve original selection order in the output
-    const order = new Map(selectedProjects.map((p, i) => [p.id, i]));
-    projectNodeBuckets.sort((a, b) => (order.get(a.project.id) ?? 0) - (order.get(b.project.id) ?? 0));
+    const order: Record<string, number> = {};
+    selectedProjects.forEach((p, i) => { order[p.id] = i; });
+    projectNodeBuckets.sort((a, b) => (order[a.project.id] ?? 0) - (order[b.project.id] ?? 0));
     for (const bucket of projectNodeBuckets) {
       allNodes.push(...bucket.nodes);
       allEdges.push(...bucket.edges);
