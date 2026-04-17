@@ -327,6 +327,7 @@ export type Database = {
           id: string
           last_completion_date: string | null
           missions_completed: number
+          rolled_variants: Json
           streak_days: number
           updated_at: string
           user_id: string
@@ -342,6 +343,7 @@ export type Database = {
           id?: string
           last_completion_date?: string | null
           missions_completed?: number
+          rolled_variants?: Json
           streak_days?: number
           updated_at?: string
           user_id: string
@@ -357,6 +359,7 @@ export type Database = {
           id?: string
           last_completion_date?: string | null
           missions_completed?: number
+          rolled_variants?: Json
           streak_days?: number
           updated_at?: string
           user_id?: string

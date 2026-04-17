@@ -20,7 +20,7 @@ import WeeklyProgress from "./WeeklyProgress";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -190,6 +190,7 @@ export default function DashboardView() {
             onComplete={handleComplete}
             onSplit={splitMission}
             onResetCategory={resetCategory}
+            onReroll={rerollMission}
             onBack={() => setSelectedCategory(selectedCategory.startsWith("project-") ? "__projects__" : null)}
             onEdit={() => setEditingCategory(selectedCategory)}
             onAI={() => setAICategory(selectedCategory)}

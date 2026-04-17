@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
-import { CATEGORIES, Mission } from "@/lib/dashboard-data";
+import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
 
 export interface DashboardState {
   currentXP: number;
@@ -14,6 +14,7 @@ export interface DashboardState {
   categoriesEngaged: Set<string>;
   completedMissions: Set<string>;
   customMissions: Record<string, Mission[]>;
+  rolledVariants: Record<string, number>;
 }
 
 function todayISO(): string {
@@ -32,6 +33,43 @@ function todayISOFrom(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+export function rollVariant(variants: MissionVariant[]): number {
+  if (!variants || variants.length === 0) return 0;
+  const total = variants.reduce((s, v) => s + (v.weight > 0 ? v.weight : 0), 0);
+  if (total <= 0) return Math.floor(Math.random() * variants.length);
+  let r = Math.random() * total;
+  for (let i = 0; i < variants.length; i++) {
+    r -= (variants[i].weight > 0 ? variants[i].weight : 0);
+    if (r <= 0) return i;
+  }
+  return 0;
+}
+
+function rollAllVariants(
+  customMissions: Record<string, Mission[]>,
+): Record<string, number> {
+  const rolled: Record<string, number> = {};
+  // Roll for default categories
+  for (const cat of CATEGORIES) {
+    const missions = customMissions[cat.id] || cat.missions;
+    missions.forEach((m, idx) => {
+      if (m.variants && m.variants.length > 0) {
+        rolled[`${cat.id}-${idx}`] = rollVariant(m.variants);
+      }
+    });
+  }
+  // Roll for custom-only categories
+  for (const [catId, missions] of Object.entries(customMissions)) {
+    if (CATEGORIES.find(c => c.id === catId)) continue;
+    missions.forEach((m, idx) => {
+      if (m.variants && m.variants.length > 0) {
+        rolled[`${catId}-${idx}`] = rollVariant(m.variants);
+      }
+    });
+  }
+  return rolled;
+}
+
 const defaultState: DashboardState = {
   currentXP: 0,
   currentLevel: 1,
@@ -42,6 +80,7 @@ const defaultState: DashboardState = {
   categoriesEngaged: new Set(),
   completedMissions: new Set(),
   customMissions: {},
+  rolledVariants: {},
 };
 
 export function useDashboardState() {
@@ -63,6 +102,9 @@ export function useDashboardState() {
       if (data && !error) {
         const today = todayISO();
         const needsReset = data.day_key !== today;
+        const customMissions = (data.custom_missions as unknown as Record<string, Mission[]>) || {};
+        const existingRolled = ((data as { rolled_variants?: Record<string, number> }).rolled_variants) || {};
+        const rolledVariants = needsReset ? rollAllVariants(customMissions) : existingRolled;
 
         setState({
           currentXP: data.current_xp,
@@ -73,7 +115,8 @@ export function useDashboardState() {
           missionsCompleted: needsReset ? 0 : data.missions_completed,
           categoriesEngaged: new Set(needsReset ? [] : (data.categories_engaged || [])),
           completedMissions: new Set(needsReset ? [] : (data.completed_missions || [])),
-          customMissions: (data.custom_missions as unknown as Record<string, Mission[]>) || {},
+          customMissions,
+          rolledVariants,
         });
       }
       setLoading(false);
@@ -95,6 +138,7 @@ export function useDashboardState() {
       categories_engaged: Array.from(s.categoriesEngaged),
       completed_missions: Array.from(s.completedMissions),
       custom_missions: s.customMissions as unknown as Record<string, never>,
+      rolled_variants: s.rolledVariants as unknown as Record<string, never>,
     };
 
     const { error } = await supabase.from("dashboard_state").upsert([payload], { onConflict: "user_id" });
@@ -157,6 +201,7 @@ export function useDashboardState() {
         completedMissions: new Set(),
         customMissions: newCustomMissions,
         dayKey: todayISO(),
+        rolledVariants: rollAllVariants(newCustomMissions),
       };
       persist(next);
       return next;
@@ -165,12 +210,45 @@ export function useDashboardState() {
 
   const saveCustomMissions = useCallback((categoryId: string, missions: Mission[]) => {
     setState(prev => {
+      // Re-roll any variants for this category
+      const newRolled = { ...prev.rolledVariants };
+      // Clear old rolls for this category
+      Object.keys(newRolled).forEach(k => {
+        if (k.startsWith(categoryId + "-")) delete newRolled[k];
+      });
+      missions.forEach((m, idx) => {
+        if (m.variants && m.variants.length > 0) {
+          newRolled[`${categoryId}-${idx}`] = rollVariant(m.variants);
+        }
+      });
       const next: DashboardState = {
         ...prev,
         customMissions: { ...prev.customMissions, [categoryId]: missions },
+        rolledVariants: newRolled,
       };
       persist(next);
       return next;
+    });
+  }, [persist]);
+
+  const rerollMission = useCallback((categoryId: string, missionIndex: number) => {
+    setState(prev => {
+      const missions = prev.customMissions[categoryId]
+        || CATEGORIES.find(c => c.id === categoryId)?.missions
+        || [];
+      const m = missions[missionIndex];
+      if (!m?.variants || m.variants.length === 0) return prev;
+      const key = `${categoryId}-${missionIndex}`;
+      const current = prev.rolledVariants[key] ?? 0;
+      let next = rollVariant(m.variants);
+      // try to avoid same roll if possible
+      if (m.variants.length > 1 && next === current) {
+        next = rollVariant(m.variants);
+      }
+      const newRolled = { ...prev.rolledVariants, [key]: next };
+      const nextState = { ...prev, rolledVariants: newRolled };
+      persist(nextState);
+      return nextState;
     });
   }, [persist]);
 
@@ -208,10 +286,22 @@ export function useDashboardState() {
       const newCompleted = new Set(
         Array.from(prev.completedMissions).filter(id => !id.startsWith(categoryId + "-"))
       );
+      const newRolled = { ...prev.rolledVariants };
+      Object.keys(newRolled).forEach(k => {
+        if (k.startsWith(categoryId + "-")) delete newRolled[k];
+      });
+      // re-roll defaults for this category
+      const defaults = CATEGORIES.find(c => c.id === categoryId)?.missions || [];
+      defaults.forEach((m, idx) => {
+        if (m.variants && m.variants.length > 0) {
+          newRolled[`${categoryId}-${idx}`] = rollVariant(m.variants);
+        }
+      });
       const next: DashboardState = {
         ...prev,
         customMissions: newCustom,
         completedMissions: newCompleted,
+        rolledVariants: newRolled,
       };
       persist(next);
       return next;
@@ -242,6 +332,7 @@ export function useDashboardState() {
     splitMission,
     resetCategory,
     spendXP,
+    rerollMission,
     getMissions,
     getCompletedCount,
   };

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Dice5 } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { DashboardState } from "@/hooks/useDashboardState";
 import { useUserSettings } from "@/hooks/useUserSettings";
@@ -19,13 +19,14 @@ interface MissionViewProps {
   onComplete: (categoryId: string, index: number, xp: number) => void;
   onSplit: (categoryId: string, index: number, subTasks: Mission[]) => void;
   onResetCategory: (categoryId: string) => void;
+  onReroll: (categoryId: string, index: number) => void;
   onBack: () => void;
   onEdit: () => void;
   onAI: () => void;
   projectInfo?: ProjectInfo | null;
 }
 
-export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
+export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onReroll, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
   const { getCategories } = useUserSettings();
   const categories = getCategories();
   const category = categories.find(c => c.id === categoryId);
@@ -125,9 +126,15 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
 
       {/* Mission Cards */}
       <div className="grid gap-5">
-        {missions.map((mission, index) => {
+        {missions.map((baseMission, index) => {
           const missionId = `${categoryId}-${index}`;
           const isCompleted = state.completedMissions.has(missionId);
+          const hasVariants = !!(baseMission.variants && baseMission.variants.length > 0);
+          const rolledIdx = state.rolledVariants[missionId] ?? 0;
+          const variant = hasVariants ? baseMission.variants![Math.min(rolledIdx, baseMission.variants!.length - 1)] : null;
+          const mission: Mission = variant
+            ? { ...baseMission, title: variant.title, description: variant.description, duration: variant.duration, xp: variant.xp, url: variant.url }
+            : baseMission;
 
           return (
             <motion.div
@@ -139,8 +146,14 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
               }`}
               style={isCompleted ? { borderColor: displayColor, background: `linear-gradient(135deg, ${displayColor}15, transparent)` } : {}}
             >
+              {hasVariants && (
+                <div className="absolute top-3 left-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 border border-primary/30 text-[10px] font-semibold text-primary/90 backdrop-blur-md">
+                  <Dice5 className="h-3 w-3" />
+                  <span>1 of {baseMission.variants!.length}</span>
+                </div>
+              )}
               <div className="flex justify-between items-start gap-4">
-                <div className="flex-1">
+                <div className={`flex-1 ${hasVariants ? "pt-5" : ""}`}>
                   <h4 className="text-lg font-semibold text-foreground mb-2">{mission.title}</h4>
                   <p className="text-sm text-foreground/70 mb-3 leading-relaxed">{mission.description}</p>
                   <div className="flex gap-4 text-sm">
@@ -152,6 +165,15 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {hasVariants && !isCompleted && (
+                    <button
+                      onClick={() => onReroll(categoryId, index)}
+                      className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.12] flex items-center justify-center hover:bg-primary/15 hover:border-primary/30 transition-all group"
+                      title="Reroll variant"
+                    >
+                      <Dice5 className="h-4 w-4 text-foreground/50 group-hover:text-primary transition-colors" />
+                    </button>
+                  )}
                   {mission.url && (
                     <button
                       onClick={() => window.open(mission.url!.startsWith("http") ? mission.url! : `https://${mission.url!}`, "_blank", "noopener,noreferrer")}
