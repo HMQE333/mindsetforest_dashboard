@@ -826,6 +826,8 @@ export type Database = {
           emoji: string
           icon: string
           id: string
+          layout_x: number | null
+          layout_y: number | null
           name: string
           parent_category: string | null
           user_id: string
@@ -836,6 +838,8 @@ export type Database = {
           emoji?: string
           icon?: string
           id?: string
+          layout_x?: number | null
+          layout_y?: number | null
           name: string
           parent_category?: string | null
           user_id: string
@@ -846,6 +850,8 @@ export type Database = {
           emoji?: string
           icon?: string
           id?: string
+          layout_x?: number | null
+          layout_y?: number | null
           name?: string
           parent_category?: string | null
           user_id?: string
