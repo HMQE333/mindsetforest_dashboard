@@ -34,6 +34,31 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
     setBuffer(prev => prev.map((m, i) => i === index ? { ...m, persistent: !m.persistent } : m));
   };
 
+  const setDays = (index: number, days: number[] | undefined) => {
+    setBuffer(prev => prev.map((m, i) => {
+      if (i !== index) return m;
+      // Treat full week or empty as undefined (every day)
+      if (!days || days.length === 0 || days.length === 7) {
+        const { daysOfWeek, ...rest } = m;
+        return rest as Mission;
+      }
+      return { ...m, daysOfWeek: [...days].sort((a, b) => a - b) };
+    }));
+  };
+
+  const toggleDay = (index: number, day: number) => {
+    setBuffer(prev => prev.map((m, i) => {
+      if (i !== index) return m;
+      const current = m.daysOfWeek && m.daysOfWeek.length > 0 ? m.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
+      const next = current.includes(day) ? current.filter(d => d !== day) : [...current, day];
+      if (next.length === 0 || next.length === 7) {
+        const { daysOfWeek, ...rest } = m;
+        return rest as Mission;
+      }
+      return { ...m, daysOfWeek: next.sort((a, b) => a - b) };
+    }));
+  };
+
   const toggleVariants = (index: number) => {
     setBuffer(prev => prev.map((m, i) => {
       if (i !== index) return m;
