@@ -45,6 +45,11 @@ export function rollVariant(variants: MissionVariant[]): number {
   return 0;
 }
 
+export function isVisibleToday(mission: Mission, today: number = new Date().getDay()): boolean {
+  if (!mission.daysOfWeek || mission.daysOfWeek.length === 0 || mission.daysOfWeek.length === 7) return true;
+  return mission.daysOfWeek.includes(today);
+}
+
 function rollAllVariants(
   customMissions: Record<string, Mission[]>,
 ): Record<string, number> {
