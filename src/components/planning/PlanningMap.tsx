@@ -367,7 +367,7 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
 const STORAGE_KEY = "planning-map-selected-projects";
 
 function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
-  const { projects } = useUserProjects();
+  const { projects, updateProjectLayout } = useUserProjects();
   const activeProjects = projects;
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -476,12 +476,16 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
   }, [tasks, updateTask]);
 
-  // Drag stop — persist position for ALL nodes
+  // Drag stop — persist position for ALL nodes (project root saves layout offset, task nodes save their position)
   const handleNodeDragStop = useCallback((_: any, node: Node) => {
+    if (node.id.startsWith("project-")) {
+      const projectId = node.id.replace("project-", "");
+      updateProjectLayout(projectId, node.position.x, node.position.y);
+      return;
+    }
     const taskId = node.id.replace("task-", "");
-    if (node.id.startsWith("project-")) return; // skip project root nodes
     updateTask(taskId, { position_x: node.position.x, position_y: node.position.y });
-  }, [updateTask]);
+  }, [updateTask, updateProjectLayout]);
 
   const callbacks = useMemo(() => ({
     makeOnAddChild: (projectId: string) => (parentId: string | null, level: TaskLevel, title: string) => handleAddChildForProject(projectId, parentId, level, title),
@@ -494,67 +498,95 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
 
   const filteredTasks = useMemo(() => tasks.filter(t => selectedProjectIds.includes(t.project_id)), [tasks, selectedProjectIds]);
 
-  const { initialNodes, initialEdges } = useMemo(() => {
+  const { initialNodes, initialEdges, projectsNeedingPlacement } = useMemo(() => {
     const selectedProjects = activeProjects.filter(p => selectedProjectIds.includes(p.id));
-    if (selectedProjects.length === 0) return { initialNodes: [], initialEdges: [] };
+    if (selectedProjects.length === 0) return { initialNodes: [], initialEdges: [], projectsNeedingPlacement: [] as Array<{ id: string; x: number; y: number }> };
 
     const allNodes: Node[] = [];
     const allEdges: Edge[] = [];
-    let xOffset = 0;
     const GAP = 300;
-    const NODE_WIDTH = 220; // approximate max node width for bounding box padding
     const usePersistedPos = !forceAutoLayout;
 
-    for (const project of selectedProjects) {
-      const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOffset, usePersistedPos);
+    // Existing project bounding boxes (from projects with saved layout) — used to find slots for unplaced ones
+    const placedBoxes: Array<{ minX: number; maxX: number }> = [];
+    const newPlacements: Array<{ id: string; x: number; y: number }> = [];
 
-      // Compute actual bounding box of this project's nodes (accounts for persisted positions
-      // that may extend far left/right of the computed treeWidth, preventing overlap with the next project)
-      let minX = Infinity;
-      let maxX = -Infinity;
-      for (const n of nodes) {
-        if (n.position.x < minX) minX = n.position.x;
-        if (n.position.x > maxX) maxX = n.position.x;
-      }
-      if (!isFinite(minX)) { minX = xOffset; maxX = xOffset + treeWidth; }
+    // First pass: layout projects with saved offsets, collect their bounding boxes
+    // Second pass: place projects without saved offsets in free slots
+    const withOffset = selectedProjects.filter(p => !forceAutoLayout && p.layout_x != null);
+    const withoutOffset = selectedProjects.filter(p => forceAutoLayout || p.layout_x == null);
 
-      // Shift all nodes of this project so their leftmost edge sits at xOffset
-      const shift = xOffset - minX;
-      if (shift !== 0) {
-        for (const n of nodes) {
-          n.position = { x: n.position.x + shift, y: n.position.y };
-        }
-        maxX += shift;
-      }
+    const projectNodeBuckets: Array<{ project: UserProject; nodes: Node[]; edges: Edge[]; treeWidth: number }> = [];
 
-      allNodes.push(...nodes);
-      allEdges.push(...edges);
-
-      // Next project starts after this project's actual right edge + node width + gap
-      xOffset = maxX + NODE_WIDTH + GAP;
+    for (const project of withOffset) {
+      const xOff = project.layout_x ?? 0;
+      const yOff = project.layout_y ?? 0;
+      const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOff, yOff, usePersistedPos);
+      projectNodeBuckets.push({ project, nodes, edges, treeWidth });
+      let minX = Infinity, maxX = -Infinity;
+      for (const n of nodes) { if (n.position.x < minX) minX = n.position.x; if (n.position.x > maxX) maxX = n.position.x; }
+      if (!isFinite(minX)) { minX = xOff; maxX = xOff + treeWidth; }
+      placedBoxes.push({ minX, maxX });
     }
 
-    return { initialNodes: allNodes, initialEdges: allEdges };
+    for (const project of withoutOffset) {
+      // Probe layout at origin to measure width
+      const probe = layoutTree(project, tasks, callbacks, 0, 0, usePersistedPos);
+      let minX = Infinity, maxX = -Infinity;
+      for (const n of probe.nodes) { if (n.position.x < minX) minX = n.position.x; if (n.position.x > maxX) maxX = n.position.x; }
+      if (!isFinite(minX)) { minX = 0; maxX = probe.treeWidth; }
+      const width = maxX - minX;
+      const slotX = findFreeSlot(placedBoxes, width, GAP);
+      const shift = slotX - minX;
+      // Apply shift to all nodes
+      for (const n of probe.nodes) { n.position = { x: n.position.x + shift, y: n.position.y }; }
+      projectNodeBuckets.push({ project, nodes: probe.nodes, edges: probe.edges, treeWidth: probe.treeWidth });
+      placedBoxes.push({ minX: slotX, maxX: slotX + width });
+      // Schedule persisting the chosen offset (only when not in force-auto-layout mode)
+      if (!forceAutoLayout) {
+        newPlacements.push({ id: project.id, x: slotX, y: 0 });
+      }
+    }
+
+    // Preserve original selection order in the output
+    const order = new Map(selectedProjects.map((p, i) => [p.id, i]));
+    projectNodeBuckets.sort((a, b) => (order.get(a.project.id) ?? 0) - (order.get(b.project.id) ?? 0));
+    for (const bucket of projectNodeBuckets) {
+      allNodes.push(...bucket.nodes);
+      allEdges.push(...bucket.edges);
+    }
+
+    return { initialNodes: allNodes, initialEdges: allEdges, projectsNeedingPlacement: newPlacements };
   }, [activeProjects, selectedProjectIds, tasks, callbacks, forceAutoLayout]);
 
-  // Auto-organize: clear all saved positions and re-layout
+  // Persist auto-placed offsets to the DB (silent — projects remember where they landed)
+  useEffect(() => {
+    if (projectsNeedingPlacement.length === 0) return;
+    projectsNeedingPlacement.forEach(p => { updateProjectLayout(p.id, p.x, p.y); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsNeedingPlacement]);
+
+  // Auto-organize: clear all saved positions (tasks AND project layouts) and re-layout
   const handleAutoOrganize = useCallback(async () => {
-    // Clear positions in DB for all visible tasks
     const taskIds = filteredTasks.map(t => t.id);
-    if (taskIds.length === 0) return;
-    // Batch clear via individual updates
-    await Promise.all(taskIds.map(id =>
-      (supabase.from("planning_tasks" as any) as any)
-        .update({ position_x: null, position_y: null })
-        .eq("id", id)
-    ));
-    // Force clean layout and refetch
+    const projectIds = selectedProjectIds;
+    await Promise.all([
+      ...taskIds.map(id =>
+        (supabase.from("planning_tasks" as any) as any)
+          .update({ position_x: null, position_y: null })
+          .eq("id", id)
+      ),
+      ...projectIds.map(id =>
+        (supabase.from("user_projects" as any) as any)
+          .update({ layout_x: null, layout_y: null })
+          .eq("id", id)
+      ),
+    ]);
     setForceAutoLayout(true);
     await refetch();
-    // Apply clean layout from initialNodes after refetch
     setTimeout(() => setForceAutoLayout(false), 200);
     toast({ title: "Auto-organized", description: "Nodes reset to standard layout" });
-  }, [filteredTasks, refetch]);
+  }, [filteredTasks, refetch, selectedProjectIds]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
