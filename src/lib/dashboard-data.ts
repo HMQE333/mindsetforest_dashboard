@@ -1,3 +1,12 @@
+export interface MissionVariant {
+  title: string;
+  description: string;
+  duration: string;
+  xp: number;
+  url?: string;
+  weight: number;
+}
+
 export interface Mission {
   title: string;
   description: string;
@@ -5,6 +14,7 @@ export interface Mission {
   xp: number;
   persistent?: boolean;
   url?: string;
+  variants?: MissionVariant[];
 }
 
 export interface Category {
