@@ -261,6 +261,15 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                   </div>
                 </div>
 
+                {/* Day-of-week scheduler */}
+                <DayPicker
+                  days={mission.daysOfWeek}
+                  onToggle={(d) => toggleDay(index, d)}
+                  onSetAll={() => setDays(index, undefined)}
+                  onWeekdays={() => setDays(index, [1, 2, 3, 4, 5])}
+                  onWeekends={() => setDays(index, [0, 6])}
+                />
+
                 {hasVariants && (
                   <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
                     <div className="flex items-center justify-between">
