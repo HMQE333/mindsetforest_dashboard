@@ -155,7 +155,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                 </div>
               )}
               {hasSchedule && (
-                <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300 backdrop-blur-md">
+                <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/20 border border-accent/40 text-[10px] font-semibold text-accent-foreground backdrop-blur-md">
                   📅 <span>{formatDays(baseMission.daysOfWeek!)}</span>
                 </div>
               )}
