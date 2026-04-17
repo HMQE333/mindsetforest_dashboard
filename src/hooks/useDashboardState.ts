@@ -45,6 +45,11 @@ export function rollVariant(variants: MissionVariant[]): number {
   return 0;
 }
 
+export function isVisibleToday(mission: Mission, today: number = new Date().getDay()): boolean {
+  if (!mission.daysOfWeek || mission.daysOfWeek.length === 0 || mission.daysOfWeek.length === 7) return true;
+  return mission.daysOfWeek.includes(today);
+}
+
 function rollAllVariants(
   customMissions: Record<string, Mission[]>,
 ): Record<string, number> {
@@ -254,13 +259,19 @@ export function useDashboardState() {
 
   const getMissions = useCallback((categoryId: string): Mission[] => {
     const custom = state.customMissions[categoryId];
-    if (custom && custom.length > 0) return custom;
-    return CATEGORIES.find(c => c.id === categoryId)?.missions || [];
+    const base = (custom && custom.length > 0)
+      ? custom
+      : (CATEGORIES.find(c => c.id === categoryId)?.missions || []);
+    // Tag with original index so callers can preserve completion IDs across filtered views
+    return base
+      .map((m, i) => ({ ...m, __originalIndex: i } as Mission & { __originalIndex: number }))
+      .filter(m => isVisibleToday(m));
   }, [state.customMissions]);
 
   const getCompletedCount = useCallback((categoryId: string): number => {
-    return Array.from(state.completedMissions).filter(id => id.startsWith(categoryId + "-")).length;
-  }, [state.completedMissions]);
+    const visible = getMissions(categoryId) as (Mission & { __originalIndex: number })[];
+    return visible.filter(m => state.completedMissions.has(`${categoryId}-${m.__originalIndex}`)).length;
+  }, [state.completedMissions, getMissions]);
 
   const splitMission = useCallback((categoryId: string, missionIndex: number, subTasks: Mission[]) => {
     setState(prev => {

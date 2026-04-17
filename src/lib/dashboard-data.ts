@@ -15,6 +15,9 @@ export interface Mission {
   persistent?: boolean;
   url?: string;
   variants?: MissionVariant[];
+  daysOfWeek?: number[]; // [0..6] Sun..Sat; undefined or full week = every day
+  /** Internal: index into the original (unfiltered) mission list. Set by getMissions when filtering. */
+  __originalIndex?: number;
 }
 
 export interface Category {
