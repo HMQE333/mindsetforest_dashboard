@@ -15,7 +15,10 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
   const category = CATEGORIES.find(c => c.id === categoryId);
 
   useEffect(() => {
-    setBuffer(missions.map(m => ({ ...m, persistent: m.persistent !== false ? true : false })));
+    setBuffer(missions.map(m => {
+      const { __originalIndex, ...rest } = m;
+      return { ...rest, persistent: m.persistent !== false ? true : false };
+    }));
   }, [missions]);
 
   const updateField = (index: number, field: keyof Mission, value: string | number) => {
