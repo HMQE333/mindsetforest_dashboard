@@ -473,13 +473,36 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     const allEdges: Edge[] = [];
     let xOffset = 0;
     const GAP = 300;
+    const NODE_WIDTH = 220; // approximate max node width for bounding box padding
     const usePersistedPos = !forceAutoLayout;
 
     for (const project of selectedProjects) {
       const { nodes, edges, treeWidth } = layoutTree(project, tasks, callbacks, xOffset, usePersistedPos);
+
+      // Compute actual bounding box of this project's nodes (accounts for persisted positions
+      // that may extend far left/right of the computed treeWidth, preventing overlap with the next project)
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (const n of nodes) {
+        if (n.position.x < minX) minX = n.position.x;
+        if (n.position.x > maxX) maxX = n.position.x;
+      }
+      if (!isFinite(minX)) { minX = xOffset; maxX = xOffset + treeWidth; }
+
+      // Shift all nodes of this project so their leftmost edge sits at xOffset
+      const shift = xOffset - minX;
+      if (shift !== 0) {
+        for (const n of nodes) {
+          n.position = { x: n.position.x + shift, y: n.position.y };
+        }
+        maxX += shift;
+      }
+
       allNodes.push(...nodes);
       allEdges.push(...edges);
-      xOffset += treeWidth + GAP;
+
+      // Next project starts after this project's actual right edge + node width + gap
+      xOffset = maxX + NODE_WIDTH + GAP;
     }
 
     return { initialNodes: allNodes, initialEdges: allEdges };
