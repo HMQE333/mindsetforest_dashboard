@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2 } from "lucide-react";
 import type { FinanceTransaction } from "@/hooks/useFinanceState";
+import { useFinanceCategories } from "@/hooks/useFinanceCategories";
 import { format, parse } from "date-fns";
 
 interface Props {
@@ -11,11 +12,12 @@ interface Props {
   currentMonth: string;
 }
 
-const TYPE_ICONS: Record<string, string> = {
+const TYPE_FALLBACK_ICONS: Record<string, string> = {
   income: "💰", expense: "💸", subscription: "🔁", loan_out: "🤝", loan_in: "📥",
 };
 
 export default function FinanceTransactions({ transactions, onDelete, onAdd, currentMonth }: Props) {
+  const { findByName } = useFinanceCategories();
   const [filterMonth, setFilterMonth] = useState(currentMonth);
   const [filterType, setFilterType] = useState<string>("all");
 
