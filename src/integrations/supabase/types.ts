@@ -366,6 +366,39 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_categories: {
+        Row: {
+          color: string
+          created_at: string
+          icon: string
+          id: string
+          kind: string
+          name: string
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          icon?: string
+          id?: string
+          kind: string
+          name: string
+          sort_order?: number
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          icon?: string
+          id?: string
+          kind?: string
+          name?: string
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       finance_transactions: {
         Row: {
           amount: number
@@ -826,6 +859,8 @@ export type Database = {
           emoji: string
           icon: string
           id: string
+          layout_x: number | null
+          layout_y: number | null
           name: string
           parent_category: string | null
           user_id: string
@@ -836,6 +871,8 @@ export type Database = {
           emoji?: string
           icon?: string
           id?: string
+          layout_x?: number | null
+          layout_y?: number | null
           name: string
           parent_category?: string | null
           user_id: string
@@ -846,6 +883,8 @@ export type Database = {
           emoji?: string
           icon?: string
           id?: string
+          layout_x?: number | null
+          layout_y?: number | null
           name?: string
           parent_category?: string | null
           user_id?: string
