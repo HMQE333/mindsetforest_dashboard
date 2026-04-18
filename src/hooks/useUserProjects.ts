@@ -8,8 +8,6 @@ export interface UserProject {
   name: string;
   emoji: string;
   parent_category: string | null;
-  layout_x?: number | null;
-  layout_y?: number | null;
 }
 
 export function useUserProjects() {
@@ -21,7 +19,7 @@ export function useUserProjects() {
     if (!user) { setLoading(false); return; }
     const load = async () => {
       const { data, error } = await (supabase.from("user_projects" as any) as any)
-        .select("id, name, emoji, parent_category, layout_x, layout_y")
+        .select("id, name, emoji, parent_category")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true });
       if (data && !error) setProjects(data);
@@ -36,7 +34,7 @@ export function useUserProjects() {
     if (parentCategory) insertData.parent_category = parentCategory;
     const { data, error } = await (supabase.from("user_projects" as any) as any)
       .insert([insertData])
-      .select("id, name, emoji, parent_category, layout_x, layout_y")
+      .select("id, name, emoji, parent_category")
       .single();
     if (error) {
       toast({ title: "Failed to create project", variant: "destructive" });
@@ -74,16 +72,6 @@ export function useUserProjects() {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name, ...(emoji ? { emoji } : {}) } : p));
   }, [user]);
 
-  const updateProjectLayout = useCallback(async (id: string, x: number | null, y: number | null) => {
-    if (!user) return;
-    // Optimistic local update — no toast (silent persistence for layout)
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, layout_x: x, layout_y: y } : p));
-    await (supabase.from("user_projects" as any) as any)
-      .update({ layout_x: x, layout_y: y })
-      .eq("id", id)
-      .eq("user_id", user.id);
-  }, [user]);
-
   /** Convert a project to the key used in ladder/habit loop data */
   const projectKey = (id: string) => `project-${id}`;
 
@@ -97,5 +85,5 @@ export function useUserProjects() {
     return projects.find(p => p.id === id) || null;
   };
 
-  return { projects, loading, addProject, deleteProject, renameProject, updateProjectLayout, projectKey, isProjectKey, getProjectFromKey };
+  return { projects, loading, addProject, deleteProject, renameProject, projectKey, isProjectKey, getProjectFromKey };
 }
