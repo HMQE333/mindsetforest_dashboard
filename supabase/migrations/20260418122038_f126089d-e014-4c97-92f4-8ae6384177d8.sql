@@ -1,0 +1,2 @@
+UPDATE public.user_books SET pillars = ARRAY['exploration','spirit']::text[], updated_at = now() WHERE id IN ('5b70a82b-e53f-4495-9434-d09344600e98','4ae115bd-5018-46c9-b660-5fe694853df3','d0a63ba7-e51b-4068-9b8e-55235ea11c6b');
+UPDATE public.user_books SET pillars = ARRAY['exploration']::text[], updated_at = now() WHERE id IN ('2d30cb2e-03b3-4cea-a2bd-bd00ce049d96','30221d53-c52f-4eac-b66f-12ccf08a66fa');
