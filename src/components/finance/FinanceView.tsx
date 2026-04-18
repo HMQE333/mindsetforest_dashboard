@@ -23,6 +23,7 @@ export default function FinanceView() {
   const [subTab, setSubTab] = useState<SubTab>("overview");
   const [modalOpen, setModalOpen] = useState(false);
   const [modalDefaultType, setModalDefaultType] = useState<TransactionType>("expense");
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
 
   const openModal = (type?: TransactionType) => {
     setModalDefaultType(type || "expense");
