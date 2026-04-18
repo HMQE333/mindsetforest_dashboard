@@ -111,6 +111,13 @@ export default function FinanceView() {
         onClose={() => setModalOpen(false)}
         onAdd={finance.addTransaction}
         defaultType={modalDefaultType}
+        onManageCategories={() => setCategoriesOpen(true)}
+      />
+
+      <FinanceCategoriesModal
+        open={categoriesOpen}
+        onClose={() => setCategoriesOpen(false)}
+        initialKind={modalDefaultType === "income" ? "income" : "expense"}
       />
     </motion.div>
   );
