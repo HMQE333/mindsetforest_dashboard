@@ -1,79 +1,76 @@
 
 
-## Day-of-Week Scheduled Tasks
+## Custom Finance Categories
 
-Let users mark a task to appear only on specific weekdays (e.g., only Saturdays). On hidden days, the task doesn't exist for the user — it's invisible, not counted in totals, doesn't affect "X/3 completed" math, doesn't roll variants, doesn't appear at all.
-
-### Concept
-
-Each task gets an optional `daysOfWeek` array (0=Sunday … 6=Saturday). Default = undefined → shows every day (current behavior). If set (e.g. `[6, 0]` for weekends), the task only renders on those days.
+Replace the hardcoded `EXPENSE_CATEGORIES` and `INCOME_CATEGORIES` lists with a user-editable system, so users can name categories that actually match their life (e.g. "Rent", "Coffee runs", "Side gig") instead of generic "bills/food/other".
 
 ### Data Model
 
-Update `Mission` in `src/lib/dashboard-data.ts`:
+New table `finance_categories`:
+```
+id          uuid pk
+user_id     uuid
+kind        text  -- 'expense' | 'income'
+name        text
+icon        text  -- emoji
+color       text  -- hex
+sort_order  int
+created_at  timestamptz
+```
+With RLS (own-user CRUD), unique on `(user_id, kind, lower(name))`.
+
+Transactions stay using the free-form `category` text column — categories link by name, so renaming/deleting a category doesn't orphan transactions.
+
+### Seeding
+
+On first load (or first time user opens Finance), if user has no rows in `finance_categories`, seed defaults from current `EXPENSE_CATEGORIES` / `INCOME_CATEGORIES` lists (with sensible default emojis: 🍔 food, 🚗 transport, 🎬 entertainment, 💡 bills, 💊 health, 🛍 shopping, 📚 education, 💼 salary, 💻 freelance, 📈 investment, 🎁 gift, ↩️ refund, 🔣 other).
+
+### Hook: `useFinanceCategories.ts` (new)
+
 ```ts
-interface Mission {
-  // ...existing fields
-  daysOfWeek?: number[]; // [0..6]; undefined = every day
+{
+  expenseCategories, incomeCategories, loading,
+  addCategory(kind, name, icon, color),
+  updateCategory(id, patch),
+  deleteCategory(id),
+  reorderCategories(kind, orderedIds),
 }
 ```
-
-No DB schema change needed — `custom_missions` JSONB already stores arbitrary mission shape.
-
-### Filter Logic
-
-Add a helper in `useDashboardState.ts`:
-```ts
-function isVisibleToday(mission: Mission, today = new Date().getDay()): boolean {
-  if (!mission.daysOfWeek || mission.daysOfWeek.length === 0) return true;
-  return mission.daysOfWeek.includes(today);
-}
-```
-
-Apply it inside `getMissions(categoryId)` so the filtered list is the single source of truth. This automatically fixes:
-- Mission cards in `MissionView`
-- "X/3 completed" counters (CategoryGrid uses filtered count)
-- XP totals & category-complete detection
-- Variant rolling (only rolls for visible missions)
 
 ### UI Changes
 
-**1. EditMissionsModal.tsx**
-Add a compact day picker row per task (small, subtle, below the existing toggles):
-```
-Days:  [S] [M] [T] [W] [T] [F] [S]   ← seven small pill toggles
-       (all selected or none = "Every day")
-```
-- Click toggles individual day on/off
-- "Every day" preset button to clear all selections
-- Quick presets: "Weekdays" (Mon–Fri) / "Weekends" (Sat–Sun)
-- When fewer than 7 days are selected, show a small label: "Mon, Wed, Fri" or "Weekends only"
+**1. New `FinanceCategoriesModal.tsx`**
+- Two tabs: "Expense" / "Income"
+- Per-row: emoji input · name input · color swatch · drag handle · delete button
+- "+ Add category" button at the bottom
+- Same glass-card styling as `EditMissionsModal`
 
-**2. MissionView.tsx**
-Optional: small calendar badge `📅 Sat·Sun` in the top-right of mission cards that have `daysOfWeek` set, so users remember why a task is special. Same style as the dice variant badge.
+**2. `FinanceView.tsx`**
+- Add small "⚙ Categories" button next to the sub-tab row (top-right) opening the modal
 
-**3. CategoryGrid.tsx**
-No change needed if `getMissions()` already returns filtered list — counters will follow automatically. Will verify during implementation.
+**3. `AddTransactionModal.tsx`**
+- Replace native `<select>` (lines using `EXPENSE_CATEGORIES`/`INCOME_CATEGORIES`) with a custom pill-grid picker of the user's categories, matching the design philosophy (no native OS dropdowns). Show emoji + name. Last row pill: "+ New" → opens categories modal pre-focused on a new entry.
 
-### Edge Cases
+**4. `FinanceTransactions.tsx`**
+- Display row uses category emoji + colored chip (looked up by name from user's category list, falls back to plain text if missing — handles deleted categories gracefully)
+- Filter dropdown can show user's category list instead of just type
 
-- **All 7 days selected** → treat same as undefined (every day) for cleaner UI
-- **Zero days selected** → block save in modal, show inline warning ("Select at least one day or 'Every day'")
-- **Variants** → variant rolling only iterates visible missions, no orphan rolls
-- **Completion IDs** → unchanged (still `${categoryId}-${index}`); hidden tasks just aren't shown but their old completion records remain harmless
-- **Reset defaults** → unchanged behavior
+**5. `FinanceOverview.tsx`**
+- `biggestExpenseCategory` already uses category name; no logic change. Optionally render with the matching emoji.
 
-### Files to Modify
+### Files to Create / Modify
 
-1. `src/lib/dashboard-data.ts` — add `daysOfWeek?: number[]` to `Mission`
-2. `src/hooks/useDashboardState.ts` — add `isVisibleToday` helper, filter inside `getMissions`, skip hidden in variant roll loop
-3. `src/components/dashboard/EditMissionsModal.tsx` — add day picker UI per task
-4. `src/components/dashboard/MissionView.tsx` — optional schedule badge on cards
-5. `src/components/dashboard/CategoryGrid.tsx` — verify counter uses filtered list (likely already does)
+- **NEW:** migration → `finance_categories` table + RLS + seeding skipped at SQL level (seeded client-side on first load)
+- **NEW:** `src/hooks/useFinanceCategories.ts`
+- **NEW:** `src/components/finance/FinanceCategoriesModal.tsx`
+- **MODIFY:** `src/components/finance/FinanceView.tsx` — open modal button
+- **MODIFY:** `src/components/finance/AddTransactionModal.tsx` — pill-grid picker driven by hook
+- **MODIFY:** `src/components/finance/FinanceTransactions.tsx` — emoji/color chip for display
+- **MODIFY:** `src/hooks/useFinanceState.ts` — keep `EXPENSE_CATEGORIES`/`INCOME_CATEGORIES` only as fallback constants for seeding
 
 ### Out of Scope
 
-- Date-range scheduling (e.g., "only next month")
-- Different tasks per day in the same slot (variants already cover that)
-- Timezone handling beyond browser-local `new Date().getDay()`
+- Budgets per category
+- Reassign/migrate transactions on category rename (transactions still hold the old name string)
+- Per-category icons in `FinanceOverview` charts (can be added later)
 
