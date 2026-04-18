@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2 } from "lucide-react";
 import type { FinanceTransaction } from "@/hooks/useFinanceState";
+import { useFinanceCategories } from "@/hooks/useFinanceCategories";
 import { format, parse } from "date-fns";
 
 interface Props {
@@ -11,11 +12,12 @@ interface Props {
   currentMonth: string;
 }
 
-const TYPE_ICONS: Record<string, string> = {
+const TYPE_FALLBACK_ICONS: Record<string, string> = {
   income: "💰", expense: "💸", subscription: "🔁", loan_out: "🤝", loan_in: "📥",
 };
 
 export default function FinanceTransactions({ transactions, onDelete, onAdd, currentMonth }: Props) {
+  const { findByName } = useFinanceCategories();
   const [filterMonth, setFilterMonth] = useState(currentMonth);
   const [filterType, setFilterType] = useState<string>("all");
 
@@ -70,31 +72,47 @@ export default function FinanceTransactions({ transactions, onDelete, onAdd, cur
               No transactions yet
             </motion.p>
           )}
-          {filtered.map((t, i) => (
-            <motion.div
-              key={t.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              transition={{ delay: i * 0.02 }}
-              className="flex items-center gap-3 p-3 rounded-xl glass-card border border-border hover:border-white/10 transition-all group"
-            >
-              <span className="text-lg">{TYPE_ICONS[t.type] || "💸"}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-foreground truncate">{t.title}</div>
-                <div className="text-[11px] text-muted-foreground">{t.category} • {t.date}</div>
-              </div>
-              <span className={`text-sm font-bold ${t.type === "income" ? "text-emerald-400" : "text-red-400"}`}>
-                {t.type === "income" ? "+" : "-"}${t.amount.toLocaleString()}
-              </span>
-              <button
-                onClick={() => onDelete(t.id)}
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+          {filtered.map((t, i) => {
+            const cat = findByName(t.category);
+            const icon = cat?.icon || TYPE_FALLBACK_ICONS[t.type] || "💸";
+            const chipColor = cat?.color;
+            return (
+              <motion.div
+                key={t.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                transition={{ delay: i * 0.02 }}
+                className="flex items-center gap-3 p-3 rounded-xl glass-card border border-border hover:border-white/10 transition-all group"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </motion.div>
-          ))}
+                <span className="text-lg w-8 h-8 flex items-center justify-center rounded-lg shrink-0" style={chipColor ? { background: `${chipColor}20`, border: `1px solid ${chipColor}40` } : undefined}>
+                  {icon}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-foreground truncate">{t.title}</div>
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className="px-1.5 py-0.5 rounded-md font-medium"
+                      style={chipColor ? { background: `${chipColor}20`, color: chipColor } : { background: "hsl(var(--muted) / 0.5)" }}
+                    >
+                      {t.category}
+                    </span>
+                    <span>•</span>
+                    <span>{t.date}</span>
+                  </div>
+                </div>
+                <span className={`text-sm font-bold ${t.type === "income" ? "text-emerald-400" : "text-red-400"}`}>
+                  {t.type === "income" ? "+" : "-"}${t.amount.toLocaleString()}
+                </span>
+                <button
+                  onClick={() => onDelete(t.id)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
     </div>
