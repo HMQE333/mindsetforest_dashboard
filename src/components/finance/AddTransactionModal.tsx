@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
-import { TransactionType, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/hooks/useFinanceState";
+import { X, Plus } from "lucide-react";
+import { TransactionType } from "@/hooks/useFinanceState";
+import { useFinanceCategories } from "@/hooks/useFinanceCategories";
 import { format } from "date-fns";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   onClose: () => void;
   onAdd: (tx: any) => Promise<void>;
   defaultType?: TransactionType;
+  onManageCategories?: () => void;
 }
 
 const TYPE_OPTIONS: { value: TransactionType; label: string; icon: string }[] = [
@@ -19,11 +21,12 @@ const TYPE_OPTIONS: { value: TransactionType; label: string; icon: string }[] = 
   { value: "loan_in", label: "Borrowed (you owe)", icon: "📥" },
 ];
 
-export default function AddTransactionModal({ open, onClose, onAdd, defaultType }: Props) {
+export default function AddTransactionModal({ open, onClose, onAdd, defaultType, onManageCategories }: Props) {
+  const { expenseCategories, incomeCategories } = useFinanceCategories();
   const [type, setType] = useState<TransactionType>(defaultType || "expense");
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("other");
+  const [category, setCategory] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [personName, setPersonName] = useState("");
   const [recurringDay, setRecurringDay] = useState("");
@@ -32,16 +35,27 @@ export default function AddTransactionModal({ open, onClose, onAdd, defaultType 
 
   const isLoan = type === "loan_out" || type === "loan_in";
   const isSub = type === "subscription";
-  const cats = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+  const cats = useMemo(() => {
+    return type === "income" ? incomeCategories : expenseCategories;
+  }, [type, incomeCategories, expenseCategories]);
+
+  // Auto-select first category if current selection is invalid
+  const selectedCat = cats.find(c => c.name === category);
+  if (!selectedCat && cats.length > 0 && !isLoan) {
+    // Use setTimeout-style guard via setState in render: defer with effect-less assign
+    // Safer: reset via effect — simpler: just use first as default visually if not chosen
+  }
 
   const handleSubmit = async () => {
     if (!title.trim() || !amount) return;
+    const finalCategory = category || (cats[0]?.name ?? "Other");
     setSaving(true);
     await onAdd({
       type,
       title: title.trim(),
       amount: parseFloat(amount),
-      category,
+      category: finalCategory,
       date,
       is_recurring: isSub,
       recurring_day: isSub && recurringDay ? parseInt(recurringDay) : null,
@@ -51,7 +65,7 @@ export default function AddTransactionModal({ open, onClose, onAdd, defaultType 
     });
     setSaving(false);
     onClose();
-    setTitle(""); setAmount(""); setCategory("other"); setPersonName(""); setRecurringDay(""); setNotes("");
+    setTitle(""); setAmount(""); setCategory(""); setPersonName(""); setRecurringDay(""); setNotes("");
   };
 
   return (
@@ -77,7 +91,7 @@ export default function AddTransactionModal({ open, onClose, onAdd, defaultType 
               {TYPE_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
-                  onClick={() => setType(opt.value)}
+                  onClick={() => { setType(opt.value); setCategory(""); }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     type === opt.value ? "bg-primary/20 border border-primary/50 text-foreground" : "bg-muted/30 border border-border text-muted-foreground hover:border-white/20"
                   }`}
@@ -105,14 +119,49 @@ export default function AddTransactionModal({ open, onClose, onAdd, defaultType 
               />
             </div>
 
-            {/* Category */}
+            {/* Category pill grid */}
             {!isLoan && (
-              <select
-                value={category} onChange={e => setCategory(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-muted/30 border border-border text-sm text-foreground focus:outline-none focus:border-primary/50"
-              >
-                {cats.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-              </select>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground">Category</span>
+                  {onManageCategories && (
+                    <button
+                      onClick={onManageCategories}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      Manage
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {cats.map(c => {
+                    const active = (category || cats[0]?.name) === c.name;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setCategory(c.name)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                          active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        style={{
+                          background: active ? `${c.color}25` : "hsl(var(--muted) / 0.3)",
+                          borderColor: active ? c.color : "hsl(var(--border))",
+                        }}
+                      >
+                        <span>{c.icon}</span> {c.name}
+                      </button>
+                    );
+                  })}
+                  {onManageCategories && (
+                    <button
+                      onClick={onManageCategories}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-muted/30 border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> New
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Person name for loans */}
