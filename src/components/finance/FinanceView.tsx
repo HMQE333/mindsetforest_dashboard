@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { Settings2 } from "lucide-react";
 import { useFinanceState, TransactionType } from "@/hooks/useFinanceState";
 import FinanceOverview from "./FinanceOverview";
 import FinanceTransactions from "./FinanceTransactions";
 import FinanceSubscriptions from "./FinanceSubscriptions";
 import FinanceLoans from "./FinanceLoans";
 import AddTransactionModal from "./AddTransactionModal";
+import FinanceCategoriesModal from "./FinanceCategoriesModal";
 
 type SubTab = "overview" | "transactions" | "subscriptions" | "loans";
 
