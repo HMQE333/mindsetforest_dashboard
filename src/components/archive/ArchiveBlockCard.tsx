@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download } from "lucide-react";
+import { X, Download, Eye } from "lucide-react";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +24,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
   const allPillars = usePillars();
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [readerOpen, setReaderOpen] = useState(false);
   const [previewData, setPreviewData] = useState<{
     action: string;
     original: { title: string; content: string; pillars?: string[]; directions?: string[]; tags?: string[] };
@@ -80,6 +81,13 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
     }
   }, [lightboxUrl, handleKeyDown]);
 
+  useEffect(() => {
+    if (!readerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setReaderOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [readerOpen]);
+
   const pillarColors = block.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
 
   const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(block.title?.trim() || "")
@@ -123,6 +131,13 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             title={block.is_pinned ? "Unpin" : "Pin"}
           >
             📌
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setReaderOpen(true); }}
+            className="mt-1 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
+            title="Quick read"
+          >
+            <Eye className="w-4 h-4" />
           </button>
         </div>
 
@@ -201,6 +216,72 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         onAccept={handlePreviewAccept}
         onReject={() => setPreviewData(null)}
       />
+
+      {/* Quick Reader */}
+      <AnimatePresence>
+        {readerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setReaderOpen(false)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-2xl max-h-[85vh] glass-card rounded-2xl flex flex-col overflow-hidden"
+            >
+              <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  {block.is_pinned && <span className="text-base shrink-0">📌</span>}
+                  <h2 className="font-bold text-foreground text-lg truncate">{displayTitle}</h2>
+                </div>
+                <button
+                  onClick={() => setReaderOpen(false)}
+                  className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
+                  title="Close (Esc)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </header>
+
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                {(pillarColors.length > 0 || block.directions.length > 0) && (
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {pillarColors.map((p) => (
+                      <span key={p!.id} className="text-[11px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
+                        <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
+                      </span>
+                    ))}
+                    {block.directions.map((d) => (
+                      <span key={d} className="text-[11px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground font-semibold">{d}</span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[15px] leading-7 text-foreground/90 whitespace-pre-wrap font-serif">
+                  {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "—"}
+                </p>
+                {block.source_url && (
+                  <a href={block.source_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">
+                    🔗 {block.source_url}
+                  </a>
+                )}
+              </div>
+
+              <footer className="flex items-center justify-between px-6 py-3 border-t border-white/5 text-[11px] text-muted-foreground shrink-0">
+                <span>{new Date(block.created_at).toLocaleDateString()}</span>
+                <button onClick={() => { setReaderOpen(false); onEdit(); }} className="text-primary hover:underline font-medium">
+                  Open full editor →
+                </button>
+              </footer>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {lightboxUrl && (
