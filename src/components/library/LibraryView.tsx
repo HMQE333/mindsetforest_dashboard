@@ -136,6 +136,13 @@ export default function LibraryView() {
             </button>
           )}
           <button
+            onClick={() => setShareOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl glass-card text-sm font-semibold text-muted-foreground hover:text-foreground transition-all border border-white/5 hover:border-white/15"
+            title="Share a public link of this view"
+          >
+            <Link2 className="w-4 h-4" /> Share
+          </button>
+          <button
             onClick={() => tab === "books" ? setAddBookOpen(true) : setAddCourseOpen(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl gradient-purple text-primary-foreground text-sm font-bold glow-sm hover:opacity-90 transition-all"
           >
@@ -279,6 +286,20 @@ export default function LibraryView() {
       <AISuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} books={books} />
       <AddCourseModal open={addCourseOpen} onClose={() => setAddCourseOpen(false)} onAdd={addCourse} />
       <CourseDetailModal course={selectedCourse} open={!!selectedCourse} onClose={() => setSelectedCourse(null)} onUpdate={updateCourse} onDelete={deleteCourse} />
+      <ShareLibraryModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        currentTab={tab}
+        currentFilters={{
+          search,
+          status: tab === "books" ? statusFilter : courseStatusFilter,
+          rating: ratingFilter,
+          tag: tagFilter,
+          format: tab === "books" ? formatFilter : null,
+          pillar: pillarFilter,
+          viewMode,
+        }}
+      />
     </motion.div>
   );
 }
