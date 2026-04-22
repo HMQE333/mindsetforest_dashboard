@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Tracker from "./pages/Tracker";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import SharedLibrary from "./pages/SharedLibrary";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/tracker" element={<ProtectedRoute><Tracker /></ProtectedRoute>} />
+              <Route path="/share/library/:shareId" element={<SharedLibrary />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthProvider>

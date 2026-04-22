@@ -504,6 +504,42 @@ export type Database = {
         }
         Relationships: []
       }
+      library_shares: {
+        Row: {
+          created_at: string
+          filters: Json
+          id: string
+          is_public: boolean
+          name: string
+          tab: string
+          updated_at: string
+          user_id: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          filters?: Json
+          id?: string
+          is_public?: boolean
+          name?: string
+          tab?: string
+          updated_at?: string
+          user_id: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          filters?: Json
+          id?: string
+          is_public?: boolean
+          name?: string
+          tab?: string
+          updated_at?: string
+          user_id?: string
+          view_count?: number
+        }
+        Relationships: []
+      }
       oracle_state: {
         Row: {
           created_at: string
@@ -920,6 +956,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_shared_library: { Args: { share_id: string }; Returns: Json }
       search_archive_blocks: {
         Args: {
           match_count?: number
