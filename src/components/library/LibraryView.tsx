@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List } from "lucide-react";
+import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List, Link2 } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
 import { useCoursesState } from "@/hooks/useCoursesState";
 import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS } from "@/lib/library-data";
@@ -14,6 +14,7 @@ import AISuggestModal from "./AISuggestModal";
 import CourseCard from "./CourseCard";
 import AddCourseModal from "./AddCourseModal";
 import CourseDetailModal from "./CourseDetailModal";
+import ShareLibraryModal from "./ShareLibraryModal";
 import type { Book } from "@/lib/library-data";
 import type { Course } from "@/lib/course-data";
 
@@ -30,6 +31,7 @@ export default function LibraryView() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookStatus | "all">("all");
   const [courseStatusFilter, setCourseStatusFilter] = useState<CourseStatus | "all">("all");
