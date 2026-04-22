@@ -698,6 +698,7 @@ export type Database = {
           title: string
           total_pages: number
           updated_at: string
+          url: string
           user_id: string
         }
         Insert: {
@@ -716,6 +717,7 @@ export type Database = {
           title: string
           total_pages?: number
           updated_at?: string
+          url?: string
           user_id: string
         }
         Update: {
@@ -734,6 +736,7 @@ export type Database = {
           title?: string
           total_pages?: number
           updated_at?: string
+          url?: string
           user_id?: string
         }
         Relationships: []
