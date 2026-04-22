@@ -81,6 +81,13 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
     }
   }, [lightboxUrl, handleKeyDown]);
 
+  useEffect(() => {
+    if (!readerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setReaderOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [readerOpen]);
+
   const pillarColors = block.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
 
   const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(block.title?.trim() || "")
