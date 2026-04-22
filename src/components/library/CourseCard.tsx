@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Course, COURSE_STATUS_LABELS } from "@/lib/course-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
-import { Star, ExternalLink } from "lucide-react";
+import { Star, ExternalLink, Link2 } from "lucide-react";
 
 interface CourseCardProps {
   course: Course;
@@ -14,6 +14,8 @@ interface CourseCardProps {
 export default function CourseCard({ course, index, onClick, view }: CourseCardProps) {
   const allPillars = usePillars();
   const coursePillars = allPillars.filter(p => (course.pillars || []).includes(p.id));
+  const hasUrl = !!course.url?.trim();
+  const handleLinkClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); window.open(course.url, "_blank", "noopener,noreferrer"); };
 
   if (view === "list") {
     return (
@@ -32,6 +34,11 @@ export default function CourseCard({ course, index, onClick, view }: CourseCardP
               {[course.platform, course.instructor].filter(Boolean).join(" • ") || "—"}
             </p>
           </div>
+          {hasUrl && (
+            <span onClick={handleLinkClick} role="button" title={course.url} className="shrink-0 p-1 rounded-md bg-muted/30 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all cursor-pointer">
+              <Link2 className="w-3.5 h-3.5" />
+            </span>
+          )}
           {course.rating && (
             <div className="flex gap-0.5 shrink-0">
               {[1, 2, 3, 4, 5].map(s => (

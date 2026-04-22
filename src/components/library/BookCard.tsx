@@ -82,6 +82,11 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
       className="w-full text-left group"
     >
       <div className="relative glass-card rounded-2xl overflow-hidden border border-white/5 hover:border-white/15 transition-all hover:-translate-y-1 hover:shadow-lg">
+        {hasUrl && (
+          <span onClick={handleLinkClick} role="button" title={book.url} className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-background/60 backdrop-blur text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all cursor-pointer">
+            <Link2 className="w-3.5 h-3.5" />
+          </span>
+        )}
         <div className="absolute left-0 top-0 bottom-0 w-2 rounded-l-2xl" style={{ backgroundColor: book.cover_color }} />
         <div className="pl-5 pr-4 py-4 flex gap-3">
           <div className="flex-1 min-w-0">
