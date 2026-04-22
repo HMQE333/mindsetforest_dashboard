@@ -109,6 +109,17 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
             </div>
           </div>
 
+          {/* URL */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Link (optional)</label>
+            <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://… (Goodreads, PDF, notes)" className="bg-muted/30 border-white/10 text-sm" />
+            {url.trim() && (
+              <a href={url.trim()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1.5 text-[11px] text-primary hover:underline">
+                <ExternalLink className="w-3 h-3" /> Open link
+              </a>
+            )}
+          </div>
+
           {/* Rating */}
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Rating</label>

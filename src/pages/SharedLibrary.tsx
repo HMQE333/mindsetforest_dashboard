@@ -150,6 +150,7 @@ function normalizeBook(b: any): Book {
     pillars: b.pillars || [],
     directions: b.directions || [],
     format: b.format || "owned",
+    url: b.url || "",
     created_at: b.created_at || "",
     updated_at: b.updated_at || "",
   };
