@@ -9,6 +9,7 @@ import { Star, Trash2, Sparkles, Loader2, X } from "lucide-react";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { ExternalLink } from "lucide-react";
 
 interface BookDetailModalProps {
   book: Book | null;
@@ -28,6 +29,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   const [pillars, setPillars] = useState<string[]>([]);
   const [format, setFormat] = useState<BookFormat>("owned");
   const [customTag, setCustomTag] = useState("");
+  const [url, setUrl] = useState("");
   const [question, setQuestion] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -41,6 +43,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
       setTags(book.tags || []);
       setPillars(book.pillars || []);
       setFormat((book.format as BookFormat) || "owned");
+      setUrl(book.url || "");
       setAiAnswer(""); setQuestion(""); setCustomTag("");
     }
   }, [book]);
@@ -53,7 +56,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   const togglePillar = (id: string) => setPillars(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
 
   const handleSave = () => {
-    onUpdate(book.id, { notes, pages_read: parseInt(pagesRead) || 0, rating, status, tags, pillars, format });
+    onUpdate(book.id, { notes, pages_read: parseInt(pagesRead) || 0, rating, status, tags, pillars, format, url: url.trim() });
     toast.success("Book updated");
   };
 
