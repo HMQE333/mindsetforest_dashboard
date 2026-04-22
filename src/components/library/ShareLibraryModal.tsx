@@ -228,21 +228,26 @@ export default function ShareLibraryModal({ open, onClose, currentTab, currentFi
   );
 }
 
-function ExistingShareRow({ share, onCopyUrl, onCopyEmbed, onDelete, onTogglePublic, onRename }: {
+interface ExistingShareRowProps {
   share: LibraryShare;
   onCopyUrl: (id: string) => void;
   onCopyEmbed: (id: string) => void;
   onDelete: (id: string) => void;
   onTogglePublic: (id: string, p: boolean) => void;
   onRename: (id: string, name: string) => void;
-}) {
+}
+
+const ExistingShareRow = forwardRef<HTMLDivElement, ExistingShareRowProps>(function ExistingShareRow(
+  { share, onCopyUrl, onCopyEmbed, onDelete, onTogglePublic, onRename },
+  ref
+) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(share.name);
 
   const filterCount = Object.keys(share.filters || {}).filter(k => k !== "viewMode").length;
 
   return (
-    <div className="flex items-center gap-2 p-3 rounded-xl bg-muted/20 border border-white/5">
+    <div ref={ref} className="flex items-center gap-2 p-3 rounded-xl bg-muted/20 border border-white/5">
       <div className="flex-1 min-w-0">
         {editing ? (
           <input
@@ -280,4 +285,4 @@ function ExistingShareRow({ share, onCopyUrl, onCopyEmbed, onDelete, onTogglePub
       </button>
     </div>
   );
-}
+});
