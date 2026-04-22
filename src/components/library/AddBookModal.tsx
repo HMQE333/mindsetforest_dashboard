@@ -11,7 +11,7 @@ import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 interface AddBookModalProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (book: { title: string; author: string; total_pages: number; status: BookStatus; cover_color: string; tags: string[]; pillars: string[]; directions: string[]; format: BookFormat }) => void;
+  onAdd: (book: { title: string; author: string; total_pages: number; status: BookStatus; cover_color: string; tags: string[]; pillars: string[]; directions: string[]; format: BookFormat; url: string }) => void;
 }
 
 export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps) {
@@ -25,6 +25,7 @@ export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps
   const [customTag, setCustomTag] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
   const [format, setFormat] = useState<BookFormat>("owned");
+  const [url, setUrl] = useState("");
 
   const addTag = (tag: string) => { const t = tag.trim(); if (t && !tags.includes(t)) setTags(prev => [...prev, t]); };
   const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag));
@@ -33,8 +34,8 @@ export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    onAdd({ title: title.trim(), author: author.trim(), total_pages: parseInt(pages) || 0, status, cover_color: color, tags, pillars, directions: [], format });
-    setTitle(""); setAuthor(""); setPages(""); setStatus("to-read"); setColor(COVER_COLORS[0]); setTags([]); setCustomTag(""); setPillars([]); setFormat("owned");
+    onAdd({ title: title.trim(), author: author.trim(), total_pages: parseInt(pages) || 0, status, cover_color: color, tags, pillars, directions: [], format, url: url.trim() });
+    setTitle(""); setAuthor(""); setPages(""); setStatus("to-read"); setColor(COVER_COLORS[0]); setTags([]); setCustomTag(""); setPillars([]); setFormat("owned"); setUrl("");
     onClose();
   };
 
@@ -48,6 +49,7 @@ export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps
           <Input placeholder="Title *" value={title} onChange={e => setTitle(e.target.value)} className="bg-muted/30 border-white/10" />
           <Input placeholder="Author" value={author} onChange={e => setAuthor(e.target.value)} className="bg-muted/30 border-white/10" />
           <Input type="number" placeholder="Total pages" value={pages} onChange={e => setPages(e.target.value)} className="bg-muted/30 border-white/10" />
+          <Input placeholder="🔗 URL (optional — Goodreads, PDF, notes…)" value={url} onChange={e => setUrl(e.target.value)} className="bg-muted/30 border-white/10" />
 
           {/* Status */}
           <div>

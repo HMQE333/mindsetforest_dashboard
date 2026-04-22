@@ -13,6 +13,7 @@ export interface Book {
   pillars: string[];
   directions: string[];
   format: BookFormat;
+  url: string;
   created_at: string;
   updated_at: string;
 }
