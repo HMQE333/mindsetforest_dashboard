@@ -1,76 +1,107 @@
 
 
-## Custom Finance Categories
+## Shareable Library Views
 
-Replace the hardcoded `EXPENSE_CATEGORIES` and `INCOME_CATEGORIES` lists with a user-editable system, so users can name categories that actually match their life (e.g. "Rent", "Coffee runs", "Side gig") instead of generic "bills/food/other".
+Generate a **public read-only link** for the Library that bakes in the current filters (search, status, rating, tag, format, pillar, view mode, books vs courses tab). Anyone with the link sees the same filtered grid — no login. Perfect for sharing a reading list or embedding in Notion via iframe.
+
+### Concept
+
+From the Library toolbar, click **🔗 Share** → opens a popover where you can:
+1. Tweak which filters get baked in (toggles for status / pillar / tag / search / etc.)
+2. Toggle **Public / Private**
+3. Copy the share URL or the iframe embed snippet
+
+URL format:
+```
+/share/library/{shareId}
+```
+
+Anyone visiting that URL gets a clean, read-only Library page (no nav, no auth) showing only books/courses matching the saved filters from the owner's library.
 
 ### Data Model
 
-New table `finance_categories`:
+New table `library_shares`:
 ```
-id          uuid pk
-user_id     uuid
-kind        text  -- 'expense' | 'income'
-name        text
-icon        text  -- emoji
-color       text  -- hex
-sort_order  int
+id          uuid pk             -- short, used in URL
+user_id     uuid                -- owner
+slug        text                -- short readable id (e.g. 'reading-list-2026')
+name        text                -- friendly label
+tab         text                -- 'books' | 'courses'
+filters     jsonb               -- {status, rating, tag, format, pillar, search, viewMode}
+is_public   boolean             -- master switch
+view_count  int                 -- bumped on each view
 created_at  timestamptz
+updated_at  timestamptz
 ```
-With RLS (own-user CRUD), unique on `(user_id, kind, lower(name))`.
 
-Transactions stay using the free-form `category` text column — categories link by name, so renaming/deleting a category doesn't orphan transactions.
+RLS:
+- Owner: full CRUD on own rows
+- Anonymous: SELECT allowed only when `is_public = true` (read-only public policy)
 
-### Seeding
+### Public Read Endpoint
 
-On first load (or first time user opens Finance), if user has no rows in `finance_categories`, seed defaults from current `EXPENSE_CATEGORIES` / `INCOME_CATEGORIES` lists (with sensible default emojis: 🍔 food, 🚗 transport, 🎬 entertainment, 💡 bills, 💊 health, 🛍 shopping, 📚 education, 💼 salary, 💻 freelance, 📈 investment, 🎁 gift, ↩️ refund, 🔣 other).
-
-### Hook: `useFinanceCategories.ts` (new)
-
-```ts
-{
-  expenseCategories, incomeCategories, loading,
-  addCategory(kind, name, icon, color),
-  updateCategory(id, patch),
-  deleteCategory(id),
-  reorderCategories(kind, orderedIds),
-}
+To avoid exposing the full `user_books` table publicly, add a **SECURITY DEFINER** function:
+```sql
+get_shared_library(share_id uuid)
+  → returns books/courses matching the share's filters, only if is_public
 ```
+
+This way anonymous visitors call one RPC, get back the filtered list, and never touch the protected tables directly.
 
 ### UI Changes
 
-**1. New `FinanceCategoriesModal.tsx`**
-- Two tabs: "Expense" / "Income"
-- Per-row: emoji input · name input · color swatch · drag handle · delete button
-- "+ Add category" button at the bottom
-- Same glass-card styling as `EditMissionsModal`
+**1. `LibraryView.tsx`**
+- Add a **🔗 Share** button next to AI Suggest / Add Book in the toolbar
+- Opens new `ShareLibraryModal`
 
-**2. `FinanceView.tsx`**
-- Add small "⚙ Categories" button next to the sub-tab row (top-right) opening the modal
+**2. New `ShareLibraryModal.tsx`**
+- Section: "What to share" — checkboxes per filter (search term, pillar, tag, status, rating, format, view mode, tab). Default: all current filters baked in.
+- Section: "Visibility" — toggle Public ↔ Private (Private = link disabled, returns 404)
+- Section: "Your link" — copy URL button + copy iframe snippet button
+- Section: "Existing shares" — list of saved shares with rename / toggle public / delete actions
+- Live preview chip row showing the active filters being saved
 
-**3. `AddTransactionModal.tsx`**
-- Replace native `<select>` (lines using `EXPENSE_CATEGORIES`/`INCOME_CATEGORIES`) with a custom pill-grid picker of the user's categories, matching the design philosophy (no native OS dropdowns). Show emoji + name. Last row pill: "+ New" → opens categories modal pre-focused on a new entry.
+**3. New page `src/pages/SharedLibrary.tsx`**
+- Route: `/share/library/:shareId` (no `<ProtectedRoute>`)
+- Fetches via `get_shared_library(shareId)` RPC
+- Renders a clean header: "📚 {ShareName}" + filter chips (read-only) + grid of `BookCard` / `CourseCard` (clicks disabled or just open a tiny detail popover, no edit)
+- Compact footer: "Powered by Lovable" + small link to landing page
+- Iframe-friendly: no app nav, no padding overflow, dark-aware
+- 404 / "This share is private" view if not public
 
-**4. `FinanceTransactions.tsx`**
-- Display row uses category emoji + colored chip (looked up by name from user's category list, falls back to plain text if missing — handles deleted categories gracefully)
-- Filter dropdown can show user's category list instead of just type
+**4. New hook `useLibraryShares.ts`**
+- `shares` list, `createShare`, `updateShare`, `deleteShare`, `togglePublic`
 
-**5. `FinanceOverview.tsx`**
-- `biggestExpenseCategory` already uses category name; no logic change. Optionally render with the matching emoji.
+**5. `App.tsx`**
+- Add public route `/share/library/:shareId` → `<SharedLibrary />` (no auth wrapper)
+
+### Filter Application
+
+When generating a share, the modal saves a `filters` JSONB blob. The public RPC re-applies the same filter logic server-side (status, pillar, tag, format, rating, search) so the returned list mirrors what the owner saw, and stays current as they add/remove books later.
+
+### Embed Snippet
+
+Provided in the modal as one-click copy:
+```html
+<iframe src="https://hmqe.org/share/library/abc123" 
+        width="100%" height="600" frameborder="0"></iframe>
+```
 
 ### Files to Create / Modify
 
-- **NEW:** migration → `finance_categories` table + RLS + seeding skipped at SQL level (seeded client-side on first load)
-- **NEW:** `src/hooks/useFinanceCategories.ts`
-- **NEW:** `src/components/finance/FinanceCategoriesModal.tsx`
-- **MODIFY:** `src/components/finance/FinanceView.tsx` — open modal button
-- **MODIFY:** `src/components/finance/AddTransactionModal.tsx` — pill-grid picker driven by hook
-- **MODIFY:** `src/components/finance/FinanceTransactions.tsx` — emoji/color chip for display
-- **MODIFY:** `src/hooks/useFinanceState.ts` — keep `EXPENSE_CATEGORIES`/`INCOME_CATEGORIES` only as fallback constants for seeding
+- **NEW** migration: `library_shares` table + RLS + `get_shared_library` SECURITY DEFINER function
+- **NEW** `src/hooks/useLibraryShares.ts`
+- **NEW** `src/components/library/ShareLibraryModal.tsx`
+- **NEW** `src/pages/SharedLibrary.tsx`
+- **MODIFY** `src/components/library/LibraryView.tsx` — add 🔗 Share button + modal trigger, pass current filters
+- **MODIFY** `src/App.tsx` — add public `/share/library/:shareId` route
+- **MODIFY** `src/components/library/BookCard.tsx` & `CourseCard.tsx` — add a `readOnly` prop to disable click handlers in shared view (lightweight)
 
 ### Out of Scope
 
-- Budgets per category
-- Reassign/migrate transactions on category rename (transactions still hold the old name string)
-- Per-category icons in `FinanceOverview` charts (can be added later)
+- Password-protected shares
+- Editable / collaborative shares
+- Sharing other modules (Archive, Cooking) — same pattern can be cloned later
+- Custom branding / theming per share
+- Analytics dashboard for view counts (raw counter only)
 
