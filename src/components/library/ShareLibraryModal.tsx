@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Copy, Link2, Code2, Trash2, Eye, EyeOff, Plus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useLibraryShares, type LibraryShare } from "@/hooks/useLibraryShares";
+import { PUBLIC_SHARE_ORIGIN } from "@/lib/share-config";
 
 type FilterKey = "search" | "status" | "rating" | "tag" | "format" | "pillar" | "viewMode";
 
@@ -82,20 +83,20 @@ export default function ShareLibraryModal({ open, onClose, currentTab, currentFi
     });
     if (created) {
       // Auto-copy URL
-      const url = `${window.location.origin}/share/library/${created.id}`;
+      const url = `${PUBLIC_SHARE_ORIGIN}/share/library/${created.id}`;
       navigator.clipboard.writeText(url);
       toast.success("Link copied to clipboard!");
     }
   };
 
   const copyUrl = (id: string) => {
-    const url = `${window.location.origin}/share/library/${id}`;
+    const url = `${PUBLIC_SHARE_ORIGIN}/share/library/${id}`;
     navigator.clipboard.writeText(url);
     toast.success("Link copied!");
   };
 
   const copyEmbed = (id: string) => {
-    const url = `${window.location.origin}/share/library/${id}`;
+    const url = `${PUBLIC_SHARE_ORIGIN}/share/library/${id}`;
     const snippet = `<iframe src="${url}" width="100%" height="600" frameborder="0" style="border-radius:12px;"></iframe>`;
     navigator.clipboard.writeText(snippet);
     toast.success("Embed snippet copied!");
@@ -207,6 +208,9 @@ export default function ShareLibraryModal({ open, onClose, currentTab, currentFi
             >
               <Plus className="w-4 h-4" /> Create share link
             </button>
+            <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
+              🔗 Links use your public domain <span className="font-mono text-foreground/80">hmqe.org</span> so anyone can view without logging in.
+            </p>
           </div>
 
           {/* Existing shares */}
@@ -224,21 +228,26 @@ export default function ShareLibraryModal({ open, onClose, currentTab, currentFi
   );
 }
 
-function ExistingShareRow({ share, onCopyUrl, onCopyEmbed, onDelete, onTogglePublic, onRename }: {
+interface ExistingShareRowProps {
   share: LibraryShare;
   onCopyUrl: (id: string) => void;
   onCopyEmbed: (id: string) => void;
   onDelete: (id: string) => void;
   onTogglePublic: (id: string, p: boolean) => void;
   onRename: (id: string, name: string) => void;
-}) {
+}
+
+const ExistingShareRow = forwardRef<HTMLDivElement, ExistingShareRowProps>(function ExistingShareRow(
+  { share, onCopyUrl, onCopyEmbed, onDelete, onTogglePublic, onRename },
+  ref
+) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(share.name);
 
   const filterCount = Object.keys(share.filters || {}).filter(k => k !== "viewMode").length;
 
   return (
-    <div className="flex items-center gap-2 p-3 rounded-xl bg-muted/20 border border-white/5">
+    <div ref={ref} className="flex items-center gap-2 p-3 rounded-xl bg-muted/20 border border-white/5">
       <div className="flex-1 min-w-0">
         {editing ? (
           <input
@@ -276,4 +285,4 @@ function ExistingShareRow({ share, onCopyUrl, onCopyEmbed, onDelete, onTogglePub
       </button>
     </div>
   );
-}
+});
