@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useFriends } from "@/hooks/useFriends";
 import { CATEGORIES } from "@/lib/dashboard-data";
+import { useUserProjects } from "@/hooks/useUserProjects";
 import AddFriendInput from "./AddFriendInput";
 
 interface FriendsPanelProps {
@@ -17,6 +18,7 @@ type Tab = "friends" | "requests" | "inbox";
 export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) {
   const { profile, regenerateFriendCode } = useUserProfile();
   const f = useFriends();
+  const { projects, projectKey } = useUserProjects();
   const [tab, setTab] = useState<Tab>("friends");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pickingFor, setPickingFor] = useState<string | null>(null);
@@ -27,7 +29,11 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
     toast.success("Code copied");
   };
 
-  const acceptToCategory = async (suggestion: typeof f.incomingSuggestions[number], categoryId: string) => {
+  const acceptToCategory = async (
+    suggestion: typeof f.incomingSuggestions[number],
+    categoryId: string,
+    targetLabel: string,
+  ) => {
     // Add as a persistent mission to the chosen Home category
     const senderTag = suggestion.senderProfile?.username
       ? ` (from @${suggestion.senderProfile.username})`
@@ -47,8 +53,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
     }));
     await f.respondSuggestion(suggestion, true);
     setPickingFor(null);
-    const cat = CATEGORIES.find(c => c.id === categoryId);
-    toast.success(`Added to ${cat?.name || "Home"}`);
+    toast.success(`Added to ${targetLabel}`);
   };
 
   return (
@@ -273,7 +278,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                         {CATEGORIES.map(cat => (
                           <button
                             key={cat.id}
-                            onClick={() => acceptToCategory(s, cat.id)}
+                            onClick={() => acceptToCategory(s, cat.id, cat.name)}
                             title={cat.name}
                             className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
                           >
@@ -282,6 +287,24 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                           </button>
                         ))}
                       </div>
+                      {projects.length > 0 && (
+                        <>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-1">Projects</p>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {projects.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => acceptToCategory(s, projectKey(p.id), p.name)}
+                                title={p.name}
+                                className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
+                              >
+                                <span className="text-lg leading-none">{p.emoji || "📁"}</span>
+                                <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{p.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
