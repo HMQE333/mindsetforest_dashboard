@@ -198,11 +198,16 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
         <div className="flex items-center gap-2">
           <button onClick={() => setFocusOpen((o) => !o)} title="Focus pillars"
             className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
-              focusPillars.size > 0
+              focusPillars.size > 0 || mutedPillars.size > 0
                 ? "bg-primary/15 text-primary font-bold"
                 : "text-muted-foreground hover:text-foreground"
             }`}>
-            <Filter className="w-3 h-3" /> {focusPillars.size > 0 ? `Focus (${focusPillars.size})` : "Focus"}
+            <Filter className="w-3 h-3" />
+            {focusPillars.size > 0
+              ? `Focus (${focusPillars.size})`
+              : mutedPillars.size > 0
+                ? `Muted (${mutedPillars.size})`
+                : "Focus"}
           </button>
           <button onClick={reset} title="Reset today"
             className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
