@@ -81,6 +81,7 @@ serve(async (req) => {
         directions: seed.directions,
         tags,
         source_url: seed.source_url,
+        from_seed_id: seed.id,
       } as any)
       .select()
       .single();
