@@ -257,6 +257,52 @@ export function useForestState() {
     }
   }, []);
 
+  const semanticSearchForest = useCallback(async (query: string): Promise<SeedWithAuthor[]> => {
+    const q = query.trim();
+    if (q.length < 2) return [];
+    const { data, error } = await supabase.functions.invoke("ai-embed-block", {
+      body: { action: "search-forest", query: q },
+    });
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || "Search failed");
+      return [];
+    }
+    const results = ((data as any)?.results || []) as any[];
+    // Enrich with author + my engagement state from already-loaded sets
+    const knownAuthorMap: Record<string, ForestAuthor> = {};
+    [...mySeeds, ...discoverSeeds].forEach((s) => {
+      if (s.author) knownAuthorMap[s.author_id] = s.author;
+    });
+    const missingIds = Array.from(new Set(results.map((r) => r.author_id).filter((id) => !knownAuthorMap[id])));
+    if (missingIds.length) {
+      const { data: authors } = await supabase
+        .from("user_profiles" as any)
+        .select("user_id, username, display_name, avatar_emoji")
+        .in("user_id", missingIds);
+      ((authors as any) || []).forEach((a: any) => { knownAuthorMap[a.user_id] = a; });
+    }
+    return results.map((s) => ({
+      ...s,
+      author: knownAuthorMap[s.author_id],
+      iWatered: myWaters.has(s.id),
+      iSaved: mySaves.has(s.id),
+      isEdited: new Date(s.updated_at).getTime() - new Date(s.published_at).getTime() > 60_000,
+    }));
+  }, [mySeeds, discoverSeeds, myWaters, mySaves]);
+
+  // Achievements (computed cheaply from currently-loaded data)
+  const achievements = useMemo(() => {
+    const planted = mySeeds.length;
+    const watersGivenApprox = myWaters.size;
+    const watersReceived = mySeeds.reduce((s, x) => s + (x.water_count || 0), 0);
+    return [
+      { id: "first-seed", icon: "🌱", title: "First Seed", description: "Plant 1 seed in the Forest", current: Math.min(planted, 1), target: 1, unlocked: planted >= 1 },
+      { id: "grove-tender", icon: "🌳", title: "Grove Tender", description: "Plant 10 seeds", current: Math.min(planted, 10), target: 10, unlocked: planted >= 10 },
+      { id: "generous", icon: "💧", title: "Generous", description: "Water 50 seeds", current: Math.min(watersGivenApprox, 50), target: 50, unlocked: watersGivenApprox >= 50 },
+      { id: "beloved", icon: "🌟", title: "Beloved", description: "Receive 25 waters total", current: Math.min(watersReceived, 25), target: 25, unlocked: watersReceived >= 25 },
+    ];
+  }, [mySeeds, myWaters]);
+
   return {
     loading,
     mySeeds,
@@ -271,6 +317,8 @@ export function useForestState() {
     recordView,
     reportSeed,
     setAudience,
+    semanticSearchForest,
+    achievements,
     refetch: fetchAll,
   };
 }
