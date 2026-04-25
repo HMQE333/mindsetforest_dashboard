@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ForestSeedCard from "./ForestSeedCard";
 import EditSeedModal from "./EditSeedModal";
+import ForestInboxBell from "./ForestInboxBell";
 import { Sprout, Droplet, BookmarkPlus, Eye, Trophy } from "lucide-react";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
@@ -128,6 +129,9 @@ const ArchiveForestView = () => {
             {t.label} <span className="opacity-70 ml-1">({t.count})</span>
           </button>
         ))}
+        <div className="ml-auto">
+          <ForestInboxBell />
+        </div>
       </div>
 
       {/* My Forest dashboard (only on My Seeds tab, only if user has any seeds) */}

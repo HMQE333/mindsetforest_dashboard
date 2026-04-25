@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, Eye, Sprout } from "lucide-react";
+import { X, Download, Eye, Sprout, RefreshCw } from "lucide-react";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,9 +19,11 @@ interface Props {
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
   similarityScore?: number;
   onPlant?: (block: ArchiveBlock) => void;
+  updateAvailable?: boolean;
+  onResync?: () => void;
 }
 
-const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore, onPlant }: Props) => {
+const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore, onPlant, updateAvailable, onResync }: Props) => {
   const allPillars = usePillars();
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -140,6 +142,15 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               title="Plant in the Forest"
             >
               <Sprout className="w-4 h-4" />
+            </button>
+          )}
+          {updateAvailable && onResync && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onResync(); }}
+              className="mt-1 px-1.5 py-1 rounded-md bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition-all flex items-center gap-1 text-[10px] font-bold animate-pulse"
+              title="Author updated this seed — re-sync to get the latest version"
+            >
+              <RefreshCw className="w-3 h-3" /> Update
             </button>
           )}
           <button

@@ -7,6 +7,7 @@ import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
+import { useForestState } from "@/hooks/useForestState";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ type SortMode = "newest" | "oldest" | "az";
 
 const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll, onPlant }: Props) => {
   const pillars = usePillars();
+  const forest = useForestState();
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<string | null>(null);
@@ -320,6 +322,8 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
               onUpdate={updateBlock}
               similarityScore={smartSearch && semanticResults !== null ? similarityScores[block.id] : undefined}
               onPlant={onPlant}
+              updateAvailable={!!block.from_seed_id && !!forest.availableUpdates[block.from_seed_id]}
+              onResync={block.from_seed_id ? () => forest.resyncSavedBlock(block.from_seed_id!) : undefined}
             />
           ))}
         </div>

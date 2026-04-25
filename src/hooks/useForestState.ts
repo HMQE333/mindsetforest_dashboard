@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { useForestBlocks } from "@/hooks/useForestBlocks";
 
 export interface ForestSeed {
   id: string;
@@ -46,11 +47,14 @@ export type PlantInput = {
 
 export function useForestState() {
   const { user } = useAuth();
+  const { blocked: blockedAuthors, blockAuthor, unblockAuthor } = useForestBlocks();
   const [mySeeds, setMySeeds] = useState<SeedWithAuthor[]>([]);
   const [discoverSeeds, setDiscoverSeeds] = useState<SeedWithAuthor[]>([]);
   const [myWaters, setMyWaters] = useState<Set<string>>(new Set());
   const [mySaves, setMySaves] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  // seed_id -> savedBlockId mapping for blocks I've saved that are now stale
+  const [availableUpdates, setAvailableUpdates] = useState<Record<string, string>>({});
 
   const enrich = useCallback(
     (seeds: ForestSeed[], authors: Record<string, ForestAuthor>): SeedWithAuthor[] =>
@@ -107,7 +111,9 @@ export function useForestState() {
     setMySaves(saveSet);
 
     const myOwn = seeds.filter((s) => s.author_id === user.id);
-    const fromOthers = seeds.filter((s) => s.author_id !== user.id && s.is_active);
+    const fromOthers = seeds.filter(
+      (s) => s.author_id !== user.id && s.is_active && !blockedAuthors.has(s.author_id),
+    );
 
     const enriched = (list: ForestSeed[]) =>
       list.map((s) => ({
@@ -120,8 +126,34 @@ export function useForestState() {
 
     setMySeeds(enriched(myOwn));
     setDiscoverSeeds(enriched(fromOthers));
+
+    // ----- Compute available updates (re-sync) -----
+    // For each seed I've saved, check whether the seed's updated_at is newer than the
+    // saved archive_block.updated_at. If so → an update is available.
+    if (saveSet.size) {
+      const seedIdsArr = Array.from(saveSet);
+      const seedById = new Map(seeds.map((s) => [s.id, s]));
+      const { data: savedBlocks } = await (supabase as any)
+        .from("archive_blocks")
+        .select("id, from_seed_id, updated_at")
+        .eq("user_id", user.id)
+        .in("from_seed_id", seedIdsArr);
+      const updates: Record<string, string> = {};
+      ((savedBlocks as any) || []).forEach((b: any) => {
+        const seed = seedById.get(b.from_seed_id);
+        if (!seed) return;
+        const seedTs = new Date(seed.updated_at).getTime();
+        const blockTs = new Date(b.updated_at).getTime();
+        // 60s grace to ignore initial save round-trip drift
+        if (seedTs - blockTs > 60_000) updates[b.from_seed_id] = b.id;
+      });
+      setAvailableUpdates(updates);
+    } else {
+      setAvailableUpdates({});
+    }
+
     setLoading(false);
-  }, [user]);
+  }, [user, blockedAuthors]);
 
   useEffect(() => {
     fetchAll();
@@ -281,14 +313,55 @@ export function useForestState() {
         .in("user_id", missingIds);
       ((authors as any) || []).forEach((a: any) => { knownAuthorMap[a.user_id] = a; });
     }
-    return results.map((s) => ({
+    return results
+      .filter((s) => !blockedAuthors.has(s.author_id))
+      .map((s) => ({
       ...s,
       author: knownAuthorMap[s.author_id],
       iWatered: myWaters.has(s.id),
       iSaved: mySaves.has(s.id),
       isEdited: new Date(s.updated_at).getTime() - new Date(s.published_at).getTime() > 60_000,
     }));
-  }, [mySeeds, discoverSeeds, myWaters, mySaves]);
+  }, [mySeeds, discoverSeeds, myWaters, mySaves, blockedAuthors]);
+
+  // Re-sync a saved block to the latest seed content
+  const resyncSavedBlock = useCallback(async (seedId: string) => {
+    if (!user) return;
+    const blockId = availableUpdates[seedId];
+    if (!blockId) return;
+    // Fetch latest seed via service-side RLS-allowed select
+    const { data: seed } = await supabase
+      .from("forest_seeds" as any)
+      .select("title, content, pillars, directions, tags, source_url, updated_at")
+      .eq("id", seedId)
+      .single();
+    if (!seed) {
+      toast.error("Seed no longer accessible");
+      return;
+    }
+    const tags = Array.from(new Set([...((seed as any).tags || []), "from-forest"]));
+    const { error } = await supabase
+      .from("archive_blocks" as any)
+      .update({
+        title: (seed as any).title,
+        content: (seed as any).content,
+        pillars: (seed as any).pillars,
+        directions: (seed as any).directions,
+        tags,
+        source_url: (seed as any).source_url,
+      } as any)
+      .eq("id", blockId);
+    if (error) {
+      toast.error("Failed to re-sync");
+      return;
+    }
+    toast.success("↻ Updated to author's latest version");
+    setAvailableUpdates((prev) => {
+      const next = { ...prev };
+      delete next[seedId];
+      return next;
+    });
+  }, [user, availableUpdates]);
 
   // Achievements (computed cheaply from currently-loaded data)
   const achievements = useMemo(() => {
@@ -320,5 +393,10 @@ export function useForestState() {
     semanticSearchForest,
     achievements,
     refetch: fetchAll,
+    availableUpdates,
+    resyncSavedBlock,
+    blockedAuthors,
+    blockAuthor,
+    unblockAuthor,
   };
 }
