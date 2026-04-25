@@ -447,6 +447,185 @@ export type Database = {
         }
         Relationships: []
       }
+      forest_reports: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string
+          reporter_id: string
+          seed_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason?: string
+          reporter_id: string
+          seed_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string
+          reporter_id?: string
+          seed_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forest_reports_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "forest_seeds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forest_saves: {
+        Row: {
+          created_at: string
+          id: string
+          saved_block_id: string | null
+          seed_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          saved_block_id?: string | null
+          seed_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          saved_block_id?: string | null
+          seed_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forest_saves_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "forest_seeds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forest_seed_audience: {
+        Row: {
+          seed_id: string
+          user_id: string
+        }
+        Insert: {
+          seed_id: string
+          user_id: string
+        }
+        Update: {
+          seed_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forest_seed_audience_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "forest_seeds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forest_seeds: {
+        Row: {
+          author_id: string
+          content: string
+          directions: string[]
+          embedding: string | null
+          id: string
+          is_active: boolean
+          language: string
+          pillars: string[]
+          published_at: string
+          save_count: number
+          source_block_id: string | null
+          source_url: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+          view_count: number
+          visibility: string
+          water_count: number
+        }
+        Insert: {
+          author_id: string
+          content?: string
+          directions?: string[]
+          embedding?: string | null
+          id?: string
+          is_active?: boolean
+          language?: string
+          pillars?: string[]
+          published_at?: string
+          save_count?: number
+          source_block_id?: string | null
+          source_url?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          view_count?: number
+          visibility?: string
+          water_count?: number
+        }
+        Update: {
+          author_id?: string
+          content?: string
+          directions?: string[]
+          embedding?: string | null
+          id?: string
+          is_active?: boolean
+          language?: string
+          pillars?: string[]
+          published_at?: string
+          save_count?: number
+          source_block_id?: string | null
+          source_url?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          view_count?: number
+          visibility?: string
+          water_count?: number
+        }
+        Relationships: []
+      }
+      forest_waters: {
+        Row: {
+          created_at: string
+          id: string
+          seed_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          seed_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          seed_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forest_waters_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "forest_seeds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       friend_suggestions: {
         Row: {
           created_at: string
@@ -1103,6 +1282,7 @@ export type Database = {
       accept_friend_request: { Args: { request_id: string }; Returns: Json }
       add_friend_by_handle: { Args: { handle: string }; Returns: Json }
       are_friends: { Args: { _a: string; _b: string }; Returns: boolean }
+      can_view_seed: { Args: { _seed_id: string }; Returns: boolean }
       decline_friend_request: { Args: { request_id: string }; Returns: Json }
       ensure_user_profile: {
         Args: never
@@ -1122,6 +1302,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      forest_view_seed: { Args: { _seed_id: string }; Returns: undefined }
       generate_friend_code: { Args: never; Returns: string }
       get_friend_dashboard: { Args: { friend_id: string }; Returns: Json }
       get_shared_library: { Args: { share_id: string }; Returns: Json }
