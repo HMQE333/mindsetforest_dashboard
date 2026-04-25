@@ -133,11 +133,11 @@ export function useForestState() {
     if (saveSet.size) {
       const seedIdsArr = Array.from(saveSet);
       const seedById = new Map(seeds.map((s) => [s.id, s]));
-      const { data: savedBlocks } = await supabase
-        .from("archive_blocks" as any)
+      const { data: savedBlocks } = await (supabase as any)
+        .from("archive_blocks")
         .select("id, from_seed_id, updated_at")
         .eq("user_id", user.id)
-        .in("from_seed_id" as any, seedIdsArr);
+        .in("from_seed_id", seedIdsArr);
       const updates: Record<string, string> = {};
       ((savedBlocks as any) || []).forEach((b: any) => {
         const seed = seedById.get(b.from_seed_id);
