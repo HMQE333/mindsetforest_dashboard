@@ -331,7 +331,9 @@ const ArchiveForestView = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {list.map((seed) => (
-            <ForestSeedCard key={seed.id} seed={seed} isMine={tab === "mine"} onEdit={setEditSeed} />
+            <div key={seed.id} id={`forest-seed-${seed.id}`} className="rounded-2xl">
+              <ForestSeedCard seed={seed} isMine={tab === "mine"} onEdit={setEditSeed} />
+            </div>
           ))}
         </div>
       ))}
