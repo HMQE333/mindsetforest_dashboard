@@ -236,6 +236,31 @@ export function useDashboardState() {
     });
   }, [persist]);
 
+  const addMission = useCallback((categoryId: string, mission: Mission) => {
+    setState(prev => {
+      const current = prev.customMissions[categoryId]
+        || CATEGORIES.find(c => c.id === categoryId)?.missions
+        || [];
+      // Skip duplicates by title (case-insensitive)
+      const titleLc = (mission.title || "").trim().toLowerCase();
+      if (titleLc && current.some(m => (m.title || "").trim().toLowerCase() === titleLc)) {
+        return prev;
+      }
+      const newMissions = [...current, mission];
+      const newRolled = { ...prev.rolledVariants };
+      if (mission.variants && mission.variants.length > 0) {
+        newRolled[`${categoryId}-${newMissions.length - 1}`] = rollVariant(mission.variants);
+      }
+      const next: DashboardState = {
+        ...prev,
+        customMissions: { ...prev.customMissions, [categoryId]: newMissions },
+        rolledVariants: newRolled,
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const rerollMission = useCallback((categoryId: string, missionIndex: number) => {
     setState(prev => {
       const missions = prev.customMissions[categoryId]
@@ -340,6 +365,7 @@ export function useDashboardState() {
     completeMission,
     resetDay,
     saveCustomMissions,
+    addMission,
     splitMission,
     resetCategory,
     spendXP,

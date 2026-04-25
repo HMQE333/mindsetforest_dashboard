@@ -251,40 +251,14 @@ export function useFriends() {
       fetchAll();
       return;
     }
-    // Accept: create a new standalone planning task in user's portfolio.
-    // We pick a project: any existing user_project, else null/standalone.
-    const { data: projects } = await supabase
-      .from("user_projects" as any)
-      .select("id")
-      .eq("user_id", user.id)
-      .limit(1);
-    const projectId = ((projects as any) || [])[0]?.id ?? null;
-    if (!projectId) {
-      toast.error("Create a project in Planning first to accept tasks");
-      return;
-    }
-    const senderProfile = profiles[s.sender_id];
-    const noteSuffix = senderProfile ? `\n\nFrom @${senderProfile.username}` : "";
-    const { data: task, error: taskErr } = await supabase
-      .from("planning_tasks" as any)
-      .insert([{
-        user_id: user.id,
-        project_id: projectId,
-        title: s.title,
-        notes: (s.note || "") + noteSuffix,
-        level: "task",
-        standalone: true,
-      }] as any)
-      .select("id")
-      .single();
-    if (taskErr) { toast.error("Failed to create task"); return; }
+    // Accept: just mark accepted. Caller is responsible for routing the task
+    // (e.g. adding it as a persistent mission to a chosen Home category).
     await supabase
       .from("friend_suggestions" as any)
-      .update({ status: "accepted", responded_at: new Date().toISOString(), resulting_task_id: (task as any).id } as any)
+      .update({ status: "accepted", responded_at: new Date().toISOString() } as any)
       .eq("id", s.id);
-    toast.success("Task added to your Planning");
     fetchAll();
-  }, [user, profiles, fetchAll]);
+  }, [user, fetchAll]);
 
   return {
     loading,
