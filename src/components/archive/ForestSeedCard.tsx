@@ -265,6 +265,12 @@ const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
               />
               <div className="flex justify-end gap-2">
                 <button onClick={() => setReportOpen(false)} className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>
+                <button
+                  onClick={async () => { await f.blockAuthor(seed.author_id); setReportOpen(false); }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-muted/40 text-foreground font-bold hover:bg-muted/60"
+                >
+                  🚫 Block author
+                </button>
                 <button onClick={handleReport} disabled={!reportReason.trim()}
                   className="text-xs px-3 py-1.5 rounded-lg bg-destructive/20 text-destructive font-bold hover:bg-destructive/30 disabled:opacity-40">
                   Report
