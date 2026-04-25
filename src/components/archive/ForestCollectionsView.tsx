@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Globe, Lock, X, Library } from "lucide-react";
+import { Plus, Trash2, Globe, Lock, X, Library, BookmarkPlus } from "lucide-react";
 import { useForestCollections, type ForestCollection } from "@/hooks/useForestCollections";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import ForestSeedCard from "./ForestSeedCard";
@@ -87,6 +87,7 @@ const ForestCollectionsView = () => {
           isMine={cols.mine.some((m) => m.id === openCol.id)}
           fetchSeedIds={cols.fetchCollectionSeedIds}
           allSeeds={[...forest.mySeeds, ...forest.discoverSeeds]}
+          onSaveSeed={async (id) => { await forest.saveSeed(id); }}
           onDelete={async () => {
             if (!confirm("Delete this collection? Seeds themselves remain.")) return;
             await cols.deleteCollection(openCol.id);
@@ -181,6 +182,7 @@ const CollectionDetailModal = ({
   isMine,
   fetchSeedIds,
   allSeeds,
+  onSaveSeed,
   onDelete,
   onAddSeeds,
   onRemoveSeed,
@@ -190,6 +192,7 @@ const CollectionDetailModal = ({
   isMine: boolean;
   fetchSeedIds: (id: string) => Promise<string[]>;
   allSeeds: SeedWithAuthor[];
+  onSaveSeed: (seedId: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onAddSeeds: (seedIds: string[]) => Promise<unknown>;
   onRemoveSeed: (seedId: string) => Promise<void>;
@@ -198,6 +201,7 @@ const CollectionDetailModal = ({
   const [loading, setLoading] = useState(true);
   const [adderOpen, setAdderOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [savingAll, setSavingAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +219,19 @@ const CollectionDetailModal = ({
     const map = new Map(allSeeds.map((s) => [s.id, s]));
     return seedIds.map((id) => map.get(id)).filter(Boolean) as SeedWithAuthor[];
   }, [seedIds, allSeeds]);
+
+  const unsavedSeeds = useMemo(() => seeds.filter((s) => !s.iSaved), [seeds]);
+
+  const saveAll = async () => {
+    if (unsavedSeeds.length === 0) return;
+    setSavingAll(true);
+    let ok = 0;
+    for (const s of unsavedSeeds) {
+      try { await onSaveSeed(s.id); ok += 1; } catch { /* skip */ }
+    }
+    setSavingAll(false);
+    toast.success(`Saved ${ok} seed${ok === 1 ? "" : "s"} to your Archive`);
+  };
 
   // Candidate seeds: only my own seeds can be added (we know they're visible)
   const myCandidates = useMemo(
@@ -256,6 +273,14 @@ const CollectionDetailModal = ({
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {!isMine && unsavedSeeds.length > 0 && (
+              <button onClick={saveAll} disabled={savingAll}
+                title={`Save all ${unsavedSeeds.length} unsaved seeds to your Archive`}
+                className="text-[11px] px-2.5 py-1 rounded-lg gradient-purple text-primary-foreground font-bold glow-sm flex items-center gap-1 disabled:opacity-50">
+                <BookmarkPlus className="w-3 h-3" />
+                {savingAll ? "Saving…" : `Save all (${unsavedSeeds.length})`}
+              </button>
+            )}
             {isMine && (
               <>
                 <button onClick={() => setAdderOpen(true)} title="Add seeds"

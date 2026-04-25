@@ -12,6 +12,7 @@ import ForestInboxBell from "./ForestInboxBell";
 import ForestCollectionsView from "./ForestCollectionsView";
 import ForestDailyStack from "./ForestDailyStack";
 import BlockedAuthorsList from "./BlockedAuthorsList";
+import RecentAppreciationStrip from "./RecentAppreciationStrip";
 import { Sprout, Droplet, BookmarkPlus, Eye, Trophy } from "lucide-react";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
@@ -132,6 +133,22 @@ const ArchiveForestView = () => {
 
   const list = tab === "discover" ? sortedDiscover : filteredMine;
 
+  // Top tags across the discover pool — surfaced as one-tap chips
+  const topDiscoverTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of forest.discoverSeeds) {
+      for (const t of s.tags || []) {
+        const k = t.trim().toLowerCase();
+        if (!k) continue;
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([t, n]) => ({ tag: t, count: n }));
+  }, [forest.discoverSeeds]);
+
   // Stats for My Forest
   const myStats = useMemo(() => {
     const totalWaters = forest.mySeeds.reduce((s, x) => s + (x.water_count || 0), 0);
@@ -222,6 +239,11 @@ const ArchiveForestView = () => {
       {/* Blocked authors panel — visible on My Seeds tab when there are any */}
       {tab === "mine" && <BlockedAuthorsList />}
 
+      {/* Recent appreciation activity */}
+      {tab === "mine" && myStats.count > 0 && (
+        <RecentAppreciationStrip mySeedIds={forest.mySeeds.map((s) => s.id)} />
+      )}
+
       {/* Filters */}
       {(tab === "discover" || tab === "mine") && (
       <div className="glass-card p-3 space-y-2">
@@ -304,6 +326,30 @@ const ArchiveForestView = () => {
             </button>
           )}
         </div>
+
+        {tab === "discover" && topDiscoverTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1">
+              Trending tags
+            </span>
+            {topDiscoverTags.map(({ tag, count }) => {
+              const active = filterTag.trim().toLowerCase().replace(/^#/, "") === tag;
+              return (
+                <button
+                  key={tag}
+                  onClick={() => setFilterTag(active ? "" : `#${tag}`)}
+                  className={`text-[11px] px-2 py-0.5 rounded-full font-semibold transition-all ${
+                    active
+                      ? "gradient-purple text-primary-foreground glow-sm"
+                      : "bg-muted/30 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  #{tag} <span className="opacity-60">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       )}
 
