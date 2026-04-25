@@ -20,7 +20,7 @@ import WeeklyProgress from "./WeeklyProgress";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, resetDay, saveCustomMissions, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { ladders, activeCategory: ladderCategory } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -60,6 +60,17 @@ export default function DashboardView() {
       );
     }
   }, [state.missionsCompleted, state.completedMissions]);
+
+  // Listen for friend-suggestion accepts → add as a persistent mission to chosen category
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.categoryId || !detail?.mission) return;
+      addMission(detail.categoryId, detail.mission);
+    };
+    window.addEventListener("lov:add-friend-mission", handler as EventListener);
+    return () => window.removeEventListener("lov:add-friend-mission", handler as EventListener);
+  }, [addMission]);
 
   const handleComplete = useCallback((categoryId: string, index: number, xp: number) => {
     const prevLvl = state.currentLevel;
