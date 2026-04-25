@@ -9,16 +9,19 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import ForestSeedCard from "./ForestSeedCard";
 import EditSeedModal from "./EditSeedModal";
 import ForestInboxBell from "./ForestInboxBell";
+import ForestCollectionsView from "./ForestCollectionsView";
+import ForestDailyStack from "./ForestDailyStack";
+import BlockedAuthorsList from "./BlockedAuthorsList";
 import { Sprout, Droplet, BookmarkPlus, Eye, Trophy } from "lucide-react";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
-type SubTab = "discover" | "mine";
+type SubTab = "daily" | "discover" | "collections" | "mine";
 
 const ArchiveForestView = () => {
   const forest = useForestState();
   const friends = useFriends();
   const pillars = usePillars();
-  const [tab, setTab] = useState<SubTab>("discover");
+  const [tab, setTab] = useState<SubTab>("daily");
   const [sort, setSort] = useState<DiscoverSort>("trending");
   const [search, setSearch] = useState("");
   const [smartSearch, setSmartSearch] = useState(false);
@@ -117,22 +120,33 @@ const ArchiveForestView = () => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
       {/* Sub-tabs */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {([
+          { id: "daily" as SubTab, label: "🍃 Daily", count: null },
           { id: "discover" as SubTab, label: "🔭 Discover", count: forest.discoverSeeds.length },
+          { id: "collections" as SubTab, label: "📚 Collections", count: null },
           { id: "mine" as SubTab, label: "🌱 My seeds", count: forest.mySeeds.length },
         ]).map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
               tab === t.id ? "gradient-purple text-primary-foreground glow-sm" : "glass-card text-muted-foreground hover:text-foreground"
             }`}>
-            {t.label} <span className="opacity-70 ml-1">({t.count})</span>
+            {t.label}
+            {t.count !== null && <span className="opacity-70 ml-1">({t.count})</span>}
           </button>
         ))}
         <div className="ml-auto">
           <ForestInboxBell />
         </div>
       </div>
+
+      {/* Daily curated grove */}
+      {tab === "daily" && (
+        <ForestDailyStack onOpenDiscover={() => setTab("discover")} />
+      )}
+
+      {/* Collections */}
+      {tab === "collections" && <ForestCollectionsView />}
 
       {/* My Forest dashboard (only on My Seeds tab, only if user has any seeds) */}
       {tab === "mine" && myStats.count > 0 && (
@@ -181,7 +195,11 @@ const ArchiveForestView = () => {
         </motion.div>
       )}
 
+      {/* Blocked authors panel — visible on My Seeds tab when there are any */}
+      {tab === "mine" && <BlockedAuthorsList />}
+
       {/* Filters */}
+      {(tab === "discover" || tab === "mine") && (
       <div className="glass-card p-3 space-y-2">
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -263,9 +281,11 @@ const ArchiveForestView = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* List */}
-      {forest.loading ? (
+      {(tab === "discover" || tab === "mine") && (
+        forest.loading ? (
         <div className="text-center py-12 text-muted-foreground">
           <span className="text-2xl animate-pulse">🌳</span>
           <p className="mt-2">Growing the Forest...</p>
@@ -287,7 +307,7 @@ const ArchiveForestView = () => {
             <ForestSeedCard key={seed.id} seed={seed} isMine={tab === "mine"} onEdit={setEditSeed} />
           ))}
         </div>
-      )}
+      ))}
 
       <EditSeedModal open={editSeed !== null} seed={editSeed} onClose={() => setEditSeed(null)} />
     </motion.div>
