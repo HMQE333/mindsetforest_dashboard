@@ -14,6 +14,12 @@ const ForestInboxBell = () => {
   const inbox = useForestInbox();
   const [open, setOpen] = useState(false);
 
+  const focusSeed = (seedId?: string | null) => {
+    if (!seedId) return;
+    window.dispatchEvent(new CustomEvent("lov:forest-focus-seed", { detail: { seedId } }));
+    setOpen(false);
+  };
+
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o && inbox.unreadCount > 0) inbox.markAllRead(); }}>
       <PopoverTrigger asChild>
@@ -65,8 +71,8 @@ const ForestInboxBell = () => {
               const meta = KIND_META[e.kind];
               const isUnread = !e.read_at;
               return (
-                <div key={e.id}
-                  className={`flex items-start gap-2 px-3 py-2 border-b border-white/5 last:border-b-0 transition-colors ${
+                <button key={e.id} onClick={() => focusSeed(e.seed_id)}
+                  className={`w-full text-left flex items-start gap-2 px-3 py-2 border-b border-white/5 last:border-b-0 transition-colors hover:bg-white/5 ${
                     isUnread ? "bg-primary/5" : ""
                   }`}
                 >
@@ -85,7 +91,7 @@ const ForestInboxBell = () => {
                     </p>
                   </div>
                   {isUnread && <span className="mt-1 w-1.5 h-1.5 rounded-full bg-primary" />}
-                </div>
+                </button>
               );
             })
           )}

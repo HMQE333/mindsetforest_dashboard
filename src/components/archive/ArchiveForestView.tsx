@@ -35,6 +35,30 @@ const ArchiveForestView = () => {
 
   const friendIds = useMemo(() => new Set(friends.accepted.map((f) => f.friend.user_id)), [friends.accepted]);
 
+  // Inbox bell deep-open: switch to the right tab + scroll/flash the card
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const seedId = (e as CustomEvent).detail?.seedId as string | undefined;
+      if (!seedId) return;
+      const isMine = forest.mySeeds.some((s) => s.id === seedId);
+      setTab(isMine ? "mine" : "discover");
+      // Clear filters so the seed is reachable
+      setFilterPillar(null); setFilterDirection(null); setFilterTag(""); setHideSaved(false);
+      setSearch(""); setSemanticResults(null);
+      // Defer scroll until after re-render
+      setTimeout(() => {
+        const el = document.getElementById(`forest-seed-${seedId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-primary", "transition-all");
+          setTimeout(() => el.classList.remove("ring-2", "ring-primary"), 2000);
+        }
+      }, 350);
+    };
+    window.addEventListener("lov:forest-focus-seed", handler as EventListener);
+    return () => window.removeEventListener("lov:forest-focus-seed", handler as EventListener);
+  }, [forest.mySeeds]);
+
   // Smart search debounce
   useEffect(() => {
     if (!smartSearch || search.trim().length < 2) {
@@ -304,7 +328,9 @@ const ArchiveForestView = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {list.map((seed) => (
-            <ForestSeedCard key={seed.id} seed={seed} isMine={tab === "mine"} onEdit={setEditSeed} />
+            <div key={seed.id} id={`forest-seed-${seed.id}`} className="rounded-2xl">
+              <ForestSeedCard seed={seed} isMine={tab === "mine"} onEdit={setEditSeed} />
+            </div>
           ))}
         </div>
       ))}
