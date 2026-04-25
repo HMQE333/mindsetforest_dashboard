@@ -365,6 +365,7 @@ export function useDashboardState() {
     completeMission,
     resetDay,
     saveCustomMissions,
+    addMission,
     splitMission,
     resetCategory,
     spendXP,
