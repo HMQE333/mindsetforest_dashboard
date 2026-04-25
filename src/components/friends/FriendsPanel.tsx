@@ -230,26 +230,63 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
           {!f.loading && tab === "inbox" && (
             f.incomingSuggestions.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-8">No pending suggestions.</p>
-            ) : f.incomingSuggestions.map(s => (
-              <div key={s.id} className="p-3 rounded-xl bg-muted/20 border border-white/5 space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{s.senderProfile?.avatar_emoji || "🦊"}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-muted-foreground">From @{s.senderProfile?.username || "friend"}</p>
-                    <p className="text-sm font-bold text-foreground">{s.title}</p>
+            ) : f.incomingSuggestions.map(s => {
+              const picking = pickingFor === s.id;
+              return (
+                <div key={s.id} className="p-3 rounded-xl bg-muted/20 border border-white/5 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{s.senderProfile?.avatar_emoji || "🦊"}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-muted-foreground">From @{s.senderProfile?.username || "friend"}</p>
+                      <p className="text-sm font-bold text-foreground">{s.title}</p>
+                    </div>
                   </div>
+                  {s.note && <p className="text-xs text-muted-foreground italic">"{s.note}"</p>}
+
+                  {!picking ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setPickingFor(s.id)}
+                        className="flex-1 px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-xs font-bold hover:bg-primary/30 transition-all"
+                      >
+                        Accept → pick pillar
+                      </button>
+                      <button
+                        onClick={() => f.respondSuggestion(s, false)}
+                        className="px-3 py-1.5 rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground text-xs font-semibold transition-all"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-1 border-t border-white/5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Add as persistent task to…</p>
+                        <button
+                          onClick={() => setPickingFor(null)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                        >
+                          <ChevronLeft className="w-3 h-3" /> Back
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {CATEGORIES.map(cat => (
+                          <button
+                            key={cat.id}
+                            onClick={() => acceptToCategory(s, cat.id)}
+                            title={cat.name}
+                            className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
+                          >
+                            <span className="text-lg leading-none">{cat.icon}</span>
+                            <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{cat.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {s.note && <p className="text-xs text-muted-foreground italic">"{s.note}"</p>}
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => f.respondSuggestion(s, true)} className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-bold hover:bg-emerald-500/30 transition-all">
-                    Accept → Planning
-                  </button>
-                  <button onClick={() => f.respondSuggestion(s, false)} className="px-3 py-1.5 rounded-lg text-muted-foreground hover:bg-muted/40 hover:text-foreground text-xs font-semibold transition-all">
-                    Decline
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </SheetContent>
