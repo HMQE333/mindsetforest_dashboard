@@ -4,6 +4,10 @@ import { useAuth } from "./useAuth";
 
 export type TaskLevel = "goal" | "phase" | "task" | "action" | "link";
 
+export type PlanningMention =
+  | { kind: "ladder"; categoryId: string; level: number }
+  | { kind: "loop"; categoryId: string; loopIndex: number };
+
 export interface PlanningTask {
   id: string;
   user_id: string;
@@ -24,6 +28,7 @@ export interface PlanningTask {
   standalone: boolean;
   position_x: number | null;
   position_y: number | null;
+  mentions: PlanningMention[];
 }
 
 export function usePlanningState(projectId?: string) {
