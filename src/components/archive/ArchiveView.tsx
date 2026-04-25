@@ -7,11 +7,13 @@ import ArchiveLinksView from "./ArchiveLinksView";
 import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
 import ArchiveDigestView from "./ArchiveDigestView";
+import ArchiveForestView from "./ArchiveForestView";
+import PlantSeedModal from "./PlantSeedModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images" | "digest";
+type SubView = "inbox" | "library" | "links" | "images" | "digest" | "forest";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
@@ -44,6 +46,7 @@ const ArchiveView = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
+  const [plantOpen, setPlantOpen] = useState(false);
   const archive = useArchiveState();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
@@ -57,6 +60,7 @@ const ArchiveView = () => {
     { id: "links", label: "Links", icon: "🔗", count: linkCount },
     { id: "images", label: "Images", icon: "🖼️", count: imageCount },
     { id: "digest", label: "Digest", icon: "🔁" },
+    { id: "forest", label: "Forest", icon: "🌳" },
   ];
 
   const toggleSelect = (id: string) => {
@@ -250,6 +254,11 @@ const ArchiveView = () => {
             <ArchiveDigestView blocks={archive.blocks} />
           </motion.div>
         )}
+        {subView === "forest" && (
+          <motion.div key="forest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <ArchiveForestView />
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* Multi-select floating bar */}
@@ -276,6 +285,10 @@ const ArchiveView = () => {
               🤖 AI Prompt
             </button>
             <span className="w-px h-5 bg-white/15" />
+            <button onClick={() => setPlantOpen(true)} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/30 transition-all disabled:opacity-40">
+              🌱 Plant {selectedIds.size}
+            </button>
+            <span className="w-px h-5 bg-white/15" />
             <button onClick={handleBulkDelete} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-destructive/20 border border-destructive/30 text-[11px] font-bold text-destructive hover:bg-destructive/30 transition-all disabled:opacity-40">
               {bulkLoading === "delete" ? "⏳" : "🗑️ Delete"}
             </button>
@@ -293,6 +306,13 @@ const ArchiveView = () => {
         onResult={handleAIResult}
         onReplaceBlocks={handleReplaceBlocks}
         onRemoveFromSelection={removeFromSelection}
+      />
+
+      <PlantSeedModal
+        open={plantOpen}
+        blocks={selectedBlocks}
+        onClose={() => setPlantOpen(false)}
+        onPlanted={() => clearSelection()}
       />
     </motion.div>
   );
