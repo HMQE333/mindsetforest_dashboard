@@ -14,6 +14,7 @@ import ForestDailyStack from "./ForestDailyStack";
 import BlockedAuthorsList from "./BlockedAuthorsList";
 import RecentAppreciationStrip from "./RecentAppreciationStrip";
 import { Sprout, Droplet, BookmarkPlus, Eye, Trophy } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
 type SubTab = "daily" | "discover" | "collections" | "mine";
@@ -35,6 +36,32 @@ const ArchiveForestView = () => {
   const [editSeed, setEditSeed] = useState<SeedWithAuthor | null>(null);
 
   const friendIds = useMemo(() => new Set(friends.accepted.map((f) => f.friend.user_id)), [friends.accepted]);
+
+  // Friend-saved counts per seed (social proof on Discover)
+  const [friendsSavedCounts, setFriendsSavedCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const seedIds = forest.discoverSeeds.map((s) => s.id);
+    const friendIdsArr = Array.from(friendIds);
+    if (seedIds.length === 0 || friendIdsArr.length === 0) {
+      setFriendsSavedCounts({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("forest_saves" as any)
+        .select("seed_id, user_id")
+        .in("seed_id", seedIds)
+        .in("user_id", friendIdsArr);
+      if (cancelled) return;
+      const counts: Record<string, number> = {};
+      ((data as any) || []).forEach((row: any) => {
+        counts[row.seed_id] = (counts[row.seed_id] || 0) + 1;
+      });
+      setFriendsSavedCounts(counts);
+    })();
+    return () => { cancelled = true; };
+  }, [forest.discoverSeeds, friendIds]);
 
   // Inbox bell deep-open: switch to the right tab + scroll/flash the card
   useEffect(() => {
@@ -375,7 +402,8 @@ const ArchiveForestView = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {list.map((seed) => (
             <div key={seed.id} id={`forest-seed-${seed.id}`} className="rounded-2xl">
-              <ForestSeedCard seed={seed} isMine={tab === "mine"} onEdit={setEditSeed} />
+              <ForestSeedCard seed={seed} isMine={tab === "mine"} onEdit={setEditSeed}
+                friendsSavedCount={tab === "discover" ? (friendsSavedCounts[seed.id] || 0) : 0} />
             </div>
           ))}
         </div>
