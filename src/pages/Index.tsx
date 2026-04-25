@@ -24,6 +24,9 @@ import PlanningView from "@/components/planning/PlanningView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
+import FriendsButton from "@/components/friends/FriendsButton";
+import FriendsPanel from "@/components/friends/FriendsPanel";
+import { useFriends } from "@/hooks/useFriends";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning";
 
@@ -55,6 +58,8 @@ const Index = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const { badgeCount } = useFriends();
 
   // Cross-module navigation: Planning Map "mentions" trigger jumps to Ladder/Habit Loop.
   useEffect(() => {
@@ -161,7 +166,8 @@ const Index = () => {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
           {user && (
-            <div className="flex justify-end mb-2">
+            <div className="flex justify-end items-center gap-2 mb-2">
+              <FriendsButton badgeCount={badgeCount} onClick={() => setFriendsOpen(true)} />
               <button
                 onClick={() => setSettingsOpen(true)}
                 className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
@@ -281,6 +287,7 @@ const Index = () => {
       {/* Global Quick Capture — Ctrl/Cmd+N */}
       {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
       {user && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+      {user && <FriendsPanel open={friendsOpen} onOpenChange={setFriendsOpen} />}
     </div>
   );
 };

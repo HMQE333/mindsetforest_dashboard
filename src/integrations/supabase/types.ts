@@ -447,6 +447,81 @@ export type Database = {
         }
         Relationships: []
       }
+      friend_suggestions: {
+        Row: {
+          created_at: string
+          id: string
+          note: string
+          recipient_id: string
+          responded_at: string | null
+          resulting_task_id: string | null
+          sender_id: string
+          source: string
+          status: Database["public"]["Enums"]["suggestion_status"]
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string
+          recipient_id: string
+          responded_at?: string | null
+          resulting_task_id?: string | null
+          sender_id: string
+          source?: string
+          status?: Database["public"]["Enums"]["suggestion_status"]
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string
+          recipient_id?: string
+          responded_at?: string | null
+          resulting_task_id?: string | null
+          sender_id?: string
+          source?: string
+          status?: Database["public"]["Enums"]["suggestion_status"]
+          title?: string
+        }
+        Relationships: []
+      }
+      friendships: {
+        Row: {
+          created_at: string
+          id: string
+          promises: Json
+          recipient_id: string
+          requester_id: string
+          share_from_recipient: boolean
+          share_from_requester: boolean
+          status: Database["public"]["Enums"]["friendship_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          promises?: Json
+          recipient_id: string
+          requester_id: string
+          share_from_recipient?: boolean
+          share_from_requester?: boolean
+          status?: Database["public"]["Enums"]["friendship_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          promises?: Json
+          recipient_id?: string
+          requester_id?: string
+          share_from_recipient?: boolean
+          share_from_requester?: boolean
+          status?: Database["public"]["Enums"]["friendship_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       habit_loops: {
         Row: {
           category_id: string
@@ -656,6 +731,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      profile_shares: {
+        Row: {
+          created_at: string
+          id: string
+          is_public: boolean
+          name: string
+          sections: Json
+          updated_at: string
+          user_id: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_public?: boolean
+          name?: string
+          sections?: Json
+          updated_at?: string
+          user_id: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_public?: boolean
+          name?: string
+          sections?: Json
+          updated_at?: string
+          user_id?: string
+          view_count?: number
+        }
+        Relationships: []
       }
       tracker_entries: {
         Row: {
@@ -894,6 +1002,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_profiles: {
+        Row: {
+          avatar_emoji: string
+          created_at: string
+          display_name: string
+          friend_code: string
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          avatar_emoji?: string
+          created_at?: string
+          display_name?: string
+          friend_code: string
+          updated_at?: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          avatar_emoji?: string
+          created_at?: string
+          display_name?: string
+          friend_code?: string
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
       user_projects: {
         Row: {
           color_var: string
@@ -962,7 +1100,33 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_friend_request: { Args: { request_id: string }; Returns: Json }
+      add_friend_by_handle: { Args: { handle: string }; Returns: Json }
+      are_friends: { Args: { _a: string; _b: string }; Returns: boolean }
+      decline_friend_request: { Args: { request_id: string }; Returns: Json }
+      ensure_user_profile: {
+        Args: never
+        Returns: {
+          avatar_emoji: string
+          created_at: string
+          display_name: string
+          friend_code: string
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      generate_friend_code: { Args: never; Returns: string }
+      get_friend_dashboard: { Args: { friend_id: string }; Returns: Json }
       get_shared_library: { Args: { share_id: string }; Returns: Json }
+      get_shared_profile: { Args: { share_id: string }; Returns: Json }
+      regenerate_friend_code: { Args: never; Returns: string }
       search_archive_blocks: {
         Args: {
           match_count?: number
@@ -986,7 +1150,8 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      friendship_status: "pending" | "accepted" | "blocked"
+      suggestion_status: "pending" | "accepted" | "declined"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1113,6 +1278,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      friendship_status: ["pending", "accepted", "blocked"],
+      suggestion_status: ["pending", "accepted", "declined"],
+    },
   },
 } as const
