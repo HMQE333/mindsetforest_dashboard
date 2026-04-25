@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
-import { Droplet, BookmarkPlus, Sprout } from "lucide-react";
-import type { ForestAuthor } from "@/hooks/useForestState";
+import { Droplet, BookmarkPlus, Sprout, ShieldOff } from "lucide-react";
+import { useForestState, type ForestAuthor } from "@/hooks/useForestState";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Props {
   author?: ForestAuthor;
@@ -20,6 +21,9 @@ const AuthorPeekPopover = ({ author, authorId, children }: Props) => {
   const [open, setOpen] = useState(false);
   const [stats, setStats] = useState<AuthorStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  const f = useForestState();
+  const isSelf = user?.id === authorId;
 
   useEffect(() => {
     if (!open || stats !== null) return;
@@ -83,6 +87,18 @@ const AuthorPeekPopover = ({ author, authorId, children }: Props) => {
         <p className="mt-2 text-[10px] text-muted-foreground/80 leading-snug">
           Stats are based on seeds shared with you.
         </p>
+        {!isSelf && (
+          <button
+            onClick={async () => {
+              if (!confirm(`Block @${author?.username || "this author"}? Their seeds will be hidden everywhere.`)) return;
+              await f.blockAuthor(authorId);
+              setOpen(false);
+            }}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg bg-destructive/10 text-destructive font-bold hover:bg-destructive/20 transition-all"
+          >
+            <ShieldOff className="w-3 h-3" /> Block author
+          </button>
+        )}
       </PopoverContent>
     </Popover>
   );
