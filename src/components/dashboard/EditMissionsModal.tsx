@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Paperclip, Dice5, Plus, X } from "lucide-react";
 import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
+import { useUserProjects } from "@/hooks/useUserProjects";
 
 interface EditMissionsModalProps {
   categoryId: string;
@@ -13,6 +14,9 @@ interface EditMissionsModalProps {
 export default function EditMissionsModal({ categoryId, missions, onSave, onClose }: EditMissionsModalProps) {
   const [buffer, setBuffer] = useState<Mission[]>([]);
   const category = CATEGORIES.find(c => c.id === categoryId);
+  const { getProjectFromKey } = useUserProjects();
+  const project = categoryId.startsWith("project-") ? getProjectFromKey(categoryId) : null;
+  const displayName = project?.name || category?.name || "";
 
   useEffect(() => {
     setBuffer(missions.map(m => {
@@ -168,7 +172,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
               ✏️
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">Edit Tasks — {category?.name}</h2>
+              <h2 className="text-lg font-bold text-foreground">Edit Tasks — {displayName}</h2>
               <p className="text-xs text-foreground/60">Add, rename, remove or randomize missions. Changes are saved to your account.</p>
             </div>
           </div>
