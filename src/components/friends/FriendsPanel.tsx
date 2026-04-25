@@ -286,25 +286,18 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                             <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{cat.name}</span>
                           </button>
                         ))}
+                        {projects.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => acceptToCategory(s, projectKey(p.id), p.name)}
+                            title={p.name}
+                            className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
+                          >
+                            <span className="text-lg leading-none">{p.emoji || "📁"}</span>
+                            <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{p.name}</span>
+                          </button>
+                        ))}
                       </div>
-                      {projects.length > 0 && (
-                        <>
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-1">Projects</p>
-                          <div className="grid grid-cols-4 gap-1.5">
-                            {projects.map(p => (
-                              <button
-                                key={p.id}
-                                onClick={() => acceptToCategory(s, projectKey(p.id), p.name)}
-                                title={p.name}
-                                className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
-                              >
-                                <span className="text-lg leading-none">{p.emoji || "📁"}</span>
-                                <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{p.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
                     </div>
                   )}
                 </div>
