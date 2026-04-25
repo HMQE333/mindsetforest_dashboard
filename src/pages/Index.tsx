@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
@@ -55,6 +55,32 @@ const Index = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+
+  // Cross-module navigation: Planning Map "mentions" trigger jumps to Ladder/Habit Loop.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.module) return;
+      if (detail.module === "ladder") {
+        setActiveTab("ladder");
+        // Forward to LadderView once it mounts.
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("lov:set-ladder-category", {
+            detail: { categoryId: detail.categoryId, level: detail.level },
+          }));
+        }, 50);
+      } else if (detail.module === "habitloop") {
+        setActiveTab("habitloop");
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("lov:set-loop-category", {
+            detail: { categoryId: detail.categoryId, loopIndex: detail.loopIndex },
+          }));
+        }, 50);
+      }
+    };
+    window.addEventListener("lov:navigate-module", handler as EventListener);
+    return () => window.removeEventListener("lov:navigate-module", handler as EventListener);
+  }, []);
 
   // Respect saved module order
   const moduleOrder = preferences.moduleOrder;

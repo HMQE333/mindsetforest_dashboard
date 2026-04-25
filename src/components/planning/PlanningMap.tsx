@@ -15,6 +15,7 @@ import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
 import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid, Maximize2, Minimize2, Paperclip } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
+import { navigateToMention } from "./PlanningMentions";
 import { toast } from "@/hooks/use-toast";
 
 /* ── Level styling ─────────────────────────────────────────── */
@@ -90,6 +91,9 @@ function TaskNode({ data }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const isStandalone = !!task.standalone;
+  const mentions: any[] = Array.isArray(task.mentions) ? task.mentions : [];
+  const visibleMentions = mentions.slice(0, 2);
+  const hiddenCount = mentions.length - visibleMentions.length;
 
   return (
     <div className={`relative px-4 py-3 rounded-xl border ${isStandalone ? "border-dashed border-muted-foreground/40" : meta.borderColor} ${isStandalone ? "" : meta.glow} bg-background/90 backdrop-blur-md min-w-[160px] max-w-[220px] transition-all duration-200 hover:scale-105 ${task.done ? "opacity-50" : ""}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onDoubleClick={e => { e.stopPropagation(); setEditing(true); }} onClick={e => { e.stopPropagation(); if (!editing) onSelect(task.id); }}>
@@ -119,6 +123,28 @@ function TaskNode({ data }: NodeProps) {
         {task.url && !hovered && <button onClick={e => { e.stopPropagation(); window.open(task.url.startsWith("http") ? task.url : `https://${task.url}`, "_blank", "noopener,noreferrer"); }} className="flex-shrink-0 w-5 h-5 rounded-full bg-muted/40 border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-all" title="Open link"><Paperclip className="h-3 w-3" /></button>}
         {task.done && !hovered && !task.url && <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-cyan-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
       </div>
+      {mentions.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {visibleMentions.map((m, i) => {
+            const isLadder = m.kind === "ladder";
+            return (
+              <button
+                key={i}
+                onClick={e => { e.stopPropagation(); navigateToMention(m); }}
+                className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md border transition-transform hover:scale-110 ${isLadder ? "bg-violet-500/15 border-violet-500/40 text-violet-200" : "bg-cyan-500/15 border-cyan-500/40 text-cyan-200"}`}
+                title={isLadder ? `Mastery Ladder · ${m.categoryId} · L${m.level}` : `Habit Loop · ${m.categoryId}`}
+              >
+                {isLadder ? `🪜 L${m.level}` : `🔄`}
+              </button>
+            );
+          })}
+          {hiddenCount > 0 && (
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-muted/30 border border-white/10 text-muted-foreground">
+              +{hiddenCount}
+            </span>
+          )}
+        </div>
+      )}
       {!isStandalone && (
         <div className="flex justify-center mt-2">
           <button onClick={e => { e.stopPropagation(); setShowAdd(!showAdd); }} className={`w-6 h-6 rounded-full flex items-center justify-center transition-all border ${showAdd ? "gradient-purple border-transparent text-white scale-110" : "bg-muted/30 border-white/10 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>{showAdd ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}</button>

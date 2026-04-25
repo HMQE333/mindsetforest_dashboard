@@ -24,6 +24,16 @@ export default function HabitLoopView() {
   const activeProject = isProjectKey(activeCategory) ? getProjectFromKey(activeCategory) : null;
   const aiContextName = activeProject ? activeProject.name : undefined;
 
+  // Cross-module: Planning Map "mention" jumps here with a target category.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.categoryId) changeCategory(detail.categoryId);
+    };
+    window.addEventListener("lov:set-loop-category", handler as EventListener);
+    return () => window.removeEventListener("lov:set-loop-category", handler as EventListener);
+  }, [changeCategory]);
+
   useEffect(() => {
     const allComplete = loops.length > 0 && loops.every(l => isLoopComplete(l));
     if (allComplete && !prevAllComplete.current) {
