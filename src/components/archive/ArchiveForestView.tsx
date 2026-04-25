@@ -32,7 +32,6 @@ const ArchiveForestView = () => {
   const [filterTag, setFilterTag] = useState("");
   const [hideSaved, setHideSaved] = useState(false);
   const [editSeed, setEditSeed] = useState<SeedWithAuthor | null>(null);
-  const [focusSeedId, setFocusSeedId] = useState<string | null>(null);
 
   const friendIds = useMemo(() => new Set(friends.accepted.map((f) => f.friend.user_id)), [friends.accepted]);
 
@@ -46,7 +45,6 @@ const ArchiveForestView = () => {
       // Clear filters so the seed is reachable
       setFilterPillar(null); setFilterDirection(null); setFilterTag(""); setHideSaved(false);
       setSearch(""); setSemanticResults(null);
-      setFocusSeedId(seedId);
       // Defer scroll until after re-render
       setTimeout(() => {
         const el = document.getElementById(`forest-seed-${seedId}`);
@@ -55,7 +53,6 @@ const ArchiveForestView = () => {
           el.classList.add("ring-2", "ring-primary", "transition-all");
           setTimeout(() => el.classList.remove("ring-2", "ring-primary"), 2000);
         }
-        setFocusSeedId(null);
       }, 350);
     };
     window.addEventListener("lov:forest-focus-seed", handler as EventListener);
