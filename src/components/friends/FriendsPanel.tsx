@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Copy, RefreshCw, Check, X, Trash2, Eye, EyeOff, Inbox, UserPlus, Users } from "lucide-react";
+import { Copy, RefreshCw, Check, X, Trash2, Eye, EyeOff, Inbox, UserPlus, Users, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useFriends } from "@/hooks/useFriends";
+import { CATEGORIES } from "@/lib/dashboard-data";
 import AddFriendInput from "./AddFriendInput";
 
 interface FriendsPanelProps {
@@ -18,11 +19,36 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
   const f = useFriends();
   const [tab, setTab] = useState<Tab>("friends");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
 
   const copyCode = () => {
     if (!profile) return;
     navigator.clipboard.writeText(profile.friend_code);
     toast.success("Code copied");
+  };
+
+  const acceptToCategory = async (suggestion: typeof f.incomingSuggestions[number], categoryId: string) => {
+    // Add as a persistent mission to the chosen Home category
+    const senderTag = suggestion.senderProfile?.username
+      ? ` (from @${suggestion.senderProfile.username})`
+      : "";
+    const description = (suggestion.note || "").trim() + senderTag;
+    window.dispatchEvent(new CustomEvent("lov:add-friend-mission", {
+      detail: {
+        categoryId,
+        mission: {
+          title: suggestion.title,
+          description: description.slice(0, 240),
+          duration: "—",
+          xp: 10,
+          persistent: true,
+        },
+      },
+    }));
+    await f.respondSuggestion(suggestion, true);
+    setPickingFor(null);
+    const cat = CATEGORIES.find(c => c.id === categoryId);
+    toast.success(`Added to ${cat?.name || "Home"}`);
   };
 
   return (
