@@ -12,6 +12,7 @@ import ForestInboxBell from "./ForestInboxBell";
 import ForestCollectionsView from "./ForestCollectionsView";
 import ForestDailyStack from "./ForestDailyStack";
 import BlockedAuthorsList from "./BlockedAuthorsList";
+import RecentAppreciationStrip from "./RecentAppreciationStrip";
 import { Sprout, Droplet, BookmarkPlus, Eye, Trophy } from "lucide-react";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
@@ -237,6 +238,11 @@ const ArchiveForestView = () => {
 
       {/* Blocked authors panel — visible on My Seeds tab when there are any */}
       {tab === "mine" && <BlockedAuthorsList />}
+
+      {/* Recent appreciation activity */}
+      {tab === "mine" && myStats.count > 0 && (
+        <RecentAppreciationStrip mySeedIds={forest.mySeeds.map((s) => s.id)} />
+      )}
 
       {/* Filters */}
       {(tab === "discover" || tab === "mine") && (
