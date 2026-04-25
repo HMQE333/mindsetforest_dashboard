@@ -28,11 +28,12 @@ interface Props {
   toggleSelect: (id: string) => void;
   semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
   embedAll: () => Promise<any>;
+  onPlant?: (block: ArchiveBlock) => void;
 }
 
 type SortMode = "newest" | "oldest" | "az";
 
-const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll }: Props) => {
+const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll, onPlant }: Props) => {
   const pillars = usePillars();
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
@@ -318,6 +319,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
               onEdit={() => setEditBlock(block)}
               onUpdate={updateBlock}
               similarityScore={smartSearch && semanticResults !== null ? similarityScores[block.id] : undefined}
+              onPlant={onPlant}
             />
           ))}
         </div>

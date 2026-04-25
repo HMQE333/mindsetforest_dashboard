@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, Eye } from "lucide-react";
+import { X, Download, Eye, Sprout } from "lucide-react";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,9 +18,10 @@ interface Props {
   onEdit: () => void;
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
   similarityScore?: number;
+  onPlant?: (block: ArchiveBlock) => void;
 }
 
-const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore }: Props) => {
+const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore, onPlant }: Props) => {
   const allPillars = usePillars();
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -132,6 +133,15 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
           >
             📌
           </button>
+          {onPlant && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onPlant(block); }}
+              className="mt-1 p-1 rounded-md text-emerald-400/80 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all opacity-0 group-hover:opacity-100"
+              title="Plant in the Forest"
+            >
+              <Sprout className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); setReaderOpen(true); }}
             className="mt-1 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
