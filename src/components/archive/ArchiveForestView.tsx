@@ -32,8 +32,35 @@ const ArchiveForestView = () => {
   const [filterTag, setFilterTag] = useState("");
   const [hideSaved, setHideSaved] = useState(false);
   const [editSeed, setEditSeed] = useState<SeedWithAuthor | null>(null);
+  const [focusSeedId, setFocusSeedId] = useState<string | null>(null);
 
   const friendIds = useMemo(() => new Set(friends.accepted.map((f) => f.friend.user_id)), [friends.accepted]);
+
+  // Inbox bell deep-open: switch to the right tab + scroll/flash the card
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const seedId = (e as CustomEvent).detail?.seedId as string | undefined;
+      if (!seedId) return;
+      const isMine = forest.mySeeds.some((s) => s.id === seedId);
+      setTab(isMine ? "mine" : "discover");
+      // Clear filters so the seed is reachable
+      setFilterPillar(null); setFilterDirection(null); setFilterTag(""); setHideSaved(false);
+      setSearch(""); setSemanticResults(null);
+      setFocusSeedId(seedId);
+      // Defer scroll until after re-render
+      setTimeout(() => {
+        const el = document.getElementById(`forest-seed-${seedId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-primary", "transition-all");
+          setTimeout(() => el.classList.remove("ring-2", "ring-primary"), 2000);
+        }
+        setFocusSeedId(null);
+      }, 350);
+    };
+    window.addEventListener("lov:forest-focus-seed", handler as EventListener);
+    return () => window.removeEventListener("lov:forest-focus-seed", handler as EventListener);
+  }, [forest.mySeeds]);
 
   // Smart search debounce
   useEffect(() => {
