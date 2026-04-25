@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus, Pencil, X } from "lucide-react";
+import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus, Pencil, X, Library } from "lucide-react";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import AuthorPeekPopover from "./AuthorPeekPopover";
+import { useForestCollections } from "@/hooks/useForestCollections";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface Props {
   seed: SeedWithAuthor;
@@ -21,9 +23,11 @@ const VIS_META = {
 const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
   const allPillars = usePillars();
   const f = useForestState();
+  const cols = useForestCollections();
   const [readerOpen, setReaderOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
+  const [collectionMenuOpen, setCollectionMenuOpen] = useState(false);
 
   const pillarObjs = seed.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
   const Vis = VIS_META[seed.visibility];
@@ -131,6 +135,43 @@ const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
             >
               <BookmarkPlus className="w-3 h-3" /> {seed.iSaved ? "Saved" : "Save"}
             </button>
+          )}
+
+          {/* Add-to-collection menu (only own seeds, since collections only accept own seeds) */}
+          {isMine && cols.mine.length > 0 && (
+            <Popover open={collectionMenuOpen} onOpenChange={setCollectionMenuOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-muted/40 text-muted-foreground hover:text-primary transition-all"
+                  title="Add to a collection"
+                >
+                  <Library className="w-3 h-3" /> Bundle
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="glass-card border-white/10 w-60 p-2" align="start">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-2 pb-1">
+                  Add to collection
+                </p>
+                <div className="max-h-56 overflow-y-auto space-y-0.5">
+                  {cols.mine.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={async () => {
+                        await cols.addSeedToCollection(c.id, seed.id);
+                        setCollectionMenuOpen(false);
+                      }}
+                      className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-foreground hover:bg-white/5 transition-colors"
+                    >
+                      <span className="text-base shrink-0">{c.emoji}</span>
+                      <span className="truncate flex-1">{c.title}</span>
+                      <span className="text-[9px] text-muted-foreground shrink-0">
+                        {c.seedCount}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
 
           <span className="ml-auto text-[10px] text-muted-foreground/70 flex items-center gap-2">
