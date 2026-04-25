@@ -4,6 +4,7 @@ import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus,
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
+import AuthorPeekPopover from "./AuthorPeekPopover";
 
 interface Props {
   seed: SeedWithAuthor;
@@ -49,18 +50,22 @@ const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
       >
         {/* Header: author + visibility */}
         <div className="flex items-center gap-2">
-          <span className="text-xl">{seed.author?.avatar_emoji || "🦊"}</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-foreground truncate">
-              {seed.author?.display_name || `@${seed.author?.username || "unknown"}`}
-              {seed.isEdited && (
-                <span className="ml-1.5 text-[9px] font-semibold text-muted-foreground">(edited)</span>
-              )}
-            </p>
-            <p className="text-[10px] text-muted-foreground truncate">
-              @{seed.author?.username || "unknown"} · {new Date(seed.published_at).toLocaleDateString()}
-            </p>
-          </div>
+          <AuthorPeekPopover author={seed.author} authorId={seed.author_id}>
+            <button className="flex items-center gap-2 min-w-0 flex-1 text-left rounded-lg hover:bg-white/5 -m-1 p-1 transition-colors">
+              <span className="text-xl">{seed.author?.avatar_emoji || "🦊"}</span>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-foreground truncate">
+                  {seed.author?.display_name || `@${seed.author?.username || "unknown"}`}
+                  {seed.isEdited && (
+                    <span className="ml-1.5 text-[9px] font-semibold text-muted-foreground">(edited)</span>
+                  )}
+                </p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  @{seed.author?.username || "unknown"} · {new Date(seed.published_at).toLocaleDateString()}
+                </p>
+              </div>
+            </button>
+          </AuthorPeekPopover>
           {isMine && (
             <span title={Vis.label} className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-muted/40 text-muted-foreground">
               <Vis.Icon className="w-3 h-3" /> {Vis.label}
