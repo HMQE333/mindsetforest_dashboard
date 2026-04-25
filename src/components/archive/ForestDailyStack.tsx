@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Droplet, BookmarkPlus, X, RotateCcw, Filter } from "lucide-react";
+import { Sparkles, Droplet, BookmarkPlus, X, RotateCcw, Filter, VolumeX, Volume2 } from "lucide-react";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import { useFriends } from "@/hooks/useFriends";
 import PillarIcon from "@/components/shared/PillarIcon";
@@ -9,6 +9,7 @@ import { usePillars } from "@/hooks/usePillars";
 const DAILY_LIMIT = 5;
 const STORAGE_KEY = "forest_daily_seen_v1";
 const FOCUS_KEY = "forest_daily_focus_v1";
+const MUTE_KEY = "forest_daily_mute_pillars_v1";
 
 /**
  * Card stack curated for the day:
@@ -54,6 +55,33 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
     });
   };
 
+  // Muted pillars — soft-hide (not a block); persisted across days
+  const [mutedPillars, setMutedPillars] = useState<Set<string>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(MUTE_KEY) || "[]");
+      if (Array.isArray(raw)) return new Set(raw as string[]);
+    } catch { /* ignore */ }
+    return new Set();
+  });
+
+  useEffect(() => {
+    localStorage.setItem(MUTE_KEY, JSON.stringify(Array.from(mutedPillars)));
+  }, [mutedPillars]);
+
+  const toggleMutePillar = (id: string) => {
+    setMutedPillars((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    // If muting, also un-focus to avoid contradiction
+    setFocusPillars((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
   // Persist on change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ day: dayKey, ids: Array.from(seenToday) }));
@@ -67,7 +95,9 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
   const todaysSelection = useMemo<SeedWithAuthor[]>(() => {
     const matchesFocus = (s: SeedWithAuthor) =>
       focusPillars.size === 0 || s.pillars.some((p) => focusPillars.has(p));
-    const pool = forest.discoverSeeds.filter((s) => !s.iSaved && matchesFocus(s));
+    const notMuted = (s: SeedWithAuthor) =>
+      mutedPillars.size === 0 || s.pillars.length === 0 || !s.pillars.every((p) => mutedPillars.has(p));
+    const pool = forest.discoverSeeds.filter((s) => !s.iSaved && matchesFocus(s) && notMuted(s));
     const fromFriends = pool
       .filter((s) => friendIds.has(s.author_id))
       .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
@@ -92,7 +122,7 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
       });
     }
     return merged;
-  }, [forest.discoverSeeds, friendIds, focusPillars]);
+  }, [forest.discoverSeeds, friendIds, focusPillars, mutedPillars]);
 
   const queue = useMemo(() => todaysSelection.filter((s) => !seenToday.has(s.id)), [todaysSelection, seenToday]);
   const current = queue[0];
@@ -189,26 +219,43 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
             className="glass-card p-2 overflow-hidden"
           >
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1 pb-1">
-              Focus today's grove on…
+              Focus today's grove on… <span className="opacity-60 normal-case font-normal">(tap 🔇 to mute a pillar instead)</span>
             </p>
             <div className="flex flex-wrap gap-1">
               {allPillars.map((p) => {
                 const active = focusPillars.has(p.id);
+                const muted = mutedPillars.has(p.id);
                 return (
-                  <button key={p.id} onClick={() => togglePillarFocus(p.id)}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 transition-all ${
-                      active ? "ring-1 ring-primary" : "opacity-60 hover:opacity-100"
-                    }`}
-                    style={{ backgroundColor: p.color + (active ? "33" : "15"), color: p.color }}
-                  >
-                    <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={11} className="inline-block" /> {p.name}
-                  </button>
+                  <span key={p.id} className={`inline-flex items-center rounded-full overflow-hidden transition-all ${
+                    muted ? "opacity-40 line-through" : ""
+                  }`}>
+                    <button onClick={() => togglePillarFocus(p.id)} disabled={muted}
+                      className={`text-[10px] pl-2 pr-1 py-0.5 font-semibold flex items-center gap-1 transition-all ${
+                        active ? "ring-1 ring-primary" : "opacity-80 hover:opacity-100"
+                      }`}
+                      style={{ backgroundColor: p.color + (active ? "33" : "15"), color: p.color }}
+                    >
+                      <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={11} className="inline-block" /> {p.name}
+                    </button>
+                    <button onClick={() => toggleMutePillar(p.id)} title={muted ? "Unmute" : "Mute pillar in Daily Grove"}
+                      className="text-[10px] px-1 py-0.5 hover:bg-white/10 transition-all"
+                      style={{ backgroundColor: p.color + "10", color: p.color }}
+                    >
+                      {muted ? <Volume2 className="w-2.5 h-2.5" /> : <VolumeX className="w-2.5 h-2.5" />}
+                    </button>
+                  </span>
                 );
               })}
               {focusPillars.size > 0 && (
                 <button onClick={() => setFocusPillars(new Set())}
                   className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground hover:text-foreground">
                   Clear
+                </button>
+              )}
+              {mutedPillars.size > 0 && (
+                <button onClick={() => setMutedPillars(new Set())}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground hover:text-foreground">
+                  Unmute all ({mutedPillars.size})
                 </button>
               )}
             </div>
