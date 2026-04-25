@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus, Pencil, X, Library } from "lucide-react";
+import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus, Pencil, X, Library, Flame } from "lucide-react";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
@@ -31,6 +31,11 @@ const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
 
   const pillarObjs = seed.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
   const Vis = VIS_META[seed.visibility];
+
+  // "Rising" heuristic: water-rate (waters/hour) since publish, requires meaningful base
+  const ageHours = Math.max(0.5, (Date.now() - new Date(seed.published_at).getTime()) / 3_600_000);
+  const waterRate = seed.water_count / ageHours;
+  const isRising = !isMine && seed.is_active && ageHours < 96 && seed.water_count >= 3 && waterRate >= 0.4;
 
   const openReader = () => {
     setReaderOpen(true);
@@ -74,6 +79,16 @@ const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
             <span title={Vis.label} className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-muted/40 text-muted-foreground">
               <Vis.Icon className="w-3 h-3" /> {Vis.label}
             </span>
+          )}
+          {isRising && (
+            <motion.span
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              title={`${waterRate.toFixed(1)} waters/hour — gaining heat`}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-orange-500/15 text-orange-400 font-bold"
+            >
+              <Flame className="w-3 h-3" /> Rising
+            </motion.span>
           )}
           {!seed.is_active && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-destructive/20 text-destructive font-bold">🔒 Hidden</span>
