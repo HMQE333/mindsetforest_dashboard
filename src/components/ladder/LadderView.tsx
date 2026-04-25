@@ -19,6 +19,16 @@ export default function LadderView() {
   const progress = getProgress();
   const currentLadder = ladders[activeCategory]?.levels || {};
 
+  // Cross-module: Planning Map "mention" jumps here with a target category.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.categoryId) changeCategory(detail.categoryId);
+    };
+    window.addEventListener("lov:set-ladder-category", handler as EventListener);
+    return () => window.removeEventListener("lov:set-ladder-category", handler as EventListener);
+  }, [changeCategory]);
+
   // Derive AI context
   const activeProject = isProjectKey(activeCategory) ? getProjectFromKey(activeCategory) : null;
   const aiContextName = activeProject ? activeProject.name : undefined;
