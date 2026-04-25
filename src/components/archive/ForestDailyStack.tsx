@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Droplet, BookmarkPlus, X, RotateCcw } from "lucide-react";
+import { Sparkles, Droplet, BookmarkPlus, X, RotateCcw, Filter } from "lucide-react";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import { useFriends } from "@/hooks/useFriends";
 import PillarIcon from "@/components/shared/PillarIcon";
@@ -8,6 +8,7 @@ import { usePillars } from "@/hooks/usePillars";
 
 const DAILY_LIMIT = 5;
 const STORAGE_KEY = "forest_daily_seen_v1";
+const FOCUS_KEY = "forest_daily_focus_v1";
 
 /**
  * Card stack curated for the day:
@@ -31,6 +32,28 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
     return new Set();
   });
 
+  // Pillar focus — persisted across days
+  const [focusPillars, setFocusPillars] = useState<Set<string>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(FOCUS_KEY) || "[]");
+      if (Array.isArray(raw)) return new Set(raw as string[]);
+    } catch { /* ignore */ }
+    return new Set();
+  });
+  const [focusOpen, setFocusOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(FOCUS_KEY, JSON.stringify(Array.from(focusPillars)));
+  }, [focusPillars]);
+
+  const togglePillarFocus = (id: string) => {
+    setFocusPillars((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   // Persist on change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ day: dayKey, ids: Array.from(seenToday) }));
@@ -42,7 +65,9 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
   };
 
   const todaysSelection = useMemo<SeedWithAuthor[]>(() => {
-    const pool = forest.discoverSeeds.filter((s) => !s.iSaved);
+    const matchesFocus = (s: SeedWithAuthor) =>
+      focusPillars.size === 0 || s.pillars.some((p) => focusPillars.has(p));
+    const pool = forest.discoverSeeds.filter((s) => !s.iSaved && matchesFocus(s));
     const fromFriends = pool
       .filter((s) => friendIds.has(s.author_id))
       .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
@@ -67,7 +92,7 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
       });
     }
     return merged;
-  }, [forest.discoverSeeds, friendIds]);
+  }, [forest.discoverSeeds, friendIds, focusPillars]);
 
   const queue = useMemo(() => todaysSelection.filter((s) => !seenToday.has(s.id)), [todaysSelection, seenToday]);
   const current = queue[0];
@@ -140,11 +165,56 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
             {seenCount + 1}/{todaysSelection.length}
           </span>
         </div>
-        <button onClick={reset} title="Reset today"
-          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
-          <RotateCcw className="w-3 h-3" /> Reset
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setFocusOpen((o) => !o)} title="Focus pillars"
+            className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+              focusPillars.size > 0
+                ? "bg-primary/15 text-primary font-bold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}>
+            <Filter className="w-3 h-3" /> {focusPillars.size > 0 ? `Focus (${focusPillars.size})` : "Focus"}
+          </button>
+          <button onClick={reset} title="Reset today"
+            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+            <RotateCcw className="w-3 h-3" /> Reset
+          </button>
+        </div>
       </div>
+
+      {/* Focus chips */}
+      <AnimatePresence>
+        {focusOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+            className="glass-card p-2 overflow-hidden"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1 pb-1">
+              Focus today's grove on…
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {allPillars.map((p) => {
+                const active = focusPillars.has(p.id);
+                return (
+                  <button key={p.id} onClick={() => togglePillarFocus(p.id)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 transition-all ${
+                      active ? "ring-1 ring-primary" : "opacity-60 hover:opacity-100"
+                    }`}
+                    style={{ backgroundColor: p.color + (active ? "33" : "15"), color: p.color }}
+                  >
+                    <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={11} className="inline-block" /> {p.name}
+                  </button>
+                );
+              })}
+              {focusPillars.size > 0 && (
+                <button onClick={() => setFocusPillars(new Set())}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground hover:text-foreground">
+                  Clear
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Card stack */}
       <div className="relative h-[420px]">
