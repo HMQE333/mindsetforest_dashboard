@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus, Pencil, X, Library, Flame } from "lucide-react";
+import { Globe, Users, Target, Eye, EyeOff, Trash2, Flag, Droplet, BookmarkPlus, Pencil, X, Library, Flame, Heart } from "lucide-react";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
@@ -12,6 +12,8 @@ interface Props {
   seed: SeedWithAuthor;
   isMine: boolean;
   onEdit?: (seed: SeedWithAuthor) => void;
+  /** Number of accepted friends who saved this seed (Discover only) */
+  friendsSavedCount?: number;
 }
 
 const VIS_META = {
@@ -20,7 +22,7 @@ const VIS_META = {
   custom: { Icon: Target, label: "Specific" },
 } as const;
 
-const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
+const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) => {
   const allPillars = usePillars();
   const f = useForestState();
   const cols = useForestCollections();
@@ -88,6 +90,16 @@ const ForestSeedCard = ({ seed, isMine, onEdit }: Props) => {
               className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-orange-500/15 text-orange-400 font-bold"
             >
               <Flame className="w-3 h-3" /> Rising
+            </motion.span>
+          )}
+          {!isMine && friendsSavedCount > 0 && (
+            <motion.span
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              title={`${friendsSavedCount} of your friends saved this`}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-pink-500/15 text-pink-400 font-bold"
+            >
+              <Heart className="w-3 h-3" /> {friendsSavedCount}
             </motion.span>
           )}
           {!seed.is_active && (
