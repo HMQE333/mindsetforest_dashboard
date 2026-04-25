@@ -166,7 +166,7 @@ const Index = () => {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
           {user && (
-            <div className="flex justify-end items-center gap-2 mb-2">
+            <div className="flex justify-start items-center gap-2 mb-2">
               <FriendsButton badgeCount={badgeCount} onClick={() => setFriendsOpen(true)} />
               <button
                 onClick={() => setSettingsOpen(true)}
