@@ -176,6 +176,25 @@ const ArchiveForestView = () => {
       .map(([t, n]) => ({ tag: t, count: n }));
   }, [forest.discoverSeeds]);
 
+  // Per-pillar heat (sum of waters on seeds <48h old, per pillar) — surfaces what's hot today
+  const pillarHeat = useMemo(() => {
+    const cutoff = Date.now() - 48 * 3_600_000;
+    const heat = new Map<string, number>();
+    for (const s of forest.discoverSeeds) {
+      if (new Date(s.published_at).getTime() < cutoff) continue;
+      const w = s.water_count || 0;
+      if (w === 0) continue;
+      for (const pid of s.pillars) {
+        heat.set(pid, (heat.get(pid) || 0) + w);
+      }
+    }
+    const max = Math.max(1, ...Array.from(heat.values()));
+    return pillars
+      .map((p) => ({ ...p, heat: heat.get(p.id) || 0, intensity: (heat.get(p.id) || 0) / max }))
+      .filter((p) => p.heat > 0)
+      .sort((a, b) => b.heat - a.heat);
+  }, [forest.discoverSeeds, pillars]);
+
   // Stats for My Forest
   const myStats = useMemo(() => {
     const totalWaters = forest.mySeeds.reduce((s, x) => s + (x.water_count || 0), 0);
@@ -274,6 +293,33 @@ const ArchiveForestView = () => {
       {/* Filters */}
       {(tab === "discover" || tab === "mine") && (
       <div className="glass-card p-3 space-y-2">
+        {tab === "discover" && pillarHeat.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 items-center -mx-1 px-1 pb-1 border-b border-white/5 mb-1">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1 flex items-center gap-1">
+              🔥 Hot pillars · 48h
+            </span>
+            {pillarHeat.slice(0, 8).map((p) => {
+              const active = filterPillar === p.id;
+              const opacity = 0.25 + p.intensity * 0.65;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setFilterPillar(active ? null : p.id)}
+                  title={`${p.heat} waters in last 48h`}
+                  className="text-[11px] px-2.5 py-1 rounded-full font-semibold flex items-center gap-1 transition-all"
+                  style={{
+                    backgroundColor: active ? p.color : p.color + Math.round(opacity * 255).toString(16).padStart(2, "0"),
+                    color: active || p.intensity > 0.55 ? "#fff" : p.color,
+                  }}
+                >
+                  <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={12} className="inline-block" />
+                  {p.name}
+                  <span className="opacity-80 text-[10px]">{p.heat}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Input value={search} onChange={(e) => setSearch(e.target.value)}
