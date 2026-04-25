@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           directions: string[]
           embedding: string | null
+          from_seed_id: string | null
           id: string
           is_pinned: boolean
           pillars: string[]
@@ -34,6 +35,7 @@ export type Database = {
           created_at?: string
           directions?: string[]
           embedding?: string | null
+          from_seed_id?: string | null
           id?: string
           is_pinned?: boolean
           pillars?: string[]
@@ -48,6 +50,7 @@ export type Database = {
           created_at?: string
           directions?: string[]
           embedding?: string | null
+          from_seed_id?: string | null
           id?: string
           is_pinned?: boolean
           pillars?: string[]
@@ -446,6 +449,131 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      forest_blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      forest_collection_seeds: {
+        Row: {
+          added_at: string
+          collection_id: string
+          seed_id: string
+          sort_order: number
+        }
+        Insert: {
+          added_at?: string
+          collection_id: string
+          seed_id: string
+          sort_order?: number
+        }
+        Update: {
+          added_at?: string
+          collection_id?: string
+          seed_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forest_collection_seeds_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "forest_collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "forest_collection_seeds_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "forest_seeds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forest_collections: {
+        Row: {
+          created_at: string
+          description: string
+          emoji: string
+          id: string
+          is_public: boolean
+          owner_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          emoji?: string
+          id?: string
+          is_public?: boolean
+          owner_id: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          emoji?: string
+          id?: string
+          is_public?: boolean
+          owner_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      forest_inbox_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          read_at: string | null
+          recipient_id: string
+          seed_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          read_at?: string | null
+          recipient_id: string
+          seed_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          read_at?: string | null
+          recipient_id?: string
+          seed_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forest_inbox_events_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "forest_seeds"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       forest_reports: {
         Row: {
