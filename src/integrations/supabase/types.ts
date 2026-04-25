@@ -583,6 +583,7 @@ export type Database = {
           id: string
           level: string
           leverage: string | null
+          mentions: Json
           notes: string
           parent_id: string | null
           position_x: number | null
@@ -604,6 +605,7 @@ export type Database = {
           id?: string
           level?: string
           leverage?: string | null
+          mentions?: Json
           notes?: string
           parent_id?: string | null
           position_x?: number | null
@@ -625,6 +627,7 @@ export type Database = {
           id?: string
           level?: string
           leverage?: string | null
+          mentions?: Json
           notes?: string
           parent_id?: string | null
           position_x?: number | null
