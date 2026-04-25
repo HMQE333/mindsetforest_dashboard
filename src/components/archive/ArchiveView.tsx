@@ -47,6 +47,7 @@ const ArchiveView = () => {
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
   const [plantOpen, setPlantOpen] = useState(false);
+  const [singlePlantBlock, setSinglePlantBlock] = useState<ArchiveBlock | null>(null);
   const archive = useArchiveState();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
@@ -236,6 +237,7 @@ const ArchiveView = () => {
               toggleSelect={toggleSelect}
               semanticSearch={archive.semanticSearch}
               embedAll={archive.embedAll}
+              onPlant={(b) => setSinglePlantBlock(b)}
             />
           </motion.div>
         )}
@@ -313,6 +315,12 @@ const ArchiveView = () => {
         blocks={selectedBlocks}
         onClose={() => setPlantOpen(false)}
         onPlanted={() => clearSelection()}
+      />
+
+      <PlantSeedModal
+        open={singlePlantBlock !== null}
+        blocks={singlePlantBlock ? [singlePlantBlock] : []}
+        onClose={() => setSinglePlantBlock(null)}
       />
     </motion.div>
   );
