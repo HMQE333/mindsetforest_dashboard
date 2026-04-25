@@ -130,6 +130,55 @@ serve(async (req) => {
       });
     }
 
+    // Action: semantic search across the Forest (RLS-scoped to seeds the user can see)
+    if (action === "search-forest" && query) {
+      const queryEmbedding = await getEmbedding(query);
+      // Use the user-scoped client so RLS filters down to visible seeds.
+      // Fetch a wider candidate set, then sort by cosine similarity client-side
+      // since we don't have a dedicated RPC. Good enough at low-thousands scale.
+      const { data: candidates, error } = await supabase
+        .from("forest_seeds")
+        .select("id, author_id, title, content, pillars, directions, tags, source_url, visibility, water_count, save_count, view_count, published_at, updated_at, embedding")
+        .eq("is_active", true)
+        .not("embedding", "is", null)
+        .limit(500);
+      if (error) throw error;
+
+      const parseVec = (v: any): number[] | null => {
+        if (!v) return null;
+        if (Array.isArray(v)) return v as number[];
+        try {
+          const s = String(v).trim();
+          if (s.startsWith("[")) return JSON.parse(s);
+          // pg vector text format: "(1,2,3)"
+          return s.replace(/[()\s]/g, "").split(",").map(Number);
+        } catch {
+          return null;
+        }
+      };
+      const cosine = (a: number[], b: number[]) => {
+        let dot = 0, na = 0, nb = 0;
+        const len = Math.min(a.length, b.length);
+        for (let i = 0; i < len; i++) { dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+        return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+      };
+
+      const scored = (candidates || [])
+        .map((row: any) => {
+          const vec = parseVec(row.embedding);
+          const sim = vec ? cosine(queryEmbedding, vec) : 0;
+          const { embedding: _e, ...rest } = row;
+          return { ...rest, similarity: sim };
+        })
+        .filter((r) => r.similarity > 0.25)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 30);
+
+      return new Response(JSON.stringify({ results: scored }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Invalid action" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
