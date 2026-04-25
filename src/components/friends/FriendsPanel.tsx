@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Copy, RefreshCw, Check, X, Trash2, Eye, EyeOff, Inbox, UserPlus, Users, ChevronLeft } from "lucide-react";
+import { Copy, RefreshCw, Check, X, Trash2, Eye, EyeOff, Inbox, UserPlus, Users, ChevronLeft, FolderOpen, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useFriends } from "@/hooks/useFriends";
@@ -22,6 +22,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
   const [tab, setTab] = useState<Tab>("friends");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pickingFor, setPickingFor] = useState<string | null>(null);
+  const [projectsOpenFor, setProjectsOpenFor] = useState<string | null>(null);
 
   const copyCode = () => {
     if (!profile) return;
@@ -286,18 +287,37 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                             <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{cat.name}</span>
                           </button>
                         ))}
-                        {projects.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => acceptToCategory(s, projectKey(p.id), p.name)}
-                            title={p.name}
-                            className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
-                          >
-                            <span className="text-lg leading-none">{p.emoji || "📁"}</span>
-                            <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{p.name}</span>
-                          </button>
-                        ))}
                       </div>
+                      {projects.length > 0 && (
+                        <div className="space-y-1.5">
+                          <button
+                            onClick={() => setProjectsOpenFor(projectsOpenFor === s.id ? null : s.id)}
+                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/80">
+                              <FolderOpen className="w-3 h-3" />
+                              Projects
+                              <span className="text-[9px] text-muted-foreground">({projects.length})</span>
+                            </span>
+                            <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${projectsOpenFor === s.id ? "rotate-180" : ""}`} />
+                          </button>
+                          {projectsOpenFor === s.id && (
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {projects.map(p => (
+                                <button
+                                  key={p.id}
+                                  onClick={() => acceptToCategory(s, projectKey(p.id), p.name)}
+                                  title={p.name}
+                                  className="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg bg-background/40 border border-white/5 hover:border-primary/40 hover:bg-primary/10 transition-all"
+                                >
+                                  <span className="text-lg leading-none">{p.emoji || "📁"}</span>
+                                  <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{p.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
