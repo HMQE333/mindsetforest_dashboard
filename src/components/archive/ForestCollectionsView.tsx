@@ -87,7 +87,7 @@ const ForestCollectionsView = () => {
           isMine={cols.mine.some((m) => m.id === openCol.id)}
           fetchSeedIds={cols.fetchCollectionSeedIds}
           allSeeds={[...forest.mySeeds, ...forest.discoverSeeds]}
-          onSaveSeed={forest.saveSeed}
+          onSaveSeed={async (id) => { await forest.saveSeed(id); }}
           onDelete={async () => {
             if (!confirm("Delete this collection? Seeds themselves remain.")) return;
             await cols.deleteCollection(openCol.id);
