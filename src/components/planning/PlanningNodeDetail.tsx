@@ -3,7 +3,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Target, Flag, ListChecks, Zap, Check, Calendar, Gauge, BatteryMedium, Pencil, Globe, ExternalLink, Paperclip } from "lucide-react";
-import { PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
+import { PlanningTask, TaskLevel, PlanningMention } from "@/hooks/usePlanningState";
+import PlanningMentions from "./PlanningMentions";
 
 const levelMeta: Record<TaskLevel, { label: string; icon: React.ComponentType<{ className?: string }>; gradient: string }> = {
   goal: { label: "Goal", icon: Target, gradient: "from-purple-500 to-pink-500" },
@@ -185,6 +186,12 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
                   </button>
                 )}
               </div>
+
+              {/* Mentions — Ladder & Habit Loop cross-references */}
+              <PlanningMentions
+                mentions={task.mentions || []}
+                onChange={(next: PlanningMention[]) => onUpdate(task.id, { mentions: next })}
+              />
 
               <div className="grid grid-cols-2 gap-2">
                 {task.deadline && (
