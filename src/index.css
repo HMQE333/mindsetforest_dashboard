@@ -76,6 +76,15 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+
+  /* Reinforce body scroll lock when a Radix dialog/popup sets data-scroll-locked.
+     Some app-level scroll containers can bypass Radix's default lock — this
+     guarantees the page behind a modal stays frozen. */
+  body[data-scroll-locked] {
+    overflow: hidden !important;
+    overscroll-behavior: contain !important;
+    touch-action: none !important;
+  }
 }
 
 /* Glass morphism utility */
