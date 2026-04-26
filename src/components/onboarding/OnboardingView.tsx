@@ -1,17 +1,95 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { z } from "zod";
+import { Check, Loader2, X } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { CustomCategory } from "@/hooks/useOnboarding";
+import { useUserProfile, isValidUsername } from "@/hooks/useUserProfile";
+import { toast } from "sonner";
 import TaskCustomizationStep from "./TaskCustomizationStep";
 
 const DEFAULT_ICONS = ["🧠", "💪", "🎨", "🔭", "👑", "📊", "✨", "⚙️"];
+const AVATAR_EMOJIS = ["🦊", "🐺", "🦉", "🐯", "🦁", "🐻", "🐼", "🐨", "🦄", "🐉", "🦅", "🦋", "🌸", "🌿", "🌲", "🔥", "⚡", "✨", "🌙", "☀️", "🌊", "🏔️"];
+
+const profileSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3, "Min 3 characters")
+    .max(20, "Max 20 characters")
+    .regex(/^[a-z0-9_]+$/, "Only a-z, 0-9 and _"),
+  display_name: z.string().trim().max(40, "Max 40 characters").optional(),
+});
 
 interface Props {
   onComplete: (categories?: CustomCategory[], customMissions?: Record<string, Mission[]>) => void;
 }
 
 export default function OnboardingView({ onComplete }: Props) {
-  const [step, setStep] = useState<"choice" | "custom" | "tasks">("choice");
+  const { profile, needsSetup, updateProfile, checkUsernameAvailable } = useUserProfile();
+  const initialStep = needsSetup ? "profile" : "choice";
+  const [step, setStep] = useState<"profile" | "choice" | "custom" | "tasks">(initialStep);
+
+  // If profile loads after mount and needs setup, jump to the profile step.
+  useEffect(() => {
+    if (needsSetup && step === "choice") setStep("profile");
+  }, [needsSetup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ----- Profile-step state -----
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [avatarEmoji, setAvatarEmoji] = useState("🦊");
+  const [checking, setChecking] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [profileError, setProfileError] = useState<string>("");
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Seed avatar from existing profile when it lands.
+  useEffect(() => {
+    if (profile?.avatar_emoji) setAvatarEmoji(profile.avatar_emoji);
+    if (profile?.display_name) setDisplayName(profile.display_name);
+  }, [profile?.avatar_emoji, profile?.display_name]);
+
+  // Debounced availability check
+  useEffect(() => {
+    const u = username.trim().toLowerCase();
+    setProfileError("");
+    if (!u) { setAvailable(null); return; }
+    if (!isValidUsername(u)) { setAvailable(false); return; }
+    setChecking(true);
+    const t = setTimeout(async () => {
+      const ok = await checkUsernameAvailable(u);
+      setAvailable(ok);
+      setChecking(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [username, checkUsernameAvailable]);
+
+  const usernameValid = useMemo(() => isValidUsername(username.trim().toLowerCase()), [username]);
+
+  const handleProfileNext = async () => {
+    const parsed = profileSchema.safeParse({ username, display_name: displayName });
+    if (!parsed.success) {
+      setProfileError(parsed.error.issues[0]?.message || "Invalid input");
+      return;
+    }
+    if (available === false) {
+      setProfileError("Username already taken");
+      return;
+    }
+    setSavingProfile(true);
+    const ok = await updateProfile({
+      username: parsed.data.username,
+      display_name: parsed.data.display_name || "",
+      avatar_emoji: avatarEmoji,
+    });
+    setSavingProfile(false);
+    if (!ok) return; // toast shown by hook
+    toast.success("Profile saved");
+    setStep("choice");
+  };
+
   const [customs, setCustoms] = useState<CustomCategory[]>(
     CATEGORIES.map((c, i) => ({
       id: c.id,
@@ -58,7 +136,112 @@ export default function OnboardingView({ onComplete }: Props) {
       <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-cat-spirit/8 rounded-full blur-3xl" />
 
       <AnimatePresence mode="wait">
-        {step === "choice" ? (
+        {step === "profile" ? (
+          <motion.div
+            key="profile"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="relative z-10 w-full max-w-md"
+          >
+            <div className="text-center mb-6">
+              <motion.div
+                key={avatarEmoji}
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="text-6xl mb-3"
+              >
+                {avatarEmoji}
+              </motion.div>
+              <h1 className="text-2xl font-bold text-gradient-purple mb-1">Pick your handle</h1>
+              <p className="text-xs text-muted-foreground">
+                This is how friends find you and how the Forest credits your seeds.
+              </p>
+            </div>
+
+            <div className="glass-card p-5 border-white/15 space-y-4">
+              {/* Username */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                  Username
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">@</span>
+                  <input
+                    autoFocus
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                    placeholder="your_handle"
+                    maxLength={20}
+                    className="w-full bg-secondary/50 border-2 border-border rounded-xl pl-7 pr-10 py-2.5 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {checking ? (
+                      <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+                    ) : username && usernameValid && available === true ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : username && (available === false || !usernameValid) ? (
+                      <X className="w-4 h-4 text-destructive" />
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  3–20 chars · letters, numbers, underscores
+                </p>
+              </div>
+
+              {/* Display name */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                  Display name <span className="text-muted-foreground/60 normal-case font-normal">(optional)</span>
+                </label>
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="What should we call you?"
+                  maxLength={40}
+                  className="w-full bg-secondary/50 border-2 border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
+                />
+              </div>
+
+              {/* Emoji picker */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                  Avatar
+                </label>
+                <div className="grid grid-cols-8 gap-1.5">
+                  {AVATAR_EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => setAvatarEmoji(e)}
+                      className={`aspect-square rounded-lg text-xl transition-all ${
+                        avatarEmoji === e
+                          ? "bg-primary/20 border-2 border-primary scale-110"
+                          : "bg-muted/40 border-2 border-transparent hover:bg-muted/70"
+                      }`}
+                      aria-label={`Pick ${e} avatar`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {profileError && (
+                <p className="text-xs text-destructive">{profileError}</p>
+              )}
+
+              <button
+                onClick={handleProfileNext}
+                disabled={savingProfile || !usernameValid || available === false || checking}
+                className="w-full py-3 rounded-xl text-sm font-bold gradient-purple text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all glow-sm"
+              >
+                {savingProfile ? "Saving…" : "Continue →"}
+              </button>
+            </div>
+          </motion.div>
+        ) : step === "choice" ? (
           <motion.div
             key="choice"
             initial={{ opacity: 0, y: 20 }}
