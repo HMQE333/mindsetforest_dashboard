@@ -125,6 +125,50 @@
   .glow-lg {
     box-shadow: 0 12px 48px hsl(var(--glow-purple) / 0.4);
   }
+
+  /* ── Forest module: organic ambient backdrop ── */
+  .forest-backdrop {
+    position: relative;
+    isolation: isolate;
+  }
+  .forest-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -40px -40px 0 -40px;
+    background:
+      radial-gradient(circle at 12% 8%, hsl(150 60% 45% / 0.10), transparent 45%),
+      radial-gradient(circle at 88% 18%, hsl(180 65% 50% / 0.09), transparent 50%),
+      radial-gradient(circle at 30% 90%, hsl(263 70% 58% / 0.08), transparent 55%),
+      radial-gradient(circle at 80% 80%, hsl(160 55% 40% / 0.07), transparent 50%),
+      linear-gradient(180deg, transparent 60%, hsl(150 40% 8% / 0.30) 100%);
+    filter: blur(40px);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* ── Forest seed card: leaf-shaped envelope ── */
+  .seed-leaf {
+    @apply backdrop-blur-xl border border-white/10 transition-all duration-300;
+    background: hsl(var(--card) / var(--card-opacity, 0.6));
+    border-radius: 18px 18px 22px 22px;
+    border-left-width: 2px;
+    border-left-color: var(--seed-vein, hsl(var(--border)));
+  }
+  .seed-leaf:hover {
+    @apply border-white/20 -translate-y-0.5;
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 0 24px var(--seed-glow, hsl(var(--glow-purple) / 0.15));
+  }
+
+  /* ── Watered dewdrop pulse ── */
+  @keyframes dewdrop {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 hsl(190 90% 60% / 0)); }
+    50% { transform: scale(1.18); filter: drop-shadow(0 0 4px hsl(190 90% 60% / 0.7)); }
+  }
+  .animate-dewdrop {
+    animation: dewdrop 1.6s ease-in-out infinite;
+  }
 }
 
 /* Shimmer animation for progress bars */
