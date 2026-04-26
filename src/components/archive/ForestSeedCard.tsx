@@ -34,6 +34,15 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
   const pillarObjs = seed.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
   const Vis = VIS_META[seed.visibility];
 
+  // Lead pillar tints the leaf "vein" + hover glow so cards belong to a pillar visually
+  const leadColor = pillarObjs[0]?.color || null;
+  const leafStyle = leadColor
+    ? ({
+        ["--seed-vein" as any]: leadColor + "55",
+        ["--seed-glow" as any]: leadColor + "33",
+      } as React.CSSProperties)
+    : undefined;
+
   // "Rising" heuristic: water-rate (waters/hour) since publish, requires meaningful base
   const ageHours = Math.max(0.5, (Date.now() - new Date(seed.published_at).getTime()) / 3_600_000);
   const waterRate = seed.water_count / ageHours;
@@ -57,13 +66,19 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
         layout
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`glass-card-hover p-4 space-y-3 group ${!seed.is_active ? "opacity-60" : ""}`}
+        style={leafStyle}
+        className={`seed-leaf p-4 space-y-3 group ${!seed.is_active ? "opacity-60" : ""}`}
       >
         {/* Header: author + visibility */}
         <div className="flex items-center gap-2">
           <AuthorPeekPopover author={seed.author} authorId={seed.author_id}>
             <button className="flex items-center gap-2 min-w-0 flex-1 text-left rounded-lg hover:bg-white/5 -m-1 p-1 transition-colors">
-              <span className="text-xl">{seed.author?.avatar_emoji || "🦊"}</span>
+              <span
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-muted/40 text-lg ring-1 shrink-0"
+                style={{ borderColor: leadColor || undefined, boxShadow: leadColor ? `inset 0 0 0 1px ${leadColor}55` : undefined }}
+              >
+                {seed.author?.avatar_emoji || "🦊"}
+              </span>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-foreground truncate">
                   {seed.author?.display_name || `@${seed.author?.username || "unknown"}`}
@@ -109,8 +124,8 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
 
         {/* Body */}
         <button onClick={openReader} className="text-left w-full space-y-1.5">
-          <h4 className="font-bold text-sm text-foreground line-clamp-2">{seed.title || "Untitled"}</h4>
-          <p className="text-xs text-muted-foreground line-clamp-3">{seed.content}</p>
+          <h4 className="font-bold text-[15px] text-foreground line-clamp-2 leading-snug">{seed.title || "Untitled"}</h4>
+          <p className="text-[13px] text-muted-foreground line-clamp-3 font-serif leading-relaxed">{seed.content}</p>
         </button>
 
         {/* Tags */}
@@ -146,7 +161,7 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
             }`}
             title={seed.iWatered ? "Unwater" : "Water this seed"}
           >
-            <Droplet className="w-3 h-3" /> {seed.water_count}
+            <Droplet className={`w-3 h-3 ${seed.iWatered ? "animate-dewdrop" : ""}`} /> {seed.water_count}
           </button>
 
           {!isMine && (
