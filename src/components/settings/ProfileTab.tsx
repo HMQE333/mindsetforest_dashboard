@@ -181,7 +181,7 @@ export default function ProfileTab() {
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
             {checking && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
             {!checking && username && usernameValid && available === true && (
-              <Check className="w-4 h-4 text-emerald-400" />
+              <Check className="w-4 h-4 text-primary" />
             )}
             {!checking && username && (available === false || !usernameValid) && (
               <X className="w-4 h-4 text-destructive" />
