@@ -9,10 +9,12 @@ import ModulesTab from "./ModulesTab";
 import ProjectsTab from "./ProjectsTab";
 import ThemeTab from "./ThemeTab";
 import KeybindsTab from "./KeybindsTab";
+import ProfileTab from "./ProfileTab";
 
-type SettingsTab = "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards";
+type SettingsTab = "profile" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "profile", label: "Profile", icon: "👤" },
   { id: "modules", label: "Modules", icon: "🧩" },
   { id: "theme", label: "Theme", icon: "🎨" },
   { id: "keybinds", label: "Keybinds", icon: "⌨️" },
@@ -28,7 +30,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("modules");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const settings = useUserSettings();
   const themeRevertRef = useRef<(() => void) | null>(null);
 
@@ -97,6 +99,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <div className="text-center py-10 text-muted-foreground animate-pulse">Loading...</div>
               ) : (
                 <>
+                  {activeTab === "profile" && (
+                    <ProfileTab />
+                  )}
                   {activeTab === "modules" && (
                     <ModulesTab
                       enabledModules={settings.preferences.enabledModules}
