@@ -9,7 +9,7 @@ export default function FriendsButton({ badgeCount, onClick }: FriendsButtonProp
   return (
     <button
       onClick={onClick}
-      className="relative hidden sm:inline-flex p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
+      className="relative hidden min-[360px]:inline-flex p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
       title="Friends"
       aria-label="Open friends panel"
     >
