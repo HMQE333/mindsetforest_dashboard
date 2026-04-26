@@ -111,7 +111,7 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="glass-card border-white/10 max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="glass-card border-white/10 max-w-xl max-h-[90vh] overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle className="text-gradient-purple text-base flex items-center gap-2">
             🌱 Plant {blocks.length > 1 ? `${blocks.length} seeds` : "a seed"} in the Forest
