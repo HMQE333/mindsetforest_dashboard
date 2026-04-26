@@ -1435,6 +1435,10 @@ export type Database = {
       get_friend_dashboard: { Args: { friend_id: string }; Returns: Json }
       get_shared_library: { Args: { share_id: string }; Returns: Json }
       get_shared_profile: { Args: { share_id: string }; Returns: Json }
+      is_forest_seed_author: {
+        Args: { _seed_id: string; _user_id: string }
+        Returns: boolean
+      }
       regenerate_friend_code: { Args: never; Returns: string }
       search_archive_blocks: {
         Args: {
