@@ -39,31 +39,25 @@ export function useForestCollections() {
       .limit(100);
     const all = ((cols as any) || []) as ForestCollection[];
 
-    // Counts per collection
+    // Counts + owner names in parallel
     const ids = all.map((c) => c.id);
-    const counts: Record<string, number> = {};
-    if (ids.length) {
-      const { data: pairs } = await supabase
-        .from("forest_collection_seeds" as any)
-        .select("collection_id")
-        .in("collection_id", ids);
-      ((pairs as any) || []).forEach((p: any) => {
-        counts[p.collection_id] = (counts[p.collection_id] || 0) + 1;
-      });
-    }
-
-    // Owner names
     const ownerIds = Array.from(new Set(all.map((c) => c.owner_id)));
-    let oMap: Record<string, string> = {};
-    if (ownerIds.length) {
-      const { data: profs } = await supabase
-        .from("user_profiles" as any)
-        .select("user_id, display_name, username")
-        .in("user_id", ownerIds);
-      ((profs as any) || []).forEach((p: any) => {
-        oMap[p.user_id] = p.display_name || `@${p.username}`;
-      });
-    }
+    const counts: Record<string, number> = {};
+    const oMap: Record<string, string> = {};
+    const [pairsRes, profsRes] = await Promise.all([
+      ids.length
+        ? supabase.from("forest_collection_seeds" as any).select("collection_id").in("collection_id", ids)
+        : Promise.resolve({ data: [] as any }),
+      ownerIds.length
+        ? supabase.from("user_profiles" as any).select("user_id, display_name, username").in("user_id", ownerIds)
+        : Promise.resolve({ data: [] as any }),
+    ]);
+    ((pairsRes.data as any) || []).forEach((p: any) => {
+      counts[p.collection_id] = (counts[p.collection_id] || 0) + 1;
+    });
+    ((profsRes.data as any) || []).forEach((p: any) => {
+      oMap[p.user_id] = p.display_name || `@${p.username}`;
+    });
 
     const enriched = all.map((c) => ({ ...c, seedCount: counts[c.id] || 0, ownerName: oMap[c.owner_id] }));
     setMine(enriched.filter((c) => c.owner_id === user.id));

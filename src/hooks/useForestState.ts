@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -99,13 +99,21 @@ export function useForestState() {
     const seedIds = seeds.map((s) => s.id);
     let waterSet = new Set<string>();
     let saveSet = new Set<string>();
+    let savedBlocksData: any[] = [];
     if (seedIds.length) {
-      const [{ data: w }, { data: sv }] = await Promise.all([
+      // Parallelize all secondary lookups in a single wave
+      const [waterRes, saveRes, savedBlocksRes] = await Promise.all([
         supabase.from("forest_waters" as any).select("seed_id").eq("user_id", user.id).in("seed_id", seedIds),
         supabase.from("forest_saves" as any).select("seed_id").eq("user_id", user.id).in("seed_id", seedIds),
+        (supabase as any)
+          .from("archive_blocks")
+          .select("id, from_seed_id, updated_at")
+          .eq("user_id", user.id)
+          .in("from_seed_id", seedIds),
       ]);
-      ((w as any) || []).forEach((r: any) => waterSet.add(r.seed_id));
-      ((sv as any) || []).forEach((r: any) => saveSet.add(r.seed_id));
+      ((waterRes.data as any) || []).forEach((r: any) => waterSet.add(r.seed_id));
+      ((saveRes.data as any) || []).forEach((r: any) => saveSet.add(r.seed_id));
+      savedBlocksData = (savedBlocksRes.data as any) || [];
     }
     setMyWaters(waterSet);
     setMySaves(saveSet);
@@ -131,15 +139,9 @@ export function useForestState() {
     // For each seed I've saved, check whether the seed's updated_at is newer than the
     // saved archive_block.updated_at. If so → an update is available.
     if (saveSet.size) {
-      const seedIdsArr = Array.from(saveSet);
       const seedById = new Map(seeds.map((s) => [s.id, s]));
-      const { data: savedBlocks } = await (supabase as any)
-        .from("archive_blocks")
-        .select("id, from_seed_id, updated_at")
-        .eq("user_id", user.id)
-        .in("from_seed_id", seedIdsArr);
       const updates: Record<string, string> = {};
-      ((savedBlocks as any) || []).forEach((b: any) => {
+      savedBlocksData.forEach((b: any) => {
         const seed = seedById.get(b.from_seed_id);
         if (!seed) return;
         const seedTs = new Date(seed.updated_at).getTime();
@@ -162,13 +164,23 @@ export function useForestState() {
   // Realtime
   useEffect(() => {
     if (!user) return;
+    // Coalesce bursts of realtime events into a single refetch
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefetch = () => {
+      if (pending) return;
+      pending = setTimeout(() => {
+        pending = null;
+        fetchAll();
+      }, 800);
+    };
     const ch = supabase
       .channel(`forest-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "forest_seeds" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "forest_waters" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "forest_saves" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "forest_seeds" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "forest_waters" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "forest_saves" }, scheduleRefetch)
       .subscribe();
     return () => {
+      if (pending) clearTimeout(pending);
       supabase.removeChannel(ch);
     };
   }, [user, fetchAll]);
@@ -264,7 +276,11 @@ export function useForestState() {
     return (data as any)?.savedBlockId as string;
   }, [mySaves]);
 
+  // Per-session dedupe so scrolling past the same card doesn't re-hit the RPC
+  const viewedRef = useRef<Set<string>>(new Set());
   const recordView = useCallback(async (seedId: string) => {
+    if (viewedRef.current.has(seedId)) return;
+    viewedRef.current.add(seedId);
     await supabase.rpc("forest_view_seed" as any, { _seed_id: seedId });
   }, []);
 
