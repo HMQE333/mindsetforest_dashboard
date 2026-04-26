@@ -1,238 +1,101 @@
-# 🌳 Forest — Shared Second-Brain inside Archive
 
-A new sub-tab in **Archive** where users can publish private blocks as "seeds" into a shared knowledge ecosystem. Notes can be shared with **🌍 Everyone**, **🤝 All friends**, or **🎯 Specific people**, and stay fully reversible. Other users can browse, sort by trending/contribution, save seeds back into their own Archive, and "💧 water" (appreciate) seeds.
+## Why Forest feels generic today
 
-This is structured into **5 phases** so we ship value incrementally and keep risk low.
+Compared to **Home** (animated XP bar, glowing streak pill, gradient level chip, staggered stats) and **Oracle** (giant breathing gem with glow + evolution rings), the Forest is just:
 
----
+- A flat row of pill sub-tabs
+- A big block of filter chips inside one `glass-card`
+- A 2-column grid of nearly-identical `glass-card-hover` seed cards
 
-## 🎯 Core Principles
-
-1. **Privacy-first** — nothing public by default. Each Forest entry is a *derived copy* of a private `archive_blocks` row; the source stays untouched.
-2. **Reversible** — unpublish instantly removes the seed from public view. (Copies others have already saved into their own Archive remain theirs — that's the expected "knowledge spread" behavior.)
-3. **Reliable & secure** — strict RLS using the existing `public.are_friends()` SECURITY DEFINER (no recursive policies). We never expose emails — only `username`, `display_name`, `avatar_emoji` from `user_profiles`.
-4. **Aligned with existing data model** — reuses the 8 pillars + 8 directions + tags taxonomy and the `friendships` table.
-5. **Smart connections** — wires into friends inbox, semantic embeddings, saved tags, achievements, and the Digest tab.
+It uses the same tokens (`gradient-purple`, `glass-card`, `glow-sm`) but never lets them **breathe** or do anything **distinctive**. Below is a focused, low-risk visual upgrade that keeps the minimalist tone but gives Forest its own identity — *organic, alive, growing*.
 
 ---
 
-## 🗂 Data Model (new tables)
+## 1. A "living grove" hero band (above sub-tabs)
 
-### `forest_seeds`
-Public/semi-public publications derived from a private `archive_blocks` row.
-```
-id              uuid PK
-author_id       uuid (auth user)
-source_block_id uuid (nullable — for re-sync; nullable so deleting source doesn't kill seed)
-title           text
-content         text
-pillars         text[]
-directions      text[]
-tags            text[]
-source_url      text
-visibility      text CHECK IN ('public','friends','custom')
-language        text default 'en'
-is_active       boolean default true   -- soft unpublish
-water_count     int default 0          -- denormalized
-save_count      int default 0          -- denormalized
-view_count      int default 0
-embedding       vector(1536) nullable  -- pgvector for semantic search
-published_at    timestamptz default now()
-updated_at      timestamptz default now()
-```
+A short, ~110px hero strip that anchors the module the way the streak pill anchors Home and the gem anchors Oracle.
 
-### `forest_seed_audience`
-Per-user allowlist when `visibility='custom'`.
-```
-seed_id uuid (→ forest_seeds.id, on delete cascade)
-user_id uuid
-PRIMARY KEY (seed_id, user_id)
-```
+- **Left:** a small animated **sprout/tree icon** (framer-motion sway, like Oracle's gem float) inside a soft radial glow tinted with `--xp-gradient-from`.
+- **Center:** title `🌳 The Forest` in tracking-widest uppercase (matches Oracle's `ORACLE` heading style) + a tagline that swaps based on tab (`"Today's grove"`, `"What's growing right now"`, `"Curated bundles"`, `"Your planted seeds"`).
+- **Right:** three live "vital signs" stat chips, mono-font like Home's stats:
+  - 🌱 **Seeds you've planted** (`mySeeds.length`)
+  - 💧 **Waters received** (`myStats.totalWaters`)
+  - 👁 **Today's grove** (`todaysSelection.length`)
+  Plus the existing `ForestInboxBell` aligned to the far right.
 
-### `forest_waters`
-Upvote/appreciation. One per (seed, user).
-```
-id uuid PK
-seed_id uuid (→ forest_seeds.id, on delete cascade)
-user_id uuid
-created_at timestamptz default now()
-UNIQUE (seed_id, user_id)
-```
+This single addition does 80% of the work — it's the same trick that makes Home and Oracle feel premium.
 
-### `forest_saves`
-Tracks when a viewer copies a seed into their own Archive (a new private `archive_blocks` row tagged `from-forest`).
-```
-id uuid PK
-seed_id uuid (→ forest_seeds.id, on delete cascade)
-user_id uuid
-saved_block_id uuid
-created_at timestamptz default now()
-UNIQUE (seed_id, user_id)
-```
+## 2. Organic ambient backdrop (Forest only)
 
-### `forest_reports`
-Moderation flags. (Phase 5.)
-```
-id uuid PK
-seed_id uuid (→ forest_seeds.id, on delete cascade)
-reporter_id uuid
-reason text
-created_at timestamptz default now()
-UNIQUE (seed_id, reporter_id)
-```
+Behind the whole Forest view, add a **scoped CSS-only backdrop** (no canvas, no perf cost) inside the wrapping `<motion.div>`:
 
-### Triggers
-- `updated_at` auto-bump on `forest_seeds`.
-- Denorm counters: triggers on `forest_waters` / `forest_saves` (insert ➕1, delete ➖1).
-- `view_count` bumped only via SECURITY DEFINER RPC `forest_view_seed(seed_id)` — never client-writable.
-- A `BEFORE UPDATE` trigger on `forest_seeds` resets `water_count`/`save_count`/`view_count` to OLD values unless changed by the trigger system path (defense in depth).
+- A faint vertical gradient from `transparent` → `hsl(150 40% 8% / 0.35)` at the bottom (suggests "ground").
+- 3–4 large, very soft blurred radial blobs (`bg-emerald-500/8`, `bg-cyan-500/6`, `bg-primary/8`) absolutely positioned and `pointer-events-none`, with `mix-blend-screen` so they tint the cards above them slightly differently.
+- One barely-visible animated `motion.div` "drifting light" using the same `animate={{ y: [...] }}` loop pattern Oracle already uses.
+
+This is what makes Oracle's page feel *atmospheric* — Forest needs the same trick but green/aqua instead of purple.
+
+## 3. Tactile, segmented sub-tabs
+
+Replace the four standalone gradient pills with a single **glass-segmented control** (one `glass-card` rounded-2xl pill containing the four tabs):
+
+- The active tab has a **moving `motion.div` indicator** (`layoutId="forest-tab-pill"`) — same `gradient-purple` + `glow-sm` it uses today, but it slides between tabs (the technique Oracle/Settings already use elsewhere).
+- Inactive tabs are just text + emoji, no background → much calmer, less "row of buttons".
+- Counts move into a small mono-font badge to the right of the label.
+
+Result: the tab strip stops competing with the content for visual weight.
+
+## 4. Seed cards: from "card" to "leaf"
+
+`ForestSeedCard` is the single most-repeated element — it deserves character. Keeping the same data and layout, change *only* the visual envelope:
+
+- **Curved top edge** suggesting a leaf: subtle `border-radius: 18px 18px 22px 22px` + a 1px **left "vein"** in the seed's first-pillar color (`borderLeft: 2px solid {color}33`). Cards now visually *belong* to a pillar at a glance.
+- **Hover lift**: `translateY(-2px)` + soft pillar-tinted glow shadow (reuses `box-shadow` recipe from Oracle's gem ring).
+- **Author block**: round the avatar emoji into a small tinted circle (`bg-muted/40` + ring-1 in pillar color) — gives the card a face instead of a free-floating emoji.
+- **Body**: bump title to `text-[15px]`, snippet to `text-[13px]/leading-relaxed`, and use the same `font-serif` the reader modal already uses for the snippet preview — instant "literary" feel that matches the Forest metaphor.
+- **Stats row**: replace the inline `👁 N · 📥 N` text with two tiny **iconified mono-font chips** that match Home's stat style.
+- **Watered state**: when `iWatered`, add a subtle animated cyan dewdrop pulse on the droplet icon (1.5s `repeat: Infinity`, like Oracle's tier glow). Tiny but delightful.
+
+No new layout — same buttons, same actions, just a richer envelope.
+
+## 5. Filters bar: collapse + breathe
+
+The filter card today is dense (smart-search row + sort row + pillar row + direction row + tag row + trending-tags row). Visually heavy, never collapses.
+
+- Default state shows only **search + sort + active filter chips** in a single `glass-card`.
+- A `🎚 Filters` toggle expands the pillar/direction/tag rows below with `AnimatePresence` height animation (already used in `ForestDailyStack`'s focus panel).
+- The `🔥 Hot pillars · 48h` row stays visible — that's Forest's signature "what's alive right now" data viz, and it's already great. Just give the active hot pillar a gentle pulsing ring (matches "Rising" badge energy).
+
+## 6. Empty / loading states with personality
+
+Current loading: `🌳` emoji + "Growing the Forest…". Current empty: `🌱` + a sentence.
+
+- **Loading**: small SVG of a sprout that grows (scaleY 0→1 over 1.2s, `repeat: Infinity, repeatType: "reverse"`) inside a soft glow — the same "alive object" formula as Oracle's gem.
+- **Empty**: center the sprout, add a **single primary CTA** (`🌱 Plant your first seed` → opens `PlantSeedModal`) in the same `gradient-purple` + `glow-sm` pill Home uses for level chips. Right now the empty state has no action, which feels like a dead end.
+
+## 7. Small polish (cheap wins)
+
+- **My Forest stat grid**: change the four squares to a single horizontal `glass-card` with vertical dividers (`divide-x divide-white/5`) — looks more like a scoreboard, less like form fields.
+- **Achievements row**: unlocked badges get `glow-sm` + a 1px ring in `--primary`; locked ones get `grayscale opacity-50` (already partial; just unify).
+- **"Most appreciated" card**: add a faint left-edge gradient bar in cyan (`bg-gradient-to-r from-cyan-400/30 to-transparent w-1`) — it visually echoes the water droplet stat and feels like a trophy ribbon.
 
 ---
 
-## 🔒 RLS & Security
+## Files I'd touch
 
-### `forest_seeds`
-- **SELECT** (single policy):
-  ```
-  is_active = true
-  AND (
-       visibility = 'public'
-    OR (visibility = 'friends' AND public.are_friends(auth.uid(), author_id))
-    OR (visibility = 'custom'  AND EXISTS (SELECT 1 FROM forest_seed_audience
-                                            WHERE seed_id = id AND user_id = auth.uid()))
-    OR author_id = auth.uid()
-  )
-  ```
-- **INSERT/UPDATE/DELETE**: only `author_id = auth.uid()`.
+- **edit** `src/components/archive/ArchiveForestView.tsx` — add hero band, scoped backdrop wrapper, segmented sub-tabs with `layoutId`, collapsible filters, empty/loading states with CTA.
+- **edit** `src/components/archive/ForestSeedCard.tsx` — leaf-shaped envelope, pillar vein, serif snippet, iconified stat chips, watered dewdrop pulse.
+- **edit** `src/components/archive/ForestDailyStack.tsx` — match new card visual envelope so the swipe card feels like the same family.
+- **add** ~25 lines to `src/index.css` under `@layer components`:
+  - `.forest-backdrop` (the radial blob layer, scoped — won't leak)
+  - `.seed-leaf` (the leaf border-radius + hover lift recipe)
+  - One `@keyframes dewdrop` for the watered icon pulse
+- **no DB / no hooks / no edge functions** — purely presentational.
 
-### `forest_seed_audience`
-- All ops: only the seed owner (verified via subquery to `forest_seeds`). Viewers never need to read this row directly.
+## Risk
 
-### `forest_waters` / `forest_saves`
-- **SELECT**: any authenticated user (so we can later show "💧 12 friends watered this").
-- **INSERT/DELETE**: only `user_id = auth.uid()`.
-- INSERT additionally requires the target seed to be visible to the actor — enforced by a small SECURITY DEFINER helper `public.can_view_seed(seed_id)` used inside a `CHECK`/trigger.
+Very low. All changes are CSS classes + framer-motion micro-animations on top of existing markup. No data shape changes, no breaking-out of components, no new dependencies. If anything regresses visually it's reverted by removing the new classes — the underlying logic is untouched.
 
-### `forest_reports`
-- **INSERT**: any authenticated user with `reporter_id = auth.uid()`.
-- **SELECT**: only the reporter (admin role added later, separately).
+## What it'll feel like after
 
-### Recursion-safety
-All cross-table policies go through the existing `public.are_friends()` SECURITY DEFINER and the new `public.can_view_seed()` helper — no recursive policy lookups.
-
-### Rate limits
-- `BEFORE INSERT` trigger on `forest_seeds`: cap **20 publishes/day per user**.
-- `BEFORE INSERT` trigger on `forest_reports`: cap **30 reports/day per user**.
-
----
-
-## 🌿 PHASE 1 — Foundation: Plant & Browse (MVP)
-
-**Goal**: publish a seed from Archive → friends/public can browse it → save back to their Archive.
-
-### Backend
-- One migration creating all 5 tables + RLS + triggers + denorm counters + `can_view_seed()` helper + `forest_view_seed()` RPC.
-- Edge function `forest-publish-seed` — `{ blockId, visibility, audienceUserIds, edits? }`. Validates ownership, copies content into `forest_seeds`, writes audience rows, fires embedding (reuse `ai-embed-block` pattern).
-- Edge function `forest-save-seed` — `{ seedId }`. Verifies visibility via `can_view_seed`, creates a private `archive_blocks` row in caller's account tagged `from-forest` with a back-reference, inserts a `forest_saves` row.
-
-### Frontend
-- New nav item in `ArchiveView.tsx`: `🌳 Forest` (after Digest). Clears selection on switch.
-- New `src/components/archive/ArchiveForestView.tsx` with two inner tabs: **Discover** (default) and **My Seeds**.
-- **Plant a Seed** entry points:
-  1. `ArchiveBlockCard` — `🌱 Plant` button alongside the existing AI action row.
-  2. Bulk floating bar in `ArchiveView.tsx` — `🌱 Plant N seeds`.
-- New `PlantSeedModal`:
-  - Edit title/content/pillars/directions/tags one last time.
-  - Pick **Visibility**: 🌍 Everyone / 🤝 All friends / 🎯 Specific friends (multi-select chips of `useFriends().accepted`).
-- New `useForestState` hook (mirrors `useArchiveState`): `mySeeds`, `discoverSeeds`, `plantSeed`, `unpublishSeed`, `updateSeed`, `saveSeed`, `waterSeed`/`unwaterSeed`, `reportSeed`, `recordView`.
-- Discover feed: card grid (variant of `ArchiveBlockCard`) showing avatar + @username, pillars, directions, tags, water count, save count. Card actions: `📥 Save`, `💧 Water`, `🚩 Report`, `👁 Read`.
-- My Seeds: same cards with `✏️ Edit`, `🔓 Change visibility`, `🌑 Unpublish`, plus per-seed view/water/save stats.
-
-### Smart connections in Phase 1
-- **Friends Inbox** — when a friend plants a seed visible to you, surface it in the existing Friends Sheet's Inbox tab (new `source: "forest"` value in `friend_suggestions`). Accepting routes through the existing pillar/project picker we just built.
-- **Achievements** — 3 new badges computed client-side: `🌱 First Seed` (1 published), `🌳 Grove Tender` (10 published), `💧 Generous` (50 waters given).
-
----
-
-## 🌿 PHASE 2 — Discovery & Sorting
-
-- **Sort modes** in Discover:
-  - 🔥 Trending — `water_count / pow(hours_since_publish + 2, 1.5)`
-  - 🆕 Newest
-  - 💧 Most watered (all-time)
-  - 📥 Most saved (all-time)
-  - 🤝 From friends — filter by `author_id IN (my friend ids)`
-- **Filters** (pill row mirroring Library): pillar chips, direction chips, tag search, language, "hide already-saved".
-- **Smart Search** toggle reusing `ai-embed-block` extended with `action: "search-forest"` querying `forest_seeds.embedding` scoped by visibility.
-- **Author peek**: clicking an avatar opens a lightweight popover with username, avatar, total seeds, total waters received.
-- Tasteful empty state with "Plant your first seed" CTA.
-
----
-
-## 🌿 PHASE 3 — Curation & Personal Forest
-
-- **My Forest dashboard** at the top of My Seeds:
-  - Totals (seeds / waters received / times saved) + "your most appreciated seed" highlight.
-  - Contribution heatmap reusing `TrackerActivityPulse` renderer (seeds-per-day, last 12 months).
-- **Collections** — small `forest_collections` table; one seed can belong to multiple collections; each collection has its own visibility so you can publish curated bundles.
-- **Re-sync** — when source `archive_blocks.updated_at > seed.updated_at`, show a `↻ Sync from source` hint on the seed card for one-click update.
-
----
-
-## 🌿 PHASE 4 — Engagement Loops & Notifications
-
-- Reuse `user_notifications` (add a `source` column) instead of a new table.
-- Triggers on `forest_waters` and `forest_saves` insert → coalesced notification to the seed author ("3 friends watered *Atomic Habits notes* today").
-- Friends button bell badge already exists via `f.badgeCount` — extend with unread Forest notifications.
-- New `🌳 From the Forest` section inside `ArchiveDigestView` surfacing 3-5 friend seeds matching your pillars/directions, ranked by semantic similarity to your recent reading.
-
----
-
-## 🌿 PHASE 5 — Trust & Safety
-
-- **Report flow** UI: 🚩 opens modal with reasons (Spam, Hate/Abuse, Adult, Off-topic, Other + free text).
-- **Auto-throttle**: ≥5 distinct reports in 24h → trigger flips `is_active = false` automatically. Author sees "🔒 Hidden pending review" with an Appeal action.
-- **Mute author** — small `forest_mutes` table; viewer-side only, doesn't affect friendships.
-- **Content limits** in `forest-publish-seed`: title ≤ 200, content ≤ 8000, max 12 tags, strip raw HTML as defense-in-depth (we render plain text, but stripping at the edge is cheap insurance).
-- **Right to delete** — unpublishing cascades `forest_waters` / `forest_saves` join rows; saved-into-archive copies stay with their owners (this is the documented expected behavior).
-
----
-
-## 🔌 Integration Map
-
-| Existing system | How Forest connects |
-|---|---|
-| `archive_blocks` | Source of seeds — private rows untouched. |
-| `usePillars` + `DIRECTIONS` | Same taxonomy → seamless cross-tab filtering. |
-| `friendships` + `are_friends()` | Visibility scope `friends` + "From friends" sort. |
-| `friend_suggestions` (Inbox) | New `source: "forest"` value surfaces freshly-planted friend seeds. |
-| `user_profiles` | Author cards (username + avatar only — never email). |
-| `ai-embed-block` edge function | Extended with `action: "search-forest"` for semantic Forest discovery. |
-| `user_saved_tags` | Tag picker in `PlantSeedModal` reuses the cross-module Tag Library popover. |
-| `TrackerActivityPulse` | Reused for the My Forest contribution heatmap. |
-| `ArchiveDigestView` | New "🌳 From the Forest" section in Phase 4. |
-| `user_notifications` | Reused (with `source` column) for Forest engagement notifications. |
-| Achievements (`TrackerAchievements`) | New badges: First Seed / Grove Tender / Generous / Beloved. |
-
----
-
-## 📋 Suggested Build Order
-
-1. **Phase 1** — DB migration + edge functions + Forest tab + Plant flow + Discover/MySeeds basics. (Biggest single chunk, ships a usable MVP.)
-2. **Phase 2** — Sort + filter + semantic Forest search + author peek.
-3. **Phase 3** — My Forest dashboard + collections + re-sync.
-4. **Phase 4** — Notifications + Digest integration.
-5. **Phase 5** — Reports + mute + auto-throttle + content hardening.
-
-After Phase 1, every later phase is independently shippable.
-
----
-
-## ❓ Decisions to confirm before I start coding Phase 1
-
-I'll ask these via a short multiple-choice step right after you approve, so we lock in the right defaults before the migration:
-
-1. **Default visibility** when planting — `🤝 All friends` (safer) vs `🌍 Everyone` (faster network growth). Recommended: **friends**.
-2. **Edit-after-publish** — allow free edits with an "edited" badge, vs freeze content after publish (only unpublish + re-publish). Recommended: **allow free edits**.
-3. **Anonymous seeds** — publish without showing your username. Recommended: **not in MVP**, revisit in Phase 5.
-4. **Save linkage** — store back-reference from the saved Archive block to the original seed (enables future "↻ Update available" hints) vs no link (clean copy). Recommended: **store back-reference, never auto-overwrite**.
+The Forest will read as: **"a calm, living place, with a grove at the top, leaves below, pillar-tinted everywhere, that quietly breathes"** — instead of "another tab with cards". Same minimalism, same tokens, just composed with the same care Home and Oracle already get.

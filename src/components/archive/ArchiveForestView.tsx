@@ -13,7 +13,7 @@ import ForestCollectionsView from "./ForestCollectionsView";
 import ForestDailyStack from "./ForestDailyStack";
 import BlockedAuthorsList from "./BlockedAuthorsList";
 import RecentAppreciationStrip from "./RecentAppreciationStrip";
-import { Sprout, Droplet, BookmarkPlus, Eye, Trophy } from "lucide-react";
+import { Sprout, Droplet, BookmarkPlus, Eye, Trophy, Leaf } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
@@ -204,27 +204,119 @@ const ArchiveForestView = () => {
     return { count: forest.mySeeds.length, totalWaters, totalSaves, totalViews, top };
   }, [forest.mySeeds]);
 
+  // Daily grove count (mirrors the logic in ForestDailyStack header)
+  const dailyCount = useMemo(() => {
+    const friendIdsSet = friendIds;
+    const pool = forest.discoverSeeds.filter((s) => !s.iSaved);
+    const fromFriends = pool.filter((s) => friendIdsSet.has(s.author_id)).length;
+    return Math.min(5, Math.max(0, fromFriends >= 3 ? 5 : Math.min(5, pool.length)));
+  }, [forest.discoverSeeds, friendIds]);
+
+  const tabTagline: Record<SubTab, string> = {
+    daily: "Today's curated grove",
+    discover: "What's growing right now",
+    collections: "Curated bundles of seeds",
+    mine: "Seeds you've planted",
+  };
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-      {/* Sub-tabs */}
-      <div className="flex items-center gap-2 flex-wrap">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 forest-backdrop">
+      {/* ── Living grove hero band ── */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="glass-card relative overflow-hidden px-5 py-4 flex items-center gap-4"
+      >
+        {/* Soft radial accent behind sprout */}
+        <div
+          className="absolute -left-10 -top-10 w-40 h-40 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, hsl(150 60% 45% / 0.25), transparent 70%)", filter: "blur(20px)" }}
+        />
+        {/* Drifting light */}
+        <motion.div
+          aria-hidden
+          className="absolute right-10 top-2 w-24 h-24 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, hsl(180 70% 55% / 0.18), transparent 70%)", filter: "blur(18px)" }}
+          animate={{ y: [0, 8, 0], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        />
+
+        {/* Animated sprout */}
+        <motion.div
+          className="relative shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, hsl(150 50% 25% / 0.4), hsl(180 60% 25% / 0.3))" }}
+          animate={{ rotate: [-3, 3, -3] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <Leaf className="w-6 h-6 text-emerald-300" style={{ filter: "drop-shadow(0 0 6px hsl(150 70% 55% / 0.6))" }} />
+        </motion.div>
+
+        {/* Title + tagline */}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base sm:text-lg font-bold tracking-[0.18em] uppercase text-foreground/90 leading-none">
+            🌳 The Forest
+          </h2>
+          <p className="text-[11px] text-muted-foreground mt-1.5 truncate">{tabTagline[tab]}</p>
+        </div>
+
+        {/* Vital signs */}
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          {[
+            { Icon: Sprout, value: forest.mySeeds.length, label: "Planted", color: "text-emerald-400" },
+            { Icon: Droplet, value: myStats.totalWaters, label: "Waters", color: "text-cyan-400" },
+            { Icon: Eye, value: dailyCount, label: "Today", color: "text-primary" },
+          ].map(({ Icon, value, label, color }) => (
+            <div key={label} className="px-2.5 py-1.5 rounded-xl bg-background/30 border border-white/5 text-center min-w-[58px]">
+              <div className="flex items-center justify-center gap-1">
+                <Icon className={`w-3 h-3 ${color}`} />
+                <span className="text-sm font-bold font-mono text-foreground">{value}</span>
+              </div>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground/80 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="shrink-0">
+          <ForestInboxBell />
+        </div>
+      </motion.div>
+
+      {/* ── Segmented sub-tabs ── */}
+      <div className="glass-card p-1 inline-flex items-center gap-0.5 flex-wrap relative">
         {([
-          { id: "daily" as SubTab, label: "🍃 Daily", count: null },
+          { id: "daily" as SubTab, label: "🍃 Daily", count: null as number | null },
           { id: "discover" as SubTab, label: "🔭 Discover", count: forest.discoverSeeds.length },
           { id: "collections" as SubTab, label: "📚 Collections", count: null },
           { id: "mine" as SubTab, label: "🌱 My seeds", count: forest.mySeeds.length },
-        ]).map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-              tab === t.id ? "gradient-purple text-primary-foreground glow-sm" : "glass-card text-muted-foreground hover:text-foreground"
-            }`}>
-            {t.label}
-            {t.count !== null && <span className="opacity-70 ml-1">({t.count})</span>}
-          </button>
-        ))}
-        <div className="ml-auto">
-          <ForestInboxBell />
-        </div>
+        ]).map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`relative px-3.5 py-2 rounded-xl text-sm font-bold transition-colors ${
+                active ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {active && (
+                <motion.span
+                  layoutId="forest-tab-pill"
+                  className="absolute inset-0 rounded-xl gradient-purple glow-sm"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <span className="relative">
+                {t.label}
+                {t.count !== null && (
+                  <span className={`ml-1.5 text-[10px] font-mono ${active ? "opacity-80" : "opacity-60"}`}>
+                    {t.count}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Daily curated grove */}
@@ -434,13 +526,20 @@ const ArchiveForestView = () => {
           <p className="mt-2">Growing the Forest...</p>
         </div>
       ) : list.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <span className="text-3xl mb-2 block">🌱</span>
-          <p className="text-sm">
+        <div className="text-center py-14 text-muted-foreground space-y-3">
+          <motion.div
+            className="inline-flex items-center justify-center w-16 h-16 rounded-full"
+            style={{ background: "radial-gradient(circle, hsl(150 60% 45% / 0.25), transparent 70%)" }}
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Sprout className="w-7 h-7 text-emerald-400" />
+          </motion.div>
+          <p className="text-sm max-w-xs mx-auto">
             {tab === "discover"
               ? smartSearch && search.trim()
                 ? "No seeds match that meaning. Try different words."
-                : "Nothing here yet. Add friends or be the first to plant a seed!"
+                : "Nothing here yet. Add friends or be the first to plant a seed."
               : "You haven't planted anything yet. Open any block in your Library and tap 🌱 Plant."}
           </p>
         </div>
