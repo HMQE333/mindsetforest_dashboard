@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { z } from "zod";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, Loader2, X, ArrowRight } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { CustomCategory } from "@/hooks/useOnboarding";
 import { useUserProfile, isValidUsername } from "@/hooks/useUserProfile";
@@ -9,7 +9,12 @@ import { toast } from "sonner";
 import TaskCustomizationStep from "./TaskCustomizationStep";
 
 const DEFAULT_ICONS = ["🧠", "💪", "🎨", "🔭", "👑", "📊", "✨", "⚙️"];
-const AVATAR_EMOJIS = ["🦊", "🐺", "🦉", "🐯", "🦁", "🐻", "🐼", "🐨", "🦄", "🐉", "🦅", "🦋", "🌸", "🌿", "🌲", "🔥", "⚡", "✨", "🌙", "☀️", "🌊", "🏔️"];
+const AVATAR_GROUPS: { id: string; label: string; emojis: string[] }[] = [
+  { id: "animals", label: "Animals", emojis: ["🦊", "🐺", "🦉", "🐯", "🦁", "🐻", "🐼", "🐨", "🦄", "🐉", "🦅", "🦋"] },
+  { id: "nature", label: "Nature", emojis: ["🌸", "🌿", "🌲", "🍃", "🌻", "🌙", "☀️", "🌊", "🏔️", "🌋", "🌌", "🪐"] },
+  { id: "energy", label: "Energy", emojis: ["🔥", "⚡", "✨", "💎", "🌀", "💫", "☄️", "🪄", "🛡️", "⚔️", "👁️", "🜁"] },
+];
+const ALL_AVATARS = AVATAR_GROUPS.flatMap(g => g.emojis);
 
 const profileSchema = z.object({
   username: z
@@ -40,6 +45,7 @@ export default function OnboardingView({ onComplete }: Props) {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState("🦊");
+  const [avatarGroup, setAvatarGroup] = useState<string>("animals");
   const [checking, setChecking] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [profileError, setProfileError] = useState<string>("");
@@ -47,7 +53,11 @@ export default function OnboardingView({ onComplete }: Props) {
 
   // Seed avatar from existing profile when it lands.
   useEffect(() => {
-    if (profile?.avatar_emoji) setAvatarEmoji(profile.avatar_emoji);
+    if (profile?.avatar_emoji) {
+      setAvatarEmoji(profile.avatar_emoji);
+      const grp = AVATAR_GROUPS.find(g => g.emojis.includes(profile.avatar_emoji!));
+      if (grp) setAvatarGroup(grp.id);
+    }
     if (profile?.display_name) setDisplayName(profile.display_name);
   }, [profile?.avatar_emoji, profile?.display_name]);
 
@@ -67,6 +77,18 @@ export default function OnboardingView({ onComplete }: Props) {
   }, [username, checkUsernameAvailable]);
 
   const usernameValid = useMemo(() => isValidUsername(username.trim().toLowerCase()), [username]);
+
+  // Status line for the username field
+  const usernameStatus = useMemo(() => {
+    if (!username) return { tone: "muted" as const, text: "3–20 chars · letters, numbers, underscores" };
+    if (!usernameValid) return { tone: "error" as const, text: "Use a–z, 0–9, underscores only" };
+    if (checking) return { tone: "muted" as const, text: "Checking availability…" };
+    if (available === true) return { tone: "ok" as const, text: "Available — looks great" };
+    if (available === false) return { tone: "error" as const, text: "That handle is already taken" };
+    return { tone: "muted" as const, text: "3–20 chars · letters, numbers, underscores" };
+  }, [username, usernameValid, checking, available]);
+
+  const activeGroup = AVATAR_GROUPS.find(g => g.id === avatarGroup) ?? AVATAR_GROUPS[0];
 
   const handleProfileNext = async () => {
     const parsed = profileSchema.safeParse({ username, display_name: displayName });
@@ -132,8 +154,18 @@ export default function OnboardingView({ onComplete }: Props) {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden px-4">
-      <div className="absolute top-1/4 left-1/3 w-80 h-80 bg-primary/8 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-cat-spirit/8 rounded-full blur-3xl" />
+      {/* Ambient backdrop */}
+      <motion.div
+        className="absolute top-1/4 left-1/3 w-80 h-80 bg-primary/10 rounded-full blur-3xl pointer-events-none"
+        animate={{ x: [0, 20, 0], y: [0, -15, 0] }}
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-cat-spirit/10 rounded-full blur-3xl pointer-events-none"
+        animate={{ x: [0, -25, 0], y: [0, 20, 0] }}
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cat-mind/5 rounded-full blur-3xl pointer-events-none" />
 
       <AnimatePresence mode="wait">
         {step === "profile" ? (
@@ -144,22 +176,60 @@ export default function OnboardingView({ onComplete }: Props) {
             exit={{ opacity: 0, y: -20 }}
             className="relative z-10 w-full max-w-md"
           >
+            {/* Step indicator */}
+            <div className="flex items-center justify-center gap-1.5 mb-5">
+              <span className="h-1.5 w-8 rounded-full gradient-purple" />
+              <span className="h-1.5 w-3 rounded-full bg-muted/60" />
+              <span className="h-1.5 w-3 rounded-full bg-muted/60" />
+              <span className="ml-2 text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Step 1 of 3</span>
+            </div>
+
+            {/* Hero avatar pedestal */}
             <div className="text-center mb-6">
-              <motion.div
-                key={avatarEmoji}
-                initial={{ scale: 0.6, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="text-6xl mb-3"
-              >
-                {avatarEmoji}
-              </motion.div>
-              <h1 className="text-2xl font-bold text-gradient-purple mb-1">Pick your handle</h1>
-              <p className="text-xs text-muted-foreground">
-                This is how friends find you and how the Forest credits your seeds.
+              <div className="relative inline-block mb-4">
+                {/* glow halo */}
+                <div className="absolute inset-0 rounded-full bg-primary/30 blur-2xl scale-110" />
+                <div className="absolute inset-0 rounded-full bg-cat-spirit/20 blur-xl scale-125" />
+                <motion.div
+                  key={avatarEmoji}
+                  initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
+                  animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 14 }}
+                  className="relative w-24 h-24 rounded-full flex items-center justify-center text-5xl bg-gradient-to-br from-card/90 to-card/40 backdrop-blur-xl border border-white/15 shadow-2xl"
+                  style={{ boxShadow: "0 0 40px hsl(var(--primary) / 0.3), inset 0 1px 0 hsl(0 0% 100% / 0.1)" }}
+                >
+                  <motion.span
+                    animate={{ y: [0, -3, 0] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    {avatarEmoji}
+                  </motion.span>
+                </motion.div>
+              </div>
+              <h1 className="text-3xl font-bold text-gradient-purple mb-1.5">Make it yours</h1>
+              <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                Your handle is how friends find you and how the Forest credits the seeds you plant.
               </p>
             </div>
 
-            <div className="glass-card p-5 border-white/15 space-y-4">
+            {/* Live preview pill */}
+            <motion.div
+              layout
+              className="mx-auto mb-5 max-w-fit flex items-center gap-2.5 px-3 py-1.5 rounded-full glass-card border-white/10"
+            >
+              <span className="text-base leading-none">{avatarEmoji}</span>
+              <span className="text-xs font-mono text-foreground/90">
+                @{username || "your_handle"}
+              </span>
+              {displayName && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[120px]">{displayName}</span>
+                </>
+              )}
+            </motion.div>
+
+            <div className="glass-card p-5 border-white/15 space-y-4 shadow-2xl">
               {/* Username */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
@@ -173,7 +243,13 @@ export default function OnboardingView({ onComplete }: Props) {
                     onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
                     placeholder="your_handle"
                     maxLength={20}
-                    className="w-full bg-secondary/50 border-2 border-border rounded-xl pl-7 pr-10 py-2.5 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
+                    className={`w-full bg-secondary/50 border-2 rounded-xl pl-7 pr-10 py-2.5 text-sm font-mono text-foreground outline-none transition-all placeholder:text-muted-foreground/70 ${
+                      username && available === true
+                        ? "border-emerald-400/60 shadow-[0_0_0_3px_hsl(160_70%_50%_/_0.15)]"
+                        : username && (available === false || !usernameValid)
+                          ? "border-destructive/60 shadow-[0_0_0_3px_hsl(0_80%_60%_/_0.15)]"
+                          : "border-border focus:border-primary focus:shadow-[0_0_0_3px_hsl(var(--primary)_/_0.15)]"
+                    }`}
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
                     {checking ? (
@@ -185,8 +261,16 @@ export default function OnboardingView({ onComplete }: Props) {
                     ) : null}
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5">
-                  3–20 chars · letters, numbers, underscores
+                <p
+                  className={`text-[10px] mt-1.5 transition-colors ${
+                    usernameStatus.tone === "ok"
+                      ? "text-emerald-400"
+                      : usernameStatus.tone === "error"
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                  }`}
+                >
+                  {usernameStatus.text}
                 </p>
               </div>
 
@@ -200,32 +284,64 @@ export default function OnboardingView({ onComplete }: Props) {
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="What should we call you?"
                   maxLength={40}
-                  className="w-full bg-secondary/50 border-2 border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground"
+                  className="w-full bg-secondary/50 border-2 border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:shadow-[0_0_0_3px_hsl(var(--primary)_/_0.15)] transition-all placeholder:text-muted-foreground/70"
                 />
               </div>
 
-              {/* Emoji picker */}
+              {/* Emoji picker — categorized */}
               <div>
-                <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                  Avatar
-                </label>
-                <div className="grid grid-cols-8 gap-1.5">
-                  {AVATAR_EMOJIS.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      onClick={() => setAvatarEmoji(e)}
-                      className={`aspect-square rounded-lg text-xl transition-all ${
-                        avatarEmoji === e
-                          ? "bg-primary/20 border-2 border-primary scale-110"
-                          : "bg-muted/40 border-2 border-transparent hover:bg-muted/70"
-                      }`}
-                      aria-label={`Pick ${e} avatar`}
-                    >
-                      {e}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                    Avatar
+                  </label>
+                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-muted/30 border border-border/40">
+                    {AVATAR_GROUPS.map(g => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => setAvatarGroup(g.id)}
+                        className="relative px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors"
+                      >
+                        {avatarGroup === g.id && (
+                          <motion.span
+                            layoutId="avatar-group-pill"
+                            className="absolute inset-0 rounded-md gradient-purple glow-sm"
+                            transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                          />
+                        )}
+                        <span className={`relative ${avatarGroup === g.id ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                          {g.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={avatarGroup}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.18 }}
+                    className="grid grid-cols-6 gap-1.5"
+                  >
+                    {activeGroup.emojis.map((e) => (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => setAvatarEmoji(e)}
+                        className={`aspect-square rounded-lg text-xl transition-all ${
+                          avatarEmoji === e
+                            ? "bg-primary/20 border-2 border-primary scale-110 shadow-[0_0_15px_hsl(var(--primary)_/_0.4)]"
+                            : "bg-muted/40 border-2 border-transparent hover:bg-muted/70 hover:scale-105"
+                        }`}
+                        aria-label={`Pick ${e} avatar`}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </motion.div>
+                </AnimatePresence>
               </div>
 
               {profileError && (
@@ -235,9 +351,19 @@ export default function OnboardingView({ onComplete }: Props) {
               <button
                 onClick={handleProfileNext}
                 disabled={savingProfile || !usernameValid || available === false || checking}
-                className="w-full py-3 rounded-xl text-sm font-bold gradient-purple text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all glow-sm"
+                className="group w-full py-3 rounded-xl text-sm font-bold gradient-purple text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-95 transition-all glow-sm flex items-center justify-center gap-2"
               >
-                {savingProfile ? "Saving…" : "Continue →"}
+                {savingProfile ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Continue</span>
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </>
+                )}
               </button>
             </div>
           </motion.div>
