@@ -66,17 +66,17 @@ export default function HealthMetricCard({ def, value, rangeLabel, status, previ
               <div className="text-[10px] text-muted-foreground truncate">{rangeLabel}</div>
             </div>
           </div>
-          <Tooltip>
+          <Tooltip delayDuration={150}>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="opacity-40 hover:opacity-100 transition-opacity shrink-0"
+                className="relative z-10 opacity-60 hover:opacity-100 transition-opacity shrink-0 p-1 -m-1"
                 aria-label="Why it matters"
               >
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs text-xs">
+            <TooltipContent side="top" className="max-w-xs text-xs z-[100]">
               {def.why}
             </TooltipContent>
           </Tooltip>
