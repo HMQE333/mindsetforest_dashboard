@@ -70,7 +70,7 @@ export default function HealthMetricCard({ def, value, rangeLabel, status, previ
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="relative z-10 opacity-60 hover:opacity-100 transition-opacity shrink-0 p-1 -m-1"
+                className="hidden sm:inline-flex relative z-10 opacity-60 hover:opacity-100 transition-opacity shrink-0 p-1 -m-1"
                 aria-label="Why it matters"
               >
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
