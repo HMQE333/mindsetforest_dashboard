@@ -37,10 +37,11 @@ export default function MetricsTab({ userMetrics, onSave, onReset }: MetricsTabP
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
-    const source = userMetrics.length > 0 ? userMetrics : TRACKER_METRICS;
+    const fromDb = userMetrics.length > 0;
+    const source = fromDb ? userMetrics : TRACKER_METRICS;
     setMetrics(source.map((m, i) => ({
       tempId: `m-${i}-${Date.now()}`,
-      existingId: 'id' in m ? (m as UserMetric).id : undefined,
+      existingId: fromDb ? (m as UserMetric).id : undefined,
       label: m.label,
       unit: m.unit,
       icon: m.icon,
