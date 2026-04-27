@@ -191,8 +191,6 @@ export default function HealthView() {
             <div className="space-y-4">
               <div className="glass-card p-4 flex flex-col items-center">
                 <HealthTreeWidget score={aggregateScore} />
-                <div className="text-xs text-muted-foreground mt-2">Health Score</div>
-                <div className="text-2xl font-extrabold text-foreground tabular-nums">{aggregateScore}</div>
               </div>
               {insights.length > 0 && (
                 <div className="glass-card p-4 space-y-2">
