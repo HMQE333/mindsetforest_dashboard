@@ -58,7 +58,7 @@ export interface UserPreferences {
   moduleOrder?: string[];
 }
 
-const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing"];
+const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
 
 function getCachedCategories(): CustomCategory[] {
   try {
