@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Sparkles, Pencil, Trash2, FlaskConical } from "lucide-react";
+import { Plus, Sparkles, Pencil, Trash2 } from "lucide-react";
 import { useHealthEntries } from "@/hooks/useHealthEntries";
 import {
   HEALTH_METRICS,
@@ -14,7 +14,6 @@ import {
 import HealthMetricCard from "./HealthMetricCard";
 import HealthTreeWidget from "./HealthTreeWidget";
 import LogHealthCheckModal from "./LogHealthCheckModal";
-import { Slider } from "@/components/ui/slider";
 
 const CORE_METRIC_IDS = [
   "weight_kg",
@@ -41,8 +40,6 @@ export default function HealthView() {
     useHealthEntries();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HealthEntry | null>(null);
-  const [demoOpen, setDemoOpen] = useState(false);
-  const [demoScore, setDemoScore] = useState(75);
 
   const defaultHeight = useMemo(() => {
     for (const e of entries) {
@@ -118,16 +115,6 @@ export default function HealthView() {
     return <div className="text-center py-20 text-muted-foreground">Loading…</div>;
   }
 
-  const STAGE_LEGEND = [
-    { range: "0–14", label: "Dying", sample: 7 },
-    { range: "15–29", label: "Withered", sample: 22 },
-    { range: "30–44", label: "Fading", sample: 37 },
-    { range: "45–59", label: "Autumn", sample: 52 },
-    { range: "60–71", label: "Reviving", sample: 66 },
-    { range: "72–86", label: "Healthy", sample: 79 },
-    { range: "87–100", label: "Lush", sample: 94 },
-  ];
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -141,16 +128,6 @@ export default function HealthView() {
           <p className="text-sm text-muted-foreground">Vitals & bloodwork — quarterly check-ins.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setDemoOpen(v => !v)}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border inline-flex items-center gap-1.5 ${
-              demoOpen
-                ? "bg-primary/15 text-primary border-primary/40"
-                : "bg-muted/40 text-muted-foreground hover:text-foreground border-border"
-            }`}
-          >
-            <FlaskConical className="w-3.5 h-3.5" /> Tree demo
-          </button>
           {entries.length === 0 && (
             <button
               onClick={seedSampleData}
@@ -167,62 +144,6 @@ export default function HealthView() {
           </button>
         </div>
       </motion.div>
-
-      {demoOpen && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-5"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-sm font-bold text-foreground">Tree stage preview</div>
-              <p className="text-xs text-muted-foreground">
-                Slide to preview all 7 stages with sample scores. This doesn't affect your data.
-              </p>
-            </div>
-            <div className="text-3xl font-extrabold tabular-nums text-primary">{demoScore}</div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5 items-center">
-            <div className="flex justify-center">
-              <HealthTreeWidget score={demoScore} />
-            </div>
-            <div className="space-y-4">
-              <Slider
-                value={[demoScore]}
-                min={0}
-                max={100}
-                step={1}
-                onValueChange={v => setDemoScore(v[0])}
-              />
-              <div className="grid grid-cols-7 gap-1.5">
-                {STAGE_LEGEND.map(s => {
-                  const active =
-                    demoScore >= parseInt(s.range.split("–")[0], 10) &&
-                    demoScore <= parseInt(s.range.split("–")[1], 10);
-                  return (
-                    <button
-                      key={s.label}
-                      onClick={() => setDemoScore(s.sample)}
-                      className={`flex flex-col items-center gap-1 rounded-lg px-1.5 py-2 border transition-all ${
-                        active
-                          ? "bg-primary/15 border-primary/50 text-foreground"
-                          : "bg-muted/30 border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
-                      }`}
-                    >
-                      <span className="text-[10px] font-bold uppercase tracking-wider leading-none">
-                        {s.label}
-                      </span>
-                      <span className="text-[9px] tabular-nums opacity-70">{s.range}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
 
       {entries.length === 0 ? (
         <div className="glass-card p-10 text-center">
