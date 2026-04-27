@@ -859,6 +859,81 @@ export type Database = {
         }
         Relationships: []
       }
+      health_entries: {
+        Row: {
+          bp_diastolic: number | null
+          bp_systolic: number | null
+          created_at: string
+          creatinine_mgdl: number | null
+          egfr: number | null
+          entry_date: string
+          fasting_glucose_mgdl: number | null
+          hba1c_pct: number | null
+          hdl_mgdl: number | null
+          height_cm: number | null
+          hemoglobin_gdl: number | null
+          id: string
+          lab_report_url: string | null
+          ldl_mgdl: number | null
+          notes: string
+          resting_hr: number | null
+          self_rating: number
+          total_chol_mgdl: number | null
+          triglycerides_mgdl: number | null
+          updated_at: string
+          user_id: string
+          weight_kg: number | null
+        }
+        Insert: {
+          bp_diastolic?: number | null
+          bp_systolic?: number | null
+          created_at?: string
+          creatinine_mgdl?: number | null
+          egfr?: number | null
+          entry_date?: string
+          fasting_glucose_mgdl?: number | null
+          hba1c_pct?: number | null
+          hdl_mgdl?: number | null
+          height_cm?: number | null
+          hemoglobin_gdl?: number | null
+          id?: string
+          lab_report_url?: string | null
+          ldl_mgdl?: number | null
+          notes?: string
+          resting_hr?: number | null
+          self_rating?: number
+          total_chol_mgdl?: number | null
+          triglycerides_mgdl?: number | null
+          updated_at?: string
+          user_id: string
+          weight_kg?: number | null
+        }
+        Update: {
+          bp_diastolic?: number | null
+          bp_systolic?: number | null
+          created_at?: string
+          creatinine_mgdl?: number | null
+          egfr?: number | null
+          entry_date?: string
+          fasting_glucose_mgdl?: number | null
+          hba1c_pct?: number | null
+          hdl_mgdl?: number | null
+          height_cm?: number | null
+          hemoglobin_gdl?: number | null
+          id?: string
+          lab_report_url?: string | null
+          ldl_mgdl?: number | null
+          notes?: string
+          resting_hr?: number | null
+          self_rating?: number
+          total_chol_mgdl?: number | null
+          triglycerides_mgdl?: number | null
+          updated_at?: string
+          user_id?: string
+          weight_kg?: number | null
+        }
+        Relationships: []
+      }
       ladder_state: {
         Row: {
           active_category: string | null
