@@ -37,6 +37,42 @@ const GUIDE_CARDS = [
     desc: "Spend earned XP on real rewards. You worked for it. Enjoy it without guilt. The Oracle says you deserve it.",
     glow: "from-cat-mind/20",
   },
+  {
+    emoji: "🧠",
+    title: "Planning Mindboard",
+    desc: "Map your goals from vision to next-action. A nested mind-map (Goal → Phase → Task → Action) connects everything to your Ladder and Habit Loops. Think big, then zoom in.",
+    glow: "from-cat-mind/20",
+  },
+  {
+    emoji: "📦",
+    title: "Archive: Your Second Brain",
+    desc: "Capture ideas, links and images from anywhere. Smart semantic search finds what you meant — not just what you typed. Tag by pillar, revisit via spaced repetition.",
+    glow: "from-cat-exploration/20",
+  },
+  {
+    emoji: "🌳",
+    title: "Forest: Knowledge, Shared",
+    desc: "Plant your best ideas as seeds. Friends and the public can water and save them. A quiet social layer for growth — no doomscrolling, just signal.",
+    glow: "from-emerald-500/20",
+  },
+  {
+    emoji: "🍳",
+    title: "Cooking Studio",
+    desc: "AI cleans messy recipes into clear steps and gram-accurate ingredients. Plan meals, build shopping prompts, and turn cooking into a calm ritual.",
+    glow: "from-cat-body/20",
+  },
+  {
+    emoji: "💰",
+    title: "Finance, Without the Anxiety",
+    desc: "Track cash flow, subscriptions and loans with a 6-month savings curve. Numbers you can face — designed to inform, not to shame.",
+    glow: "from-cat-creation/20",
+  },
+  {
+    emoji: "📚",
+    title: "Library, Calendar & Breathe",
+    desc: "A reading list that respects your pace. A minimalist calendar for what truly matters. And a breathing vessel for when the mind needs air.",
+    glow: "from-cat-spirit/20",
+  },
 ];
 
 const GuideSection = () => (
@@ -61,7 +97,7 @@ const GuideSection = () => (
           key={card.title}
           initial={{ opacity: 0, y: 28 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 + i * 0.1, duration: 0.5 }}
+          transition={{ delay: 0.4 + Math.min(i, 5) * 0.08, duration: 0.5 }}
           className="relative group rounded-2xl bg-card/40 backdrop-blur-xl border border-white/[0.07] p-7 text-center
                      hover:border-white/15 hover:-translate-y-1 transition-all duration-300
                      hover:shadow-[0_16px_48px_-12px_hsl(var(--glow-purple)/0.2)]"
