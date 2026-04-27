@@ -20,12 +20,11 @@ export default function TrackerOverviewBar({ entries, streak }: TrackerOverviewB
       className="text-center mb-10"
     >
       <div
-        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-card border border-stat-value/30 mb-6"
+        className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl gradient-purple border-2 border-primary/40 glow-md animate-pulse-glow mb-6"
         title="Days in a row you've logged at least one entry. Different from your Home mission streak."
       >
-        <span className="text-base">📊</span>
-        <span className="text-sm font-semibold text-stat-value font-mono">{streak}</span>
-        <span className="text-xs text-muted-foreground uppercase tracking-wider">Log Streak</span>
+        <span className="text-2xl">📊</span>
+        <span className="text-lg font-bold text-primary-foreground">{streak} Day Log Streak</span>
       </div>
 
       <div className="flex justify-center gap-6 flex-wrap">
