@@ -1,50 +1,59 @@
-## Goal
-Expand the "How It Works" section on the unauthenticated landing page (`src/components/landing/GuideSection.tsx`) so it advertises the modules added since the original 6 cards were written. Right now it only mentions Categories, ADHD-friendly design, XP/RPG, Stats, Ladder/Loops and Oracle — none of the newer pillars are visible to first-time visitors.
+## Root Cause
 
-## Scope
-**Single file edit:** `src/components/landing/GuideSection.tsx`
+When a user has never customized their metrics, `userMetrics` (the DB-backed list) is empty, and the tracker falls back to the hardcoded `TRACKER_METRICS` defaults. `MetricsTab.tsx` seeds its editor from those defaults:
 
-No other files, no DB, no routing, no logic. Pure marketing copy + card data array additions. Zero risk.
+```ts
+const source = userMetrics.length > 0 ? userMetrics : TRACKER_METRICS;
+setMetrics(source.map((m, i) => ({
+  tempId: `m-${i}-${Date.now()}`,
+  existingId: 'id' in m ? (m as UserMetric).id : undefined, // ← BUG
+  ...
+})));
+```
 
-## What to add
-Append 6 new cards to the `GUIDE_CARDS` array (kept in current order so the original "core" pitch reads first). The grid is already `md:grid-cols-2` so 12 total cards = 6 rows on desktop, fully responsive on mobile.
+The bug: `TRACKER_METRICS` items also have an `id` field (string slugs like `"hours-trading"`, `"pushups"`). The `'id' in m` check evaluates `true` for them, so `existingId` is set to a non-UUID slug.
 
-Proposed new cards (copy below — concise, on-brand, follows existing "punchy + flexibility-positive" tone):
+On save (`saveMetrics` in `useUserSettings.ts`):
+- All items go into `toUpdate` because they appear to have `existingId`s.
+- `currentIds = userMetrics.map(m => m.id)` is `[]` (DB had nothing), so `toDeleteIds` is `[]`.
+- The `UPDATE ... WHERE id = 'hours-trading'` queries silently match zero rows (slug is not a UUID).
+- `toInsert` is empty → nothing is written to the database.
+- Local React state `userMetrics` gets populated with these fake-ID entries, so the UI looks correct momentarily.
+- On the next page load, the DB is still empty → `getMetrics()` falls back to `TRACKER_METRICS` → the "removed" metric reappears.
 
-1. **🧠 Planning Mindboard**
-   *"Map your goals from vision to next-action. A nested mind-map (Goal → Phase → Task → Action) connects everything to your Ladder and Habit Loops. Think big, then zoom in."*
-   `glow: "from-cat-mind/20"`
+## Fix
 
-2. **📦 Archive: Your Second Brain**
-   *"Capture ideas, links and images from anywhere. Smart semantic search finds what you meant — not just what you typed. Tag by pillar, revisit via spaced repetition."*
-   `glow: "from-cat-exploration/20"`
+Only treat metrics as "existing" when they actually came from the database. Distinguish defaults from DB rows in the seeding step.
 
-3. **🌳 Forest: Knowledge, Shared**
-   *"Plant your best ideas as seeds. Friends and the public can water and save them. A quiet social layer for growth — no doomscrolling, just signal."*
-   `glow: "from-emerald-500/20"`
+**`src/components/settings/MetricsTab.tsx`** — change the seeding effect so `existingId` is only populated when the source is `userMetrics` (real DB rows). For defaults (`TRACKER_METRICS`), leave `existingId` undefined so they are treated as fresh inserts on save:
 
-4. **🍳 Cooking Studio**
-   *"AI cleans messy recipes into clear steps and gram-accurate ingredients. Plan meals, build shopping prompts, and turn cooking into a calm ritual."*
-   `glow: "from-cat-body/20"`
+```ts
+useEffect(() => {
+  const fromDb = userMetrics.length > 0;
+  const source = fromDb ? userMetrics : TRACKER_METRICS;
+  setMetrics(source.map((m, i) => ({
+    tempId: `m-${i}-${Date.now()}`,
+    existingId: fromDb ? (m as UserMetric).id : undefined,
+    label: m.label,
+    unit: m.unit,
+    icon: m.icon,
+    categoryId: m.categoryId,
+  })));
+}, [userMetrics]);
+```
 
-5. **💰 Finance, Without the Anxiety**
-   *"Track cash flow, subscriptions and loans with a 6-month savings curve. Numbers you can face — designed to inform, not to shame."*
-   `glow: "from-cat-creation/20"`
+## Behavior After Fix
 
-6. **📚 Library, 📅 Calendar & 🌬️ Breathe**
-   *"A reading list that respects your pace. A minimalist calendar for what truly matters. And a breathing vessel for when the mind needs air."*
-   `glow: "from-cat-spirit/20"`
+- **First customization (DB empty):** Removing "Trading Hours" then saving inserts the remaining 9 metrics into `user_metrics` as fresh rows. Reload → DB has those 9 → "Trading Hours" stays gone. ✅
+- **Subsequent edits (DB populated):** Items keep their real UUID `existingId`s; removing one correctly puts its UUID into `toDeleteIds` and runs `DELETE`. ✅
+- **Reset to defaults:** Still wipes `user_metrics` and falls back to `TRACKER_METRICS` until next save. ✅
 
-## Visual / layout notes
-- Reuse the existing card structure exactly — same animation stagger (`delay: 0.4 + i * 0.1`), same glassmorphic style, same gradient lines.
-- Glow tokens used (`cat-mind`, `cat-exploration`, `cat-body`, `cat-creation`, `cat-spirit`, plus `emerald-500` for Forest) are all defined in the existing Tailwind config / index.css and already used elsewhere.
-- With 12 cards the stagger total reaches ~1.5s — acceptable. If it feels long during QA we can switch to `Math.min(i, 5) * 0.08` to cap it. Will mention in the implementation step.
-- Section subtitle stays "Your life. Your rules. Your adventure." (still accurate).
+## Files Touched
 
-## Out of scope
-- No changes to `src/pages/Index.tsx` or auth gate logic.
-- No new images, icons, or memory files.
-- No copy changes to the original 6 cards (user only asked to *add*).
+- `src/components/settings/MetricsTab.tsx` — single-line correction in the seeding `useEffect`.
 
-## Risk
-Effectively zero — display-only addition to a static array on an unauthenticated marketing surface.
+No DB migration, no schema change, no changes to `useUserSettings.saveMetrics` (its insert/update/delete logic is correct — it was just being fed bad data).
+
+## Memory Update
+
+Reinforce `mem://architecture/settings-persistence`: when seeding editor state from a fallback list of hardcoded defaults, never carry their synthetic IDs into the "existing DB row" code path — only real persisted IDs count as `existingId`.
