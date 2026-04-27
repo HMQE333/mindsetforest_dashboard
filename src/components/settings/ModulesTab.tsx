@@ -25,6 +25,7 @@ const ALL_MODULES: ModuleConfig[] = [
   { id: "breathing", label: "Breathing", icon: "🌬️", description: "Guided breathing exercises with the Vessel of Air" },
   { id: "calendar", label: "Calendar", icon: "📅", description: "Monthly calendar with events, tags & filters" },
   { id: "planning", label: "Planning", icon: "🧠", description: "Mind-board with project maps, tasks, actions" },
+  { id: "health", label: "Health", icon: "❤️", description: "Vitals, bloodwork & quarterly check-ins with AI lab extraction" },
   { id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Monthly theme reminders on dashboard" },
 ];
 

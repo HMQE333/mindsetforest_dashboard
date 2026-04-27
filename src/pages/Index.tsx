@@ -21,6 +21,7 @@ import FinanceView from "@/components/finance/FinanceView";
 import BreathingView from "@/components/breathing/BreathingView";
 import CalendarView from "@/components/calendar/CalendarView";
 import PlanningView from "@/components/planning/PlanningView";
+import HealthView from "@/components/health/HealthView";
 import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
@@ -28,7 +29,7 @@ import FriendsButton from "@/components/friends/FriendsButton";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import { useFriends } from "@/hooks/useFriends";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning";
+type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning" | "health";
 
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
@@ -43,9 +44,10 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   breathing: "🌬️ Breathe",
   calendar: "📅 Calendar",
   planning: "🧠 Planning",
+  health: "❤️ Health",
 };
 
-const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning"];
+const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning", "health"];
 
 const Index = () => {
   const { user } = useAuth();
@@ -106,11 +108,13 @@ const Index = () => {
     dashboard: "🎮", tracker: "📊", ladder: "🪜", habitloop: "🔄",
     oracle: "🔮", archive: "📦", library: "📚", cooking: "🍳",
     finance: "💰", breathing: "🌬️", calendar: "📅", planning: "🧠",
+    health: "❤️",
   };
   const TAB_SHORT_LABELS: Record<Tab, string> = {
     dashboard: "Home", tracker: "Stats", ladder: "Ladder", habitloop: "Habit Loop",
     oracle: "Oracle", archive: "Archive", library: "Library", cooking: "Cooking",
     finance: "Finance", breathing: "Breathe", calendar: "Calendar", planning: "Planning",
+    health: "Health",
   };
 
   // Show onboarding for new authenticated users
@@ -284,6 +288,7 @@ const Index = () => {
         {activeTab === "breathing" && enabledModules.has("breathing") && (user ? <BreathingView /> : renderAuthGate("breathing exercises"))}
         {activeTab === "calendar" && enabledModules.has("calendar") && (user ? <CalendarView /> : renderAuthGate("calendar"))}
         {activeTab === "planning" && enabledModules.has("planning") && (user ? <PlanningView /> : renderAuthGate("planning board"))}
+        {activeTab === "health" && enabledModules.has("health") && (user ? <HealthView /> : renderAuthGate("health tracker"))}
       </div>
 
       {/* Global Quick Capture — Ctrl/Cmd+N */}
