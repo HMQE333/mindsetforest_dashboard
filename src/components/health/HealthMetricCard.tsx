@@ -76,7 +76,7 @@ export default function HealthMetricCard({ def, value, rangeLabel, status, previ
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs text-xs z-[100]">
+            <TooltipContent side="left" align="start" className="max-w-xs text-xs z-[100]">
               {def.why}
             </TooltipContent>
           </Tooltip>
