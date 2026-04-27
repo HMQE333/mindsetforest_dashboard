@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Sparkles, Pencil, Trash2 } from "lucide-react";
+import { Plus, Sparkles, Pencil, Trash2, Printer } from "lucide-react";
 import { useHealthEntries } from "@/hooks/useHealthEntries";
 import {
   HEALTH_METRICS,
@@ -14,6 +14,7 @@ import {
 import HealthMetricCard from "./HealthMetricCard";
 import HealthTreeWidget from "./HealthTreeWidget";
 import LogHealthCheckModal from "./LogHealthCheckModal";
+import LabTestListModal from "./LabTestListModal";
 
 const CORE_METRIC_IDS = [
   "weight_kg",
@@ -40,6 +41,7 @@ export default function HealthView() {
     useHealthEntries();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HealthEntry | null>(null);
+  const [labListOpen, setLabListOpen] = useState(false);
 
   const defaultHeight = useMemo(() => {
     for (const e of entries) {
@@ -128,6 +130,13 @@ export default function HealthView() {
           <p className="text-sm text-muted-foreground">Vitals & bloodwork — quarterly check-ins.</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setLabListOpen(true)}
+            className="px-3 py-2 rounded-xl bg-muted/40 text-muted-foreground hover:text-foreground text-xs font-semibold transition-all border border-border inline-flex items-center gap-1.5"
+            title="Print exact lab test names to show at the clinic"
+          >
+            <Printer className="w-3.5 h-3.5" /> Lab list
+          </button>
           {entries.length === 0 && (
             <button
               onClick={seedSampleData}
@@ -144,6 +153,8 @@ export default function HealthView() {
           </button>
         </div>
       </motion.div>
+
+      <LabTestListModal open={labListOpen} onClose={() => setLabListOpen(false)} />
 
       {entries.length === 0 ? (
         <div className="glass-card p-10 text-center">
