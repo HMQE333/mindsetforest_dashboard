@@ -43,8 +43,6 @@ const LAB_TESTS: { panel: string; tests: { name: string; note?: string }[] }[] =
     tests: [
       { name: "Blood Pressure (systolic / diastolic, mmHg)" },
       { name: "Resting Heart Rate (bpm)" },
-      { name: "Body Weight (kg)" },
-      { name: "Height (cm) — for BMI calculation" },
     ],
   },
 ];
