@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Sparkles, Pencil, Trash2, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, Printer } from "lucide-react";
 import { useHealthEntries } from "@/hooks/useHealthEntries";
 import {
   HEALTH_METRICS,
@@ -37,7 +37,7 @@ function rangeLabel(id: string): string {
 }
 
 export default function HealthView() {
-  const { entries, loading, addEntry, updateEntry, deleteEntry, seedSampleData, uploadLabReport, latest, previous } =
+  const { entries, loading, addEntry, updateEntry, deleteEntry, uploadLabReport, latest, previous } =
     useHealthEntries();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HealthEntry | null>(null);
@@ -137,14 +137,6 @@ export default function HealthView() {
           >
             <Printer className="w-3.5 h-3.5" /> Lab list
           </button>
-          {entries.length === 0 && (
-            <button
-              onClick={seedSampleData}
-              className="px-3 py-2 rounded-xl bg-muted/40 text-muted-foreground hover:text-foreground text-xs font-semibold transition-all border border-border inline-flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Seed demo data
-            </button>
-          )}
           <button
             onClick={handleNew}
             className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all inline-flex items-center gap-2"
