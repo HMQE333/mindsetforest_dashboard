@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -16,31 +17,79 @@ async function embedBlock(blockId: string) {
   }
 }
 
+const CACHE_MAX = 500;
+const cacheKey = (userId: string) => `archive_blocks_cache_${userId}`;
+
+function readCache(userId: string): ArchiveBlock[] | undefined {
+  try {
+    const raw = localStorage.getItem(cacheKey(userId));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch { return undefined; }
+}
+
+function writeCache(userId: string, blocks: ArchiveBlock[]) {
+  try {
+    localStorage.setItem(cacheKey(userId), JSON.stringify(blocks.slice(0, CACHE_MAX)));
+  } catch { /* quota exceeded — ignore */ }
+}
+
 export function useArchiveState() {
   const { user } = useAuth();
-  const [blocks, setBlocks] = useState<ArchiveBlock[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const queryKey = ["archive_blocks", user?.id];
+  const erroredOnceRef = useRef(false);
 
-  const fetchBlocks = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("archive_blocks" as any)
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("fetch archive error:", error);
-      toast.error("Failed to load archive");
-    } else {
-      setBlocks((data as any) || []);
-    }
-    setLoading(false);
-  }, [user]);
+  const query = useQuery<ArchiveBlock[]>({
+    queryKey,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    initialData: user ? readCache(user.id) : undefined,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("archive_blocks" as any)
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const result = (data as any as ArchiveBlock[]) || [];
+      writeCache(user!.id, result);
+      return result;
+    },
+  });
 
   useEffect(() => {
-    fetchBlocks();
-  }, [fetchBlocks]);
+    if (query.error) {
+      console.error("fetch archive error:", query.error);
+      if (!query.data || query.data.length === 0) {
+        if (!erroredOnceRef.current) {
+          toast.error("Failed to load archive");
+          erroredOnceRef.current = true;
+        }
+      }
+    } else if (query.data) {
+      erroredOnceRef.current = false;
+    }
+  }, [query.error, query.data]);
+
+  const blocks = query.data || [];
+  const loading = query.isLoading && !query.data;
+
+  const setBlocks = useCallback((updater: (prev: ArchiveBlock[]) => ArchiveBlock[]) => {
+    qc.setQueryData<ArchiveBlock[]>(queryKey, (prev) => {
+      const next = updater(prev || []);
+      if (user) writeCache(user.id, next);
+      return next;
+    });
+  }, [qc, user?.id]);
+
+  const fetchBlocks = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey });
+  }, [qc, user?.id]);
 
   const addBlock = async (block: Partial<ArchiveBlock>) => {
     if (!user) return null;
@@ -54,7 +103,6 @@ export function useArchiveState() {
       return null;
     }
     setBlocks((prev) => [(data as any), ...prev]);
-    // Fire-and-forget embedding
     embedBlock((data as any).id);
     return data as any as ArchiveBlock;
   };
@@ -71,7 +119,6 @@ export function useArchiveState() {
       return;
     }
     setBlocks((prev) => [...((data as any) || []), ...prev]);
-    // Fire-and-forget embed all new blocks
     for (const d of (data as any) || []) {
       embedBlock(d.id);
     }
@@ -89,7 +136,6 @@ export function useArchiveState() {
     setBlocks((prev) =>
       prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
     );
-    // Re-embed if title or content changed
     if (updates.title !== undefined || updates.content !== undefined) {
       embedBlock(id);
     }
@@ -133,5 +179,8 @@ export function useArchiveState() {
     }
   }, []);
 
-  return { blocks, loading, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, embedAll };
+  const refreshing = query.isFetching && !!query.data;
+  const hasStaleError = !!query.error && !!query.data && query.data.length > 0;
+
+  return { blocks, loading, refreshing, hasStaleError, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, embedAll };
 }
