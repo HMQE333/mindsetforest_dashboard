@@ -175,6 +175,9 @@ export default function DashboardView() {
         extraActions={showMonthlyFocus ? <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} /> : undefined}
       />
 
+      {/* Bookmark links strip - only on main grid view */}
+      {selectedCategory === null && <BookmarkBar />}
+
       {/* Weekly Progress - moved to bottom */}
 
       {/* Shortcuts Panel */}
