@@ -218,50 +218,44 @@ const ArchiveView = () => {
         ))}
       </div>
 
-      {/* Content */}
-      <AnimatePresence mode="wait">
-        {subView === "inbox" && (
-          <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
-          </motion.div>
-        )}
-        {subView === "library" && (
-          <motion.div key="library" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveLibrary
-              blocks={archive.blocks}
-              loading={archive.loading}
-              updateBlock={archive.updateBlock}
-              deleteBlock={archive.deleteBlock}
-              addBlocks={archive.addBlocks}
-              selectedIds={selectedIds}
-              toggleSelect={toggleSelect}
-              semanticSearch={archive.semanticSearch}
-              embedAll={archive.embedAll}
-              onPlant={(b) => setSinglePlantBlock(b)}
-            />
-          </motion.div>
-        )}
-        {subView === "links" && (
-          <motion.div key="links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-          </motion.div>
-        )}
-        {subView === "images" && (
-          <motion.div key="images" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-          </motion.div>
-        )}
-        {subView === "digest" && (
-          <motion.div key="digest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveDigestView blocks={archive.blocks} />
-          </motion.div>
-        )}
-        {subView === "forest" && (
-          <motion.div key="forest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <ArchiveForestView />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {archive.hasStaleError && (
+        <div className="text-[11px] text-yellow-400/80 px-1">
+          ⚠️ Couldn't refresh — showing cached blocks.
+        </div>
+      )}
+
+      {/* Content — all sub-views stay mounted so state (search, scroll, selection) survives switching. */}
+      <div className="relative">
+        <div className={subView === "inbox" ? "" : "hidden"}>
+          <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
+        </div>
+        <div className={subView === "library" ? "" : "hidden"}>
+          <ArchiveLibrary
+            blocks={archive.blocks}
+            loading={archive.loading}
+            updateBlock={archive.updateBlock}
+            deleteBlock={archive.deleteBlock}
+            addBlocks={archive.addBlocks}
+            selectedIds={selectedIds}
+            toggleSelect={toggleSelect}
+            semanticSearch={archive.semanticSearch}
+            embedAll={archive.embedAll}
+            onPlant={(b) => setSinglePlantBlock(b)}
+          />
+        </div>
+        <div className={subView === "links" ? "" : "hidden"}>
+          <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+        </div>
+        <div className={subView === "images" ? "" : "hidden"}>
+          <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+        </div>
+        <div className={subView === "digest" ? "" : "hidden"}>
+          <ArchiveDigestView blocks={archive.blocks} />
+        </div>
+        <div className={subView === "forest" ? "" : "hidden"}>
+          <ArchiveForestView />
+        </div>
+      </div>
 
       {/* Multi-select floating bar */}
       <AnimatePresence>
