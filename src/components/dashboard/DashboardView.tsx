@@ -18,6 +18,7 @@ import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import WeeklyProgress from "./WeeklyProgress";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
+import BookmarkBar from "./BookmarkBar";
 
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
