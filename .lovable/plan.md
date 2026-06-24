@@ -1,35 +1,43 @@
-## Archive: persistent sub-tabs + cached library
+## Goal
+Wire the Stats Tracker into the main XP economy: every logged entry and every unlocked achievement awards XP to the dashboard, with a polished Settings tab where the user fully controls the rewards.
 
-Two root causes behind the "feels like it's reloading" UX:
+## What you'll see in the Tracker
 
-1. **Sub-tab switches unmount the previous view.** `ArchiveView` renders sub-views (Inbox / Library / Links / Images / Digest / Forest) inside `<AnimatePresence mode="wait">` with conditional mounting. Every switch destroys local state (search query, filters, scroll position, semantic results, *and text selection* — which is why copy/paste between tabs is broken) and plays a fresh fade-in that looks like a reload.
-2. **Top-level tab leaves Archive → comes back = full refetch.** `useArchiveState` runs `fetchBlocks` on every mount and the hook is mounted inside `ArchiveView`, which unmounts when you leave the Archive top tab. On a flaky network this is what surfaces "Failed to load archive" and the offline-mode flash. Nothing is cached between visits.
+1. **XP gain on every log** — submitting a value through `TrackerInputModal` awards XP based on a per‑metric formula. The existing floating "+N ✓" animation becomes a true "+XP" burst tied to dashboard XP.
+2. **Milestone XP** — when an achievement unlocks (Week Warrior, 100 Club, Bookworm, etc.), a celebratory modal pops with the badge, milestone name, and XP awarded. One‑time grant per achievement, persisted so refreshes don't double‑pay.
+3. **XP overview chip** in the Tracker header showing total XP earned from stats and current level — keeps the user oriented without leaving the page.
+4. **Badge cards** in the Achievements panel show their XP value (e.g. "+150 XP") and a "Claimed ✓" mark once granted.
 
-### Fix 1 — Keep all Archive sub-views mounted (state preservation)
+## What you'll see in Settings
 
-Refactor `src/components/archive/ArchiveView.tsx`:
+A new **"Stats XP"** tab in the settings modal, structured like the existing Rewards tab for consistency:
 
-- Replace the `AnimatePresence mode="wait"` + conditional render block with a single container where each sub-view is always mounted and visibility is toggled with CSS (`hidden` class), exactly like the Cooking Studio pattern already established in project memory.
-- Drop the per-switch fade animation (or keep it cheap with `opacity` only on the active panel) so switching feels instant.
-- Result: search text, filter chips, scroll position, smart-search results, and any active text selection survive sub-tab switches → copy in Library, paste in Inbox works.
-- `clearSelection()` still fires on switch so the floating multi-select bar behaves the same.
+- **Per‑Metric Rewards** section — list of every tracker metric (Push‑ups, Pages Read, Study Hours…) with two controls each:
+  - `XP per unit` (e.g. 0.5 XP per push‑up, 5 XP per hour)
+  - `XP per log` flat bonus (e.g. +2 XP just for logging)
+  - Live preview: "Logging 20 push‑ups → +12 XP"
+- **Milestone Rewards** section — every achievement listed with an editable XP field (default values pre‑filled by tier: Tiny 25 / Small 50 / Medium 150 / Big 400 / Legendary 1000).
+- **Global toggles**: master "Enable stats XP", "Cap daily stats XP at N" (anti‑grind), "Award milestone XP retroactively for already‑unlocked achievements".
+- **Reset to defaults** button (mirrors RewardsTab pattern).
+- Dirty‑state save banner identical to other settings tabs.
 
-### Fix 2 — Cache archive blocks across top-level tab switches
+## Technical Details
 
-Refactor `src/hooks/useArchiveState.ts` to use the existing TanStack Query client (already provided in `App.tsx`) instead of plain `useState` + `useEffect`:
+**Data model**
+- New JSONB column `tracker_xp_config` on `user_metrics`‑style settings (extend `useUserSettings`) holding `{ enabled, dailyCap, perMetric: { [metricId]: { perUnit, perLog } }, milestones: { [achievementId]: xp }, retroactive }`.
+- New table `tracker_xp_grants(user_id, source, ref_id, xp, granted_at)` to record both per‑log grants (for daily cap accounting) and milestone grants (for idempotency, keyed by `ref_id = achievementId`). RLS: owner‑only; standard public‑schema GRANTs.
 
-- `useQuery(["archive_blocks", user.id], fetchBlocks, { staleTime: 5 min, gcTime: 30 min, refetchOnWindowFocus: false, refetchOnMount: false })`. Leaving and re-entering the Archive tab paints instantly from cache; a background refetch only runs after `staleTime`.
-- `addBlock`, `addBlocks`, `updateBlock`, `deleteBlock` become mutations that update the query cache via `queryClient.setQueryData` (optimistic) — same UX as today, no extra round-trip to re-list.
-- Keep the existing `embedBlock` fire-and-forget calls untouched.
-- On fetch error: keep the last good `data` visible and surface a small inline "Couldn't refresh — showing cached" hint instead of the current full "Failed to load archive" toast that wipes the view. Only show the hard error state when there's no cached data at all.
-- Optional small win: seed the cache from `localStorage` on first load so even a cold reload paints instantly, then revalidate in the background. (Stored under `archive_blocks_cache_<user.id>`, capped to the last N blocks to avoid blowing local quota; skip if you'd rather keep it minimal — flag in plan, default ON.)
+**Code**
+- `src/lib/tracker-xp.ts` — pure helpers: `computeEntryXp(metric, value, cfg)`, `defaultMilestoneXp(achievementId)`, `DEFAULT_TRACKER_XP_CONFIG`.
+- `src/hooks/useTrackerXp.ts` — loads config + grants, exposes `awardEntryXp(metricId, value)` and `awardMilestoneXp(achievementId)`; both call `useDashboardState`'s XP setter and insert a grants row. Enforces daily cap and idempotency.
+- `useTrackerEntries.addEntry` → after insert, call `awardEntryXp` and return XP delta so `Tracker.tsx` can animate the real number.
+- `TrackerAchievements.tsx` → effect compares unlocked set vs `tracker_xp_grants` rows; for any newly unlocked one calls `awardMilestoneXp` and triggers a milestone modal (`TrackerMilestoneModal.tsx`, new, reuses LevelUpModal styling).
+- `src/components/settings/StatsXpTab.tsx` — new tab, registered in `SettingsModal.tsx` alongside Rewards.
+- Header XP chip: small component reading `dashboardState.currentXP` and grants from today.
 
-### Files touched
+**Migration order** (single migration): create table → GRANTs → enable RLS → policies → add JSONB column.
 
-- `src/components/archive/ArchiveView.tsx` — switch sub-view renderer to always-mounted + CSS hidden.
-- `src/hooks/useArchiveState.ts` — rewrite around `useQuery` + cache mutations + soft-fail on refetch.
-
-### Out of scope (ask if you want them too)
-
-- Same caching treatment for `useForestState`, `useDigestState`, etc. (Forest sub-tab inside Archive still has its own loader).
-- Background revalidation indicator UI beyond the inline hint.
+## Out of scope
+- No changes to dashboard mission XP math.
+- No changes to Oracle/sacrifice flow.
+- No new tracker metrics or UI restructuring outside the additions above.
