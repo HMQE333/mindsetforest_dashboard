@@ -359,6 +359,21 @@ export function useDashboardState() {
     });
   }, [persist]);
 
+  const addXP = useCallback((amount: number) => {
+    if (!amount || amount <= 0) return;
+    setState(prev => {
+      const newXP = prev.currentXP + amount;
+      const newLevel = Math.floor(newXP / 100) + 1;
+      const next: DashboardState = {
+        ...prev,
+        currentXP: newXP,
+        currentLevel: newLevel,
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   return {
     state,
     loading,
@@ -369,6 +384,7 @@ export function useDashboardState() {
     splitMission,
     resetCategory,
     spendXP,
+    addXP,
     rerollMission,
     getMissions,
     getCompletedCount,

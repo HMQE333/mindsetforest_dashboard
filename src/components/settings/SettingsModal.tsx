@@ -10,8 +10,9 @@ import ProjectsTab from "./ProjectsTab";
 import ThemeTab from "./ThemeTab";
 import KeybindsTab from "./KeybindsTab";
 import ProfileTab from "./ProfileTab";
+import StatsXpTab from "./StatsXpTab";
 
-type SettingsTab = "profile" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards";
+type SettingsTab = "profile" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile", label: "Profile", icon: "👤" },
@@ -21,6 +22,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "categories", label: "Pillars", icon: "🏛️" },
   { id: "projects", label: "Projects", icon: "📂" },
   { id: "metrics", label: "Metrics", icon: "📊" },
+  { id: "stats-xp", label: "Stats XP", icon: "✨" },
   { id: "rewards", label: "Rewards", icon: "🎁" },
 ];
 
@@ -171,6 +173,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onSave={settings.saveRewards}
                       onReset={settings.resetRewardsToDefaults}
                     />
+                  )}
+                  {activeTab === "stats-xp" && (
+                    <StatsXpTab />
                   )}
                 </>
               )}

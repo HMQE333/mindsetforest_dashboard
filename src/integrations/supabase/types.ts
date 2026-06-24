@@ -1174,6 +1174,36 @@ export type Database = {
         }
         Relationships: []
       }
+      tracker_xp_grants: {
+        Row: {
+          date: string
+          granted_at: string
+          id: string
+          ref_id: string
+          source: string
+          user_id: string
+          xp: number
+        }
+        Insert: {
+          date?: string
+          granted_at?: string
+          id?: string
+          ref_id: string
+          source: string
+          user_id: string
+          xp: number
+        }
+        Update: {
+          date?: string
+          granted_at?: string
+          id?: string
+          ref_id?: string
+          source?: string
+          user_id?: string
+          xp?: number
+        }
+        Relationships: []
+      }
       user_books: {
         Row: {
           author: string

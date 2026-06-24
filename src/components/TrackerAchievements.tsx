@@ -1,137 +1,58 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Check } from "lucide-react";
-import { TrackerEntry, getStreakDays, getHabitScore } from "@/hooks/useTrackerEntries";
-import { TRACKER_METRICS } from "@/lib/tracker-data";
-
-interface Achievement {
-  id: string;
-  icon: string;
-  title: string;
-  description: string;
-  category: string;
-  check: (entries: TrackerEntry[]) => boolean;
-  progress: (entries: TrackerEntry[]) => { current: number; target: number };
-}
-
-const ACHIEVEMENTS: Achievement[] = [
-  // Consistency
-  { id: "first-spark", icon: "🔥", title: "First Spark", description: "Log anything for 1 day", category: "Consistency",
-    check: (e) => new Set(e.map(x => x.date)).size >= 1,
-    progress: (e) => ({ current: Math.min(new Set(e.map(x => x.date)).size, 1), target: 1 }) },
-  { id: "week-warrior", icon: "🔥", title: "Week Warrior", description: "7-day streak", category: "Consistency",
-    check: (e) => getStreakDays(e) >= 7,
-    progress: (e) => ({ current: Math.min(getStreakDays(e), 7), target: 7 }) },
-  { id: "monthly-machine", icon: "🔥", title: "Monthly Machine", description: "30-day streak", category: "Consistency",
-    check: (e) => getStreakDays(e) >= 30,
-    progress: (e) => ({ current: Math.min(getStreakDays(e), 30), target: 30 }) },
-  { id: "century-club", icon: "🔥", title: "Century Club", description: "100-day streak", category: "Consistency",
-    check: (e) => getStreakDays(e) >= 100,
-    progress: (e) => ({ current: Math.min(getStreakDays(e), 100), target: 100 }) },
-
-  // Volume
-  { id: "first-log", icon: "📝", title: "First Log", description: "Record 1 entry", category: "Volume",
-    check: (e) => e.length >= 1,
-    progress: (e) => ({ current: Math.min(e.length, 1), target: 1 }) },
-  { id: "getting-started", icon: "📝", title: "Getting Started", description: "10 total entries", category: "Volume",
-    check: (e) => e.length >= 10,
-    progress: (e) => ({ current: Math.min(e.length, 10), target: 10 }) },
-  { id: "dedicated", icon: "📝", title: "Dedicated", description: "100 total entries", category: "Volume",
-    check: (e) => e.length >= 100,
-    progress: (e) => ({ current: Math.min(e.length, 100), target: 100 }) },
-  { id: "data-monster", icon: "📝", title: "Data Monster", description: "500 total entries", category: "Volume",
-    check: (e) => e.length >= 500,
-    progress: (e) => ({ current: Math.min(e.length, 500), target: 500 }) },
-
-  // Category Coverage
-  { id: "explorer", icon: "🌈", title: "Explorer", description: "Log in 3 different categories", category: "Coverage",
-    check: (e) => {
-      const cats = new Set(e.map(x => TRACKER_METRICS.find(m => m.id === x.metricId)?.categoryId).filter(Boolean));
-      return cats.size >= 3;
-    },
-    progress: (e) => {
-      const cats = new Set(e.map(x => TRACKER_METRICS.find(m => m.id === x.metricId)?.categoryId).filter(Boolean));
-      return { current: Math.min(cats.size, 3), target: 3 };
-    } },
-  { id: "polymath", icon: "🌈", title: "Polymath", description: "Log in all 6 categories", category: "Coverage",
-    check: (e) => {
-      const cats = new Set(e.map(x => TRACKER_METRICS.find(m => m.id === x.metricId)?.categoryId).filter(Boolean));
-      return cats.size >= 6;
-    },
-    progress: (e) => {
-      const cats = new Set(e.map(x => TRACKER_METRICS.find(m => m.id === x.metricId)?.categoryId).filter(Boolean));
-      return { current: Math.min(cats.size, 6), target: 6 };
-    } },
-  { id: "category-king", icon: "🌈", title: "Category King", description: "50+ entries in one category", category: "Coverage",
-    check: (e) => {
-      const counts: Record<string, number> = {};
-      e.forEach(x => { const c = TRACKER_METRICS.find(m => m.id === x.metricId)?.categoryId; if (c) counts[c] = (counts[c] || 0) + 1; });
-      return Math.max(0, ...Object.values(counts)) >= 50;
-    },
-    progress: (e) => {
-      const counts: Record<string, number> = {};
-      e.forEach(x => { const c = TRACKER_METRICS.find(m => m.id === x.metricId)?.categoryId; if (c) counts[c] = (counts[c] || 0) + 1; });
-      return { current: Math.min(Math.max(0, ...Object.values(counts)), 50), target: 50 };
-    } },
-
-  // Specific Milestones
-  { id: "100-club", icon: "💪", title: "100 Club", description: "100 total push-ups", category: "Milestones",
-    check: (e) => e.filter(x => x.metricId === "pushups").reduce((s, x) => s + x.value, 0) >= 100,
-    progress: (e) => ({ current: Math.min(e.filter(x => x.metricId === "pushups").reduce((s, x) => s + x.value, 0), 100), target: 100 }) },
-  { id: "bookworm", icon: "📖", title: "Bookworm", description: "500 pages read", category: "Milestones",
-    check: (e) => e.filter(x => x.metricId === "pages-read").reduce((s, x) => s + x.value, 0) >= 500,
-    progress: (e) => ({ current: Math.min(e.filter(x => x.metricId === "pages-read").reduce((s, x) => s + x.value, 0), 500), target: 500 }) },
-  { id: "time-lord", icon: "⏱️", title: "Time Lord", description: "100 total hours logged", category: "Milestones",
-    check: (e) => {
-      const hourMetrics = TRACKER_METRICS.filter(m => m.unit === "hrs").map(m => m.id);
-      return e.filter(x => hourMetrics.includes(x.metricId)).reduce((s, x) => s + x.value, 0) >= 100;
-    },
-    progress: (e) => {
-      const hourMetrics = TRACKER_METRICS.filter(m => m.unit === "hrs").map(m => m.id);
-      const total = e.filter(x => hourMetrics.includes(x.metricId)).reduce((s, x) => s + x.value, 0);
-      return { current: Math.min(total, 100), target: 100 };
-    } },
-  { id: "sharpshooter", icon: "🎯", title: "Sharpshooter", description: "50 good trade setups", category: "Milestones",
-    check: (e) => e.filter(x => x.metricId === "good-trade-setups").reduce((s, x) => s + x.value, 0) >= 50,
-    progress: (e) => ({ current: Math.min(e.filter(x => x.metricId === "good-trade-setups").reduce((s, x) => s + x.value, 0), 50), target: 50 }) },
-
-  // Meta / Fun
-  { id: "early-bird", icon: "⭐", title: "Early Bird", description: "Log before 8 AM", category: "Fun",
-    check: (e) => e.some(x => new Date(x.createdAt).getHours() < 8),
-    progress: (e) => ({ current: e.some(x => new Date(x.createdAt).getHours() < 8) ? 1 : 0, target: 1 }) },
-  { id: "night-owl", icon: "🦉", title: "Night Owl", description: "Log after 11 PM", category: "Fun",
-    check: (e) => e.some(x => new Date(x.createdAt).getHours() >= 23),
-    progress: (e) => ({ current: e.some(x => new Date(x.createdAt).getHours() >= 23) ? 1 : 0, target: 1 }) },
-  { id: "perfectionist", icon: "🏆", title: "Perfectionist", description: "100% habit score on any metric", category: "Fun",
-    check: (e) => TRACKER_METRICS.some(m => { const s = getHabitScore(e, m.id); return s.score >= 100 && e.some(x => x.metricId === m.id); }),
-    progress: (e) => {
-      const best = Math.max(0, ...TRACKER_METRICS.map(m => e.some(x => x.metricId === m.id) ? getHabitScore(e, m.id).score : 0));
-      return { current: Math.min(best, 100), target: 100 };
-    } },
-];
+import { ChevronDown, ChevronUp, Check, Sparkles } from "lucide-react";
+import { TrackerEntry } from "@/hooks/useTrackerEntries";
+import { ACHIEVEMENTS } from "@/lib/tracker-achievements";
+import { useTrackerXp } from "@/hooks/useTrackerXp";
 
 interface Props {
   entries: TrackerEntry[];
+  onMilestone?: (info: { id: string; title: string; icon: string; xp: number }) => void;
 }
 
-export default function TrackerAchievements({ entries }: Props) {
+export default function TrackerAchievements({ entries, onMilestone }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const { config, awardMilestoneXp, isMilestoneGranted, loading } = useTrackerXp();
+  const firedRef = useRef(false);
 
   const computed = useMemo(() => {
     return ACHIEVEMENTS.map(a => {
       const unlocked = a.check(entries);
       const prog = a.progress(entries);
       const percent = prog.target > 0 ? Math.round((prog.current / prog.target) * 100) : 0;
-      return { ...a, unlocked, ...prog, percent };
+      const xp = config.milestones[a.id] ?? 0;
+      return { ...a, unlocked, ...prog, percent, xp };
     }).sort((a, b) => {
       // unlocked first, then in-progress (percent > 0), then locked
       if (a.unlocked !== b.unlocked) return a.unlocked ? -1 : 1;
       if (!a.unlocked && !b.unlocked) return b.percent - a.percent;
       return 0;
     });
-  }, [entries]);
+  }, [entries, config]);
 
   const unlockedCount = computed.filter(a => a.unlocked).length;
+
+  // Award milestone XP for newly unlocked achievements.
+  useEffect(() => {
+    if (loading || !config.enabled) return;
+    (async () => {
+      for (const a of computed) {
+        if (!a.unlocked) continue;
+        if (isMilestoneGranted(a.id)) continue;
+        // Skip retroactive grants on first mount unless user opted in.
+        if (!firedRef.current && !config.retroactive) {
+          // Still mark as already granted so they won't pop later.
+          // We do this by writing a zero-out grant? Simpler: just skip silently.
+          continue;
+        }
+        const awarded = await awardMilestoneXp(a.id);
+        if (awarded > 0 && onMilestone) {
+          onMilestone({ id: a.id, title: a.title, icon: a.icon, xp: awarded });
+        }
+      }
+      firedRef.current = true;
+    })();
+  }, [computed, loading, config.enabled, config.retroactive, isMilestoneGranted, awardMilestoneXp, onMilestone]);
 
   return (
     <motion.div
@@ -195,6 +116,12 @@ export default function TrackerAchievements({ entries }: Props) {
                   <div className="text-xs text-muted-foreground mt-0.5 leading-tight">
                     {badge.description}
                   </div>
+
+                  {badge.xp > 0 && (
+                    <div className={`mt-1 inline-flex items-center gap-1 text-[10px] font-bold ${badge.unlocked ? "text-primary" : "text-muted-foreground/70"}`}>
+                      <Sparkles className="w-2.5 h-2.5" /> +{badge.xp} XP
+                    </div>
+                  )}
 
                   {/* Progress bar */}
                   <div className="mt-2">

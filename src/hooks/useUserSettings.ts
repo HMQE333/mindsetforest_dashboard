@@ -7,6 +7,7 @@ import { CATEGORIES, Category } from "@/lib/dashboard-data";
 import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
 import { REWARDS, Reward } from "@/lib/oracle-data";
 import { toast } from "sonner";
+import type { TrackerXpConfig } from "@/lib/tracker-xp";
 
 export interface CustomCategory {
   id: string;
@@ -56,6 +57,7 @@ export interface UserPreferences {
   backgroundIntensity?: number;
   borderRadius?: number;
   moduleOrder?: string[];
+  trackerXp?: TrackerXpConfig;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
