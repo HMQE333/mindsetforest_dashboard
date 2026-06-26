@@ -360,10 +360,10 @@ export function useDashboardState() {
   }, [persist]);
 
   const addXP = useCallback((amount: number) => {
-    if (!amount || amount <= 0) return;
+    if (!amount) return;
     setState(prev => {
-      const newXP = prev.currentXP + amount;
-      const newLevel = Math.floor(newXP / 100) + 1;
+      const newXP = Math.max(0, prev.currentXP + amount);
+      const newLevel = Math.max(1, Math.floor(newXP / 100) + 1);
       const next: DashboardState = {
         ...prev,
         currentXP: newXP,

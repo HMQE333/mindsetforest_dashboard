@@ -7,7 +7,7 @@ import { ACHIEVEMENTS, TIER_DEFAULT_XP } from "@/lib/tracker-achievements";
 import { TrackerXpConfig, computeEntryXp } from "@/lib/tracker-xp";
 
 export default function StatsXpTab() {
-  const { config, saveConfig, resetConfig, totalXp, todayEntryXp } = useTrackerXp();
+  const { config, saveConfig, resetConfig, totalXp, todayEntryXp, refundAllGrants } = useTrackerXp();
   const { getMetrics } = useUserSettings();
   const metrics = getMetrics();
 
@@ -49,6 +49,12 @@ export default function StatsXpTab() {
     await resetConfig();
   };
 
+  const handleRefund = async () => {
+    if (!confirm(`Refund ${totalXp} XP earned from Stats and wipe all grants? This cannot be undone.`)) return;
+    const refunded = await refundAllGrants();
+    alert(`Refunded ${refunded} XP. You can now reconfigure rewards and earn fresh.`);
+  };
+
   const milestoneByCategory = useMemo(() => {
     const out: Record<string, typeof ACHIEVEMENTS> = {};
     ACHIEVEMENTS.forEach(a => { (out[a.category] = out[a.category] || []).push(a); });
@@ -70,6 +76,14 @@ export default function StatsXpTab() {
             title="Reset to defaults"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Reset
+          </button>
+          <button
+            onClick={handleRefund}
+            disabled={totalXp <= 0}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-destructive hover:text-destructive bg-destructive/10 hover:bg-destructive/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Subtract all granted Stats XP from your level and clear grants"
+          >
+            Refund XP
           </button>
         </div>
         <div className="flex gap-2 mt-3">

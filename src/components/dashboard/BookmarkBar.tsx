@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { ExternalLink, Plus, X, Link as LinkIcon, Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -33,25 +33,18 @@ export default function BookmarkBar() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-  const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     writeBookmarks(bookmarks);
   }, [bookmarks]);
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (formRef.current && !formRef.current.contains(e.target as Node)) {
-        setShowForm(false);
-        setEditingId(null);
-        setTitle("");
-        setUrl("");
-      }
+    if (!showForm && !editingId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeForm();
     };
-    if (showForm || editingId) {
-      document.addEventListener("mousedown", handleClick);
-      return () => document.removeEventListener("mousedown", handleClick);
-    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [showForm, editingId]);
 
   const normalizedUrl = (raw: string) => {
@@ -77,12 +70,20 @@ export default function BookmarkBar() {
     setShowForm(false);
   };
 
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setTitle("");
+    setUrl("");
+  };
+
   const handleDelete = (id: string) => {
     setBookmarks((prev) => prev.filter((b) => b.id !== id));
   };
 
   const startEdit = (b: Bookmark) => {
     setEditingId(b.id);
+    setShowForm(true);
     setTitle(b.title);
     setUrl(b.url);
   };
@@ -145,8 +146,8 @@ export default function BookmarkBar() {
       </div>
 
       {(showForm || editingId) && (
-        <div ref={formRef} className="mt-3 flex justify-center">
-          <div className="glass-card border border-white/15 rounded-xl p-3 flex items-center gap-2 shadow-2xl max-w-md w-full">
+        <div className="mt-3 flex justify-center">
+          <div className="glass-card border border-white/15 rounded-xl p-3 flex items-center gap-2 shadow-2xl max-w-md w-full bg-background/90">
             <LinkIcon size={14} className="text-muted-foreground shrink-0" />
             <Input
               autoFocus
@@ -171,7 +172,7 @@ export default function BookmarkBar() {
               {editingId ? "Save" : "Add"}
             </button>
             <button
-              onClick={() => { setShowForm(false); setEditingId(null); setTitle(""); setUrl(""); }}
+              onClick={closeForm}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
               Cancel
