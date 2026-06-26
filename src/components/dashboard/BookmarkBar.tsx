@@ -56,14 +56,22 @@ export default function BookmarkBar() {
 
   const handleSave = () => {
     const nUrl = normalizedUrl(url);
-    if (!title.trim() || !nUrl) return;
+    if (!nUrl) return;
+    let finalTitle = title.trim();
+    if (!finalTitle) {
+      try {
+        finalTitle = new URL(nUrl).hostname.replace(/^www\./, "");
+      } catch {
+        finalTitle = nUrl;
+      }
+    }
     if (editingId) {
       setBookmarks((prev) =>
-        prev.map((b) => (b.id === editingId ? { ...b, title: title.trim(), url: nUrl } : b))
+        prev.map((b) => (b.id === editingId ? { ...b, title: finalTitle, url: nUrl } : b))
       );
       setEditingId(null);
     } else {
-      setBookmarks((prev) => [...prev, { id: crypto.randomUUID(), title: title.trim(), url: nUrl }]);
+      setBookmarks((prev) => [...prev, { id: crypto.randomUUID(), title: finalTitle, url: nUrl }]);
     }
     setTitle("");
     setUrl("");
@@ -153,7 +161,7 @@ export default function BookmarkBar() {
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Title"
+              placeholder="Title (optional)"
               className="bg-transparent border-0 border-b border-white/10 rounded-none px-1 py-1 text-sm focus-visible:ring-0 focus-visible:border-white/30 h-8 min-w-0"
               onKeyDown={(e) => e.key === "Enter" && url && handleSave()}
             />
@@ -162,11 +170,11 @@ export default function BookmarkBar() {
               onChange={(e) => setUrl(e.target.value)}
               placeholder="URL"
               className="bg-transparent border-0 border-b border-white/10 rounded-none px-1 py-1 text-sm focus-visible:ring-0 focus-visible:border-white/30 h-8 min-w-0 flex-1"
-              onKeyDown={(e) => e.key === "Enter" && title && handleSave()}
+              onKeyDown={(e) => e.key === "Enter" && handleSave()}
             />
             <button
               onClick={handleSave}
-              disabled={!title.trim() || !normalizedUrl(url)}
+              disabled={!normalizedUrl(url)}
               className="text-xs px-3 py-1.5 rounded-lg gradient-purple text-primary-foreground font-semibold disabled:opacity-40 shrink-0"
             >
               {editingId ? "Save" : "Add"}
