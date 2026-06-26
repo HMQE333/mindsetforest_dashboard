@@ -18,13 +18,13 @@ export interface TrackerXpConfig {
 // Sensible defaults by unit
 function defaultRuleForUnit(unit: string): MetricXpRule {
   switch (unit) {
-    case "hrs":     return { perUnit: 10, perLog: 2, cap: 60 };
-    case "pages":   return { perUnit: 0.5, perLog: 2, cap: 40 };
-    case "reps":    return { perUnit: 0.2, perLog: 2, cap: 40 };
-    case "clients": return { perUnit: 5, perLog: 2, cap: 50 };
-    case "setups":  return { perUnit: 8, perLog: 2, cap: 50 };
-    case "people":  return { perUnit: 4, perLog: 2, cap: 40 };
-    default:        return { perUnit: 1, perLog: 2, cap: 40 };
+    case "hrs":     return { perUnit: 4, perLog: 1, cap: 25 };
+    case "pages":   return { perUnit: 0.3, perLog: 1, cap: 20 };
+    case "reps":    return { perUnit: 0.1, perLog: 1, cap: 20 };
+    case "clients": return { perUnit: 3, perLog: 1, cap: 25 };
+    case "setups":  return { perUnit: 4, perLog: 1, cap: 25 };
+    case "people":  return { perUnit: 2, perLog: 1, cap: 20 };
+    default:        return { perUnit: 1, perLog: 1, cap: 20 };
   }
 }
 
