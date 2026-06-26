@@ -12,7 +12,7 @@ interface Props {
 
 export default function TrackerAchievements({ entries, onMilestone }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const { config, awardMilestoneXp, isMilestoneGranted, loading } = useTrackerXp();
+  const { config, awardMilestoneXp, isMilestoneGranted, markMilestoneSkipped, loading } = useTrackerXp();
   const firedRef = useRef(false);
 
   const computed = useMemo(() => {
@@ -39,10 +39,9 @@ export default function TrackerAchievements({ entries, onMilestone }: Props) {
       for (const a of computed) {
         if (!a.unlocked) continue;
         if (isMilestoneGranted(a.id)) continue;
-        // Skip retroactive grants on first mount unless user opted in.
+        // Skip retroactive grants on first run unless user opted in.
         if (!firedRef.current && !config.retroactive) {
-          // Still mark as already granted so they won't pop later.
-          // We do this by writing a zero-out grant? Simpler: just skip silently.
+          markMilestoneSkipped(a.id);
           continue;
         }
         const awarded = await awardMilestoneXp(a.id);
