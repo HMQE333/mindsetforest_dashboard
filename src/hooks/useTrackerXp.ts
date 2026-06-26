@@ -130,6 +130,31 @@ export function useTrackerXp() {
     []
   );
 
+  const markMilestoneSkipped = useCallback((id: string) => {
+    grantedMilestonesRef.current.add(id);
+  }, []);
+
+  const refundAllGrants = useCallback(async (): Promise<number> => {
+    if (!user) return 0;
+    const refund = grants.reduce((s, g) => s + g.xp, 0);
+    if (refund <= 0) {
+      // still wipe any zero-rows for cleanliness
+      await supabase.from("tracker_xp_grants").delete().eq("user_id", user.id);
+      setGrants([]);
+      grantedMilestonesRef.current = new Set();
+      return 0;
+    }
+    const { error } = await supabase
+      .from("tracker_xp_grants")
+      .delete()
+      .eq("user_id", user.id);
+    if (error) return 0;
+    setGrants([]);
+    grantedMilestonesRef.current = new Set();
+    addXP(-refund);
+    return refund;
+  }, [user, grants, addXP]);
+
   return {
     loading,
     config,
@@ -142,5 +167,7 @@ export function useTrackerXp() {
     awardEntryXp,
     awardMilestoneXp,
     isMilestoneGranted,
+    markMilestoneSkipped,
+    refundAllGrants,
   };
 }
