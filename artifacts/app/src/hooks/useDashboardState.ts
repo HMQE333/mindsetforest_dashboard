@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  createContext,
+  useContext,
+  createElement,
+  type ReactNode,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
@@ -88,23 +97,51 @@ const defaultState: DashboardState = {
   rolledVariants: {},
 };
 
-export function useDashboardState() {
+function useDashboardStateValue() {
   const { user } = useAuth();
   const [state, setState] = useState<DashboardState>({ ...defaultState, dayKey: todayISO() });
   const [loading, setLoading] = useState(true);
+  // True only once the current user's row has been loaded from the DB. Because
+  // this provider now mounts at the app root (before login), we must not persist
+  // until the real state is loaded — otherwise a mutation during the load window
+  // would upsert the default (currentXP:0, empty missions) row and clobber real data.
+  const loadedRef = useRef(false);
 
   // Load from DB
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
+    loadedRef.current = false;
+    if (!user) {
+      // Logged out (or not yet logged in): reset to defaults so a previous
+      // user's state can never leak or be persisted under a new session.
+      setState({ ...defaultState, dayKey: todayISO() });
+      setLoading(false);
+      return;
+    }
 
+    setLoading(true);
+    let cancelled = false;
     const load = async () => {
       const { data, error } = await supabase
         .from("dashboard_state")
         .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
+      if (cancelled) return;
 
-      if (data && !error) {
+      if (error) {
+        // Transient load failure. Do NOT mark loaded — keeping loadedRef false
+        // leaves persist() blocked so a subsequent mutation can't overwrite the
+        // real (unread) row with default/stale state.
+        setLoading(false);
+        toast({
+          title: "Load failed",
+          description: "Could not load your dashboard state. Please refresh.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data) {
         const today = todayISO();
         const needsReset = data.day_key !== today;
         const customMissions = (data.custom_missions as unknown as Record<string, Mission[]>) || {};
@@ -123,15 +160,22 @@ export function useDashboardState() {
           customMissions,
           rolledVariants,
         });
+      } else {
+        // No existing row (new user) — start clean rather than inheriting any
+        // prior in-memory state.
+        setState({ ...defaultState, dayKey: todayISO() });
       }
+      loadedRef.current = true;
       setLoading(false);
     };
     load();
+    return () => { cancelled = true; };
   }, [user]);
 
   // Save to DB
   const persist = useCallback(async (s: DashboardState) => {
-    if (!user) return;
+    // Never write before the current user's real state has loaded.
+    if (!user || !loadedRef.current) return;
     const payload = {
       user_id: user.id,
       current_xp: s.currentXP,
@@ -389,4 +433,26 @@ export function useDashboardState() {
     getMissions,
     getCompletedCount,
   };
+}
+
+type DashboardStateApi = ReturnType<typeof useDashboardStateValue>;
+
+const DashboardStateContext = createContext<DashboardStateApi | null>(null);
+
+// Single shared instance for the whole app. Without this, each component that
+// called useDashboardState() (DashboardView, OracleView, useTrackerXp) got its
+// own state loaded from the DB and its own persist() that upserts the ENTIRE
+// dashboard_state row — so awarding tracker/achievement XP through a stale (or
+// still-default) copy would overwrite the real XP and wipe mission progress.
+export function DashboardStateProvider({ children }: { children: ReactNode }) {
+  const value = useDashboardStateValue();
+  return createElement(DashboardStateContext.Provider, { value }, children);
+}
+
+export function useDashboardState(): DashboardStateApi {
+  const ctx = useContext(DashboardStateContext);
+  if (!ctx) {
+    throw new Error("useDashboardState must be used within a DashboardStateProvider");
+  }
+  return ctx;
 }

@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { DashboardStateProvider } from "@/hooks/useDashboardState";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import Tracker from "./pages/Tracker";
@@ -28,13 +29,15 @@ const App = () => (
         <Sonner />
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <AuthProvider>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/tracker" element={<ProtectedRoute><Tracker /></ProtectedRoute>} />
-              <Route path="/share/library/:shareId" element={<SharedLibrary />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <DashboardStateProvider>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/tracker" element={<ProtectedRoute><Tracker /></ProtectedRoute>} />
+                <Route path="/share/library/:shareId" element={<SharedLibrary />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </DashboardStateProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

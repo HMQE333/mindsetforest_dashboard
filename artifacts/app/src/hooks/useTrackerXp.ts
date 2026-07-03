@@ -35,6 +35,11 @@ export function useTrackerXp() {
   const [grants, setGrants] = useState<GrantRow[]>([]);
   const [loading, setLoading] = useState(true);
   const grantedMilestonesRef = useRef<Set<string>>(new Set());
+  // Mirror of `grants` kept in sync synchronously so the daily-cap check in
+  // awardEntryXp reflects grants inserted earlier in the same tick (before a
+  // re-render recomputes the memo).
+  const grantsRef = useRef<GrantRow[]>([]);
+  useEffect(() => { grantsRef.current = grants; }, [grants]);
 
   // Load grants
   useEffect(() => {
@@ -83,9 +88,14 @@ export function useTrackerXp() {
     let xp = computeEntryXp(metric, value, config);
     if (xp <= 0) return 0;
 
-    // Daily cap
+    // Daily cap — compute today's entry total from the freshest grants so that
+    // several logs submitted in quick succession can't collectively exceed it.
     if (config.dailyCap > 0) {
-      const remaining = Math.max(0, config.dailyCap - todayEntryXp);
+      const today = todayISO();
+      const earnedToday = grantsRef.current
+        .filter(g => g.source === "entry" && g.date === today)
+        .reduce((s, g) => s + g.xp, 0);
+      const remaining = Math.max(0, config.dailyCap - earnedToday);
       xp = Math.min(xp, remaining);
       if (xp <= 0) return 0;
     }
@@ -97,10 +107,12 @@ export function useTrackerXp() {
       .single();
     if (error || !data) return 0;
 
-    setGrants(prev => [data as GrantRow, ...prev]);
+    const row = data as GrantRow;
+    grantsRef.current = [row, ...grantsRef.current];
+    setGrants(prev => [row, ...prev]);
     addXP(xp);
     return xp;
-  }, [user, config, metrics, todayEntryXp, addXP]);
+  }, [user, config, metrics, addXP]);
 
   const awardMilestoneXp = useCallback(async (achievementId: string): Promise<number> => {
     if (!user || !config.enabled) return 0;
@@ -116,7 +128,12 @@ export function useTrackerXp() {
       .select("id, source, ref_id, xp, date")
       .single();
     if (error || !data) {
-      // The unique index will protect against true double-grants; treat silently.
+      // A unique-violation (23505) means it was genuinely already granted — keep
+      // the optimistic lock. Any other (transient) error should roll the lock
+      // back so the grant can be retried instead of being suppressed for good.
+      if ((error as { code?: string } | null)?.code !== "23505") {
+        grantedMilestonesRef.current.delete(achievementId);
+      }
       return 0;
     }
 
