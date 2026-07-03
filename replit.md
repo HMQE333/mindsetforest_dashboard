@@ -35,6 +35,10 @@ A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lova
 
 - Supabase config lives in **shared** env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID`). Vite embeds these at build time; restart the workflow after changing them.
 - `artifacts/api-server` and `artifacts/mockup-sandbox` workflows may show as failed — they are unused scaffold and don't affect the app.
+- **This app is pinned to React 18** (`react`/`react-dom`/`@types/react*` use explicit `^18` in `artifacts/app/package.json`, NOT `catalog:`). The Lovable code was written for React 18; the shared catalog's React 19 caused "Invalid hook call" crashes in the authenticated dashboard. Do not switch these back to `catalog:`.
+- Supabase realtime subscriptions must remove any stale channel with the same topic before `.subscribe()` (see `useFriends.ts`, `useForestState.ts`, `useForestInbox.ts`). Re-using an already-subscribed same-named channel on remount throws `cannot add postgres_changes callbacks ... after subscribe()`.
+- The app's Supabase project **requires email confirmation** for new signups, so a fresh `signUp` returns no session until the email is confirmed. Test with an already-confirmed account.
+- `pnpm --filter @workspace/app run typecheck` reports a handful of pre-existing errors in components copied from `.migration-backup/` (Lovable). These do not affect the running app (Vite/esbuild transpiles without type-checking).
 
 ## Pointers
 

@@ -173,8 +173,16 @@ export function useForestState() {
         fetchAll();
       }, 800);
     };
+    const topic = `forest-${user.id}`;
+    // Remove any stale channel with the same topic left over from a previous
+    // mount/HMR; re-using an already-subscribed channel throws when adding
+    // `postgres_changes` callbacks after `subscribe()`.
+    supabase
+      .getChannels()
+      .filter((c) => c.topic === `realtime:${topic}`)
+      .forEach((c) => supabase.removeChannel(c));
     const ch = supabase
-      .channel(`forest-${user.id}`)
+      .channel(topic)
       .on("postgres_changes", { event: "*", schema: "public", table: "forest_seeds" }, scheduleRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "forest_waters" }, scheduleRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "forest_saves" }, scheduleRefetch)

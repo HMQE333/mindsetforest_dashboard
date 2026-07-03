@@ -69,8 +69,16 @@ export function useForestInbox() {
   // Realtime: any change on my events row → refresh
   useEffect(() => {
     if (!user) return;
+    const topic = `forest-inbox-${user.id}`;
+    // Remove any stale channel with the same topic left over from a previous
+    // mount/HMR; re-using an already-subscribed channel throws when adding
+    // `postgres_changes` callbacks after `subscribe()`.
+    supabase
+      .getChannels()
+      .filter((c) => c.topic === `realtime:${topic}`)
+      .forEach((c) => supabase.removeChannel(c));
     const ch = supabase
-      .channel(`forest-inbox-${user.id}`)
+      .channel(topic)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "forest_inbox_events", filter: `recipient_id=eq.${user.id}` },

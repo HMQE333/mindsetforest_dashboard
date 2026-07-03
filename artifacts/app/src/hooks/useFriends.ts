@@ -112,8 +112,16 @@ export function useFriends() {
   // Realtime: refresh on any change to our friendships or suggestions
   useEffect(() => {
     if (!user) return;
+    const topic = `friends-${user.id}`;
+    // Remove any stale channel with the same topic left over from a previous
+    // mount/HMR; re-using an already-subscribed channel throws when adding
+    // `postgres_changes` callbacks after `subscribe()`.
+    supabase
+      .getChannels()
+      .filter((c) => c.topic === `realtime:${topic}`)
+      .forEach((c) => supabase.removeChannel(c));
     const ch = supabase
-      .channel(`friends-${user.id}`)
+      .channel(topic)
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "friend_suggestions" }, () => fetchAll())
       .subscribe();
