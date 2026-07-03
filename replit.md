@@ -1,44 +1,40 @@
-# [Project name]
+# MindsetForest
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lovable. Users sign in and track habits, stats, ladders, oracle, archive, library, finance, a social "forest", and more — with several AI-assisted features.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- The web app runs via the `artifacts/app: web` workflow (`pnpm --filter @workspace/app run dev`).
+- Frontend artifact: `artifacts/app/` (React + Vite, served at `/`).
+- `pnpm --filter @workspace/app run typecheck` — typecheck the web app.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspaces, Node.js 24, TypeScript
+- Frontend: React 18 + Vite, React Router, TanStack Query, shadcn/ui, Tailwind v3, framer-motion
+- Backend: **Supabase** (kept from the original Lovable app) — Postgres, Auth, Storage, Edge Functions, RPCs. Accessed directly from the client via `@supabase/supabase-js`.
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/app/src/integrations/supabase/client.ts` — Supabase client (uses `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`).
+- `artifacts/app/src/hooks/*` — data/state hooks, each backed by Supabase tables/RPCs/functions.
+- `artifacts/app/src/pages/*` — routes: Index, Tracker, Auth, SharedLibrary, NotFound.
+- `.migration-backup/supabase/` — original Supabase migrations + edge functions (reference only; not run here).
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Supabase was intentionally kept** rather than migrated to Replit primitives. The app is large (240+ files, ~20 tables, 8 RPCs, 14 edge functions, 4 storage buckets, Supabase Auth); the user only needed a functional app that looks like the original, so the fastest, lowest-risk path was to preserve the existing Supabase backend and just port the frontend into the Replit workspace.
+- The pre-existing scaffold packages (`artifacts/api-server`, `artifacts/mockup-sandbox`, `lib/*`) are unused by this app.
+- Vite uses Tailwind v3 via PostCSS (`postcss.config.js` + `tailwind.config.ts`), not the v4 vite plugin.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Wants the app functional and visually matching the original; does not need data migrated or preserved.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Supabase config lives in **shared** env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID`). Vite embeds these at build time; restart the workflow after changing them.
+- `artifacts/api-server` and `artifacts/mockup-sandbox` workflows may show as failed — they are unused scaffold and don't affect the app.
 
 ## Pointers
 

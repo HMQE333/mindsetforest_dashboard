@@ -1,0 +1,1 @@
+- [Lovable → Replit migration (this app)](lovable-migration.md) — heavy Supabase backend was kept, not swapped to Replit primitives; only the frontend was ported.

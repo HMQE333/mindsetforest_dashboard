@@ -18,3 +18,10 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+VITE_SUPABASE_URL = "https://ovqulpgcdddtadobwlan.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92cXVscGdjZGRkdGFkb2J3bGFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MzU5MDgsImV4cCI6MjA4NzAxMTkwOH0.o6VTUsLIkeeEPxJoDEEFYrzK_F4V20__j5xwL_DciFI"
+VITE_SUPABASE_PROJECT_ID = "ovqulpgcdddtadobwlan"

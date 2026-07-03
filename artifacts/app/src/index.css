@@ -1,0 +1,881 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark gamified theme */
+    --background: 230 25% 4%;
+    --foreground: 220 20% 95%;
+
+    --card: 230 20% 7%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 230 20% 7%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 263 70% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 230 15% 14%;
+    --secondary-foreground: 220 20% 90%;
+
+    --muted: 230 15% 12%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 263 50% 25%;
+    --accent-foreground: 263 90% 85%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 230 15% 15%;
+    --input: 230 15% 15%;
+    --ring: 263 70% 58%;
+
+    --radius: 0.75rem;
+
+    /* Category colors (HSL) */
+    --cat-mind: 263 70% 58%;
+    --cat-body: 0 86% 60%;
+    --cat-creation: 25 95% 53%;
+    --cat-exploration: 189 94% 43%;
+    --cat-networking: 45 97% 56%;
+    --cat-trading: 239 84% 67%;
+    --cat-spirit: 292 84% 61%;
+    --cat-order: 240 4% 65%;
+
+    /* Special tokens */
+    --glass: 230 20% 7%;
+    --glass-border: 0 0% 100%;
+    --glow-purple: 263 70% 58%;
+    --glow-pink: 292 84% 61%;
+    --stat-value: 187 92% 69%;
+    --xp-gradient-from: 263 70% 58%;
+    --xp-gradient-to: 292 84% 61%;
+
+    --sidebar-background: 230 25% 4%;
+    --sidebar-foreground: 220 20% 95%;
+    --sidebar-primary: 263 70% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 230 15% 12%;
+    --sidebar-accent-foreground: 220 20% 90%;
+    --sidebar-border: 230 15% 15%;
+    --sidebar-ring: 263 70% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Reinforce body scroll lock when a Radix dialog/popup sets data-scroll-locked.
+     Some app-level scroll containers can bypass Radix's default lock — this
+     guarantees the page behind a modal stays frozen. */
+  body[data-scroll-locked] {
+    overflow: hidden !important;
+    overscroll-behavior: contain !important;
+    touch-action: none !important;
+  }
+}
+
+/* Glass morphism utility */
+@layer utilities {
+  .glass-card {
+    @apply backdrop-blur-xl border border-white/10 rounded-2xl;
+    background: hsl(var(--card) / var(--card-opacity, 0.6));
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-300;
+  }
+
+  .glass-card-hover:hover {
+    @apply border-white/20 -translate-y-1;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .gradient-purple {
+    background: linear-gradient(135deg, hsl(var(--xp-gradient-from)), hsl(var(--xp-gradient-to)));
+  }
+
+  .text-gradient-purple {
+    background: linear-gradient(135deg, hsl(var(--xp-gradient-from)), hsl(var(--xp-gradient-to)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .glow-sm {
+    box-shadow: 0 0 20px hsl(var(--glow-purple) / 0.2);
+  }
+
+  .glow-md {
+    box-shadow: 0 8px 32px hsl(var(--glow-purple) / 0.3);
+  }
+
+  .glow-lg {
+    box-shadow: 0 12px 48px hsl(var(--glow-purple) / 0.4);
+  }
+
+  /* ── Forest module: organic ambient backdrop ── */
+  .forest-backdrop {
+    position: relative;
+    isolation: isolate;
+  }
+  .forest-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -40px -40px 0 -40px;
+    background:
+      radial-gradient(circle at 12% 8%, hsl(150 60% 45% / 0.10), transparent 45%),
+      radial-gradient(circle at 88% 18%, hsl(180 65% 50% / 0.09), transparent 50%),
+      radial-gradient(circle at 30% 90%, hsl(263 70% 58% / 0.08), transparent 55%),
+      radial-gradient(circle at 80% 80%, hsl(160 55% 40% / 0.07), transparent 50%),
+      linear-gradient(180deg, transparent 60%, hsl(150 40% 8% / 0.30) 100%);
+    filter: blur(40px);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* ── Forest seed card: leaf-shaped envelope ── */
+  .seed-leaf {
+    @apply backdrop-blur-xl border border-white/10 transition-all duration-300;
+    background: hsl(var(--card) / var(--card-opacity, 0.6));
+    border-radius: 18px 18px 22px 22px;
+    border-left-width: 2px;
+    border-left-color: var(--seed-vein, hsl(var(--border)));
+  }
+  .seed-leaf:hover {
+    @apply border-white/20 -translate-y-0.5;
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 0 24px var(--seed-glow, hsl(var(--glow-purple) / 0.15));
+  }
+
+  /* ── Watered dewdrop pulse ── */
+  @keyframes dewdrop {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 hsl(190 90% 60% / 0)); }
+    50% { transform: scale(1.18); filter: drop-shadow(0 0 4px hsl(190 90% 60% / 0.7)); }
+  }
+  .animate-dewdrop {
+    animation: dewdrop 1.6s ease-in-out infinite;
+  }
+}
+
+/* Shimmer animation for progress bars */
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 200%; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 8px 32px hsl(var(--glow-purple) / 0.3); }
+  50% { box-shadow: 0 8px 42px hsl(var(--glow-purple) / 0.5); }
+}
+
+@keyframes fire-flicker {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.1) rotate(-5deg); }
+  75% { transform: scale(1.05) rotate(5deg); }
+}
+
+.animate-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  animation: shimmer 2s infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+.animate-fire {
+  animation: fire-flicker 1.5s infinite;
+}
+
+@keyframes ladder-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.08); }
+}
+
+.animate-ladder-glow {
+  animation: ladder-glow 2.5s ease-in-out infinite;
+}
+
+/* Jar animations */
+@keyframes waveMove {
+  0% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-25px) translateY(5px); }
+  100% { transform: translateX(-50px) translateY(0); }
+}
+
+@keyframes bubbleUp {
+  0% { transform: translateY(0) scale(0.7); opacity: 0; }
+  20% { opacity: 0.8; }
+  100% { transform: translateY(-230px) scale(1); opacity: 0; }
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Light theme overrides for glass effects */
+.light-theme .glass-card {
+  @apply bg-card/80 border-black/10;
+}
+.light-theme .glass-card-hover:hover {
+  @apply border-black/20;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+}
+.light-theme .glow-sm {
+  box-shadow: 0 0 20px hsl(var(--glow-purple) / 0.15);
+}
+.light-theme .glow-md {
+  box-shadow: 0 8px 32px hsl(var(--glow-purple) / 0.15);
+}
+
+/* ===== Frame Styles (card hover overrides) ===== */
+
+/* Aura — card-color matching glow */
+.frame-aura .glass-card-hover:hover {
+  transform: none;
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
+  box-shadow: 0 0 28px var(--card-color, hsl(var(--glow-purple) / 0.5)), 0 0 56px var(--card-color, hsl(var(--glow-purple) / 0.25)), 0 4px 16px var(--card-color, hsl(var(--glow-purple) / 0.3));
+}
+
+/* Neon — bright neon outline + subtle inner glow */
+.frame-neon .glass-card-hover:hover {
+  transform: none;
+  border-color: hsl(var(--glow-purple) / 0.8);
+  box-shadow:
+    0 0 6px hsl(var(--glow-purple) / 0.6),
+    0 0 20px hsl(var(--glow-purple) / 0.3),
+    inset 0 0 12px hsl(var(--glow-purple) / 0.08);
+}
+
+/* Frost — increased blur + frosted white border */
+.frame-frost .glass-card-hover:hover {
+  transform: none;
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border-color: hsl(var(--foreground) / 0.25);
+  box-shadow: 0 8px 32px hsl(var(--foreground) / 0.06);
+}
+
+/* Sharp — reduced rounding, hard shadow, subtle scale */
+.frame-sharp .glass-card,
+.frame-sharp .glass-card-hover {
+  border-radius: clamp(4px, 0.25rem, 6px);
+}
+.frame-sharp .glass-card-hover:hover {
+  transform: scale(1.015);
+  border-color: hsl(var(--foreground) / 0.2);
+  box-shadow: 6px 6px 0px hsl(var(--glow-purple) / 0.25);
+}
+
+/* Prism — dual glow: accent + per-card category color layered */
+.frame-prism .glass-card-hover:hover {
+  transform: none;
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 60%, transparent),
+    0 0 40px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 30%, transparent),
+    0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
+}
+
+/* Electric — animated turbulent border via SVG filter */
+.frame-electric .glass-card-hover {
+  position: relative;
+}
+
+.frame-electric .glass-card-hover::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 2px solid hsl(var(--glow-purple) / 0.6);
+  filter: url(#electric-border-filter);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  box-shadow:
+    0 0 8px hsl(var(--glow-purple) / 0.3),
+    0 0 16px hsl(var(--glow-purple) / 0.15),
+    inset 0 0 8px hsl(var(--glow-purple) / 0.1);
+}
+
+.frame-electric .glass-card-hover:hover {
+  transform: none;
+  border-color: hsl(var(--glow-purple) / 0.4);
+  box-shadow: 0 0 20px hsl(var(--glow-purple) / 0.15);
+}
+
+.frame-electric .glass-card-hover:hover::after {
+  opacity: 1;
+}
+
+/* Plasma — electric turbulent border using per-card category color */
+.frame-plasma .glass-card-hover {
+  position: relative;
+}
+
+.frame-plasma .glass-card-hover::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 2px solid var(--card-color, hsl(var(--glow-purple) / 0.6));
+  filter: url(#electric-border-filter);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 50%, transparent),
+    0 0 16px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 25%, transparent),
+    inset 0 0 8px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
+}
+
+.frame-plasma .glass-card-hover:hover {
+  transform: none;
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.4));
+  box-shadow: 0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 25%, transparent);
+}
+
+.frame-plasma .glass-card-hover:hover::after {
+  opacity: 1;
+}
+
+@keyframes electric-preview-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; box-shadow: 0 0 14px currentColor; }
+}
+
+/* Glassmorphic shimmer animation */
+@keyframes glassmorphic-shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Glassmorphic — deep frosted glass with iridescent shimmer border & specular highlight */
+.card-glassmorphic .glass-card,
+.card-glassmorphic .glass-card-hover {
+  position: relative;
+  overflow: hidden;
+  @apply border-white/10 rounded-2xl;
+  backdrop-filter: blur(28px) saturate(1.7) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(1.7) brightness(1.05);
+  background: linear-gradient(
+    135deg,
+    hsl(var(--card) / 0.4) 0%,
+    hsl(var(--card) / 0.15) 35%,
+    hsl(var(--card) / 0.08) 55%,
+    hsl(var(--card) / 0.3) 100%
+  ),
+  linear-gradient(
+    160deg,
+    hsl(var(--glass-border) / 0.06) 0%,
+    transparent 40%,
+    transparent 60%,
+    hsl(var(--glass-border) / 0.03) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 hsl(var(--glass-border) / 0.15),
+    inset 0 -1px 0 hsl(var(--glass-border) / 0.04),
+    0 4px 24px hsl(var(--background) / 0.4),
+    0 1px 3px hsl(var(--foreground) / 0.06);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.card-glassmorphic .glass-card-hover:hover {
+  transform: scale(1.005);
+  border-color: hsl(var(--glow-purple) / 0.4);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--glass-border) / 0.22),
+    0 0 50px hsl(var(--glow-purple) / 0.15),
+    0 0 20px hsl(var(--accent) / 0.08),
+    0 10px 40px hsl(var(--background) / 0.5);
+}
+
+/* Iridescent shimmer border — animated gradient sweep */
+.card-glassmorphic .glass-card::before,
+.card-glassmorphic .glass-card-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    hsl(var(--glow-purple) / 0.35) 0%,
+    hsl(280 80% 65% / 0.2) 20%,
+    hsl(190 90% 60% / 0.3) 40%,
+    transparent 55%,
+    hsl(var(--glow-pink) / 0.25) 70%,
+    hsl(var(--glow-purple) / 0.2) 85%,
+    transparent 100%
+  );
+  background-size: 200% 200%;
+  animation: glassmorphic-shimmer 8s ease-in-out infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.card-glassmorphic .glass-card-hover:hover::before {
+  opacity: 1;
+}
+
+/* Specular top highlight — simulates light hitting curved glass */
+.card-glassmorphic .glass-card::after,
+.card-glassmorphic .glass-card-hover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 40%;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    hsl(var(--glass-border) / 0.12) 0%,
+    hsl(var(--glass-border) / 0.04) 40%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* Override glassmorphic overflow for frames that use pseudo-elements outside the card */
+.frame-electric .card-glassmorphic .glass-card-hover,
+.frame-plasma .card-glassmorphic .glass-card-hover,
+.frame-bark .card-glassmorphic .glass-card-hover {
+  overflow: visible;
+}
+
+/* Solid — opaque, flat, no transparency */
+.card-solid .glass-card,
+.card-solid .glass-card-hover {
+  @apply rounded-xl;
+  background: hsl(var(--card));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid hsl(var(--border));
+}
+
+.card-solid .glass-card-hover:hover {
+  border-color: hsl(var(--border));
+  box-shadow: 0 2px 8px hsl(var(--background) / 0.5);
+  transform: none;
+}
+
+/* Outline — transparent, border-only */
+.card-outline .glass-card,
+.card-outline .glass-card-hover {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1.5px solid hsl(var(--border));
+  @apply rounded-2xl;
+}
+
+.card-outline .glass-card-hover:hover {
+  border-color: hsl(var(--muted-foreground) / 0.3);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Elevated — strong shadows, layered depth */
+.card-elevated .glass-card,
+.card-elevated .glass-card-hover {
+  @apply rounded-2xl;
+  background: hsl(var(--card) / 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid hsl(var(--border) / 0.5);
+  box-shadow:
+    0 4px 12px hsl(var(--background) / 0.4),
+    0 12px 36px hsl(var(--background) / 0.3),
+    0 1px 3px hsl(var(--background) / 0.2);
+}
+
+.card-elevated .glass-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: hsl(var(--border) / 0.7);
+  box-shadow:
+    0 8px 24px hsl(var(--background) / 0.5),
+    0 20px 48px hsl(var(--background) / 0.4),
+    0 2px 6px hsl(var(--background) / 0.3);
+}
+
+/* ===== Icicle Frame Style ===== */
+.frame-icicle .glass-card-hover:hover {
+  transform: none;
+  border-color: hsl(200 80% 85%);
+  box-shadow:
+    0 0 16px hsla(200, 80%, 75%, 0.25),
+    0 0 32px hsla(200, 70%, 70%, 0.1),
+    inset 0 0 10px hsla(200, 60%, 80%, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ===== Bark Frame Style ===== */
+.frame-bark .glass-card-hover {
+  border-width: 1.5px;
+  position: relative;
+}
+
+.frame-bark .glass-card-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background-image:
+    repeating-linear-gradient(
+      88deg,
+      transparent,
+      transparent 10px,
+      hsla(28, 35%, 28%, 0.18) 10px,
+      hsla(28, 35%, 28%, 0.18) 11.5px
+    ),
+    repeating-linear-gradient(
+      94deg,
+      transparent,
+      transparent 18px,
+      hsla(25, 30%, 25%, 0.12) 18px,
+      hsla(25, 30%, 25%, 0.12) 19px
+    ),
+    repeating-linear-gradient(
+      91deg,
+      transparent,
+      transparent 7px,
+      hsla(32, 40%, 32%, 0.08) 7px,
+      hsla(32, 40%, 32%, 0.08) 8px
+    ),
+    radial-gradient(
+      ellipse 12px 8px at 30% 40%,
+      hsla(25, 40%, 22%, 0.25),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 8px 10px at 72% 65%,
+      hsla(30, 35%, 20%, 0.2),
+      transparent
+    );
+  z-index: 1;
+}
+
+.frame-bark .glass-card-hover:hover {
+  transform: none;
+  border-color: hsl(28 45% 38%);
+  box-shadow:
+    0 0 18px hsla(30, 55%, 32%, 0.4),
+    0 0 36px hsla(25, 45%, 22%, 0.18),
+    0 2px 10px hsla(20, 40%, 15%, 0.3),
+    inset 0 0 14px hsla(30, 40%, 20%, 0.12),
+    inset 0 1px 0 hsla(35, 50%, 40%, 0.15);
+}
+
+.frame-bark .glass-card-hover:hover::before {
+  opacity: 1;
+}
+
+/* ===== Frosted Card Style ===== */
+.card-frosted .glass-card,
+.card-frosted .glass-card-hover {
+  @apply rounded-2xl;
+  background: hsla(205, 50%, 95%, 0.05);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  border: 1px solid hsla(200, 60%, 80%, 0.18);
+  box-shadow: inset 0 0 20px hsla(200, 70%, 80%, 0.04);
+}
+
+.card-frosted .glass-card-hover:hover {
+  border-color: hsla(200, 70%, 82%, 0.3);
+  box-shadow:
+    inset 0 0 24px hsla(200, 70%, 80%, 0.06),
+    0 4px 20px hsla(200, 50%, 50%, 0.08);
+  transform: none;
+}
+
+/* ===== Wood Card Style ===== */
+.card-wood .glass-card,
+.card-wood .glass-card-hover {
+  @apply rounded-xl;
+  background-color: hsl(28 40% 16%);
+  background-image: url('/images/wood-texture.png');
+  background-size: cover;
+  background-blend-mode: overlay;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid hsl(28 30% 26%);
+  box-shadow:
+    inset 0 1px 0 hsla(35, 40%, 28%, 0.4),
+    inset 0 -1px 0 hsla(20, 30%, 10%, 0.3),
+    0 2px 8px hsla(20, 30%, 8%, 0.4);
+}
+
+.card-wood .glass-card-hover:hover {
+  border-color: hsl(30 35% 32%);
+  box-shadow:
+    inset 0 1px 0 hsla(35, 40%, 30%, 0.5),
+    inset 0 -1px 0 hsla(20, 30%, 10%, 0.3),
+    0 4px 16px hsla(20, 30%, 8%, 0.5);
+  transform: none;
+}
+
+/* ===== Neumorphic Card Style ===== */
+.card-neumorphic .glass-card,
+.card-neumorphic .glass-card-hover {
+  @apply rounded-2xl;
+  background-color: hsl(var(--background));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow:
+    6px 6px 14px hsla(var(--foreground) / 0.12),
+    -6px -6px 14px hsla(var(--background) / 0.8),
+    inset 1px 1px 2px hsla(var(--background) / 0.6),
+    inset -1px -1px 2px hsla(var(--foreground) / 0.04);
+}
+
+.card-neumorphic .glass-card-hover:hover {
+  box-shadow:
+    8px 8px 18px hsla(var(--foreground) / 0.15),
+    -8px -8px 18px hsla(var(--background) / 0.9),
+    inset 2px 2px 4px hsla(var(--background) / 0.7),
+    inset -2px -2px 4px hsla(var(--foreground) / 0.06);
+  transform: none;
+}
+
+/* ===== Light Theme Overrides for Textured Card Styles ===== */
+
+/* Frosted — boost contrast on light themes */
+.light-theme .card-frosted .glass-card,
+.light-theme .card-frosted .glass-card-hover {
+  background: hsla(205, 40%, 88%, 0.45);
+  border: 1px solid hsla(200, 50%, 70%, 0.35);
+  box-shadow: inset 0 0 20px hsla(200, 60%, 70%, 0.1), 0 2px 12px hsla(200, 40%, 40%, 0.08);
+}
+
+.light-theme .card-frosted .glass-card-hover:hover {
+  border-color: hsla(200, 60%, 60%, 0.45);
+  box-shadow:
+    inset 0 0 24px hsla(200, 60%, 70%, 0.12),
+    0 4px 20px hsla(200, 40%, 40%, 0.12);
+}
+
+/* Wood — warm light wood on light themes */
+.light-theme .card-wood .glass-card,
+.light-theme .card-wood .glass-card-hover {
+  background-color: hsl(30 35% 82%);
+  border: 1px solid hsl(28 30% 72%);
+  box-shadow:
+    inset 0 1px 0 hsla(35, 40%, 88%, 0.6),
+    inset 0 -1px 0 hsla(20, 30%, 65%, 0.2),
+    0 2px 8px hsla(20, 30%, 40%, 0.1);
+  background-image: url('/images/wood-texture.png');
+  background-size: cover;
+  background-blend-mode: soft-light;
+}
+
+.light-theme .card-wood .glass-card-hover:hover {
+  border-color: hsl(30 35% 65%);
+  box-shadow:
+    inset 0 1px 0 hsla(35, 40%, 90%, 0.6),
+    inset 0 -1px 0 hsla(20, 30%, 60%, 0.2),
+    0 4px 16px hsla(20, 30%, 40%, 0.15);
+}
+
+/* Neumorphic — sharper shadows on light themes */
+.light-theme .card-neumorphic .glass-card,
+.light-theme .card-neumorphic .glass-card-hover {
+  background-color: hsl(var(--background));
+  border: none;
+  box-shadow:
+    5px 5px 12px hsla(var(--foreground) / 0.08),
+    -5px -5px 12px hsla(0 0% 100% / 0.7),
+    inset 1px 1px 2px hsla(0 0% 100% / 0.5),
+    inset -1px -1px 2px hsla(var(--foreground) / 0.03);
+}
+
+.light-theme .card-neumorphic .glass-card-hover:hover {
+  box-shadow:
+    7px 7px 16px hsla(var(--foreground) / 0.1),
+    -7px -7px 16px hsla(0 0% 100% / 0.8),
+    inset 2px 2px 3px hsla(0 0% 100% / 0.6),
+    inset -2px -2px 3px hsla(var(--foreground) / 0.04);
+}
+
+/* ===== Preview-Active: mirrors :hover for always-on previews ===== */
+
+/* Default frame */
+.glass-card-hover.preview-active {
+  @apply -translate-y-1;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  border-color: hsl(var(--glass-border) / 0.2);
+}
+
+/* Aura */
+.frame-aura .glass-card-hover.preview-active {
+  transform: none;
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
+  box-shadow: 0 0 28px var(--card-color, hsl(var(--glow-purple) / 0.5)), 0 0 56px var(--card-color, hsl(var(--glow-purple) / 0.25)), 0 4px 16px var(--card-color, hsl(var(--glow-purple) / 0.3));
+}
+
+/* Neon */
+.frame-neon .glass-card-hover.preview-active {
+  transform: none;
+  border-color: hsl(var(--glow-purple) / 0.8);
+  box-shadow:
+    0 0 6px hsl(var(--glow-purple) / 0.6),
+    0 0 20px hsl(var(--glow-purple) / 0.3),
+    inset 0 0 12px hsl(var(--glow-purple) / 0.08);
+}
+
+/* Frost */
+.frame-frost .glass-card-hover.preview-active {
+  transform: none;
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border-color: hsl(var(--foreground) / 0.25);
+  box-shadow: 0 8px 32px hsl(var(--foreground) / 0.06);
+}
+
+/* Sharp */
+.frame-sharp .glass-card-hover.preview-active {
+  transform: scale(1.015);
+  border-color: hsl(var(--foreground) / 0.2);
+  box-shadow: 6px 6px 0px hsl(var(--glow-purple) / 0.25);
+}
+
+/* Prism */
+.frame-prism .glass-card-hover.preview-active {
+  transform: none;
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 60%, transparent),
+    0 0 40px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 30%, transparent),
+    0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
+}
+
+/* Electric */
+.frame-electric .glass-card-hover.preview-active {
+  transform: none;
+  border-color: hsl(var(--glow-purple) / 0.4);
+  box-shadow: 0 0 20px hsl(var(--glow-purple) / 0.15);
+}
+
+.frame-electric .glass-card-hover.preview-active::after {
+  opacity: 1;
+}
+
+/* Plasma */
+.frame-plasma .glass-card-hover.preview-active {
+  transform: none;
+  border-color: var(--card-color, hsl(var(--glow-purple) / 0.4));
+  box-shadow: 0 0 20px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 25%, transparent);
+}
+
+.frame-plasma .glass-card-hover.preview-active::after {
+  opacity: 1;
+}
+
+/* Icicle */
+.frame-icicle .glass-card-hover.preview-active {
+  transform: none;
+  border-color: hsl(200 80% 85%);
+  box-shadow:
+    0 0 16px hsla(200, 80%, 75%, 0.25),
+    0 0 32px hsla(200, 70%, 70%, 0.1),
+    inset 0 0 10px hsla(200, 60%, 80%, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Bark */
+.frame-bark .glass-card-hover.preview-active {
+  transform: none;
+  border-color: hsl(28 45% 38%);
+  box-shadow:
+    0 0 18px hsla(30, 55%, 32%, 0.4),
+    0 0 36px hsla(25, 45%, 22%, 0.18),
+    0 2px 10px hsla(20, 40%, 15%, 0.3),
+    inset 0 0 14px hsla(30, 40%, 20%, 0.12),
+    inset 0 1px 0 hsla(35, 50%, 40%, 0.15);
+}
+
+.frame-bark .glass-card-hover.preview-active::before {
+  opacity: 1;
+}
+
+/* Light-theme Bark frame — warmer, visible grain on light backgrounds */
+.light-theme .frame-bark .glass-card-hover:hover {
+  border-color: hsl(28 40% 62%);
+  box-shadow:
+    0 0 18px hsla(30, 45%, 55%, 0.2),
+    0 0 36px hsla(25, 35%, 45%, 0.08),
+    0 2px 10px hsla(20, 30%, 40%, 0.12),
+    inset 0 0 14px hsla(30, 35%, 55%, 0.08),
+    inset 0 1px 0 hsla(35, 45%, 70%, 0.2);
+}
+
+.light-theme .frame-bark .glass-card-hover.preview-active {
+  border-color: hsl(28 40% 62%);
+  box-shadow:
+    0 0 18px hsla(30, 45%, 55%, 0.2),
+    0 0 36px hsla(25, 35%, 45%, 0.08),
+    0 2px 10px hsla(20, 30%, 40%, 0.12),
+    inset 0 0 14px hsla(30, 35%, 55%, 0.08),
+    inset 0 1px 0 hsla(35, 45%, 70%, 0.2);
+}
+
+.light-theme .frame-bark .glass-card-hover::before {
+  background-image:
+    repeating-linear-gradient(88deg, transparent, transparent 10px, hsla(28, 35%, 55%, 0.15) 10px, hsla(28, 35%, 55%, 0.15) 11.5px),
+    repeating-linear-gradient(94deg, transparent, transparent 18px, hsla(25, 30%, 50%, 0.1) 18px, hsla(25, 30%, 50%, 0.1) 19px),
+    repeating-linear-gradient(91deg, transparent, transparent 7px, hsla(32, 40%, 58%, 0.07) 7px, hsla(32, 40%, 58%, 0.07) 8px),
+    radial-gradient(ellipse 12px 8px at 30% 40%, hsla(25, 35%, 50%, 0.2), transparent),
+    radial-gradient(ellipse 8px 10px at 72% 65%, hsla(30, 30%, 48%, 0.15), transparent);
+}
