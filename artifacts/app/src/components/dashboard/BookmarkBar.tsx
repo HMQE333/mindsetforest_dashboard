@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ExternalLink, Plus, X, Link as LinkIcon, Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Bookmark {
   id: string;
@@ -8,35 +9,78 @@ interface Bookmark {
   url: string;
 }
 
-const STORAGE_KEY = "dashboard_bookmarks";
+const LEGACY_KEY = "dashboard_bookmarks";
 
-function readBookmarks(): Bookmark[] {
+// Bookmarks are scoped per user so different accounts sharing a browser don't
+// collide, and so a logged-out session can never persist over someone's data.
+const storageKey = (userId: string) => `dashboard_bookmarks:${userId}`;
+
+function readBookmarks(userId: string): Bookmark[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(storageKey(userId));
+    if (raw) return JSON.parse(raw);
+    // One-time migration from the old un-scoped key so existing bookmarks
+    // aren't lost after this change.
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      localStorage.setItem(storageKey(userId), legacy);
+      localStorage.removeItem(LEGACY_KEY);
+      return JSON.parse(legacy);
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
-function writeBookmarks(bookmarks: Bookmark[]) {
+function writeBookmarks(userId: string, bookmarks: Bookmark[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
+    localStorage.setItem(storageKey(userId), JSON.stringify(bookmarks));
   } catch {
-    // ignore
+    // ignore (e.g. storage disabled/partitioned)
   }
 }
 
+// crypto.randomUUID is only available in secure contexts; fall back so adding a
+// bookmark never throws (which previously made "Add" silently do nothing).
+function makeId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // fall through
+  }
+  return `bm-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function BookmarkBar() {
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>(readBookmarks);
+  const { user } = useAuth();
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
+  // Tracks which user's bookmarks are currently loaded into state. Persist is
+  // gated on this matching the active user (render-driven, so the persist effect
+  // never fires with stale/previous-user state and can't clobber or leak data).
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+
+  // Load the current user's bookmarks whenever the signed-in user changes.
+  useEffect(() => {
+    if (!user) {
+      setBookmarks([]);
+      setLoadedUserId(null);
+      return;
+    }
+    setBookmarks(readBookmarks(user.id));
+    setLoadedUserId(user.id);
+  }, [user?.id]);
 
   useEffect(() => {
-    writeBookmarks(bookmarks);
-  }, [bookmarks]);
+    if (!user || loadedUserId !== user.id) return;
+    writeBookmarks(user.id, bookmarks);
+  }, [bookmarks, user, loadedUserId]);
 
   useEffect(() => {
     if (!showForm && !editingId) return;
@@ -71,7 +115,7 @@ export default function BookmarkBar() {
       );
       setEditingId(null);
     } else {
-      setBookmarks((prev) => [...prev, { id: crypto.randomUUID(), title: finalTitle, url: nUrl }]);
+      setBookmarks((prev) => [...prev, { id: makeId(), title: finalTitle, url: nUrl }]);
     }
     setTitle("");
     setUrl("");
