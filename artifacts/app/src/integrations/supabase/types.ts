@@ -1030,8 +1030,90 @@ export type Database = {
         }
         Relationships: []
       }
+      planning_boards: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          name: string
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      board_projects: {
+        Row: {
+          board_id: string
+          created_at: string
+          id: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          board_id: string
+          created_at?: string
+          id?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          board_id?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_projects_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "planning_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_projects_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "user_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planning_board_backfill: {
+        Row: {
+          done_at: string
+          user_id: string
+        }
+        Insert: {
+          done_at?: string
+          user_id: string
+        }
+        Update: {
+          done_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       planning_tasks: {
         Row: {
+          board_id: string | null
           created_at: string
           deadline: string | null
           done: boolean
@@ -1045,7 +1127,7 @@ export type Database = {
           parent_id: string | null
           position_x: number | null
           position_y: number | null
-          project_id: string
+          project_id: string | null
           sort_order: number
           standalone: boolean
           time_minutes: number | null
@@ -1054,6 +1136,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          board_id?: string | null
           created_at?: string
           deadline?: string | null
           done?: boolean
@@ -1067,7 +1150,7 @@ export type Database = {
           parent_id?: string | null
           position_x?: number | null
           position_y?: number | null
-          project_id: string
+          project_id?: string | null
           sort_order?: number
           standalone?: boolean
           time_minutes?: number | null
@@ -1076,6 +1159,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          board_id?: string | null
           created_at?: string
           deadline?: string | null
           done?: boolean
@@ -1089,7 +1173,7 @@ export type Database = {
           parent_id?: string | null
           position_x?: number | null
           position_y?: number | null
-          project_id?: string
+          project_id?: string | null
           sort_order?: number
           standalone?: boolean
           time_minutes?: number | null
@@ -1110,6 +1194,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "user_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planning_tasks_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "planning_boards"
             referencedColumns: ["id"]
           },
         ]

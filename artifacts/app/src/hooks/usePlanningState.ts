@@ -11,7 +11,8 @@ export type PlanningMention =
 export interface PlanningTask {
   id: string;
   user_id: string;
-  project_id: string;
+  project_id: string | null;
+  board_id: string | null;
   parent_id: string | null;
   level: TaskLevel;
   title: string;
@@ -31,10 +32,19 @@ export interface PlanningTask {
   mentions: PlanningMention[];
 }
 
-export function usePlanningState(projectId?: string) {
+export interface BoardScope {
+  boardId?: string;
+  linkedProjectIds?: string[];
+}
+
+export function usePlanningState(projectId?: string, board?: BoardScope) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<PlanningTask[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const boardId = board?.boardId;
+  // Stable dependency for the linked-project list.
+  const linkedKey = (board?.linkedProjectIds ?? []).slice().sort().join(",");
 
   const fetchTasks = useCallback(async () => {
     if (!user) { setLoading(false); return; }
@@ -43,18 +53,29 @@ export function usePlanningState(projectId?: string) {
       .eq("user_id", user.id)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
-    if (projectId) query = query.eq("project_id", projectId);
+    if (boardId) {
+      // Board scope: union of tasks that belong directly to the board and
+      // tasks belonging to any project currently linked to the board.
+      const ids = linkedKey ? linkedKey.split(",") : [];
+      if (ids.length > 0) {
+        query = query.or(`board_id.eq.${boardId},project_id.in.(${ids.join(",")})`);
+      } else {
+        query = query.eq("board_id", boardId);
+      }
+    } else if (projectId) {
+      query = query.eq("project_id", projectId);
+    }
     const { data, error } = await query;
     if (data && !error) setTasks(data);
     setLoading(false);
-  }, [user, projectId]);
+  }, [user, projectId, boardId, linkedKey]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-  const addTask = useCallback(async (task: Omit<PlanningTask, "id" | "user_id" | "created_at" | "sort_order" | "standalone" | "position_x" | "position_y" | "mentions"> & { standalone?: boolean; position_x?: number | null; position_y?: number | null; mentions?: PlanningMention[] }) => {
+  const addTask = useCallback(async (task: Omit<PlanningTask, "id" | "user_id" | "created_at" | "sort_order" | "standalone" | "position_x" | "position_y" | "mentions" | "board_id"> & { board_id?: string | null; standalone?: boolean; position_x?: number | null; position_y?: number | null; mentions?: PlanningMention[] }) => {
     if (!user) return null;
     const { data, error } = await (supabase.from("planning_tasks" as any) as any)
-      .insert([{ ...task, user_id: user.id, standalone: task.standalone ?? false, position_x: task.position_x ?? null, position_y: task.position_y ?? null, mentions: task.mentions ?? [] }])
+      .insert([{ ...task, user_id: user.id, board_id: task.board_id ?? null, standalone: task.standalone ?? false, position_x: task.position_x ?? null, position_y: task.position_y ?? null, mentions: task.mentions ?? [] }])
       .select("*")
       .single();
     if (error) return null;

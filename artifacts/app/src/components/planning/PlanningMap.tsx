@@ -12,9 +12,11 @@ import "@xyflow/react/dist/style.css";
 import { usePlanningState, PlanningTask, TaskLevel } from "@/hooks/usePlanningState";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProjects, UserProject } from "@/hooks/useUserProjects";
+import { useBoards } from "@/hooks/useBoards";
 import { Target, Flag, ListChecks, Zap, Check, Plus, Trash2, X, Globe, ExternalLink, ArrowLeft, Map, ChevronDown, Unlink, LayoutGrid, Maximize2, Minimize2, Paperclip } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PlanningNodeDetail from "./PlanningNodeDetail";
+import BoardProjectLinker from "./BoardProjectLinker";
 import { navigateToMention } from "./PlanningMentions";
 import { toast } from "@/hooks/use-toast";
 
@@ -420,11 +422,26 @@ function MultiSelectDropdown({ projects, selectedIds, onToggle, max }: { project
   );
 }
 
-const STORAGE_KEY = "planning-map-selected-projects";
-
-function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string | null; onBack?: () => void }) {
+function MapViewInner({ boardId, onBack }: { boardId: string; onBack?: () => void }) {
+  const { boards, getLinkedProjectIds, linkProject, unlinkProject } = useBoards();
   const { projects } = useUserProjects();
-  const activeProjects = projects;
+  const board = boards.find(b => b.id === boardId);
+  const linkedProjectIds = getLinkedProjectIds(boardId);
+  const linkedKey = linkedProjectIds.slice().sort().join(",");
+
+  const BOARD_PSEUDO_ID = `board:${boardId}`;
+  const STORAGE_KEY = `planning-map-selected-${boardId}`;
+
+  // Map "projects" = a synthetic board pseudo-project (holds board-level tasks)
+  // followed by each linked real project.
+  const mapProjects = useMemo<UserProject[]>(() => {
+    const pseudo = { id: BOARD_PSEUDO_ID, name: board?.name ?? "Board", emoji: board?.emoji ?? "🗂️", parent_category: null } as UserProject;
+    const linked = projects.filter(p => linkedProjectIds.includes(p.id));
+    return [pseudo, ...linked];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, linkedKey, board?.name, board?.emoji, boardId]);
+  const mapProjectIdsKey = mapProjects.map(p => p.id).join(",");
+
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -434,7 +451,6 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   }, [isFullscreen]);
 
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(() => {
-    if (initialProjectId) return [initialProjectId];
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) return JSON.parse(saved);
@@ -442,7 +458,15 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     return [];
   });
 
-  const { tasks, addTask, updateTask, deleteTask, toggleTask, refetch } = usePlanningState();
+  const { tasks: rawTasks, addTask, updateTask, deleteTask, toggleTask, refetch } = usePlanningState(undefined, { boardId, linkedProjectIds });
+  // Board-level tasks (no project) are shown under the board pseudo-project so
+  // the generic project-based layout works unchanged.
+  const tasks = useMemo(
+    () => rawTasks.map(t => (t.project_id == null && t.board_id === boardId) ? { ...t, project_id: BOARD_PSEUDO_ID } : t),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawTasks, boardId]
+  );
+  const activeProjects = mapProjects;
   const reactFlowInstance = useReactFlow();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [forceAutoLayout, setForceAutoLayout] = useState(false);
@@ -478,18 +502,22 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     if (selectedProjectIds.length > 0) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedProjectIds));
     }
-  }, [selectedProjectIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectIds, STORAGE_KEY]);
 
-  // Auto-select first project if none selected (or saved ones no longer exist)
+  // Default to showing everything on the board; prune stale ids when links change.
   useEffect(() => {
     if (activeProjects.length === 0) return;
     const valid = selectedProjectIds.filter(id => activeProjects.some(p => p.id === id));
     if (valid.length === 0) {
-      setSelectedProjectIds([activeProjects[0].id]);
+      setSelectedProjectIds(activeProjects.map(p => p.id));
     } else if (valid.length !== selectedProjectIds.length) {
       setSelectedProjectIds(valid);
     }
-  }, [activeProjects]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapProjectIdsKey]);
+
+  const maxSelectable = Math.max(MAX_SELECTED, activeProjects.length);
 
   const toggleProjectSelection = useCallback((projectId: string) => {
     setSelectedProjectIds(prev => {
@@ -497,23 +525,31 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
         if (prev.length === 1) return prev; // keep at least one
         return prev.filter(id => id !== projectId);
       }
-      if (prev.length >= MAX_SELECTED) {
-        toast({ title: `Maximum ${MAX_SELECTED} projects`, description: "Deselect one first", variant: "destructive" });
+      if (prev.length >= maxSelectable) {
+        toast({ title: `Maximum ${maxSelectable}`, description: "Deselect one first", variant: "destructive" });
         return prev;
       }
       return [...prev, projectId];
     });
-  }, []);
+  }, [maxSelectable]);
+
+  // Route inserts to the board (project_id null + board_id set) or to a real project.
+  const insertScope = useCallback((projectId: string) => {
+    return projectId === BOARD_PSEUDO_ID
+      ? { project_id: null as string | null, board_id: boardId as string | null }
+      : { project_id: projectId as string | null, board_id: null as string | null };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId]);
 
   const handleAddChildForProject = useCallback(async (projectId: string, parentId: string | null, level: TaskLevel, title: string) => {
-    const created = await addTask({ project_id: projectId, parent_id: parentId, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "" });
+    const created = await addTask({ ...insertScope(projectId), parent_id: parentId, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "" });
     if (created) pendingFocusRef.current = `task-${created.id}`;
-  }, [addTask]);
+  }, [addTask, insertScope]);
 
   const handleAddLinkForProject = useCallback(async (projectId: string, parentId: string | null, url: string) => {
-    const created = await addTask({ project_id: projectId, parent_id: parentId, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "" });
+    const created = await addTask({ ...insertScope(projectId), parent_id: parentId, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "" });
     if (created) pendingFocusRef.current = `task-${created.id}`;
-  }, [addTask]);
+  }, [addTask, insertScope]);
 
   const handleDelete = useCallback((taskId: string) => deleteTask(taskId), [deleteTask]);
   const handleToggle = useCallback((taskId: string) => toggleTask(taskId), [toggleTask]);
@@ -528,12 +564,12 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     if (parentId === null && contextMenuPos) {
       const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
       const spot = findFreeSpot(flowPos, occupiedPositions());
-      const created = await addTask({ project_id: pid, parent_id: null, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "", standalone: true, position_x: spot.x, position_y: spot.y });
+      const created = await addTask({ ...insertScope(pid), parent_id: null, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "", standalone: true, position_x: spot.x, position_y: spot.y });
       if (created) pendingFocusRef.current = `task-${created.id}`;
     } else {
       handleAddChildForProject(pid, parentId, level, title);
     }
-  }, [selectedProjectIds, handleAddChildForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions]);
+  }, [selectedProjectIds, handleAddChildForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions, insertScope]);
 
   const handleContextAddLink = useCallback(async (parentId: string | null, url: string) => {
     const pid = selectedProjectIds[0];
@@ -541,24 +577,30 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     if (parentId === null && contextMenuPos) {
       const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
       const spot = findFreeSpot(flowPos, occupiedPositions());
-      const created = await addTask({ project_id: pid, parent_id: null, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "", standalone: true, position_x: spot.x, position_y: spot.y });
+      const created = await addTask({ ...insertScope(pid), parent_id: null, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "", standalone: true, position_x: spot.x, position_y: spot.y });
       if (created) pendingFocusRef.current = `task-${created.id}`;
     } else {
       handleAddLinkForProject(pid, parentId, url);
     }
-  }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions]);
+  }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions, insertScope]);
 
-  // Connect handler — adopt standalone node into tree
+  // Connect handler — adopt standalone node into tree, reconciling its container
+  // with the target root/parent so it lands in the correct project or board.
   const handleConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
-    const sourceTaskId = connection.source.replace("task-", "").replace("project-", "");
     const targetTaskId = connection.target.replace("task-", "");
-    const targetTask = tasks.find(t => t.id === targetTaskId);
+    const targetTask = rawTasks.find(t => t.id === targetTaskId);
     if (!targetTask) return;
-    // Set parent and remove standalone flag, keep position
-    updateTask(targetTaskId, { parent_id: connection.source.startsWith("project-") ? null : sourceTaskId, standalone: false });
+    if (connection.source.startsWith("project-")) {
+      const rootId = connection.source.replace("project-", "");
+      updateTask(targetTaskId, { parent_id: null, standalone: false, ...insertScope(rootId) });
+    } else {
+      const sourceTaskId = connection.source.replace("task-", "");
+      const sourceTask = rawTasks.find(t => t.id === sourceTaskId);
+      updateTask(targetTaskId, { parent_id: sourceTaskId, standalone: false, project_id: sourceTask?.project_id ?? null, board_id: sourceTask?.board_id ?? null });
+    }
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
-  }, [tasks, updateTask]);
+  }, [rawTasks, updateTask, insertScope]);
 
   // Drag stop — persist position for ALL nodes
   const handleNodeDragStop = useCallback((_: any, node: Node) => {
@@ -576,7 +618,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     onSelect: handleSelect,
   }), [handleAddChildForProject, handleAddLinkForProject, handleDelete, handleToggle, handleRename, handleSelect]);
 
-  const filteredTasks = useMemo(() => tasks.filter(t => selectedProjectIds.includes(t.project_id)), [tasks, selectedProjectIds]);
+  const filteredTasks = useMemo(() => tasks.filter(t => t.project_id != null && selectedProjectIds.includes(t.project_id)), [tasks, selectedProjectIds]);
 
   const { initialNodes, initialEdges } = useMemo(() => {
     const selectedProjects = activeProjects.filter(p => selectedProjectIds.includes(p.id));
@@ -694,11 +736,11 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const doneTasks = filteredTasks.filter(t => t.level !== "link" && t.done).length;
   const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-  if (activeProjects.length === 0) {
+  if (!board) {
     return (
       <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground gap-3">
         <Map className="h-10 w-10 opacity-30" />
-        <p className="text-sm">Create a project first to see its map.</p>
+        <p className="text-sm">Open a board to see its map.</p>
       </div>
     );
   }
@@ -707,13 +749,20 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     <div className={`flex flex-col rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-50 rounded-none border-none bg-background" : "h-[600px]"}`}>
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-muted/20 backdrop-blur-md flex-wrap">
         {onBack && <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-primary transition-all"><ArrowLeft className="h-4 w-4" /></button>}
-        <h3 className="text-sm font-semibold text-foreground hidden sm:block">Project Map</h3>
-        {/* Multi-select dropdown */}
+        <h3 className="text-sm font-semibold text-foreground hidden sm:block">{board.emoji} {board.name} · Map</h3>
+        {/* Link / unlink existing projects (same control as the Stack header) */}
+        <BoardProjectLinker
+          projects={projects}
+          linkedIds={linkedProjectIds}
+          onLink={(pid) => linkProject(boardId, pid)}
+          onUnlink={(pid) => unlinkProject(boardId, pid)}
+        />
+        {/* Multi-select dropdown (scoped to the board's linked projects + board-level tasks) */}
         <MultiSelectDropdown
           projects={activeProjects}
           selectedIds={selectedProjectIds}
           onToggle={toggleProjectSelection}
-          max={MAX_SELECTED}
+          max={maxSelectable}
         />
         {totalTasks > 0 && (
           <div className="flex items-center gap-2 ml-1">
@@ -792,7 +841,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
 }
 
 /* ── Exported component ────────────────────────────────────── */
-interface Props { initialProjectId?: string | null; onBack?: () => void }
-export default function PlanningMap({ initialProjectId, onBack }: Props) {
-  return <ReactFlowProvider><MapViewInner initialProjectId={initialProjectId} onBack={onBack} /></ReactFlowProvider>;
+interface Props { boardId: string; onBack?: () => void }
+export default function PlanningMap({ boardId, onBack }: Props) {
+  return <ReactFlowProvider><MapViewInner boardId={boardId} onBack={onBack} /></ReactFlowProvider>;
 }

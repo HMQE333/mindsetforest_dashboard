@@ -1,20 +1,22 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Check, Zap, Filter } from "lucide-react";
+import { Check, Zap } from "lucide-react";
 import { usePlanningState } from "@/hooks/usePlanningState";
+import { useBoards } from "@/hooks/useBoards";
 import { useUserProjects } from "@/hooks/useUserProjects";
-import { usePillars } from "@/hooks/usePillars";
 
 interface Props {
-  onOpenProject: (id: string) => void;
+  boardId: string | null;
+  onBack: () => void;
 }
 
-export default function PlanningActions({ onOpenProject }: Props) {
-  const { tasks, toggleTask } = usePlanningState();
+export default function PlanningActions({ boardId, onBack }: Props) {
+  const { boards, getLinkedProjectIds } = useBoards();
   const { projects } = useUserProjects();
-  const pillars = usePillars();
+  const board = boards.find(b => b.id === boardId);
+  const linkedProjectIds = boardId ? getLinkedProjectIds(boardId) : [];
+  const { tasks, toggleTask } = usePlanningState(undefined, boardId ? { boardId, linkedProjectIds } : undefined);
   const [hideCompleted, setHideCompleted] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const actionTasks = useMemo(() => {
     let items = tasks.filter(t => t.level === "action");
@@ -22,20 +24,23 @@ export default function PlanningActions({ onOpenProject }: Props) {
     return items;
   }, [tasks, hideCompleted]);
 
-  const handleBatchDone = () => {
-    selectedIds.forEach(id => {
-      const task = tasks.find(t => t.id === id);
-      if (task && !task.done) toggleTask(id);
-    });
-    setSelectedIds(new Set());
-  };
+  if (!boardId || !board) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-16 text-muted-foreground text-sm">
+        Open a board to see its actions.
+        <div className="mt-3">
+          <button onClick={onBack} className="text-primary text-xs font-bold hover:underline">Go to Boards</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-foreground">Actions</h2>
-          <p className="text-sm text-muted-foreground">Smallest steps across all projects</p>
+          <h2 className="text-xl font-bold text-foreground">{board.emoji} {board.name} · Actions</h2>
+          <p className="text-sm text-muted-foreground">Smallest steps across this board</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-2.5 py-1 rounded-xl bg-muted/30 border border-white/10">
@@ -61,18 +66,15 @@ export default function PlanningActions({ onOpenProject }: Props) {
       <div className="glass-card divide-y divide-white/5">
         {actionTasks.length === 0 ? (
           <p className="text-sm text-muted-foreground py-14 text-center">
-            No actions yet. Open a project and break work down to the smallest steps.
+            No actions yet. Open Stack and break work down to the smallest steps.
           </p>
         ) : (
           actionTasks.map(task => {
-            const project = projects.find(p => p.id === task.project_id);
-            const isSelected = selectedIds.has(task.id);
+            const project = task.project_id ? projects.find(p => p.id === task.project_id) : null;
             return (
               <div
                 key={task.id}
-                className={`flex items-center gap-3 px-4 py-3.5 transition-all group ${
-                  isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-white/3 border-l-2 border-l-transparent"
-                }`}
+                className="flex items-center gap-3 px-4 py-3.5 transition-all group hover:bg-white/3 border-l-2 border-l-transparent"
               >
                 <button
                   onClick={() => toggleTask(task.id)}
@@ -91,28 +93,14 @@ export default function PlanningActions({ onOpenProject }: Props) {
                   </span>
                 </div>
 
-                {project && (
-                  <button
-                    onClick={() => onOpenProject(project.id)}
-                    className="text-xs text-muted-foreground hover:text-primary transition-colors truncate max-w-[120px]"
-                  >
-                    {project.emoji} {project.name}
-                  </button>
-                )}
+                <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                  {project ? `${project.emoji} ${project.name}` : "🗂️ Board"}
+                </span>
               </div>
             );
           })
         )}
       </div>
-
-      {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl glass-card border border-primary/30 glow-md">
-          <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
-          <button onClick={handleBatchDone} className="flex items-center gap-1.5 h-7 text-xs px-3 rounded-lg bg-primary/15 text-primary border border-primary/30">
-            <Check className="h-3 w-3" /> Mark done
-          </button>
-        </div>
-      )}
     </motion.div>
   );
 }
