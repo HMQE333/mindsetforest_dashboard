@@ -8,12 +8,13 @@ import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
 import ArchiveDigestView from "./ArchiveDigestView";
 import ArchiveForestView from "./ArchiveForestView";
+import ArchiveBookmarksView from "./ArchiveBookmarksView";
 import PlantSeedModal from "./PlantSeedModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images" | "digest" | "forest";
+type SubView = "inbox" | "library" | "links" | "images" | "digest" | "forest" | "bookmarks";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
@@ -62,6 +63,7 @@ const ArchiveView = () => {
     { id: "images", label: "Images", icon: "🖼️", count: imageCount },
     { id: "digest", label: "Digest", icon: "🔁" },
     { id: "forest", label: "Forest", icon: "🌳" },
+    { id: "bookmarks", label: "Bookmarks", icon: "⭐" },
   ];
 
   const toggleSelect = (id: string) => {
@@ -254,6 +256,9 @@ const ArchiveView = () => {
         </div>
         <div className={subView === "forest" ? "" : "hidden"}>
           <ArchiveForestView />
+        </div>
+        <div className={subView === "bookmarks" ? "" : "hidden"}>
+          <ArchiveBookmarksView />
         </div>
       </div>
 
