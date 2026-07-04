@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "Life OS Mobile"
+version = "1.0.0"
+id = "artifacts/app-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/mobile/" ]
+localPort = 19796
+
+[services.development]
+run = "pnpm --filter @workspace/app-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/app-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/app-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "19796"
+BASE_PATH = "/mobile/"
