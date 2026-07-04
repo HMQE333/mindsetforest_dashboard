@@ -1,2 +1,3 @@
 - [Lovable → Replit migration (this app)](lovable-migration.md) — heavy Supabase backend was kept, not swapped to Replit primitives; only the frontend was ported.
 - [React 18 pin + realtime channel reuse](react-version-pin.md) — artifacts/app must stay on React 18 (not catalog 19); realtime hooks must clear stale same-topic channels before subscribe().
+- [Bookmarks / client persistence](bookmarks-persistence.md) — localStorage-only data silently fails in the preview iframe; persist to Supabase, cache only in localStorage.

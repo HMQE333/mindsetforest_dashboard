@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { useAuth } from "./useAuth";
 
 export interface Bookmark {
@@ -7,35 +9,31 @@ export interface Bookmark {
   url: string;
 }
 
-const LEGACY_KEY = "dashboard_bookmarks";
+// Bookmarks are persisted server-side (Supabase) like the rest of the app.
+// They live inside the user's `user_onboarding.preferences` jsonb under the
+// `bookmarks` key — there is no dedicated bookmarks table and the client only
+// has the anon key (no DDL), so we reuse the existing per-user preferences blob.
+// localStorage is used ONLY as an instant-paint cache; it is NOT the source of
+// truth. (localStorage-only persistence silently fails in the proxied/
+// partitioned preview iframe, which is why the old version never "stuck".)
 
-// Bookmarks are scoped per user so different accounts sharing a browser don't
-// collide, and so a logged-out session can never persist over someone's data.
-const storageKey = (userId: string) => `dashboard_bookmarks:${userId}`;
+const cacheKey = (userId: string) => `bookmarks_cache:${userId}`;
 
-function readBookmarks(userId: string): Bookmark[] {
+function readCache(userId: string): Bookmark[] {
   try {
-    const raw = localStorage.getItem(storageKey(userId));
-    if (raw) return JSON.parse(raw);
-    // One-time migration from the old un-scoped key so existing bookmarks
-    // aren't lost.
-    const legacy = localStorage.getItem(LEGACY_KEY);
-    if (legacy) {
-      localStorage.setItem(storageKey(userId), legacy);
-      localStorage.removeItem(LEGACY_KEY);
-      return JSON.parse(legacy);
-    }
-    return [];
+    const raw = localStorage.getItem(cacheKey(userId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function writeBookmarks(userId: string, bookmarks: Bookmark[]) {
+function writeCache(userId: string, bookmarks: Bookmark[]) {
   try {
-    localStorage.setItem(storageKey(userId), JSON.stringify(bookmarks));
+    localStorage.setItem(cacheKey(userId), JSON.stringify(bookmarks));
   } catch {
-    // ignore (e.g. storage disabled/partitioned)
+    // ignore — cache is best-effort
   }
 }
 
@@ -59,66 +57,138 @@ export function normalizedUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
+function deriveTitle(title: string, nUrl: string): string {
+  const t = title.trim();
+  if (t) return t;
+  try {
+    return new URL(nUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return nUrl;
+  }
+}
+
 /**
- * Per-user bookmark store backed by localStorage. Intended to have a single
- * consumer at a time (mounted once in the Archive "Bookmarks" tab) — mirroring
- * multiple independent instances would each run their own persist and could
- * clobber each other.
+ * Per-user bookmark store backed by Supabase (`user_onboarding.preferences.bookmarks`),
+ * with a localStorage cache for instant load. Reads/writes are scoped to the
+ * authenticated user via RLS.
  */
 export function useBookmarks() {
   const { user } = useAuth();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  // Tracks which user's bookmarks are currently loaded. Persist is gated on this
-  // matching the active user (render-driven), so the write effect never fires
-  // with stale/previous-user state and can't clobber or leak data.
-  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  // Authoritative in-memory copy so mutations never read a stale closure and so
+  // side effects stay out of the setState updater.
+  const bookmarksRef = useRef<Bookmark[]>([]);
+  // Serializes writes: each persist waits for the previous to finish so two
+  // rapid mutations can't interleave their read-merge-write and let a stale
+  // completion overwrite newer state. Sequential => the latest write wins.
+  const chainRef = useRef<Promise<unknown>>(Promise.resolve());
+
+  const setBoth = useCallback((next: Bookmark[]) => {
+    bookmarksRef.current = next;
+    setBookmarks(next);
+  }, []);
 
   useEffect(() => {
     if (!user) {
-      setBookmarks([]);
-      setLoadedUserId(null);
+      setBoth([]);
       return;
     }
-    setBookmarks(readBookmarks(user.id));
-    setLoadedUserId(user.id);
-  }, [user?.id]);
+    const uid = user.id;
+    let cancelled = false;
 
-  useEffect(() => {
-    if (!user || loadedUserId !== user.id) return;
-    writeBookmarks(user.id, bookmarks);
-  }, [bookmarks, user, loadedUserId]);
+    // Instant paint from cache while the server load is in flight.
+    setBoth(readCache(uid));
 
-  const addBookmark = useCallback((title: string, url: string) => {
-    const nUrl = normalizedUrl(url);
-    if (!nUrl) return;
-    let finalTitle = title.trim();
-    if (!finalTitle) {
-      try {
-        finalTitle = new URL(nUrl).hostname.replace(/^www\./, "");
-      } catch {
-        finalTitle = nUrl;
+    (async () => {
+      const { data, error } = await supabase
+        .from("user_onboarding")
+        .select("preferences")
+        .eq("user_id", uid)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        // Keep the cached value on failure rather than wiping the list.
+        return;
       }
+      const prefs = (data?.preferences as Record<string, unknown>) || {};
+      const raw = prefs.bookmarks;
+      const bms = Array.isArray(raw) ? (raw as Bookmark[]) : [];
+      setBoth(bms);
+      writeCache(uid, bms);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, setBoth]);
+
+  // Read-merge-write: fetch the latest preferences, set only the bookmarks key,
+  // and upsert. Preserves every other preference and only ever touches the
+  // preferences column (completed / custom_categories are left intact).
+  const persist = useCallback(async (uid: string, next: Bookmark[]) => {
+    writeCache(uid, next);
+    const { data, error: readErr } = await supabase
+      .from("user_onboarding")
+      .select("preferences")
+      .eq("user_id", uid)
+      .maybeSingle();
+    // Abort on read failure: writing with an empty base would clobber other
+    // preference keys. The cache still holds `next`; the next successful
+    // mutation re-persists. (A missing row with no error is a valid new row.)
+    if (readErr) {
+      toast.error("Failed to save bookmark");
+      return;
     }
-    setBookmarks((prev) => [...prev, { id: makeId(), title: finalTitle, url: nUrl }]);
+    const prefs = (data?.preferences as Record<string, unknown>) || {};
+    const merged = { ...prefs, bookmarks: next };
+    const { error } = await (supabase.from("user_onboarding") as any).upsert(
+      [{ user_id: uid, preferences: merged }],
+      { onConflict: "user_id" }
+    );
+    if (error) toast.error("Failed to save bookmark");
   }, []);
 
-  const updateBookmark = useCallback((id: string, title: string, url: string) => {
-    const nUrl = normalizedUrl(url);
-    if (!nUrl) return;
-    let finalTitle = title.trim();
-    if (!finalTitle) {
-      try {
-        finalTitle = new URL(nUrl).hostname.replace(/^www\./, "");
-      } catch {
-        finalTitle = nUrl;
-      }
-    }
-    setBookmarks((prev) => prev.map((b) => (b.id === id ? { ...b, title: finalTitle, url: nUrl } : b)));
-  }, []);
+  // Applies a mutation: updates state synchronously and enqueues a serialized
+  // persist. persist runs OUTSIDE the setState updater to stay side-effect-free.
+  const apply = useCallback(
+    (next: Bookmark[]) => {
+      if (!user) return;
+      const uid = user.id;
+      setBoth(next);
+      chainRef.current = chainRef.current
+        .catch(() => {})
+        .then(() => persist(uid, next));
+    },
+    [user, setBoth, persist]
+  );
 
-  const deleteBookmark = useCallback((id: string) => {
-    setBookmarks((prev) => prev.filter((b) => b.id !== id));
-  }, []);
+  const addBookmark = useCallback(
+    (title: string, url: string) => {
+      const nUrl = normalizedUrl(url);
+      if (!nUrl) return;
+      apply([...bookmarksRef.current, { id: makeId(), title: deriveTitle(title, nUrl), url: nUrl }]);
+    },
+    [apply]
+  );
+
+  const updateBookmark = useCallback(
+    (id: string, title: string, url: string) => {
+      const nUrl = normalizedUrl(url);
+      if (!nUrl) return;
+      const finalTitle = deriveTitle(title, nUrl);
+      apply(
+        bookmarksRef.current.map((b) => (b.id === id ? { ...b, title: finalTitle, url: nUrl } : b))
+      );
+    },
+    [apply]
+  );
+
+  const deleteBookmark = useCallback(
+    (id: string) => {
+      apply(bookmarksRef.current.filter((b) => b.id !== id));
+    },
+    [apply]
+  );
 
   return { bookmarks, addBookmark, updateBookmark, deleteBookmark };
 }

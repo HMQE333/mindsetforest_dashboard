@@ -177,19 +177,40 @@ export function useUserSettings() {
     return customRewards || REWARDS;
   }, [customRewards]);
 
+  // Persist to user_onboarding while preserving preference keys this hook does
+  // not manage (e.g. `bookmarks`, written by useBookmarks). Read-merge-write:
+  // fetch the current preferences from the DB, overlay the keys we're saving,
+  // and upsert — so a settings save never clobbers unrelated preference keys.
+  const persistOnboarding = useCallback(
+    async (cats: CustomCategory[], prefs: UserPreferences) => {
+      const { data, error: readErr } = await supabase
+        .from("user_onboarding")
+        .select("preferences")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+      // Abort on read failure: writing with an empty base would clobber
+      // unmanaged preference keys (e.g. bookmarks). Caller surfaces the error.
+      if (readErr) return { error: readErr };
+      const existing = (data?.preferences as Record<string, unknown>) || {};
+      const mergedPrefs = { ...existing, ...prefs };
+      return await (supabase.from("user_onboarding") as any).upsert([{
+        user_id: user!.id,
+        completed: true,
+        custom_categories: cats,
+        preferences: mergedPrefs,
+      }], { onConflict: "user_id" });
+    },
+    [user]
+  );
+
   const saveCategories = useCallback(async (cats: CustomCategory[]) => {
     if (!user) return;
     setCustomCategories(cats);
     try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
-    const { error } = await (supabase.from("user_onboarding") as any).upsert([{
-      user_id: user.id,
-      completed: true,
-      custom_categories: cats,
-      preferences: preferences,
-    }], { onConflict: "user_id" });
+    const { error } = await persistOnboarding(cats, preferences);
     if (error) toast.error("Failed to save categories");
     else toast.success("Categories saved");
-  }, [user, preferences]);
+  }, [user, preferences, persistOnboarding]);
 
   const saveMetrics = useCallback(async (metrics: (Omit<UserMetric, "id"> & { existingId?: string })[]) => {
     if (!user) return;
@@ -289,15 +310,10 @@ export function useUserSettings() {
   const savePreferences = useCallback(async (prefs: UserPreferences) => {
     if (!user) return;
     setPreferences(prefs);
-    const { error } = await (supabase.from("user_onboarding") as any).upsert([{
-      user_id: user.id,
-      completed: true,
-      custom_categories: customCategories,
-      preferences: prefs,
-    }], { onConflict: "user_id" });
+    const { error } = await persistOnboarding(customCategories, prefs);
     if (error) toast.error("Failed to save preferences");
     else toast.success("Preferences saved");
-  }, [user, customCategories]);
+  }, [user, customCategories, persistOnboarding]);
 
   const saveEnabledModules = useCallback(async (modules: string[], order?: string[]) => {
     const newPrefs = { ...preferences, enabledModules: modules };
