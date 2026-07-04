@@ -109,6 +109,33 @@ export function useWatchEntries() {
     [user],
   );
 
+  const addEntries = useCallback(
+    async (inputs: WatchEntryInput[]): Promise<number> => {
+      if (!user || inputs.length === 0) return 0;
+      const payload = inputs.map(i => ({ ...i, user_id: user.id }));
+      const { data, error } = await (supabase.from("watch_entries") as any)
+        .upsert(payload, { onConflict: "user_id,entry_date" })
+        .select();
+      if (error) {
+        if (!guardTable(error)) {
+          console.error("Watch bulk import error:", error);
+          toast.error("Failed to import watch data");
+        }
+        return 0;
+      }
+      const rows = (data ?? []).map(normalize) as WatchEntry[];
+      setEntries(prev => {
+        const byDate = new Map<string, WatchEntry>();
+        for (const e of prev) byDate.set(e.entry_date, e);
+        for (const r of rows) byDate.set(r.entry_date, r);
+        return Array.from(byDate.values()).sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+      });
+      toast.success(`Imported ${rows.length} day${rows.length === 1 ? "" : "s"} ⌚`);
+      return rows.length;
+    },
+    [user],
+  );
+
   const updateEntry = useCallback(
     async (id: string, updates: Partial<WatchEntryInput>): Promise<boolean> => {
       if (!user) return false;
@@ -174,6 +201,7 @@ export function useWatchEntries() {
     loading,
     tableReady,
     addEntry,
+    addEntries,
     updateEntry,
     deleteEntry,
     seedSampleData,

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Pencil, Trash2, Printer, Watch, HeartPulse, Sparkles, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Printer, Watch, HeartPulse, Sparkles, AlertCircle, Upload } from "lucide-react";
 import { useHealthEntries } from "@/hooks/useHealthEntries";
 import { useWatchEntries } from "@/hooks/useWatchEntries";
 import {
@@ -28,6 +28,7 @@ import LabTestListModal from "./LabTestListModal";
 import WatchMetricCard from "./WatchMetricCard";
 import ReadinessSummary from "./ReadinessSummary";
 import LogWatchModal from "./LogWatchModal";
+import WeeklyImportModal from "./WeeklyImportModal";
 
 const CORE_METRIC_IDS = [
   "weight_kg",
@@ -100,6 +101,7 @@ export default function HealthView() {
   const watch = useWatchEntries();
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [editingWatch, setEditingWatch] = useState<WatchEntry | null>(null);
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
 
   const defaultHeight = useMemo(() => {
     for (const e of entries) {
@@ -222,6 +224,14 @@ export default function HealthView() {
             >
               <Plus className="w-4 h-4" /> Log from Watch
             </button>
+            {watch.tableReady && (
+              <button
+                onClick={() => setWeeklyOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-muted/40 text-foreground font-semibold text-sm border border-border hover:bg-muted/60 transition-all inline-flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" /> Weekly import
+              </button>
+            )}
             {watch.tableReady && (
               <button
                 onClick={watch.seedSampleData}
@@ -518,12 +528,21 @@ export default function HealthView() {
               </button>
             </>
           ) : (
-            <button
-              onClick={handleNewWatch}
-              className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all inline-flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Log from Watch
-            </button>
+            <>
+              <button
+                onClick={() => setWeeklyOpen(true)}
+                className="px-3 py-2 rounded-xl bg-muted/40 text-muted-foreground hover:text-foreground text-xs font-semibold transition-all border border-border inline-flex items-center gap-1.5"
+                title="Import a whole week at once from a CSV"
+              >
+                <Upload className="w-3.5 h-3.5" /> Weekly import
+              </button>
+              <button
+                onClick={handleNewWatch}
+                className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Log from Watch
+              </button>
+            </>
           )}
         </div>
       </motion.div>
@@ -569,6 +588,12 @@ export default function HealthView() {
           editingWatch ? watch.updateEntry(editingWatch.id, input) : !!(await watch.addEntry(input))
         }
         initial={editingWatch}
+      />
+
+      <WeeklyImportModal
+        open={weeklyOpen}
+        onClose={() => setWeeklyOpen(false)}
+        onImport={watch.addEntries}
       />
     </div>
   );

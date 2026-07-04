@@ -1,4 +1,5 @@
-- [Lovable → Replit migration (this app)](lovable-migration.md) — Supabase backend kept, only frontend ported; new tables/columns can't be applied from the workspace (anon key only) — write migration file + degrade gracefully + user runs it.
-- [React 18 pin + realtime channel reuse](react-version-pin.md) — artifacts/app must stay on React 18 (not catalog 19); realtime hooks must clear stale same-topic channels before subscribe().
+- [Lovable → Replit migration (this app)](lovable-migration.md) — Supabase backend kept, frontend-only port; no DDL from workspace (anon key) — ship migration file + degrade gracefully.
+- [React 18 pin + realtime channel reuse](react-version-pin.md) — artifacts/app stays on React 18 (not catalog 19); clear stale same-topic realtime channels before subscribe().
+- [Watch entry_date parsing](watch-entry-dates.md) — date-only strings must be parsed as local calendar dates (not toISOString/UTC); wrong day silently upserts over the wrong entry_date.
 - [Bookmarks / client persistence](bookmarks-persistence.md) — localStorage-only data silently fails in the preview iframe; persist to Supabase, cache only in localStorage.
 - [Mobile React dedup](mobile-react-dedup.md) — artifacts/app-mobile needs a custom metro.config.js forcing one React copy; web's React 18 pin makes pnpm hand mobile deps the react@18 peer variant → "Invalid hook call".
