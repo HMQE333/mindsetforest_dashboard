@@ -934,6 +934,111 @@ export type Database = {
         }
         Relationships: []
       }
+      watch_entries: {
+        Row: {
+          body_battery: number | null
+          created_at: string
+          entry_date: string
+          fitness_age: number | null
+          hrv_ms: number | null
+          hrv_status: string | null
+          id: string
+          intensity_minutes: number | null
+          notes: string
+          race_10k_sec: number | null
+          race_5k_sec: number | null
+          race_half_sec: number | null
+          race_marathon_sec: number | null
+          recovery_time_hrs: number | null
+          resting_hr: number | null
+          run_avg_hr: number | null
+          run_cadence_spm: number | null
+          run_distance_km: number | null
+          run_kcal: number | null
+          run_pace_sec: number | null
+          run_power_w: number | null
+          sleep_awake_min: number | null
+          sleep_deep_min: number | null
+          sleep_light_min: number | null
+          sleep_rem_min: number | null
+          sleep_score: number | null
+          source: string
+          steps: number | null
+          stress_level: number | null
+          updated_at: string
+          user_id: string
+          vo2max: number | null
+        }
+        Insert: {
+          body_battery?: number | null
+          created_at?: string
+          entry_date?: string
+          fitness_age?: number | null
+          hrv_ms?: number | null
+          hrv_status?: string | null
+          id?: string
+          intensity_minutes?: number | null
+          notes?: string
+          race_10k_sec?: number | null
+          race_5k_sec?: number | null
+          race_half_sec?: number | null
+          race_marathon_sec?: number | null
+          recovery_time_hrs?: number | null
+          resting_hr?: number | null
+          run_avg_hr?: number | null
+          run_cadence_spm?: number | null
+          run_distance_km?: number | null
+          run_kcal?: number | null
+          run_pace_sec?: number | null
+          run_power_w?: number | null
+          sleep_awake_min?: number | null
+          sleep_deep_min?: number | null
+          sleep_light_min?: number | null
+          sleep_rem_min?: number | null
+          sleep_score?: number | null
+          source?: string
+          steps?: number | null
+          stress_level?: number | null
+          updated_at?: string
+          user_id: string
+          vo2max?: number | null
+        }
+        Update: {
+          body_battery?: number | null
+          created_at?: string
+          entry_date?: string
+          fitness_age?: number | null
+          hrv_ms?: number | null
+          hrv_status?: string | null
+          id?: string
+          intensity_minutes?: number | null
+          notes?: string
+          race_10k_sec?: number | null
+          race_5k_sec?: number | null
+          race_half_sec?: number | null
+          race_marathon_sec?: number | null
+          recovery_time_hrs?: number | null
+          resting_hr?: number | null
+          run_avg_hr?: number | null
+          run_cadence_spm?: number | null
+          run_distance_km?: number | null
+          run_kcal?: number | null
+          run_pace_sec?: number | null
+          run_power_w?: number | null
+          sleep_awake_min?: number | null
+          sleep_deep_min?: number | null
+          sleep_light_min?: number | null
+          sleep_rem_min?: number | null
+          sleep_score?: number | null
+          source?: string
+          steps?: number | null
+          stress_level?: number | null
+          updated_at?: string
+          user_id?: string
+          vo2max?: number | null
+        }
+        Relationships: []
+      }
       ladder_state: {
         Row: {
           active_category: string | null
