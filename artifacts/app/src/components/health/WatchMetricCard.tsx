@@ -1,5 +1,7 @@
+import { useId } from "react";
 import { motion } from "framer-motion";
 import { Info } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   SIGNAL,
@@ -14,7 +16,41 @@ interface Props {
   def: WatchMetricDef;
   entry: WatchEntry | null;
   previous: WatchEntry | null;
+  /** Chronological (oldest→newest) values for this metric, for the trend sparkline. */
+  history?: { date: string; value: number }[];
   index?: number;
+}
+
+function TrendSparkline({ data, color }: { data: { date: string; value: number }[]; color: string }) {
+  const gradientId = useId();
+  const values = data.map(d => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  // Pad the domain so a flat-ish line still reads as a gentle wave, not a hard edge.
+  const pad = (max - min || Math.abs(max) || 1) * 0.15;
+  return (
+    <ResponsiveContainer width="100%" height={32}>
+      <AreaChart data={data} margin={{ top: 3, right: 0, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <YAxis hide domain={[min - pad, max + pad]} />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          strokeWidth={1.75}
+          fill={`url(#${gradientId})`}
+          isAnimationActive={false}
+          dot={false}
+          activeDot={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
 }
 
 interface CardContent {
@@ -103,7 +139,7 @@ function getContent(def: WatchMetricDef, e: WatchEntry | null, prev: WatchEntry 
   }
 }
 
-export default function WatchMetricCard({ def, entry, previous, index = 0 }: Props) {
+export default function WatchMetricCard({ def, entry, previous, history = [], index = 0 }: Props) {
   const c = getContent(def, entry, previous);
   const trend = watchTrend(def, c.trendValue, c.prevTrendValue);
   const hasValue = c.primary != null;
@@ -113,6 +149,11 @@ export default function WatchMetricCard({ def, entry, previous, index = 0 }: Pro
     trend?.tone === "good" ? def.good : trend?.tone === "watch" ? def.watch : null;
   const readColor =
     trend?.tone === "good" ? SIGNAL.good : trend?.tone === "watch" ? SIGNAL.watch : SIGNAL.info;
+
+  // Trend line — the last few weeks, judged over time (needs ≥2 points to draw).
+  const showSpark = history.length >= 2;
+  const sparkColor =
+    trend?.tone === "good" ? SIGNAL.good : trend?.tone === "watch" ? SIGNAL.watch : def.color;
 
   const progressPct = c.progress ? Math.min(100, (c.progress.value / c.progress.max) * 100) : 0;
   const progressMet = c.progress ? c.progress.value >= c.progress.max : false;
@@ -210,6 +251,16 @@ export default function WatchMetricCard({ def, entry, previous, index = 0 }: Pro
           >
             <span className="font-mono">{read.arrow}</span>
             <span className="uppercase tracking-wide">{read.small}</span>
+          </div>
+        )}
+
+        {/* Trend line — the last few weeks, so "am I getting better?" reads at a glance */}
+        {showSpark && (
+          <div className="mb-2">
+            <div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
+              <span className="uppercase tracking-wider font-semibold opacity-70">Trend · {history.length} pts</span>
+            </div>
+            <TrendSparkline data={history} color={sparkColor} />
           </div>
         )}
 

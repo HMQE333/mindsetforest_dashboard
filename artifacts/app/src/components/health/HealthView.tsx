@@ -135,6 +135,15 @@ export default function HealthView() {
       .map(e => ({ date: e.entry_date, value: valueFor(e, id) ?? 0 }))
       .filter(p => p.value > 0);
 
+  // Per-metric trend history for the watch cards — last ~3 weeks of that metric,
+  // chronological (oldest→newest), skipping days where it wasn't logged.
+  const watchHistoryFor = (id: keyof WatchEntry) =>
+    watch.entries
+      .slice(0, 21)
+      .reverse()
+      .map(e => ({ date: e.entry_date, value: e[id] as number | null }))
+      .filter((p): p is { date: string; value: number } => p.value != null && Number.isFinite(p.value));
+
   const insights = useMemo(() => {
     if (!latest) return [];
     const out: { tone: "good" | "warn" | "info"; text: string }[] = [];
@@ -245,6 +254,7 @@ export default function HealthView() {
                       def={def}
                       entry={watch.latest}
                       previous={watch.previous}
+                      history={watchHistoryFor(def.id as keyof WatchEntry)}
                       index={i}
                     />
                   ))}
