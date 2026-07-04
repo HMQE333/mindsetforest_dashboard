@@ -181,7 +181,14 @@ export function useWatchEntries() {
 
   const seedSampleData = useCallback(async () => {
     if (!user) return;
-    const samples = generateSampleWatchEntries();
+    // Non-destructive: only fill days that don't already have an entry, so
+    // seeding never overwrites real data (and never hits the unique constraint).
+    const existing = new Set(entries.map(e => e.entry_date));
+    const samples = generateSampleWatchEntries().filter(s => !existing.has(s.entry_date));
+    if (samples.length === 0) {
+      toast.info("You already have entries across the sample range — nothing to add");
+      return;
+    }
     const { data, error } = await (supabase.from("watch_entries") as any)
       .insert(samples.map(s => ({ ...s, user_id: user.id })))
       .select();
@@ -189,12 +196,15 @@ export function useWatchEntries() {
       if (!guardTable(error)) toast.error("Failed to seed samples");
       return;
     }
-    const rows = (data ?? []).map(normalize).sort((a: WatchEntry, b: WatchEntry) =>
-      b.entry_date.localeCompare(a.entry_date),
-    );
-    setEntries(prev => [...rows, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
-    toast.success("Sample watch data added — explore freely ⌚");
-  }, [user]);
+    const rows = (data ?? []).map(normalize) as WatchEntry[];
+    setEntries(prev => {
+      const byDate = new Map<string, WatchEntry>();
+      for (const e of prev) byDate.set(e.entry_date, e);
+      for (const row of rows) byDate.set(row.entry_date, row);
+      return Array.from(byDate.values()).sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+    });
+    toast.success(`Sample watch data added (${rows.length} days) — explore freely ⌚`);
+  }, [user, entries]);
 
   return {
     entries,

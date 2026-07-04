@@ -484,13 +484,32 @@ export function watchTrend(
 }
 
 // ── Sample data (first-load demo) ─────────────────────────
+// Twelve weeks of realistic daily data telling a "getting fitter" story:
+// resting HR & recovery-time drift down, HRV / VO₂ max / sleep drift up, race
+// predictions fall, all with day-to-day noise and the odd rough night. Four
+// runs a week (easy / tempo / long / easy) sit on top of the daily wellness.
 export function generateSampleWatchEntries(): WatchEntryInput[] {
-  const today = new Date();
+  const DAYS = 84; // 12 weeks
   const dayOffset = (n: number) => {
-    const d = new Date(today);
+    const d = new Date();
     d.setDate(d.getDate() - n);
-    return d.toISOString().split("T")[0];
+    const pad = (x: number) => String(x).padStart(2, "0");
+    // Local calendar date — toISOString() shifts the day across timezones.
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
+
+  // Deterministic PRNG (mulberry32) so the demo looks the same every load.
+  let seed = 20260704;
+  const rand = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const noise = (amp: number) => (rand() * 2 - 1) * amp;
+  const r = (n: number, d = 0) => Number(n.toFixed(d));
+  const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
   const base = (): Omit<WatchEntryInput, "entry_date"> => ({
     source: "manual",
     resting_hr: null, hrv_ms: null, hrv_status: null,
@@ -501,36 +520,92 @@ export function generateSampleWatchEntries(): WatchEntryInput[] {
     race_5k_sec: null, race_10k_sec: null, race_half_sec: null, race_marathon_sec: null, fitness_age: null,
     steps: null, intensity_minutes: null, notes: "",
   });
-  return [
-    {
-      ...base(), entry_date: dayOffset(3),
-      resting_hr: 56, hrv_ms: 62, hrv_status: "balanced",
-      sleep_score: 82, sleep_deep_min: 74, sleep_rem_min: 96, sleep_light_min: 210, sleep_awake_min: 18,
-      body_battery: 88, stress_level: 28, recovery_time_hrs: 8,
-      vo2max: 49, run_pace_sec: 318, run_distance_km: 8.2, run_kcal: 560,
-      run_cadence_spm: 176, run_power_w: 268, run_avg_hr: 148,
-      race_5k_sec: 1350, race_10k_sec: 2820, race_half_sec: 6300, race_marathon_sec: 13500, fitness_age: 32,
-      steps: 11200, intensity_minutes: 165,
-    },
-    {
-      ...base(), entry_date: dayOffset(1),
-      resting_hr: 59, hrv_ms: 55, hrv_status: "balanced",
-      sleep_score: 74, sleep_deep_min: 61, sleep_rem_min: 84, sleep_light_min: 205, sleep_awake_min: 24,
-      body_battery: 71, stress_level: 38, recovery_time_hrs: 18,
-      vo2max: 49, run_pace_sec: 330, run_distance_km: 6.0, run_kcal: 410,
-      run_cadence_spm: 172, run_power_w: 255, run_avg_hr: 152,
-      race_5k_sec: 1355, race_10k_sec: 2830, race_half_sec: 6320, race_marathon_sec: 13560, fitness_age: 32,
-      steps: 8900, intensity_minutes: 140,
-    },
-    {
-      ...base(), entry_date: dayOffset(0),
-      resting_hr: 65, hrv_ms: 44, hrv_status: "low",
-      sleep_score: 61, sleep_deep_min: 48, sleep_rem_min: 70, sleep_light_min: 190, sleep_awake_min: 40,
-      body_battery: 38, stress_level: 58, recovery_time_hrs: 34,
-      vo2max: 48, run_pace_sec: 342, run_distance_km: 5.1, run_kcal: 350,
-      run_cadence_spm: 168, run_power_w: 244, run_avg_hr: 156,
-      race_5k_sec: 1360, race_10k_sec: 2840, race_half_sec: 6340, race_marathon_sec: 13620, fitness_age: 33,
-      steps: 6400, intensity_minutes: 120,
-    },
-  ];
+
+  const out: WatchEntryInput[] = [];
+  let carryRecovery = 6; // hours of recovery still owed, decays daily
+
+  // Walk oldest → newest so trends and recovery carry-over read chronologically.
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const p = (DAYS - 1 - i) / (DAYS - 1); // 0 (oldest) → 1 (today)
+    const date = dayOffset(i);
+    const dow = new Date(`${date}T00:00:00`).getDay(); // 0 Sun … 6 Sat
+    const bad = rand() < 0.13; // ~1 rough night a week
+
+    // ── Recovery & readiness ──
+    const sleepScore = clamp(r(78 + p * 6 + noise(6) - (bad ? 22 : 0) - (dow === 6 ? 3 : 0)), 45, 96);
+    const restingHr = clamp(r(62 - p * 9 + noise(1.5) + (bad ? 5 : 0)), 48, 70);
+    const hrv = clamp(r(48 + p * 18 + noise(4) - (bad ? 12 : 0)), 30, 78);
+    const hrvStatus = bad ? (rand() < 0.5 ? "low" : "unbalanced") : hrv < 46 ? "unbalanced" : "balanced";
+    const battery = clamp(r(55 + p * 10 + (sleepScore - 70) * 0.6 + noise(6) - (bad ? 20 : 0)), 25, 98);
+    const stress = clamp(r(45 - p * 8 - (sleepScore - 70) * 0.3 + noise(6) + (bad ? 15 : 0)), 18, 72);
+
+    const deep = clamp(r(sleepScore * 0.85 + noise(8) - (bad ? 15 : 0)), 25, 105);
+    const rem = clamp(r(sleepScore * 1.05 + noise(10) - (bad ? 12 : 0)), 40, 125);
+    const awake = clamp(r(42 - sleepScore * 0.28 + noise(6) + (bad ? 18 : 0)), 4, 70);
+    const light = clamp(r(200 + noise(18) - (bad ? 20 : 0)), 150, 245);
+
+    // ── Training schedule: Tue easy · Thu tempo · Sat long · Sun easy ──
+    let runType: "easy" | "tempo" | "long" | null =
+      dow === 2 || dow === 0 ? "easy" : dow === 4 ? "tempo" : dow === 6 ? "long" : null;
+    if (bad && runType === "tempo") runType = "easy"; // back off hard days after a rough night
+
+    const easyPace = 345 - p * 30; // sec/km, improving over the block
+    let pace: number | null = null,
+      dist: number | null = null,
+      avgHr: number | null = null,
+      cad: number | null = null,
+      pow: number | null = null,
+      kcal: number | null = null;
+
+    carryRecovery = Math.max(0, carryRecovery - 22 + noise(2));
+    if (runType === "easy") {
+      pace = r(easyPace + 6 + noise(5));
+      dist = r(clamp(6.5 + noise(1.5), 4, 10), 1);
+      avgHr = r(144 + noise(4));
+      carryRecovery += 8;
+    } else if (runType === "tempo") {
+      pace = r(easyPace - 34 + noise(4));
+      dist = r(clamp(9 + noise(1), 7, 12), 1);
+      avgHr = r(165 + noise(4));
+      carryRecovery += 30;
+    } else if (runType === "long") {
+      pace = r(easyPace + 12 + noise(5));
+      dist = r(clamp(15 + p * 5 + noise(2), 12, 24), 1);
+      avgHr = r(150 + noise(4));
+      carryRecovery += 34;
+    }
+    if (runType) {
+      cad = r(clamp(170 + p * 6 + (runType === "tempo" ? 4 : 0) + noise(2), 164, 182));
+      pow = r(clamp(245 + p * 20 + (runType === "tempo" ? 15 : 0) + noise(6), 230, 300));
+      kcal = r((dist ?? 0) * 62 + noise(25));
+    }
+    const recovery = r(clamp(carryRecovery, 0, 60));
+
+    // ── Fitness & output (slow trends) ──
+    const vo2 = r(clamp(46 + p * 5 + noise(0.4), 44, 53), 1);
+    const fitnessAge = r(clamp(34 - p * 3 + noise(0.4), 29, 36));
+
+    // ── Everyday movement ──
+    const steps = r(clamp(7000 + p * 1500 + (runType ? 2500 : 0) + noise(1500), 4000, 16000));
+    const intensity = r(clamp(150 + p * 40 + noise(20), 90, 220));
+
+    out.push({
+      ...base(),
+      entry_date: date,
+      resting_hr: restingHr, hrv_ms: hrv, hrv_status: hrvStatus,
+      sleep_score: sleepScore, sleep_deep_min: deep, sleep_rem_min: rem, sleep_light_min: light, sleep_awake_min: awake,
+      body_battery: battery, stress_level: stress, recovery_time_hrs: recovery,
+      vo2max: vo2,
+      run_pace_sec: pace, run_distance_km: dist, run_kcal: kcal,
+      run_cadence_spm: cad, run_power_w: pow, run_avg_hr: avgHr,
+      race_5k_sec: r(1410 - p * 110 + noise(8)),
+      race_10k_sec: r(2940 - p * 240 + noise(15)),
+      race_half_sec: r(6540 - p * 600 + noise(30)),
+      race_marathon_sec: r(13800 - p * 1200 + noise(60)),
+      fitness_age: fitnessAge,
+      steps, intensity_minutes: intensity,
+      notes: bad ? "rough night's sleep" : runType === "long" ? "weekend long run" : runType === "tempo" ? "threshold session" : "",
+    });
+  }
+  return out;
 }
