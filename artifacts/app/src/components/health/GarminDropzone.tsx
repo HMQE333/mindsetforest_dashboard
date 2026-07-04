@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Upload, FileText, X, Watch } from "lucide-react";
 import { toast } from "sonner";
+import { Decoder, Stream } from "@garmin/fitsdk";
 
 /** Running-performance fields a Garmin export can auto-fill. */
 export type RunFields = Partial<{
@@ -194,6 +195,68 @@ function parseCSV(text: string): RunFields {
   return out;
 }
 
+/** Decode Garmin's native binary .FIT export (Forerunner etc.) via the official FIT SDK. */
+function parseFIT(buf: ArrayBuffer): RunFields {
+  const stream = Stream.fromArrayBuffer(buf);
+  if (!Decoder.isFIT(stream)) return {};
+  const { messages } = new Decoder(stream).read();
+
+  const sessions = (messages.sessionMesgs ?? []) as any[];
+  // Prefer a running session, else the one that covered the most distance.
+  const session =
+    sessions.find(s => typeof s.sport === "string" && s.sport.toLowerCase().includes("running")) ??
+    sessions.slice().sort((a, b) => (b.totalDistance ?? 0) - (a.totalDistance ?? 0))[0];
+
+  const out: RunFields = {};
+
+  if (session) {
+    const distM = num(session.totalDistance);
+    const distKm = distM != null ? distM / 1000 : null;
+    if (distKm && distKm > 0) out.run_distance_km = round(distKm, 2)!;
+
+    // Pace: prefer avgSpeed (m/s → sec/km); fall back to timer time / distance.
+    const speed = num(session.avgSpeed);
+    if (speed && speed > 0) out.run_pace_sec = Math.round(1000 / speed);
+    else {
+      const time = num(session.totalTimerTime) ?? num(session.totalElapsedTime);
+      if (time && time > 0 && distKm && distKm > 0) out.run_pace_sec = Math.round(time / distKm);
+    }
+
+    const kcal = num(session.totalCalories);
+    if (kcal && kcal > 0) out.run_kcal = Math.round(kcal);
+    const hr = num(session.avgHeartRate);
+    if (hr && hr > 0) out.run_avg_hr = Math.round(hr);
+    const cad = toSpm(num(session.avgRunningCadence) ?? num(session.avgCadence));
+    if (cad) out.run_cadence_spm = cad;
+    const pw = num(session.avgPower);
+    if (pw && pw > 0) out.run_power_w = Math.round(pw);
+  }
+
+  // Fallback: aggregate the per-second record messages when no session summary
+  // provided a given field (older/partial FIT files).
+  const records = (messages.recordMesgs ?? []) as any[];
+  if (records.length) {
+    if (out.run_distance_km == null) {
+      const last = num(records[records.length - 1]?.distance);
+      if (last && last > 0) out.run_distance_km = round(last / 1000, 2)!;
+    }
+    if (out.run_avg_hr == null) {
+      const h = avg(records.map(r => num(r.heartRate)).filter((n): n is number => n != null && n > 0));
+      if (h) out.run_avg_hr = Math.round(h);
+    }
+    if (out.run_cadence_spm == null) {
+      const c = toSpm(avg(records.map(r => num(r.cadence)).filter((n): n is number => n != null && n > 0)));
+      if (c) out.run_cadence_spm = c;
+    }
+    if (out.run_power_w == null) {
+      const p = avg(records.map(r => num(r.power)).filter((n): n is number => n != null && n > 0));
+      if (p) out.run_power_w = Math.round(p);
+    }
+  }
+
+  return out;
+}
+
 export default function GarminDropzone({ onParsed }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -202,23 +265,27 @@ export default function GarminDropzone({ onParsed }: Props) {
   const process = async (f: File) => {
     setFile(f);
     const name = f.name.toLowerCase();
-    if (name.endsWith(".fit")) {
-      toast.info("FIT is Garmin's binary format — export the run as TCX, GPX or CSV, or type the numbers below.");
-      return;
-    }
     let fields: RunFields = {};
     try {
-      const text = await f.text();
-      if (name.endsWith(".tcx")) fields = parseTCX(text);
-      else if (name.endsWith(".gpx")) fields = parseGPX(text);
-      else if (name.endsWith(".csv")) fields = parseCSV(text);
-      else fields = text.includes("<TrainingCenterDatabase") ? parseTCX(text) : text.includes("<gpx") ? parseGPX(text) : parseCSV(text);
+      if (name.endsWith(".fit")) {
+        fields = parseFIT(await f.arrayBuffer());
+      } else {
+        const text = await f.text();
+        if (name.endsWith(".tcx")) fields = parseTCX(text);
+        else if (name.endsWith(".gpx")) fields = parseGPX(text);
+        else if (name.endsWith(".csv")) fields = parseCSV(text);
+        else fields = text.includes("<TrainingCenterDatabase") ? parseTCX(text) : text.includes("<gpx") ? parseGPX(text) : parseCSV(text);
+      }
     } catch (e) {
       console.error("Garmin parse error:", e);
     }
     const count = Object.values(fields).filter(v => v != null).length;
     if (count === 0) {
-      toast.warning("Couldn't read run data from that file — enter the numbers manually below.");
+      toast.warning(
+        name.endsWith(".fit")
+          ? "Couldn't read that .FIT file — try exporting the run as TCX/GPX, or enter the numbers below."
+          : "Couldn't read run data from that file — enter the numbers manually below.",
+      );
       return;
     }
     onParsed(fields);
