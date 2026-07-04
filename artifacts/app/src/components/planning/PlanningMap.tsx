@@ -214,9 +214,40 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
   return children.reduce((sum, c) => sum + countLeaves(c.id, allTasks), 0);
 }
 
+/* ── Collision / empty-space helpers ───────────────────────── */
+// Approximate node footprint (px) used for overlap tests. Kept below the
+// tree spacing (X_SPACING 260 / Y_SPACING 120) so a clean computed layout
+// never registers as a collision — only manually-moved or ad-hoc nodes do.
+const NODE_W = 230;
+const NODE_H = 112;
+
+function nodesOverlap(a: { x: number; y: number }, b: { x: number; y: number }, w = NODE_W, h = NODE_H): boolean {
+  return Math.abs(a.x - b.x) < w && Math.abs(a.y - b.y) < h;
+}
+
+// Given a desired position and the set of occupied positions, return the
+// nearest non-overlapping spot via an outward ring (spiral) search.
+function findFreeSpot(desired: { x: number; y: number }, occupied: { x: number; y: number }[], w = NODE_W, h = NODE_H): { x: number; y: number } {
+  const collides = (p: { x: number; y: number }) => occupied.some(o => nodesOverlap(p, o, w, h));
+  if (!collides(desired)) return desired;
+  const stepX = w * 0.8;
+  const stepY = h * 0.95;
+  for (let ring = 1; ring <= 16; ring++) {
+    for (let dy = -ring; dy <= ring; dy++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue; // perimeter of the ring only
+        const p = { x: desired.x + dx * stepX, y: desired.y + dy * stepY };
+        if (!collides(p)) return p;
+      }
+    }
+  }
+  return desired;
+}
+
 function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any, xOffset: number = 0, usePersistedPositions: boolean = true): { nodes: Node[]; edges: Edge[]; treeWidth: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
+  const occupied: { x: number; y: number }[] = [];
   const rootId = `project-${project.id}`;
   const projectTasks = tasks.filter(t => t.project_id === project.id);
   const treeTasks = projectTasks.filter(t => !t.standalone);
@@ -230,43 +261,71 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
 
   const treeCenterX = xOffset + treeWidth / 2;
 
-  nodes.push({ id: rootId, type: "projectNode", position: { x: treeCenterX - 100, y: 0 }, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } });
+  const rootPos = { x: treeCenterX - 100, y: 0 };
+  nodes.push({ id: rootId, type: "projectNode", position: rootPos, data: { project, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id) } });
+  occupied.push(rootPos);
 
-  function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentX: number): number {
-    if (children.length === 0) return parentX;
+  function layoutChildren(parentNodeId: string, children: PlanningTask[], depth: number, parentComputedX: number, parentActualX: number, parentActualY: number, parentMoved: boolean): void {
+    if (children.length === 0) return;
     const totalWidth = children.reduce((sum, child) => sum + Math.max(1, countLeaves(child.id, treeTasks)) * X_SPACING, 0);
-    let currentX = parentX - totalWidth / 2 + X_SPACING / 2;
+    let currentX = parentComputedX - totalWidth / 2 + X_SPACING / 2;
     children.forEach(child => {
       const grandchildren = treeTasks.filter(t => t.parent_id === child.id);
       const leafCount = Math.max(1, countLeaves(child.id, treeTasks));
       const computedX = currentX + (leafCount * X_SPACING) / 2 - X_SPACING / 2;
       const computedY = depth * Y_SPACING;
-      // Use persisted position if available, otherwise use computed
-      const nodeX = (usePersistedPositions && child.position_x != null) ? child.position_x : computedX;
-      const nodeY = (usePersistedPositions && child.position_y != null) ? child.position_y : computedY;
+
+      const hasPersisted = usePersistedPositions && child.position_x != null && child.position_y != null;
+      let baseX: number;
+      let baseY: number;
+      if (hasPersisted) {
+        // Manually placed — respect the stored position exactly.
+        baseX = child.position_x as number;
+        baseY = child.position_y as number;
+      } else if (parentMoved) {
+        // Parent was manually moved: place the child relative to the parent's
+        // real position (preserving the fan-out) instead of the far-away
+        // tree-root-relative slot, so new children don't "run away".
+        baseX = parentActualX + (computedX - parentComputedX);
+        baseY = parentActualY + Y_SPACING;
+      } else {
+        baseX = computedX;
+        baseY = computedY;
+      }
+
+      // Collision-aware slotting: nudge to the nearest free spot so siblings
+      // (or unrelated nodes) never stack on top of each other.
+      const spot = hasPersisted ? { x: baseX, y: baseY } : findFreeSpot({ x: baseX, y: baseY }, occupied);
+      occupied.push(spot);
+
       const nodeId = `task-${child.id}`;
       const isLink = child.level === "link";
-      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: nodeX, y: nodeY }, draggable: true, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
+      nodes.push({ id: nodeId, type: isLink ? "linkNode" : "taskNode", position: { x: spot.x, y: spot.y }, draggable: true, data: isLink ? { task: child, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect } : { task: child, onAddChild: callbacks.makeOnAddChild(project.id), onAddLink: callbacks.makeOnAddLink(project.id), onDelete: callbacks.onDelete, onToggle: callbacks.onToggle, onRename: callbacks.onRename, onSelect: callbacks.onSelect } });
       const edgeColors: Record<TaskLevel, string> = { goal: "#a855f7", phase: "#3b82f6", task: "#06b6d4", action: "#22c55e", link: "#f59e0b" };
       edges.push({ id: `e-${parentNodeId}-${nodeId}`, source: parentNodeId, target: nodeId, type: "smoothstep", animated: !child.done, style: { stroke: edgeColors[child.level as TaskLevel], strokeWidth: 2, opacity: child.done ? 0.3 : 0.7 }, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors[child.level as TaskLevel], width: 15, height: 15 } });
-      if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, computedX);
+      // A child inherits "moved" state if it (or an ancestor) has a persisted
+      // position, so its own descendants anchor to the real placement.
+      const childMoved = parentMoved || hasPersisted;
+      if (grandchildren.length > 0) layoutChildren(nodeId, grandchildren, depth + 1, computedX, spot.x, spot.y, childMoved);
       currentX += leafCount * X_SPACING;
     });
-    return currentX;
   }
 
-  layoutChildren(rootId, rootTasks, 1, treeCenterX);
+  layoutChildren(rootId, rootTasks, 1, treeCenterX, treeCenterX, 0, false);
 
-  // Add standalone nodes at their stored positions
+  // Add standalone nodes at their stored positions; fall back to a free spot
+  // near the tree (never a random offset) when no position was ever saved.
   standaloneTasks.forEach(task => {
     const nodeId = `task-${task.id}`;
     const isLink = task.level === "link";
-    const posX = task.position_x ?? xOffset + Math.random() * 300;
-    const posY = task.position_y ?? 400 + Math.random() * 200;
+    const pos = (task.position_x != null && task.position_y != null)
+      ? { x: task.position_x, y: task.position_y }
+      : findFreeSpot({ x: treeCenterX, y: (rootTasks.length > 0 ? 3 : 1) * Y_SPACING + 60 }, occupied);
+    occupied.push(pos);
     nodes.push({
       id: nodeId,
       type: isLink ? "linkNode" : "taskNode",
-      position: { x: posX, y: posY },
+      position: { x: pos.x, y: pos.y },
       draggable: true,
       data: isLink
         ? { task, onDelete: callbacks.onDelete, onSelect: callbacks.onSelect }
@@ -391,6 +450,28 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const isMobile = useIsMobile();
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos = useRef<{ x: number; y: number } | null>(null);
+  const flowWrapperRef = useRef<HTMLDivElement>(null);
+  // Node id (e.g. "task-<id>") that should be gently brought into view once it renders.
+  const pendingFocusRef = useRef<string | null>(null);
+
+  // Pan the view to include a flow-space position if it's currently off-screen.
+  const ensureVisible = useCallback((pos: { x: number; y: number }) => {
+    const wrap = flowWrapperRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const screen = reactFlowInstance.flowToScreenPosition(pos);
+    const margin = 100;
+    const outside =
+      screen.x < rect.left + margin || screen.x > rect.right - margin ||
+      screen.y < rect.top + margin || screen.y > rect.bottom - margin;
+    if (outside) {
+      reactFlowInstance.setCenter(pos.x, pos.y, { zoom: reactFlowInstance.getZoom(), duration: 500 });
+    }
+  }, [reactFlowInstance]);
+
+  // Current node positions from the live React Flow instance (used to avoid
+  // dropping new standalone nodes on top of existing ones).
+  const occupiedPositions = useCallback(() => reactFlowInstance.getNodes().map(n => ({ x: n.position.x, y: n.position.y })), [reactFlowInstance]);
 
   // Persist selection to localStorage
   useEffect(() => {
@@ -424,12 +505,14 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     });
   }, []);
 
-  const handleAddChildForProject = useCallback((projectId: string, parentId: string | null, level: TaskLevel, title: string) => {
-    addTask({ project_id: projectId, parent_id: parentId, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "" });
+  const handleAddChildForProject = useCallback(async (projectId: string, parentId: string | null, level: TaskLevel, title: string) => {
+    const created = await addTask({ project_id: projectId, parent_id: parentId, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "" });
+    if (created) pendingFocusRef.current = `task-${created.id}`;
   }, [addTask]);
 
-  const handleAddLinkForProject = useCallback((projectId: string, parentId: string | null, url: string) => {
-    addTask({ project_id: projectId, parent_id: parentId, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "" });
+  const handleAddLinkForProject = useCallback(async (projectId: string, parentId: string | null, url: string) => {
+    const created = await addTask({ project_id: projectId, parent_id: parentId, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "" });
+    if (created) pendingFocusRef.current = `task-${created.id}`;
   }, [addTask]);
 
   const handleDelete = useCallback((taskId: string) => deleteTask(taskId), [deleteTask]);
@@ -439,27 +522,31 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
   const handleUpdateTask = useCallback((taskId: string, updates: Partial<PlanningTask>) => updateTask(taskId, updates), [updateTask]);
 
   // Context menu add — creates standalone node at click position
-  const handleContextAddChild = useCallback((parentId: string | null, level: TaskLevel, title: string) => {
+  const handleContextAddChild = useCallback(async (parentId: string | null, level: TaskLevel, title: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
     if (parentId === null && contextMenuPos) {
       const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
-      addTask({ project_id: pid, parent_id: null, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "", standalone: true, position_x: flowPos.x, position_y: flowPos.y });
+      const spot = findFreeSpot(flowPos, occupiedPositions());
+      const created = await addTask({ project_id: pid, parent_id: null, level, title, done: false, deadline: null, leverage: null, energy: null, time_minutes: null, url: null, icon: null, notes: "", standalone: true, position_x: spot.x, position_y: spot.y });
+      if (created) pendingFocusRef.current = `task-${created.id}`;
     } else {
       handleAddChildForProject(pid, parentId, level, title);
     }
-  }, [selectedProjectIds, handleAddChildForProject, contextMenuPos, reactFlowInstance, addTask]);
+  }, [selectedProjectIds, handleAddChildForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions]);
 
-  const handleContextAddLink = useCallback((parentId: string | null, url: string) => {
+  const handleContextAddLink = useCallback(async (parentId: string | null, url: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
     if (parentId === null && contextMenuPos) {
       const flowPos = reactFlowInstance.screenToFlowPosition({ x: contextMenuPos.x, y: contextMenuPos.y });
-      addTask({ project_id: pid, parent_id: null, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "", standalone: true, position_x: flowPos.x, position_y: flowPos.y });
+      const spot = findFreeSpot(flowPos, occupiedPositions());
+      const created = await addTask({ project_id: pid, parent_id: null, level: "link" as TaskLevel, title: extractDomain(url), url: normalizeUrl(url), done: false, deadline: null, leverage: null, energy: null, time_minutes: null, icon: null, notes: "", standalone: true, position_x: spot.x, position_y: spot.y });
+      if (created) pendingFocusRef.current = `task-${created.id}`;
     } else {
       handleAddLinkForProject(pid, parentId, url);
     }
-  }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask]);
+  }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions]);
 
   // Connect handler — adopt standalone node into tree
   const handleConnect = useCallback((connection: Connection) => {
@@ -525,10 +612,13 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
     // Force clean layout and refetch
     setForceAutoLayout(true);
     await refetch();
-    // Apply clean layout from initialNodes after refetch
-    setTimeout(() => setForceAutoLayout(false), 200);
+    // Apply clean layout from initialNodes after refetch, then smoothly fit the view.
+    setTimeout(() => {
+      setForceAutoLayout(false);
+      reactFlowInstance.fitView({ padding: 0.3, duration: 600 });
+    }, 200);
     toast({ title: "Auto-organized", description: "Nodes reset to standard layout" });
-  }, [filteredTasks, refetch]);
+  }, [filteredTasks, refetch, reactFlowInstance]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -588,7 +678,17 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
       });
     }
     setEdges(initialEdges);
-  }, [initialNodes, initialEdges]);
+
+    // Keep-in-view: gently pan to a freshly added node once it has a position.
+    if (pendingFocusRef.current) {
+      const target = initialNodes.find(n => n.id === pendingFocusRef.current);
+      if (target) {
+        const center = { x: target.position.x + NODE_W / 2, y: target.position.y + NODE_H / 2 };
+        pendingFocusRef.current = null;
+        setTimeout(() => ensureVisible(center), 80);
+      }
+    }
+  }, [initialNodes, initialEdges, ensureVisible]);
 
   const totalTasks = filteredTasks.filter(t => t.level !== "link").length;
   const doneTasks = filteredTasks.filter(t => t.level !== "link" && t.done).length;
@@ -632,7 +732,7 @@ function MapViewInner({ initialProjectId, onBack }: { initialProjectId?: string 
           ))}
         </div>
       </div>
-      <div className="flex-1 relative"
+      <div ref={flowWrapperRef} className="flex-1 relative"
         onTouchStart={(e) => {
           const touch = e.touches[0];
           longPressPos.current = { x: touch.clientX, y: touch.clientY };
