@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off, Download, Upload } from "lucide-react";
+import { Link2Off, Download, Upload, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { DIRECTIONS } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
+import ObsidianImportModal from "./ObsidianImportModal";
 import { useForestState } from "@/hooks/useForestState";
 import {
   Dialog,
@@ -124,6 +125,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importConfirm, setImportConfirm] = useState<{ parsed: any[]; dupes: number; total: number } | null>(null);
   const [filterDupes, setFilterDupes] = useState(true);
+  const [obsidianOpen, setObsidianOpen] = useState(false);
 
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
@@ -360,7 +362,21 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
           <Upload size={16} />
           📂 Import
         </button>
+        <button
+          onClick={() => setObsidianOpen(true)}
+          className="glass-card px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
+        >
+          <FileText size={16} />
+          🪨 Obsidian
+        </button>
       </div>
+
+      <ObsidianImportModal
+        open={obsidianOpen}
+        onClose={() => setObsidianOpen(false)}
+        existingBlocks={blocks}
+        addBlocks={addBlocks}
+      />
 
       <ArchiveEditModal
         block={editBlock}

@@ -40,3 +40,19 @@ the table is missing (treat errors as empty arrays) so the app still builds/runs
 the user the migration must be applied to Supabase before the feature works. To check whether a
 table exists, hit `${VITE_SUPABASE_URL}/rest/v1/<table>?select=id&limit=1` with the anon key —
 404 `PGRST205` means not yet applied.
+
+## New AI behaviors must reuse existing edge functions
+
+Same constraint applies to AI: the workspace can't deploy new Supabase edge functions, so any
+new AI feature has to reuse the existing `ai-archive-*` functions. Two reusable shapes:
+`ai-archive-process` (`{items:string[]}` → `{blocks:[{title,content,pillars,directions,tags}]}`)
+for batch auto-tagging, and `ai-archive-clean` (`{rawText, customPrompt}` → `{cleanedText}`) which
+can be **repurposed as a general classifier**: put JSON-output instructions in `customPrompt` and
+parse `cleanedText` (strip ``` fences / slice between first `[` and last `]`).
+
+**Why:** no dedicated keep/skip classifier exists and we can't add one; `ai-archive-clean`'s free
+-form `customPrompt` + string output is the only client-callable way to get arbitrary AI JSON.
+
+**How to apply:** always keep a local heuristic fallback and wrap each AI batch in try/catch so a
+failed/malformed AI response degrades to the heuristic instead of aborting (see the Obsidian
+import: `lib/obsidian-import.ts` heuristicKeep + `components/archive/ObsidianImportModal.tsx`).
