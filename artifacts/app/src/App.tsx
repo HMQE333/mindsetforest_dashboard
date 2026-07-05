@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DashboardStateProvider } from "@/hooks/useDashboardState";
+import { AssistantProvider } from "@/hooks/useAssistant";
+import AssistantPanel from "@/components/assistant/AssistantPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import Tracker from "./pages/Tracker";
@@ -30,13 +32,16 @@ const App = () => (
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <AuthProvider>
             <DashboardStateProvider>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/tracker" element={<ProtectedRoute><Tracker /></ProtectedRoute>} />
-                <Route path="/share/library/:shareId" element={<SharedLibrary />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <AssistantProvider>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/tracker" element={<ProtectedRoute><Tracker /></ProtectedRoute>} />
+                  <Route path="/share/library/:shareId" element={<SharedLibrary />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+                <AssistantPanel />
+              </AssistantProvider>
             </DashboardStateProvider>
           </AuthProvider>
         </BrowserRouter>

@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.ai-health-extract]
 verify_jwt = false
+
+[functions.ai-assistant-chat]
+verify_jwt = false

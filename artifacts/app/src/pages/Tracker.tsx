@@ -17,6 +17,7 @@ import TrackerWatchView from "@/components/TrackerWatchView";
 import TrackerAchievements from "@/components/TrackerAchievements";
 import TrackerMilestoneModal from "@/components/TrackerMilestoneModal";
 import { useTrackerXp } from "@/hooks/useTrackerXp";
+import { useAssistantCurrentScope } from "@/hooks/useAssistant";
 import { Sparkles } from "lucide-react";
 
 export default function Tracker() {
@@ -30,6 +31,7 @@ export default function Tracker() {
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
   const [milestone, setMilestone] = useState<{ id: string; title: string; icon: string; xp: number } | null>(null);
+  useAssistantCurrentScope("tracker");
 
   const streak = getStreakDays(entries);
   const activeMetric = activeMetricId ? metrics.find((m) => m.id === activeMetricId) || null : null;

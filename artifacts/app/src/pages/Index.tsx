@@ -28,8 +28,21 @@ import BackgroundPattern from "@/components/BackgroundPattern";
 import FriendsButton from "@/components/friends/FriendsButton";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import { useFriends } from "@/hooks/useFriends";
+import { useAssistantCurrentScope } from "@/hooks/useAssistant";
+import type { ScopeId } from "@/lib/assistant-context";
 
 type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning" | "health";
+
+const TAB_TO_SCOPE: Partial<Record<Tab, ScopeId>> = {
+  dashboard: "dashboard",
+  tracker: "tracker",
+  ladder: "ladder",
+  habitloop: "habitloop",
+  oracle: "oracle",
+  finance: "finance",
+  planning: "planning",
+  health: "health",
+};
 
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
@@ -62,6 +75,7 @@ const Index = () => {
   const [moreOpen, setMoreOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const { badgeCount } = useFriends();
+  useAssistantCurrentScope(TAB_TO_SCOPE[activeTab] ?? null);
 
   // Cross-module navigation: Planning Map "mentions" trigger jumps to Ladder/Habit Loop.
   useEffect(() => {
