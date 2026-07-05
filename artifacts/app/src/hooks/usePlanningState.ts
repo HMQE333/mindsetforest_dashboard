@@ -37,6 +37,13 @@ export interface BoardScope {
   linkedProjectIds?: string[];
 }
 
+/**
+ * Fired whenever a `planning_tasks` row is written from outside a given
+ * `usePlanningState` instance (e.g. by the AI assistant). Page-scoped
+ * instances listen for this and refetch so new tasks show up immediately.
+ */
+export const PLANNING_TASKS_CHANGED_EVENT = "planning-tasks-changed";
+
 export function usePlanningState(projectId?: string, board?: BoardScope) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<PlanningTask[]>([]);
@@ -71,6 +78,15 @@ export function usePlanningState(projectId?: string, board?: BoardScope) {
   }, [user, projectId, boardId, linkedKey]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  // Refetch when a task is added elsewhere (e.g. the AI assistant writing
+  // directly to the table) so this page-scoped instance stays in sync
+  // without requiring a manual reload.
+  useEffect(() => {
+    const handler = () => { fetchTasks(); };
+    window.addEventListener(PLANNING_TASKS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PLANNING_TASKS_CHANGED_EVENT, handler);
+  }, [fetchTasks]);
 
   const addTask = useCallback(async (task: Omit<PlanningTask, "id" | "user_id" | "created_at" | "sort_order" | "standalone" | "position_x" | "position_y" | "mentions" | "board_id"> & { board_id?: string | null; standalone?: boolean; position_x?: number | null; position_y?: number | null; mentions?: PlanningMention[] }) => {
     if (!user) return null;

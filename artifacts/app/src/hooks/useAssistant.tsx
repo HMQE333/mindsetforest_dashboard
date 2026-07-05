@@ -11,6 +11,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboardState } from "@/hooks/useDashboardState";
+import { PLANNING_TASKS_CHANGED_EVENT } from "@/hooks/usePlanningState";
 import {
   gatherContext,
   type ScopeId,
@@ -322,8 +323,14 @@ function useAssistantValue() {
                 mentions: [],
               },
             ]);
-            if (error) failed++;
-            else ok++;
+            if (error) {
+              failed++;
+            } else {
+              ok++;
+              // Page-scoped planning hooks don't share state with this
+              // provider, so nudge them to refetch immediately.
+              window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
+            }
           }
         } catch {
           failed++;
