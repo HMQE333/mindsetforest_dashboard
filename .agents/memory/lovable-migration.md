@@ -56,3 +56,21 @@ parse `cleanedText` (strip ``` fences / slice between first `[` and last `]`).
 **How to apply:** always keep a local heuristic fallback and wrap each AI batch in try/catch so a
 failed/malformed AI response degrades to the heuristic instead of aborting (see the Obsidian
 import: `lib/obsidian-import.ts` heuristicKeep + `components/archive/ObsidianImportModal.tsx`).
+
+## Assistant write-actions ride on the existing chat function (no new function)
+
+The assistant can now propose write actions (add task / add mission), but since we can't
+deploy edge functions, the action **protocol is injected client-side into `context`** (the
+existing `ai-assistant-chat` embeds `context` into the system prompt and streams the reply
+back verbatim). The model emits a fenced ```action JSON block; the client parses it out,
+gates each action by the granted scope, shows a confirm card, then applies via the state
+hooks (`useDashboardState.addMission`; planning tasks via a direct `planning_tasks` insert
+because `usePlanningState` is page-scoped and can't mount globally without a full fetch).
+
+**Why:** matches the "reuse existing edge functions" constraint — the feature works against
+the already-deployed function with no redeploy, while `ai-assistant-chat/index.ts` was also
+updated (sentinel-guarded) to carry the same instructions for any future redeploy.
+
+**How to apply:** to add a new action type, extend `lib/assistant-actions.ts` (type,
+`ACTION_SCOPE`, `buildActionInstructions`, `coerceAction`, `describeAction`) and its executor
+in `useAssistant.applyActions`. Keep every action gated by a scope the user enabled.

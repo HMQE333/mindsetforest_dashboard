@@ -11,6 +11,8 @@ import {
   type ScopeId,
   type ArchiveItemRef,
 } from "@/lib/assistant-context";
+import { describeAction } from "@/lib/assistant-actions";
+import type { AssistantMessage } from "@/hooks/useAssistant";
 
 function ScopeMenu() {
   const { user } = useAuth();
@@ -141,6 +143,66 @@ function ScopeMenu() {
         )}
       </div>
     </PopoverContent>
+  );
+}
+
+function ActionConfirm({ message }: { message: AssistantMessage }) {
+  const { applyActions, dismissActions } = useAssistant();
+  const [applying, setApplying] = useState(false);
+  const actions = message.actions;
+  if (!actions || actions.length === 0) return null;
+
+  if (message.actionsResolved === "applied") {
+    return (
+      <div className="mt-2 text-[11px] px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-foreground/80">
+        ✓ {message.actionResult || "Applied."}
+      </div>
+    );
+  }
+  if (message.actionsResolved === "dismissed") {
+    return (
+      <div className="mt-2 text-[11px] px-3 py-2 rounded-xl bg-muted/40 border border-white/10 text-muted-foreground">
+        Dismissed — nothing was saved.
+      </div>
+    );
+  }
+
+  const handleApply = async () => {
+    setApplying(true);
+    await applyActions(message.id);
+    setApplying(false);
+  };
+
+  return (
+    <div className="mt-2 rounded-xl bg-primary/8 border border-primary/25 p-3">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-primary mb-2">
+        Confirm {actions.length === 1 ? "action" : `${actions.length} actions`}
+      </p>
+      <ul className="space-y-1 mb-3">
+        {actions.map((a, i) => (
+          <li key={i} className="text-xs text-foreground/85 flex items-start gap-1.5">
+            <span className="text-primary mt-0.5">•</span>
+            <span>{describeAction(a)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleApply}
+          disabled={applying}
+          className="flex-1 text-xs font-semibold px-3 py-1.5 rounded-lg gradient-purple text-primary-foreground disabled:opacity-50 transition-opacity"
+        >
+          {applying ? "Applying…" : "Apply"}
+        </button>
+        <button
+          onClick={() => dismissActions(message.id)}
+          disabled={applying}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted/50 border border-white/10 text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -343,6 +405,7 @@ export default function AssistantPanel() {
                           ))}
                         </div>
                       )}
+                      {m.role === "assistant" && <ActionConfirm message={m} />}
                     </div>
                   </div>
                 ))}

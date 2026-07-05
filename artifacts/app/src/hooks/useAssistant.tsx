@@ -10,12 +10,18 @@ import {
 } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDashboardState } from "@/hooks/useDashboardState";
 import {
   gatherContext,
   type ScopeId,
   type ArchiveItemRef,
   type Citation,
 } from "@/lib/assistant-context";
+import {
+  buildActionInstructions,
+  parseActions,
+  type AssistantAction,
+} from "@/lib/assistant-actions";
 
 export interface AssistantMessage {
   id: string;
@@ -23,6 +29,12 @@ export interface AssistantMessage {
   content: string;
   citations?: Citation[];
   error?: boolean;
+  /** Write actions the assistant proposed for this reply, pending confirmation. */
+  actions?: AssistantAction[];
+  /** Set once the user has applied or dismissed the actions. */
+  actionsResolved?: "applied" | "dismissed";
+  /** Short summary shown after the actions were applied. */
+  actionResult?: string;
 }
 
 const OPEN_KEY = "assistant_panel_open";
@@ -54,6 +66,7 @@ function loadScopes(): ScopeId[] {
 
 function useAssistantValue() {
   const { user } = useAuth();
+  const { addMission } = useDashboardState();
   const [open, setOpenState] = useState<boolean>(() => {
     try {
       return localStorage.getItem(OPEN_KEY) === "1";
@@ -157,6 +170,14 @@ function useAssistantValue() {
           archiveItems,
         );
 
+        // Inject action-protocol instructions for whatever writable scopes the
+        // user granted. This rides on the existing edge function (which embeds
+        // `context` in the system prompt) so it works without a redeploy.
+        const actionInstructions = buildActionInstructions(scopesForSend);
+        const contextWithActions = actionInstructions
+          ? `${context}\n\n${actionInstructions}`
+          : context;
+
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token || SUPABASE_KEY;
 
@@ -173,7 +194,7 @@ function useAssistantValue() {
           body: JSON.stringify({
             message: trimmed,
             history: historyForSend,
-            context,
+            context: contextWithActions,
             scopes: scopesForSend,
           }),
           signal: controller.signal,
@@ -226,7 +247,15 @@ function useAssistantValue() {
             content: "I couldn't produce an answer this time. Please try rephrasing.",
           }));
         } else {
-          patchAssistant((m) => ({ ...m, citations }));
+          // Pull any proposed write actions out of the reply and gate them by the
+          // scopes the user actually granted for this message.
+          const { text: display, actions } = parseActions(acc, scopesForSend);
+          patchAssistant((m) => ({
+            ...m,
+            content: display || acc,
+            citations,
+            actions: actions.length > 0 ? actions : undefined,
+          }));
         }
       } catch (e) {
         const msg =
@@ -248,6 +277,81 @@ function useAssistantValue() {
     abortRef.current?.abort();
   }, []);
 
+  // Execute the confirmed write actions via the existing state hooks / tables.
+  // Runs in order and reports how many succeeded so partial failures are visible.
+  const applyActions = useCallback(
+    async (messageId: string) => {
+      if (!user) return;
+      const msg = messages.find((m) => m.id === messageId);
+      if (!msg?.actions || msg.actions.length === 0 || msg.actionsResolved) return;
+
+      let ok = 0;
+      let failed = 0;
+      for (const action of msg.actions) {
+        try {
+          if (action.type === "add_mission") {
+            addMission(action.categoryId, {
+              title: action.title,
+              description: action.description || "",
+              duration: action.duration || "",
+              xp: action.xp ?? 20,
+            });
+            ok++;
+          } else if (action.type === "add_task") {
+            const { error } = await (supabase.from("planning_tasks" as never) as never as {
+              insert: (rows: unknown[]) => Promise<{ error: unknown }>;
+            }).insert([
+              {
+                user_id: user.id,
+                project_id: null,
+                board_id: null,
+                parent_id: null,
+                level: action.level || "task",
+                title: action.title,
+                done: false,
+                deadline: action.deadline ?? null,
+                leverage: null,
+                energy: null,
+                time_minutes: null,
+                url: null,
+                icon: null,
+                notes: action.notes || "",
+                standalone: true,
+                position_x: null,
+                position_y: null,
+                mentions: [],
+              },
+            ]);
+            if (error) failed++;
+            else ok++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+
+      const result =
+        failed === 0
+          ? `Done — applied ${ok} action${ok === 1 ? "" : "s"}.`
+          : `Applied ${ok}, but ${failed} failed. Please try again.`;
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, actionsResolved: "applied", actionResult: result } : m,
+        ),
+      );
+    },
+    [user, messages, addMission],
+  );
+
+  const dismissActions = useCallback((messageId: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId ? { ...m, actionsResolved: "dismissed" } : m,
+      ),
+    );
+  }, []);
+
   return {
     open,
     setOpen,
@@ -265,6 +369,8 @@ function useAssistantValue() {
     sendMessage,
     stop,
     clearConversation,
+    applyActions,
+    dismissActions,
   };
 }
 
