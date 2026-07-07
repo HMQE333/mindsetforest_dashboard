@@ -31,6 +31,7 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -46,6 +47,7 @@ export default function Auth() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setInfo("");
 
     if (!isLogin && !isPasswordValid) {
       setError("Password does not meet requirements");
@@ -56,12 +58,26 @@ export default function Auth() {
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          const code = (error as any).code ?? "";
+          const msg = error.message.toLowerCase();
+          if (code === "email_not_confirmed" || msg.includes("email not confirmed") || msg.includes("email_not_confirmed")) {
+            setError("Your email isn't confirmed yet. Check your inbox for the confirmation link, then sign in.");
+            return;
+          }
+          throw error;
+        }
+        navigate("/");
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        if (data.session) {
+          navigate("/");
+        } else {
+          setInfo("Account created! Check your email for a confirmation link, then come back and sign in.");
+          setIsLogin(true);
+        }
       }
-      navigate("/");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -135,6 +151,9 @@ export default function Auth() {
             {error && (
               <p className="text-xs text-destructive text-center">{error}</p>
             )}
+            {info && (
+              <p className="text-xs text-emerald-400 text-center">{info}</p>
+            )}
 
             <button
               type="submit"
@@ -146,7 +165,7 @@ export default function Auth() {
           </form>
 
           <button
-            onClick={() => { setIsLogin(!isLogin); setError(""); }}
+            onClick={() => { setIsLogin(!isLogin); setError(""); setInfo(""); }}
             className="w-full mt-4 text-xs text-muted-foreground hover:text-foreground transition-colors text-center"
           >
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
