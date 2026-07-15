@@ -47,3 +47,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Supabase edge-function secrets (real API keys — never commit)
+supabase/functions/.env
+supabase/.env

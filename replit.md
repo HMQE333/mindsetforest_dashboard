@@ -21,6 +21,13 @@ A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lova
 - `artifacts/app/src/pages/*` — routes: Index, Tracker, Auth, SharedLibrary, NotFound.
 - `.migration-backup/supabase/` — original Supabase migrations + edge functions (reference only; not run here).
 
+## AI features
+
+- AI runs through Supabase **edge functions**, invoked from the client via `supabase.functions.invoke(...)`. Deployable source lives in `supabase/functions/` (see its `README.md`).
+- **Archive vector embeddings** (semantic search + Forest search) use **OpenAI** `text-embedding-3-small` → `OPENAI_API_KEY`. Functions: `ai-embed-block`, `forest-publish-seed`.
+- **Every other AI feature** (missions, ladder, habit loop, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) uses **OpenRouter** → `OPENROUTER_API_KEY`, default model `google/gemini-2.5-flash` (override via `OPENROUTER_MODEL`). These previously used the Lovable AI gateway.
+- Connect keys with `supabase secrets set ...` then `supabase functions deploy` — see `supabase/functions/README.md`. Real keys are never committed (`supabase/functions/.env` is git-ignored).
+
 ## Architecture decisions
 
 - **Supabase was intentionally kept** rather than migrated to Replit primitives. The app is large (240+ files, ~20 tables, 8 RPCs, 14 edge functions, 4 storage buckets, Supabase Auth); the user only needed a functional app that looks like the original, so the fastest, lowest-risk path was to preserve the existing Supabase backend and just port the frontend into the Replit workspace.

@@ -16,7 +16,7 @@ import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
-import WeeklyProgress from "./WeeklyProgress";
+import DashboardStats from "./DashboardStats";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
@@ -229,16 +229,17 @@ export default function DashboardView() {
         )}
       </AnimatePresence>
 
-      {/* Weekly Progress */}
-      <WeeklyProgress
+      {/* Progress — precise stats across week / month / year / all-time */}
+      <DashboardStats
         history={weeklyHistory}
+        fetchAllHistory={fetchAllHistory}
+        categories={categories}
         dashboardState={{
           currentXP: state.currentXP,
           currentLevel: state.currentLevel,
           streakDays: state.streakDays,
           missionsCompleted: state.missionsCompleted,
         }}
-        onExportAll={fetchAllHistory}
       />
 
       {/* Edit Modal */}
