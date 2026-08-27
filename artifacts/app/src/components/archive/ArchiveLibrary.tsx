@@ -49,6 +49,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [includeTags, setIncludeTags] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
@@ -84,7 +85,13 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
     }
 
     const list = blocks.filter((b) => {
-      if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.content.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const matchTitle = b.title.toLowerCase().includes(q);
+        const matchContent = b.content.toLowerCase().includes(q);
+        const matchTags = includeTags && b.tags.some((t: string) => t.toLowerCase().includes(q));
+        if (!matchTitle && !matchContent && !matchTags) return false;
+      }
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
       if (filterDirection && !b.directions.includes(filterDirection)) return false;
       if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
@@ -153,7 +160,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       const dupes = findDuplicates(cleaned);
       setImportConfirm({ parsed: cleaned, dupes, total: cleaned.length });
     } catch {
-      toast.error("Failed to parse file — make sure it's a valid archive JSON");
+      toast.error("Failed to parse file. Make sure it's a valid archive JSON");
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [findDuplicates]);
@@ -167,7 +174,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       );
     }
     if (toImport.length === 0) {
-      toast.info("All blocks are duplicates — nothing to import");
+      toast.info("All blocks are duplicates. Nothing to import");
     } else {
       await addBlocks(toImport);
       toast.success(`Imported ${toImport.length} blocks`);
@@ -205,6 +212,17 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
               </button>
             )}
           </div>
+          <button
+            onClick={() => setIncludeTags(!includeTags)}
+            className={`shrink-0 w-10 h-10 rounded-xl text-sm font-bold transition-all flex items-center justify-center ${
+              includeTags
+                ? "gradient-purple text-primary-foreground glow-sm"
+                : "bg-muted/40 text-muted-foreground hover:text-foreground"
+            }`}
+            title={includeTags ? "Tag search ON. Click to disable" : "Tag search OFF. Click to include tags"}
+          >
+            #
+          </button>
           <div className="flex items-center gap-1">
             {([
               { id: "newest" as SortMode, label: "Newest" },

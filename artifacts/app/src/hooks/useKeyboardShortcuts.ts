@@ -5,10 +5,10 @@ type ShortcutContext = "grid" | "projects" | "mission";
 export interface KeybindMap {
   mind: string;
   body: string;
-  creation: string;
+  expression: string;
   exploration: string;
-  networking: string;
-  trading: string;
+  people: string;
+  money: string;
   spirit: string;
   order: string;
   projects: string;
@@ -22,10 +22,10 @@ export interface KeybindMap {
 export const DEFAULT_KEYBINDS: KeybindMap = {
   mind: "m",
   body: "b",
-  creation: "c",
+  expression: "c",
   exploration: "x",
-  networking: "n",
-  trading: "t",
+  people: "n",
+  money: "t",
   spirit: "s",
   order: "o",
   projects: "p",
@@ -39,10 +39,10 @@ export const DEFAULT_KEYBINDS: KeybindMap = {
 export const KEYBIND_LABELS: Record<keyof KeybindMap, string> = {
   mind: "Mind",
   body: "Body",
-  creation: "Creation",
+  expression: "Expression",
   exploration: "Exploration",
-  networking: "Networking",
-  trading: "Trading",
+  people: "People",
+  money: "Money",
   spirit: "Spirit",
   order: "Order",
   projects: "Projects",
@@ -73,7 +73,7 @@ export function getKeybinds(custom?: Partial<KeybindMap>): KeybindMap {
   return { ...DEFAULT_KEYBINDS, ...(custom || {}) };
 }
 
-const CATEGORY_KEYS: (keyof KeybindMap)[] = ["mind", "body", "creation", "exploration", "networking", "trading", "spirit", "order"];
+const CATEGORY_KEYS: (keyof KeybindMap)[] = ["mind", "body", "expression", "exploration", "people", "money", "spirit", "order"];
 
 export function useKeyboardShortcuts(actions: ShortcutActions) {
   useEffect(() => {
@@ -87,10 +87,18 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
     gridKeyMap[binds.projects.toLowerCase()] = "__projects__";
 
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea" || tag === "select") return;
-      if ((e.target as HTMLElement)?.isContentEditable) return;
-      if (document.querySelector("[data-radix-portal]")) return;
+      const el = e.target as HTMLElement;
+      const tag = el?.tagName?.toLowerCase();
+      // Skip if user is typing in any input-like element
+      if (
+        tag === "input" || tag === "textarea" || tag === "select" ||
+        el?.isContentEditable ||
+        el?.getAttribute("contenteditable") === "true" ||
+        el?.closest("[contenteditable=true]") ||
+        el?.closest("[data-radix-popper-content-wrapper]") ||
+        el?.closest('[role="dialog"]') ||
+        el?.closest('[role="textbox"]')
+      ) return;
 
       const key = e.key.toLowerCase();
 

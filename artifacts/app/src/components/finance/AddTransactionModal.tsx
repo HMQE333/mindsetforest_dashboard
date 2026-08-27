@@ -44,7 +44,7 @@ export default function AddTransactionModal({ open, onClose, onAdd, defaultType,
   const selectedCat = cats.find(c => c.name === category);
   if (!selectedCat && cats.length > 0 && !isLoan) {
     // Use setTimeout-style guard via setState in render: defer with effect-less assign
-    // Safer: reset via effect — simpler: just use first as default visually if not chosen
+    // Safer: reset via effect. Simpler: just use first as default visually if not chosen
   }
 
   const handleSubmit = async () => {

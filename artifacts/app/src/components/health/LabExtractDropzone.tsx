@@ -50,7 +50,7 @@ export default function LabExtractDropzone({ onExtracted, onFileSelected }: Prop
       const extracted = (data?.extracted ?? {}) as Record<string, number>;
       const count = Object.keys(extracted).length;
       if (count === 0) {
-        toast.warning("Couldn't extract any values — try a clearer image or PDF");
+        toast.warning("Couldn't extract any values. Try a clearer image or PDF");
       } else {
         onExtracted(extracted);
         toast.success(`Extracted ${count} value${count === 1 ? "" : "s"} from your report ✨`);

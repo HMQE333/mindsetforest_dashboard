@@ -1,38 +1,46 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Sparkles, MessageSquare, Hash, Save, Loader2 } from "lucide-react";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
 interface Props {
   addBlock: (b: Partial<ArchiveBlock>) => Promise<ArchiveBlock | null>;
   addBlocks: (b: Partial<ArchiveBlock>[]) => Promise<void>;
+  existingTags?: string[];
 }
 
 const IMAGE_URL_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
 const DRAFT_KEY = "archive-inbox-draft";
 
-const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
+type BusyAction = "clean" | "prompt" | "tag" | "save" | null;
+
+const normalizeTag = (t: string) =>
+  t.toLowerCase().trim().replace(/^#/, "").replace(/\s+/g, "-").replace(/[^a-z0-9_-]/g, "");
+
+const Kbd = ({ children }: { children: ReactNode }) => (
+  <kbd className="px-1 py-px rounded bg-white/5 border border-white/10 font-mono text-[9px] leading-none">{children}</kbd>
+);
+
+const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
   const { user } = useAuth();
   const [text, setText] = useState(() => {
     try { return localStorage.getItem(DRAFT_KEY) || ""; } catch { return ""; }
   });
-  const [processing, setProcessing] = useState(false);
+  const [busy, setBusy] = useState<BusyAction>(null);
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const processing = busy !== null;
   const items = text.trim() ? text.split("---").map((s) => s.trim()).filter(Boolean) : [];
-  const hasSplitItems = items.length > 1;
 
-  // Auto-save draft to localStorage
   const updateText = (val: string) => {
     setText(val);
     try { localStorage.setItem(DRAFT_KEY, val); } catch {}
@@ -43,51 +51,47 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
   };
 
+  const getSelection = () => {
+    const el = textareaRef.current;
+    if (!el) return null;
+    const { selectionStart: start, selectionEnd: end } = el;
+    if (start === end) return null;
+    return { start, end, value: text.slice(start, end) };
+  };
+
+  const spliceOrReplace = (sel: { start: number; end: number } | null, replacement: string) => {
+    if (sel) updateText(text.slice(0, sel.start) + replacement + text.slice(sel.end));
+    else updateText(replacement);
+  };
+
   // Extract image URLs from text for thumbnail preview
   const imageUrls = useMemo(() => {
     const urls: string[] = [];
     let match;
     const regex = new RegExp(IMAGE_URL_REGEX.source, "g");
-    while ((match = regex.exec(text)) !== null) {
-      urls.push(match[1]);
-    }
+    while ((match = regex.exec(text)) !== null) urls.push(match[1]);
     return urls;
   }, [text]);
 
-  // Upload image to storage bucket
   const uploadImage = useCallback(async (file: File) => {
-    if (!user) {
-      toast.error("Sign in to upload images");
-      return null;
-    }
-    if (!file.type.startsWith("image/")) {
-      toast.error("Only image files are supported");
-      return null;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Image must be under 10MB");
-      return null;
-    }
-
+    if (!user) { toast.error("Sign in to upload images"); return null; }
+    if (!file.type.startsWith("image/")) { toast.error("Only image files are supported"); return null; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("Image must be under 10MB"); return null; }
     setUploading(true);
     try {
       const ext = file.name.split(".").pop() || "png";
       const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const { error } = await supabase.storage.from("archive-images").upload(path, file);
       if (error) throw error;
-
       const { data: urlData } = supabase.storage.from("archive-images").getPublicUrl(path);
       return urlData.publicUrl;
     } catch (e: any) {
       console.error("Upload error:", e);
       toast.error(e?.message || "Image upload failed");
       return null;
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   }, [user]);
 
-  // Insert image URL at cursor position
   const insertImageUrl = useCallback((url: string) => {
     const el = textareaRef.current;
     const tag = `[image] ${url}`;
@@ -104,35 +108,22 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
     toast.success("Image added");
   }, [text]);
 
-  // Handle paste event
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
     if (files.length === 0) return;
     e.preventDefault();
-    for (const file of files) {
-      const url = await uploadImage(file);
-      if (url) insertImageUrl(url);
-    }
+    for (const file of files) { const url = await uploadImage(file); if (url) insertImageUrl(url); }
   }, [uploadImage, insertImageUrl]);
 
-  // Drag and drop handlers
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(true);
-  }, []);
+  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragging(true); }, []);
   const handleDragLeave = useCallback(() => setDragging(false), []);
   const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
+    e.preventDefault(); setDragging(false);
     const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
     if (files.length === 0) return;
-    for (const file of files) {
-      const url = await uploadImage(file);
-      if (url) insertImageUrl(url);
-    }
+    for (const file of files) { const url = await uploadImage(file); if (url) insertImageUrl(url); }
   }, [uploadImage, insertImageUrl]);
 
-  // Extract #hashtags from text, return { cleanContent, tags }
   const extractHashtags = (raw: string): { cleanContent: string; tags: string[] } => {
     const tagRegex = /#([a-zA-Z0-9_-]+)/g;
     const tags: string[] = [];
@@ -145,10 +136,10 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
     return { cleanContent, tags };
   };
 
-  // Quick Save
+  // Save
   const handleQuickSave = async () => {
-    if (items.length === 0) return;
-    setProcessing(true);
+    if (items.length === 0 || processing) return;
+    setBusy("save");
     try {
       const blocks: Partial<ArchiveBlock>[] = items.map((content) => {
         const { cleanContent, tags } = extractHashtags(content);
@@ -163,38 +154,40 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
       await addBlocks(blocks);
       toast.success(`${blocks.length} block(s) saved`);
       clearDraft();
-    } catch {
-      toast.error("Save failed");
-    }
-    setProcessing(false);
+    } catch { toast.error("Save failed"); }
+    setBusy(null);
   };
 
-  // AI Clean + Split
+  const handleAIError = (e: any, fallback: string) => {
+    console.error(e);
+    if (e?.message?.includes("Rate limit")) toast.error("Rate limit exceeded, try again later");
+    else if (e?.message?.includes("Payment")) toast.error("Payment required. Add credits");
+    else toast.error(e?.message || fallback);
+  };
+
+  // AI Clean
   const handleAIClean = async (prompt?: string) => {
-    if (!text.trim()) return;
-    setProcessing(true);
+    if (!text.trim() || processing) return;
+    const sel = getSelection();
+    const target = sel ? sel.value : text;
+    if (!target.trim()) return;
+    setBusy(prompt ? "prompt" : "clean");
     try {
-      const body: Record<string, string> = { rawText: text };
+      const body: Record<string, string> = { rawText: target };
       if (prompt) body.customPrompt = prompt;
       const { data, error } = await supabase.functions.invoke("ai-archive-clean", { body });
       if (error) throw error;
       const cleaned = data?.cleanedText;
       if (cleaned) {
-        updateText(cleaned);
-        toast.success("Text cleaned & split — review below, then save");
+        spliceOrReplace(sel, cleaned);
+        toast.success(sel ? "Selection cleaned" : "Cleaned & split. Review, then save");
       } else {
         toast.error("AI returned no result");
       }
-    } catch (e: any) {
-      console.error(e);
-      if (e?.message?.includes("Rate limit")) toast.error("Rate limit exceeded, try again later");
-      else if (e?.message?.includes("Payment")) toast.error("Payment required — add credits");
-      else toast.error(e?.message || "AI cleaning failed");
-    }
-    setProcessing(false);
+    } catch (e: any) { handleAIError(e, "AI cleaning failed"); }
+    setBusy(null);
   };
 
-  // AI by Prompt
   const handleAIByPrompt = async () => {
     if (!customPrompt.trim()) return;
     await handleAIClean(customPrompt);
@@ -202,29 +195,60 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
     setCustomPrompt("");
   };
 
-  // AI Organize + Save
-  const handleAIOrganize = async () => {
-    if (items.length === 0) return;
-    setProcessing(true);
+  // AI Tag. Appends #tags at the end of each item, inline in the textarea
+  const handleAITag = async () => {
+    if (!text.trim() || processing) return;
+    const sel = getSelection();
+    const target = sel ? sel.value : text;
+    if (!target.trim()) return;
+    setBusy("tag");
     try {
-      const { data, error } = await supabase.functions.invoke("ai-archive-process", { body: { items } });
+      const targetItems = target.split("---").map((s) => s.trim()).filter(Boolean);
+      const { data, error } = await supabase.functions.invoke("ai-suggest-tags", {
+        body: { items: targetItems, existingTags },
+      });
       if (error) throw error;
-      const processed = data?.blocks || [];
-      if (processed.length > 0) {
-        await addBlocks(processed);
-        toast.success(`${processed.length} block(s) organized & saved`);
-        clearDraft();
+      const suggested: string[][] = data?.tags || [];
+      let added = 0;
+      const tagged = targetItems.map((item, i) => {
+        const already = new Set((item.match(/#([a-zA-Z0-9_-]+)/g) || []).map((t) => t.slice(1).toLowerCase()));
+        const fresh = (suggested[i] || [])
+          .map(normalizeTag)
+          .filter((t, idx, arr) => t && !already.has(t) && arr.indexOf(t) === idx);
+        added += fresh.length;
+        return fresh.length ? `${item} ${fresh.map((t) => `#${t}`).join(" ")}` : item;
+      });
+      if (added === 0) {
+        toast.info("No new tags to add");
       } else {
-        toast.error("AI returned no results");
+        const result = tagged.length > 1 ? tagged.join("\n\n---\n\n") : tagged[0];
+        spliceOrReplace(sel, result);
+        toast.success(`${added} tag(s) added`);
       }
-    } catch (e: any) {
-      console.error(e);
-      if (e?.message?.includes("Rate limit")) toast.error("Rate limit exceeded, try again later");
-      else if (e?.message?.includes("Payment")) toast.error("Payment required — add credits");
-      else toast.error(e?.message || "AI processing failed");
-    }
-    setProcessing(false);
+    } catch (e: any) { handleAIError(e, "AI tagging failed"); }
+    setBusy(null);
   };
+
+  // Keyboard shortcuts. Scoped to textarea
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && key === "enter") {
+      e.preventDefault();
+      handleQuickSave();
+      return;
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (key === "t") { e.preventDefault(); handleAITag(); }
+      else if (key === "c") { e.preventDefault(); handleAIClean(); }
+      else if (key === "p") { e.preventDefault(); setShowPromptInput((v) => !v); }
+    }
+  };
+
+  const actionBtn =
+    "inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border transition-all duration-200 disabled:opacity-35 disabled:pointer-events-none";
+  const ghostBtn =
+    `${actionBtn} text-muted-foreground border-white/10 bg-white/[0.03] hover:text-foreground hover:bg-white/[0.06] hover:border-white/20`;
 
   return (
     <div className="space-y-4">
@@ -241,7 +265,6 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
           </div>
         </div>
 
-        {/* Drop zone wrapper */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -261,12 +284,12 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
             value={text}
             onChange={(e) => updateText(e.target.value)}
             onPaste={handlePaste}
-            placeholder="Paste notes, Discord logs, ideas, links, or images here...&#10;&#10;Use AI Clean + Split to auto-separate messy text, or manually separate with ---&#10;Paste images with Ctrl+V or drag & drop them here"
+            onKeyDown={handleKeyDown}
+            placeholder="Paste notes, Discord logs, ideas, links, or images here...&#10;&#10;Separate items with --- and tag inline with #tags&#10;Paste images with Ctrl+V or drag & drop them here"
             className="min-h-[200px] bg-background/50 border-white/10 text-sm"
           />
         </div>
 
-        {/* Image thumbnail strip */}
         {imageUrls.length > 0 && (
           <div className="flex gap-2 flex-wrap">
             {imageUrls.map((url, i) => (
@@ -274,7 +297,6 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
                 <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
                 <button
                   onClick={() => {
-                    // Remove the [image] <url> line from text
                     const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const lineRegex = new RegExp(`\\n?\\[image\\]\\s*${escaped}\\n?`, 'g');
                     updateText(text.replace(lineRegex, '\n').trim());
@@ -289,22 +311,50 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
           </div>
         )}
 
-        {/* Button row */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <Button onClick={() => handleAIClean()} disabled={!text.trim() || processing} className="gradient-purple text-primary-foreground font-bold glow-sm">
-            {processing ? "⏳ Processing..." : "🧹 AI Clean + Split"}
-          </Button>
-          <Button onClick={() => setShowPromptInput(!showPromptInput)} disabled={!text.trim() || processing} variant="outline" className="border-white/10 font-bold hover:border-primary/50 hover:bg-primary/10 hover:shadow-[0_0_12px_hsl(var(--primary)/0.3)] transition-all duration-200">
-            🤖 AI by Prompt
-          </Button>
-          <div className="ml-auto">
-            <Button onClick={handleQuickSave} disabled={items.length === 0 || processing} className="font-bold">
-              💾 Save
-            </Button>
-          </div>
+        {/* Actions */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => handleAIClean()}
+            disabled={!text.trim() || processing}
+            title="AI Clean + Split (Alt+C)"
+            className={ghostBtn}
+          >
+            {busy === "clean" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            Clean
+          </button>
+          <button
+            onClick={handleAITag}
+            disabled={!text.trim() || processing}
+            title="AI Tags (Alt+T). Appends #tags inline"
+            className={ghostBtn}
+          >
+            {busy === "tag" ? <Loader2 size={13} className="animate-spin" /> : <Hash size={13} />}
+            Tag
+          </button>
+          <button
+            onClick={() => setShowPromptInput((v) => !v)}
+            disabled={!text.trim() || processing}
+            title="AI by custom prompt (Alt+P)"
+            className={`${actionBtn} ${
+              showPromptInput
+                ? "text-foreground border-primary/40 bg-primary/10"
+                : "text-muted-foreground border-white/10 bg-white/[0.03] hover:text-foreground hover:bg-white/[0.06] hover:border-white/20"
+            }`}
+          >
+            {busy === "prompt" ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+            Prompt
+          </button>
+          <button
+            onClick={handleQuickSave}
+            disabled={items.length === 0 || processing}
+            title="Save (Ctrl+Enter)"
+            className={`${actionBtn} ml-auto px-4 font-semibold text-primary-foreground border-transparent bg-primary/85 hover:bg-primary hover:shadow-[0_0_16px_hsl(var(--primary)/0.35)]`}
+          >
+            {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            Save
+          </button>
         </div>
 
-        {/* Custom prompt input */}
         {showPromptInput && (
           <div className="flex gap-2">
             <Input
@@ -312,13 +362,30 @@ const ArchiveInbox = ({ addBlock, addBlocks }: Props) => {
               onChange={(e) => setCustomPrompt(e.target.value)}
               placeholder='e.g. "Group by topic", "Translate to English", "Extract only links"'
               className="bg-background/50 border-white/10 text-sm flex-1"
-              onKeyDown={(e) => e.key === "Enter" && handleAIByPrompt()}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAIByPrompt();
+                else if (e.key === "Escape") setShowPromptInput(false);
+              }}
             />
-            <Button onClick={handleAIByPrompt} disabled={!customPrompt.trim() || processing} size="sm" className="gradient-purple text-primary-foreground font-bold">
+            <button
+              onClick={handleAIByPrompt}
+              disabled={!customPrompt.trim() || processing}
+              className={`${actionBtn} px-4 font-semibold text-primary-foreground border-transparent bg-primary/85 hover:bg-primary`}
+            >
               Run
-            </Button>
+            </button>
           </div>
         )}
+
+        {/* Shortcut hints */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground/50">
+          <span className="flex items-center gap-1"><Kbd>Ctrl</Kbd><Kbd>↵</Kbd> save</span>
+          <span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>T</Kbd> tags</span>
+          <span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>C</Kbd> clean</span>
+          <span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>P</Kbd> prompt</span>
+          <span className="ml-auto hidden sm:inline">highlight text to run AI on that part only</span>
+        </div>
       </div>
 
       {/* Preview */}

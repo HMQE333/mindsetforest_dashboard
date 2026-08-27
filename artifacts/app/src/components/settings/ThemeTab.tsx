@@ -270,7 +270,7 @@ function HeroLivePreview({ layoutId, accent }: { layoutId: HeroLayout; accent: A
               <div className="text-[10px] font-bold" style={{ color: accentColor }}>55%</div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Level 5 — 550 XP</div>
+              <div className="text-[9px] font-bold" style={{ color: accentColor }}>Level 5. 550 XP</div>
               <div className="flex gap-1.5">
                 <StatCard w={48} /><StatCard w={48} /><StatCard w={48} />
               </div>
@@ -581,7 +581,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
         <div className="mt-3 px-1">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] text-muted-foreground font-medium">Custom Hue</span>
-            <span className="text-[10px] font-mono text-muted-foreground">{customHue != null ? `${customHue}°` : "—"}</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{customHue != null ? `${customHue}°` : "."}</span>
           </div>
           <div className="relative">
             <Slider

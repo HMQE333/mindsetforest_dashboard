@@ -1,4 +1,4 @@
-// Weekly bulk import — turn a multi-day CSV (one row per day) into WatchEntryInputs.
+// Weekly bulk import. Turn a multi-day CSV (one row per day) into WatchEntryInputs.
 // Handles a filled-in template *or* a Garmin Connect date-range/report CSV export,
 // with flexible column-name matching so header wording doesn't have to be exact.
 
@@ -42,7 +42,7 @@ export function parseCsvDate(raw?: string | null): string | null {
   }
   const d = new Date(t);
   if (!Number.isNaN(d.getTime())) {
-    // Use the *local* calendar date — toISOString() converts to UTC and can shift the day.
+    // Use the *local* calendar date. ToISOString() converts to UTC and can shift the day.
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
   return null;
@@ -206,7 +206,7 @@ export function parseWatchCsv(text: string): WatchImportResult {
 
   const dateCol = colByKey.get("entry_date");
   if (!dateCol) {
-    return { days: [], mappedColumns, ignoredColumns, skippedRows: 0, error: "No Date column found — a Date column is required." };
+    return { days: [], mappedColumns, ignoredColumns, skippedRows: 0, error: "No Date column found. A Date column is required." };
   }
 
   const days: ParsedWatchDay[] = [];

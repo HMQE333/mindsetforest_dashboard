@@ -17,10 +17,10 @@ function buildShortcuts(binds: KeybindMap, context: "grid" | "projects" | "missi
     return [
       { key: binds.mind.toUpperCase(), label: "Mind" },
       { key: binds.body.toUpperCase(), label: "Body" },
-      { key: binds.creation.toUpperCase(), label: "Creation" },
+      { key: binds.expression.toUpperCase(), label: "Expression" },
       { key: binds.exploration.toUpperCase(), label: "Exploration" },
-      { key: binds.networking.toUpperCase(), label: "Networking" },
-      { key: binds.trading.toUpperCase(), label: "Trading" },
+      { key: binds.people.toUpperCase(), label: "People" },
+      { key: binds.money.toUpperCase(), label: "Money" },
       { key: binds.spirit.toUpperCase(), label: "Spirit" },
       { key: binds.order.toUpperCase(), label: "Order" },
       { key: binds.projects.toUpperCase(), label: "Projects" },

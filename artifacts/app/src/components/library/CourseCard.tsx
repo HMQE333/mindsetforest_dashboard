@@ -31,7 +31,7 @@ export default function CourseCard({ course, index, onClick, view }: CourseCardP
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm text-foreground truncate">{course.title}</h3>
             <p className="text-xs text-muted-foreground truncate">
-              {[course.platform, course.instructor].filter(Boolean).join(" • ") || "—"}
+              {[course.platform, course.instructor].filter(Boolean).join(" • ") || "."}
             </p>
           </div>
           {hasUrl && (

@@ -31,25 +31,27 @@ serve(async (req) => {
 
     const { action, blockId, blockIds, query } = await req.json();
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
 
-    // Generate embedding for text
+    // Generate embedding for text via OpenRouter
     async function getEmbedding(text: string): Promise<number[]> {
-      const resp = await fetch("https://api.openai.com/v1/embeddings", {
+      const resp = await fetch("https://openrouter.ai/api/v1/embeddings", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "HTTP-Referer": "https://mindsetforest.app",
+          "X-Title": "MindsetForest",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "text-embedding-3-small",
+          model: "openai/text-embedding-3-small",
           input: text.slice(0, 8000),
         }),
       });
       if (!resp.ok) {
         const err = await resp.text();
-        throw new Error(`OpenAI embedding error: ${resp.status} ${err}`);
+        throw new Error(`Embedding error: ${resp.status} ${err}`);
       }
       const data = await resp.json();
       return data.data[0].embedding;

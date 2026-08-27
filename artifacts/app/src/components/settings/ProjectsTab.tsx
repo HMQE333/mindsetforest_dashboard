@@ -73,7 +73,7 @@ export default function ProjectsTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-2">
-        <p className="text-xs text-muted-foreground">Manage your projects — set parent category, color & emoji</p>
+        <p className="text-xs text-muted-foreground">Manage your projects. Set parent category, color & emoji</p>
         <button onClick={() => setShowNew(!showNew)} className="text-xs text-primary hover:text-primary/80 font-semibold transition-colors flex items-center gap-1">
           <Plus className="w-3.5 h-3.5" /> New
         </button>

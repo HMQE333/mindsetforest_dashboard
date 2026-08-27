@@ -114,7 +114,7 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
                           s.extra === "above" ? "text-green-400" : s.extra === "below" ? "text-destructive" : "text-muted-foreground"
                         }`}
                       >
-                        {s.extra === "above" ? "↑ Above avg" : s.extra === "below" ? "↓ Below avg" : "— Average"}
+                        {s.extra === "above" ? "↑ Above avg" : s.extra === "below" ? "↓ Below avg" : ". Average"}
                       </div>
                     )}
                   </div>
@@ -124,7 +124,7 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
               {/* 12-month bar chart */}
               <div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">
-                  12-Month Overview — {metric.label}
+                  12-Month Overview. {metric.label}
                 </div>
                 <div className="flex gap-2" style={{ height: "11rem" }}>
                   {stats.months.map((m, i) => {

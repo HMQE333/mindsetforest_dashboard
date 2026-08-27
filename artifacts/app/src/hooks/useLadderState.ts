@@ -1,119 +1,173 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
-import { AllLadders, LadderTask, createEmptyLadders } from "@/lib/ladder-data";
+import { Ladder, LadderTask, LadderLevels, emptyLevels, migrateLadders } from "@/lib/ladder-data";
 
 export function useLadderState() {
   const { user } = useAuth();
-  const [ladders, setLadders] = useState<AllLadders>(createEmptyLadders());
-  const [activeCategory, setActiveCategory] = useState("mind");
+  const [ladders, setLadders] = useState<Ladder[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
+  // Load + auto-migrate old format.
   useEffect(() => {
     if (!user) { setLoading(false); return; }
-
-    const load = async () => {
+    (async () => {
       const { data, error } = await supabase
         .from("ladder_state")
         .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (data && !error) {
-        const stored = (data.ladders as unknown as AllLadders) || createEmptyLadders();
-        setLadders(stored);
-        setActiveCategory(data.active_category || "mind");
+      if (data) {
+        const stored = data.ladders as any;
+        if (Array.isArray(stored)) {
+          // Already in new array format
+          setLadders(stored as Ladder[]);
+          setActiveId((data as any).active_ladder_id || data.active_category || "");
+        } else if (stored && typeof stored === "object") {
+          // Old category-keyed format. Migrate
+          const migrated = migrateLadders(stored as any);
+          setLadders(migrated);
+          setActiveId(migrated[0]?.id || "");
+          // Persist migration
+          await supabase.from("ladder_state").upsert({
+            user_id: user.id,
+            ladders: migrated as any,
+            active_ladder_id: migrated[0]?.id || "",
+          }, { onConflict: "user_id" });
+        }
       }
       setLoading(false);
-    };
-    load();
+    })();
   }, [user]);
 
-  const persist = useCallback(async (l: AllLadders, cat: string) => {
+  const persist = useCallback(async (list: Ladder[], active: string) => {
     if (!user) return;
-    const { error } = await supabase.from("ladder_state").upsert([{
+    await supabase.from("ladder_state").upsert({
       user_id: user.id,
-      ladders: l as unknown as Record<string, never>,
-      active_category: cat,
-    }], { onConflict: "user_id" });
-    if (error) toast({ title: "Save failed", description: "Could not save ladder state.", variant: "destructive" });
+      ladders: list as any,
+      active_ladder_id: active,
+    }, { onConflict: "user_id" });
   }, [user]);
 
-  const changeCategory = useCallback((cat: string) => {
-    setActiveCategory(cat);
-    persist(ladders, cat);
+  const getActive = useCallback((): Ladder | null => {
+    return ladders.find(l => l.id === activeId) || ladders[0] || null;
+  }, [ladders, activeId]);
+
+  const changeActive = useCallback((id: string) => {
+    setActiveId(id);
+    persist(ladders, id);
   }, [ladders, persist]);
+
+  // Create new named ladder
+  const createLadder = useCallback((name: string, category?: string) => {
+    const ladder: Ladder = {
+      id: crypto.randomUUID(),
+      name,
+      category: category || null,
+      levels: emptyLevels(),
+    };
+    setLadders(prev => {
+      const next = [...prev, ladder];
+      if (!activeId) setActiveId(ladder.id);
+      persist(next, activeId || ladder.id);
+      return next;
+    });
+    return ladder;
+  }, [activeId, persist]);
+
+  const renameLadder = useCallback((id: string, name: string, category?: string | null) => {
+    setLadders(prev => {
+      const next = prev.map(l => l.id === id ? { ...l, name, category: category ?? l.category } : l);
+      persist(next, activeId);
+      return next;
+    });
+  }, [activeId, persist]);
+
+  const deleteLadder = useCallback((id: string) => {
+    setLadders(prev => {
+      const next = prev.filter(l => l.id !== id);
+      const nextActive = activeId === id ? next[0]?.id || "" : activeId;
+      if (activeId === id) setActiveId(nextActive);
+      persist(next, nextActive);
+      return next;
+    });
+  }, [activeId, persist]);
 
   const addTask = useCallback((level: number) => {
     setLadders(prev => {
-      const next = structuredClone(prev);
-      if (!next[activeCategory]) next[activeCategory] = { levels: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] } };
-      const task: LadderTask = { id: Date.now().toString(), text: "", completed: false };
-      next[activeCategory].levels[level] = [...(next[activeCategory].levels[level] || []), task];
-      persist(next, activeCategory);
+      const next = prev.map(l => {
+        if (l.id !== activeId) return l;
+        const levels = { ...l.levels, [level]: [...(l.levels[level] || []), { id: Date.now().toString(), text: "", completed: false }] };
+        return { ...l, levels };
+      });
+      persist(next, activeId);
       return next;
     });
-  }, [activeCategory, persist]);
+  }, [activeId, persist]);
 
   const updateTask = useCallback((level: number, taskId: string, updates: Partial<LadderTask>) => {
     setLadders(prev => {
-      const next = structuredClone(prev);
-      const tasks = next[activeCategory]?.levels[level];
-      if (!tasks) return prev;
-      const idx = tasks.findIndex((t: LadderTask) => t.id === taskId);
-      if (idx === -1) return prev;
-      tasks[idx] = { ...tasks[idx], ...updates };
-      persist(next, activeCategory);
+      const next = prev.map(l => {
+        if (l.id !== activeId) return l;
+        const tasks = l.levels[level];
+        if (!tasks) return l;
+        return { ...l, levels: { ...l.levels, [level]: tasks.map(t => t.id === taskId ? { ...t, ...updates } : t) } };
+      });
+      persist(next, activeId);
       return next;
     });
-  }, [activeCategory, persist]);
+  }, [activeId, persist]);
 
   const deleteTask = useCallback((level: number, taskId: string) => {
     setLadders(prev => {
-      const next = structuredClone(prev);
-      const tasks = next[activeCategory]?.levels[level];
-      if (!tasks) return prev;
-      next[activeCategory].levels[level] = tasks.filter((t: LadderTask) => t.id !== taskId);
-      persist(next, activeCategory);
+      const next = prev.map(l => {
+        if (l.id !== activeId) return l;
+        return { ...l, levels: { ...l.levels, [level]: (l.levels[level] || []).filter(t => t.id !== taskId) } };
+      });
+      persist(next, activeId);
       return next;
     });
-  }, [activeCategory, persist]);
+  }, [activeId, persist]);
 
   const setLevelTasks = useCallback((level: number, tasks: LadderTask[]) => {
     setLadders(prev => {
-      const next = structuredClone(prev);
-      if (!next[activeCategory]) next[activeCategory] = { levels: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] } };
-      next[activeCategory].levels[level] = tasks;
-      persist(next, activeCategory);
+      const next = prev.map(l => {
+        if (l.id !== activeId) return l;
+        return { ...l, levels: { ...l.levels, [level]: tasks } };
+      });
+      persist(next, activeId);
       return next;
     });
-  }, [activeCategory, persist]);
+  }, [activeId, persist]);
 
   const getProgress = useCallback(() => {
-    const ladder = ladders[activeCategory];
-    if (!ladder?.levels) return { total: 0, completed: 0, percentage: 0 };
+    const l = getActive();
+    if (!l?.levels) return { total: 0, completed: 0, percentage: 0 };
     let total = 0, completed = 0;
-    Object.values(ladder.levels).forEach((tasks: LadderTask[]) => {
+    Object.values(l.levels).forEach((tasks) => {
       tasks.forEach(t => { total++; if (t.completed) completed++; });
     });
     return { total, completed, percentage: total ? Math.round((completed / total) * 100) : 0 };
-  }, [ladders, activeCategory]);
+  }, [getActive]);
 
   const isLevelComplete = useCallback((level: number) => {
-    const tasks = ladders[activeCategory]?.levels[level] || [];
-    return tasks.length > 0 && tasks.every((t: LadderTask) => t.completed);
-  }, [ladders, activeCategory]);
+    const l = getActive();
+    const tasks = l?.levels[level] || [];
+    return tasks.length > 0 && tasks.every(t => t.completed);
+  }, [getActive]);
 
   return {
     ladders,
-    activeCategory,
+    activeId,
+    activeLadder: getActive(),
     loading,
-    changeCategory,
-    addTask,
-    updateTask,
-    deleteTask,
-    setLevelTasks,
+    changeActive,
+    createLadder,
+    renameLadder,
+    deleteLadder,
+    addTask, updateTask, deleteTask, setLevelTasks,
     getProgress,
     isLevelComplete,
   };

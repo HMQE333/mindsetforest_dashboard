@@ -29,6 +29,7 @@ import WatchMetricCard from "./WatchMetricCard";
 import ReadinessSummary from "./ReadinessSummary";
 import LogWatchModal from "./LogWatchModal";
 import WeeklyImportModal from "./WeeklyImportModal";
+import IntervalsIntegration from "./IntervalsIntegration";
 
 const CORE_METRIC_IDS = [
   "weight_kg",
@@ -49,7 +50,7 @@ function rangeLabel(id: string): string {
   if (!def) return "";
   if (id === "bp") return "<120/<80 mmHg";
   if (def.optimal) return `${def.optimal[0]}–${def.optimal[1]} ${def.unit}`;
-  return "—";
+  return ".";
 }
 
 function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
@@ -87,6 +88,17 @@ function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
   );
 }
 
+function StatPill({ label, value, unit }: { label: string; value: string | number | null | undefined; unit?: string }) {
+  return (
+    <div className="bg-muted/30 rounded-lg px-3 py-2 text-center">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-sm font-bold text-foreground tabular-nums">
+        {value != null ? value : "."}{unit ? <span className="text-[10px] text-muted-foreground ml-0.5">{unit}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 export default function HealthView() {
   const [mode, setMode] = useState<Mode>("watch");
 
@@ -102,6 +114,7 @@ export default function HealthView() {
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [editingWatch, setEditingWatch] = useState<WatchEntry | null>(null);
   const [weeklyOpen, setWeeklyOpen] = useState(false);
+  const [watchFilter, setWatchFilter] = useState<"1w" | "1m" | "3m" | "1y" | "all">("all");
 
   const defaultHeight = useMemo(() => {
     for (const e of entries) {
@@ -137,7 +150,7 @@ export default function HealthView() {
       .map(e => ({ date: e.entry_date, value: valueFor(e, id) ?? 0 }))
       .filter(p => p.value > 0);
 
-  // Per-metric trend history for the watch cards — last ~3 weeks of that metric,
+  // Per-metric trend history for the watch cards. Last ~3 weeks of that metric,
   // chronological (oldest→newest), skipping days where it wasn't logged.
   const watchHistoryFor = (id: keyof WatchEntry) =>
     watch.entries
@@ -151,15 +164,15 @@ export default function HealthView() {
     const out: { tone: "good" | "warn" | "info"; text: string }[] = [];
     const ldlStatus = statusFor(latest, "ldl_mgdl");
     if (ldlStatus === "optimal" && latest.ldl_mgdl != null) {
-      out.push({ tone: "good", text: `LDL at ${latest.ldl_mgdl} mg/dL — within AHA optimal range.` });
+      out.push({ tone: "good", text: `LDL at ${latest.ldl_mgdl} mg/dL. Within AHA optimal range.` });
     } else if (ldlStatus === "out" && latest.ldl_mgdl != null) {
       out.push({ tone: "warn", text: `LDL is elevated (${latest.ldl_mgdl} mg/dL). Consider diet & cardio focus.` });
     }
     const bpStatus = statusFor(latest, "bp");
     if (bpStatus === "optimal" && latest.bp_systolic && latest.bp_diastolic) {
-      out.push({ tone: "good", text: `Blood pressure ${latest.bp_systolic}/${latest.bp_diastolic} — healthy range.` });
+      out.push({ tone: "good", text: `Blood pressure ${latest.bp_systolic}/${latest.bp_diastolic}. Healthy range.` });
     } else if (bpStatus === "out") {
-      out.push({ tone: "warn", text: `Blood pressure is high — repeat measurement on a calm morning.` });
+      out.push({ tone: "warn", text: `Blood pressure is high. Repeat measurement on a calm morning.` });
     }
     if (latest.self_rating >= 8) {
       out.push({ tone: "good", text: `Self-rating ${latest.self_rating}/10 reflects strong overall wellbeing.` });
@@ -167,7 +180,7 @@ export default function HealthView() {
     if (entries.length >= 3) {
       const oldestWeight = entries[entries.length - 1]?.weight_kg;
       if (oldestWeight && latest.weight_kg && Math.abs(latest.weight_kg - oldestWeight) < 1.5) {
-        out.push({ tone: "info", text: "Weight stable across recent entries — excellent consistency." });
+        out.push({ tone: "info", text: "Weight stable across recent entries. Excellent consistency." });
       }
     }
     return out.slice(0, 4);
@@ -191,8 +204,75 @@ export default function HealthView() {
   };
 
   // ── Watch view ──────────────────────────────────────────
+  const filteredEntries = useMemo(() => {
+    if (watchFilter === "all") return watch.entries;
+    const now = new Date();
+    const days: Record<string, number> = { "1w": 7, "1m": 30, "3m": 90, "1y": 365 };
+    const cutoff = new Date(now.getTime() - (days[watchFilter] || 0) * 86400000)
+      .toISOString().split("T")[0];
+    return watch.entries.filter(e => e.entry_date >= cutoff);
+  }, [watch.entries, watchFilter]);
+
+  const filteredLatest = filteredEntries[0] ?? null;
+  const filteredPrevious = filteredEntries[1] ?? null;
+
+  const watchStats = useMemo(() => {
+    const e = filteredEntries;
+    if (e.length === 0) return null;
+    const avg = (vals: (number | null)[]) => {
+      const nums = vals.filter(v => v != null) as number[];
+      return nums.length > 0 ? Math.round(nums.reduce((a,b) => a+b, 0) / nums.length) : null;
+    };
+    return {
+      days: e.length,
+      avgRHR: avg(e.map(x => x.resting_hr)),
+      avgHRV: avg(e.map(x => x.hrv_ms)),
+      avgSleep: avg(e.map(x => x.sleep_score)),
+      totalSteps: e.reduce((s, x) => s + (x.steps ?? 0), 0),
+      bestSleep: e.reduce((b, x) => Math.max(b, x.sleep_score ?? 0), 0),
+    };
+  }, [filteredEntries]);
+
   const watchView = (
     <div className="space-y-6">
+      <IntervalsIntegration onDataFetched={() => {
+        watch.fetchEntries();
+        // Also reload after a short delay to let DB writes propagate
+        setTimeout(() => watch.fetchEntries(), 1500);
+      }} />
+
+      {/* Time filter + stats */}
+      {watch.entries.length > 0 && (
+        <div className="glass-card p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">Zakres:</span>
+            {(["1w", "1m", "3m", "1y", "all"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setWatchFilter(f)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  watchFilter === f
+                    ? "gradient-purple text-primary-foreground glow-sm"
+                    : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {f === "1w" ? "1W" : f === "1m" ? "1M" : f === "3m" ? "3M" : f === "1y" ? "1R" : "Wszystko"}
+              </button>
+            ))}
+          </div>
+          {watchStats && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+              <StatPill label="Dni" value={watchStats.days} />
+              <StatPill label="Śr. RHR" value={watchStats.avgRHR} unit="bpm" />
+              <StatPill label="Śr. HRV" value={watchStats.avgHRV} unit="ms" />
+              <StatPill label="Śr. Sen" value={watchStats.avgSleep} unit="/100" />
+              <StatPill label="Najlepszy sen" value={watchStats.bestSleep} unit="/100" />
+              <StatPill label="Kroki" value={watchStats.totalSteps?.toLocaleString()} />
+            </div>
+          )}
+        </div>
+      )}
+
       {!watch.tableReady && (
         <div className="glass-card p-4 flex items-start gap-3 border-amber-500/30">
           <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
@@ -201,7 +281,7 @@ export default function HealthView() {
             <p className="text-muted-foreground mt-0.5">
               The <code className="font-mono text-xs">watch_entries</code> table isn't set up on your Supabase project yet.
               Apply the migration in <code className="font-mono text-xs">.migration-backup/supabase/migrations/</code> (or run it
-              in the Supabase SQL editor), then reload — your entries will save automatically.
+              in the Supabase SQL editor), then reload. Your entries will save automatically.
             </p>
           </div>
         </div>
@@ -244,7 +324,7 @@ export default function HealthView() {
         </div>
       ) : (
         <>
-          <ReadinessSummary latest={watch.latest} previous={watch.previous} />
+          <ReadinessSummary latest={filteredLatest} previous={filteredPrevious} />
 
           {/* Clusters */}
           {(["A", "B", "C"] as WatchCluster[]).map(cluster => {
@@ -262,8 +342,8 @@ export default function HealthView() {
                     <WatchMetricCard
                       key={def.id}
                       def={def}
-                      entry={watch.latest}
-                      previous={watch.previous}
+                      entry={filteredLatest}
+                      previous={filteredPrevious}
                       history={watchHistoryFor(def.id as keyof WatchEntry)}
                       index={i}
                     />
@@ -276,7 +356,7 @@ export default function HealthView() {
           {/* History */}
           <div className="glass-card p-4">
             <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-              Watch history ({watch.entries.length})
+              Watch history ({filteredEntries.length}{watchFilter !== "all" ? ` / ${watch.entries.length} total` : ""})
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -293,8 +373,8 @@ export default function HealthView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {watch.entries.map((e, idx) => {
-                    const r = computeReadiness(e, watch.entries[idx + 1]);
+                  {filteredEntries.map((e, idx) => {
+                    const r = computeReadiness(e, filteredEntries[idx + 1]);
                     const vm = VERDICT_META[r.verdict];
                     return (
                       <tr
@@ -312,14 +392,14 @@ export default function HealthView() {
                               {r.score} {vm.emoji}
                             </span>
                           ) : (
-                            "—"
+                            "."
                           )}
                         </td>
-                        <td className="py-2 tabular-nums">{e.resting_hr ?? "—"}</td>
-                        <td className="py-2 tabular-nums">{e.sleep_score ?? "—"}</td>
-                        <td className="py-2 tabular-nums">{e.vo2max ?? "—"}</td>
-                        <td className="py-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? "—"}</td>
-                        <td className="py-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : "—"}</td>
+                        <td className="py-2 tabular-nums">{e.resting_hr ?? "."}</td>
+                        <td className="py-2 tabular-nums">{e.sleep_score ?? "."}</td>
+                        <td className="py-2 tabular-nums">{e.vo2max ?? "."}</td>
+                        <td className="py-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? "."}</td>
+                        <td className="py-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : "."}</td>
                         <td className="py-2">
                           <div className="flex items-center gap-1 justify-end">
                             <button
@@ -455,12 +535,12 @@ export default function HealthView() {
                 >
                   <td className="py-2 font-semibold text-foreground">{e.entry_date}</td>
                   <td className="py-2 tabular-nums">{e.self_rating}/10</td>
-                  <td className="py-2 tabular-nums">{e.weight_kg ?? "—"}</td>
+                  <td className="py-2 tabular-nums">{e.weight_kg ?? "."}</td>
                   <td className="py-2 tabular-nums">
-                    {e.bp_systolic != null && e.bp_diastolic != null ? `${e.bp_systolic}/${e.bp_diastolic}` : "—"}
+                    {e.bp_systolic != null && e.bp_diastolic != null ? `${e.bp_systolic}/${e.bp_diastolic}` : "."}
                   </td>
-                  <td className="py-2 tabular-nums">{e.fasting_glucose_mgdl ?? "—"}</td>
-                  <td className="py-2 tabular-nums">{e.ldl_mgdl ?? "—"}</td>
+                  <td className="py-2 tabular-nums">{e.fasting_glucose_mgdl ?? "."}</td>
+                  <td className="py-2 tabular-nums">{e.ldl_mgdl ?? "."}</td>
                   <td className="py-2">
                     <div className="flex items-center gap-1 justify-end">
                       <button
@@ -506,8 +586,8 @@ export default function HealthView() {
           <h2 className="text-2xl font-bold text-foreground">❤️ Health</h2>
           <p className="text-sm text-muted-foreground">
             {mode === "watch"
-              ? "Daily readiness from your Forerunner — one score, then what to improve."
-              : "Vitals & bloodwork — quarterly check-ins."}
+              ? "Daily readiness from your Forerunner. One score, then what to improve."
+              : "Vitals & bloodwork. Quarterly check-ins."}
           </p>
         </div>
         <div className="flex items-center gap-2">

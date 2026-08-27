@@ -160,7 +160,7 @@ const CreateCollectionModal = ({
         <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
           <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)}
             className="rounded border-white/20" />
-          <span>{isPublic ? "🌍 Public — anyone can browse" : "🔒 Private — only you"}</span>
+          <span>{isPublic ? "🌍 Public. Anyone can browse" : "🔒 Private. Only you"}</span>
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>

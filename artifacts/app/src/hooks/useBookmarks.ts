@@ -30,7 +30,7 @@ function writeCache(userId: string, bookmarks: Bookmark[]) {
   try {
     localStorage.setItem(cacheKey(userId), JSON.stringify(bookmarks));
   } catch {
-    // ignore — cache is best-effort
+    // ignore. Cache is best-effort
   }
 }
 

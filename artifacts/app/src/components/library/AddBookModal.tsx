@@ -49,7 +49,7 @@ export default function AddBookModal({ open, onClose, onAdd }: AddBookModalProps
           <Input placeholder="Title *" value={title} onChange={e => setTitle(e.target.value)} className="bg-muted/30 border-white/10" />
           <Input placeholder="Author" value={author} onChange={e => setAuthor(e.target.value)} className="bg-muted/30 border-white/10" />
           <Input type="number" placeholder="Total pages" value={pages} onChange={e => setPages(e.target.value)} className="bg-muted/30 border-white/10" />
-          <Input placeholder="🔗 URL (optional — Goodreads, PDF, notes…)" value={url} onChange={e => setUrl(e.target.value)} className="bg-muted/30 border-white/10" />
+          <Input placeholder="🔗 URL (optional. Goodreads, PDF, notes…)" value={url} onChange={e => setUrl(e.target.value)} className="bg-muted/30 border-white/10" />
 
           {/* Status */}
           <div>

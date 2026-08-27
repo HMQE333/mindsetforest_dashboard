@@ -88,7 +88,7 @@ export function useTrackerXp() {
     let xp = computeEntryXp(metric, value, config);
     if (xp <= 0) return 0;
 
-    // Daily cap — compute today's entry total from the freshest grants so that
+    // Daily cap. Compute today's entry total from the freshest grants so that
     // several logs submitted in quick succession can't collectively exceed it.
     if (config.dailyCap > 0) {
       const today = todayISO();
@@ -128,7 +128,7 @@ export function useTrackerXp() {
       .select("id, source, ref_id, xp, date")
       .single();
     if (error || !data) {
-      // A unique-violation (23505) means it was genuinely already granted — keep
+      // A unique-violation (23505) means it was genuinely already granted. Keep
       // the optimistic lock. Any other (transient) error should roll the lock
       // back so the grant can be retried instead of being suppressed for good.
       if ((error as { code?: string } | null)?.code !== "23505") {

@@ -134,7 +134,7 @@ export function useHealthEntries() {
         b.entry_date.localeCompare(a.entry_date),
       );
       setEntries(prev => [...rows, ...prev]);
-      toast.success("Sample data added — explore freely 🌱");
+      toast.success("Sample data added. Explore freely 🌱");
     }
   }, [user]);
 

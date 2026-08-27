@@ -25,7 +25,7 @@ export default function FinanceTransactions({ transactions, onDelete, onAdd, cur
     return transactions.filter(t => {
       if (filterMonth && !t.date.startsWith(filterMonth)) return false;
       if (filterType !== "all" && t.type !== filterType) return false;
-      // Exclude subs and loans — they have their own tabs
+      // Exclude subs and loans. They have their own tabs
       if (t.type === "subscription" || t.type === "loan_out" || t.type === "loan_in") return false;
       return true;
     });

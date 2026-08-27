@@ -124,7 +124,7 @@ const EditSeedModal = ({ open, seed, onClose }: Props) => {
                   );
                 })}
                 <p className="text-[10px] text-muted-foreground text-center pt-1 border-t border-white/5">
-                  Audience selection here is additive — saving will replace the existing list.
+                  Audience selection here is additive. Saving will replace the existing list.
                 </p>
               </div>
             )}

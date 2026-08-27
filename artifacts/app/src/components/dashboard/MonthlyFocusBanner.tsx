@@ -127,7 +127,7 @@ export default function MonthlyFocusBanner({ pulseStyle = "glow" }: MonthlyFocus
 
         <div className="p-3 space-y-1.5 max-h-48 overflow-y-auto">
           {items.length === 0 && !editing && (
-            <p className="text-xs text-muted-foreground text-center py-2">No focus items yet — click ✏️ to add</p>
+            <p className="text-xs text-muted-foreground text-center py-2">No focus items yet. Click ✏️ to add</p>
           )}
           <AnimatePresence>
             {items.map(item => (

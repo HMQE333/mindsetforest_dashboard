@@ -32,7 +32,7 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
           <div className="w-1.5 h-10 rounded-full shrink-0" style={{ backgroundColor: book.cover_color }} />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm text-foreground truncate">{book.title}</h3>
-            <p className="text-xs text-muted-foreground truncate">{book.author || "—"}</p>
+            <p className="text-xs text-muted-foreground truncate">{book.author || "."}</p>
           </div>
           {hasUrl && (
             <span onClick={handleLinkClick} role="button" title={book.url} className="shrink-0 p-1 rounded-md bg-muted/30 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all cursor-pointer">

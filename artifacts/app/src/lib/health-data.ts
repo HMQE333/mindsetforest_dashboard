@@ -13,14 +13,14 @@ export interface HealthMetricDef {
   icon: string;          // emoji
   group: HealthGroup;
   color: string;         // hsl token
-  // For most metrics — value-based status
+  // For most metrics. Value-based status
   optimal?: [number, number];
   borderline?: [number, number];
   // Direction: which way is "good" (used for trend arrow color)
   betterDirection: "lower" | "higher" | "neutral";
   why: string;           // one-line "Why it matters"
   derived?: boolean;     // computed (e.g. BMI) instead of read from a column
-  composite?: boolean;   // composite (e.g. blood pressure pair)
+  composite?: boolean;   // composite (e.g. Blood pressure pair)
 }
 
 export const HEALTH_METRICS: HealthMetricDef[] = [
@@ -242,7 +242,7 @@ export const STATUS_SCORE: Record<HealthStatus, number> = {
   unknown: 0.5, // neutral when missing
 };
 
-/** Aggregate health score 0-100 — weighted from latest entry's metric statuses + self-rating. */
+/** Aggregate health score 0-100. Weighted from latest entry's metric statuses + self-rating. */
 export function computeAggregateScore(latest: {
   metricStatuses: HealthStatus[]; // pre-computed from latest entry
   selfRating?: number | null;

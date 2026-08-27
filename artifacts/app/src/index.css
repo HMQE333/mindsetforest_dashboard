@@ -38,14 +38,14 @@
     --radius: 0.75rem;
 
     /* Category colors (HSL) */
-    --cat-mind: 263 70% 58%;
-    --cat-body: 0 86% 60%;
-    --cat-creation: 25 95% 53%;
-    --cat-exploration: 189 94% 43%;
+    --cat-mind: 262 89% 66%;
+    --cat-body: 25 95% 53%;
+    --cat-creation: 0 84% 60%;
+    --cat-exploration: 242 83% 67%;
     --cat-networking: 45 97% 56%;
-    --cat-trading: 239 84% 67%;
-    --cat-spirit: 292 84% 61%;
-    --cat-order: 240 4% 65%;
+    --cat-trading: 161 84% 47%;
+    --cat-spirit: 45 97% 56%;
+    --cat-order: 240 5% 65%;
 
     /* Special tokens */
     --glass: 230 20% 7%;
@@ -78,7 +78,7 @@
   }
 
   /* Reinforce body scroll lock when a Radix dialog/popup sets data-scroll-locked.
-     Some app-level scroll containers can bypass Radix's default lock — this
+     Some app-level scroll containers can bypass Radix's default lock : this
      guarantees the page behind a modal stays frozen. */
   body[data-scroll-locked] {
     overflow: hidden !important;
@@ -270,14 +270,14 @@
 
 /* ===== Frame Styles (card hover overrides) ===== */
 
-/* Aura — card-color matching glow */
+/* Aura : card-color matching glow */
 .frame-aura .glass-card-hover:hover {
   transform: none;
   border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
   box-shadow: 0 0 28px var(--card-color, hsl(var(--glow-purple) / 0.5)), 0 0 56px var(--card-color, hsl(var(--glow-purple) / 0.25)), 0 4px 16px var(--card-color, hsl(var(--glow-purple) / 0.3));
 }
 
-/* Neon — bright neon outline + subtle inner glow */
+/* Neon : bright neon outline + subtle inner glow */
 .frame-neon .glass-card-hover:hover {
   transform: none;
   border-color: hsl(var(--glow-purple) / 0.8);
@@ -287,7 +287,7 @@
     inset 0 0 12px hsl(var(--glow-purple) / 0.08);
 }
 
-/* Frost — increased blur + frosted white border */
+/* Frost : increased blur + frosted white border */
 .frame-frost .glass-card-hover:hover {
   transform: none;
   backdrop-filter: blur(32px);
@@ -296,7 +296,7 @@
   box-shadow: 0 8px 32px hsl(var(--foreground) / 0.06);
 }
 
-/* Sharp — reduced rounding, hard shadow, subtle scale */
+/* Sharp : reduced rounding, hard shadow, subtle scale */
 .frame-sharp .glass-card,
 .frame-sharp .glass-card-hover {
   border-radius: clamp(4px, 0.25rem, 6px);
@@ -307,7 +307,7 @@
   box-shadow: 6px 6px 0px hsl(var(--glow-purple) / 0.25);
 }
 
-/* Prism — dual glow: accent + per-card category color layered */
+/* Prism : dual glow: accent + per-card category color layered */
 .frame-prism .glass-card-hover:hover {
   transform: none;
   border-color: var(--card-color, hsl(var(--glow-purple) / 0.6));
@@ -317,7 +317,7 @@
     0 4px 24px color-mix(in srgb, var(--card-color, hsl(var(--glow-purple))) 15%, transparent);
 }
 
-/* Electric — animated turbulent border via SVG filter */
+/* Electric : animated turbulent border via SVG filter */
 .frame-electric .glass-card-hover {
   position: relative;
 }
@@ -348,7 +348,7 @@
   opacity: 1;
 }
 
-/* Plasma — electric turbulent border using per-card category color */
+/* Plasma : electric turbulent border using per-card category color */
 .frame-plasma .glass-card-hover {
   position: relative;
 }
@@ -391,7 +391,7 @@
   100% { background-position: 0% 50%; }
 }
 
-/* Glassmorphic — deep frosted glass with iridescent shimmer border & specular highlight */
+/* Glassmorphic : deep frosted glass with iridescent shimmer border & specular highlight */
 .card-glassmorphic .glass-card,
 .card-glassmorphic .glass-card-hover {
   position: relative;
@@ -431,7 +431,7 @@
     0 10px 40px hsl(var(--background) / 0.5);
 }
 
-/* Iridescent shimmer border — animated gradient sweep */
+/* Iridescent shimmer border : animated gradient sweep */
 .card-glassmorphic .glass-card::before,
 .card-glassmorphic .glass-card-hover::before {
   content: '';
@@ -464,7 +464,7 @@
   opacity: 1;
 }
 
-/* Specular top highlight — simulates light hitting curved glass */
+/* Specular top highlight : simulates light hitting curved glass */
 .card-glassmorphic .glass-card::after,
 .card-glassmorphic .glass-card-hover::after {
   content: '';
@@ -490,7 +490,7 @@
   overflow: visible;
 }
 
-/* Solid — opaque, flat, no transparency */
+/* Solid : opaque, flat, no transparency */
 .card-solid .glass-card,
 .card-solid .glass-card-hover {
   @apply rounded-xl;
@@ -506,7 +506,7 @@
   transform: none;
 }
 
-/* Outline — transparent, border-only */
+/* Outline : transparent, border-only */
 .card-outline .glass-card,
 .card-outline .glass-card-hover {
   background: transparent;
@@ -522,7 +522,7 @@
   transform: none;
 }
 
-/* Elevated — strong shadows, layered depth */
+/* Elevated : strong shadows, layered depth */
 .card-elevated .glass-card,
 .card-elevated .glass-card-hover {
   @apply rounded-2xl;
@@ -691,7 +691,7 @@
 
 /* ===== Light Theme Overrides for Textured Card Styles ===== */
 
-/* Frosted — boost contrast on light themes */
+/* Frosted : boost contrast on light themes */
 .light-theme .card-frosted .glass-card,
 .light-theme .card-frosted .glass-card-hover {
   background: hsla(205, 40%, 88%, 0.45);
@@ -706,7 +706,7 @@
     0 4px 20px hsla(200, 40%, 40%, 0.12);
 }
 
-/* Wood — warm light wood on light themes */
+/* Wood : warm light wood on light themes */
 .light-theme .card-wood .glass-card,
 .light-theme .card-wood .glass-card-hover {
   background-color: hsl(30 35% 82%);
@@ -728,7 +728,7 @@
     0 4px 16px hsla(20, 30%, 40%, 0.15);
 }
 
-/* Neumorphic — sharper shadows on light themes */
+/* Neumorphic : sharper shadows on light themes */
 .light-theme .card-neumorphic .glass-card,
 .light-theme .card-neumorphic .glass-card-hover {
   background-color: hsl(var(--background));
@@ -850,7 +850,7 @@
   opacity: 1;
 }
 
-/* Light-theme Bark frame — warmer, visible grain on light backgrounds */
+/* Light-theme Bark frame : warmer, visible grain on light backgrounds */
 .light-theme .frame-bark .glass-card-hover:hover {
   border-color: hsl(28 40% 62%);
   box-shadow:

@@ -145,7 +145,7 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
       return { current: cur, previous: prev, buckets, bucketLabel: `${yyyy}` };
     }
 
-    // all-time — one bar per calendar year present in the data.
+    // all-time. One bar per calendar year present in the data.
     const byYear = new Map<number, number>();
     for (const d of source) {
       const y = parseInt(d.date.slice(0, 4), 10);
@@ -179,10 +179,10 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
   if (history.length === 0 && (allHistory === null || allHistory.length === 0)) return null;
 
   const deltaBadge = (delta: number | null) => {
-    if (delta === null) return <span className="text-muted-foreground">—</span>;
+    if (delta === null) return <span className="text-muted-foreground">.</span>;
     if (delta > 0) return <span className="text-green-400">↑ {delta}%</span>;
     if (delta < 0) return <span className="text-destructive">↓ {Math.abs(delta)}%</span>;
-    return <span className="text-muted-foreground">— 0%</span>;
+    return <span className="text-muted-foreground">. 0%</span>;
   };
 
   return (
@@ -312,7 +312,7 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
                 {/* Per-category breakdown */}
                 <div className="mb-6">
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">
-                    By category — active days
+                    By category. Active days
                   </div>
                   <div className="space-y-2">
                     {catStats.map(({ cat, days, maxDays }) => (
@@ -353,7 +353,7 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
                           <span
                             key={title}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-secondary/40 text-xs text-foreground/80"
-                            title={`${title} — done ${count}×`}
+                            title={`${title}. Done ${count}×`}
                           >
                             <span className="truncate max-w-[16rem]">{title}</span>
                             <span className="font-mono font-bold text-stat-value">{count}×</span>

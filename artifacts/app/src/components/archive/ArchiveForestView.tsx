@@ -160,7 +160,7 @@ const ArchiveForestView = () => {
 
   const list = tab === "discover" ? sortedDiscover : filteredMine;
 
-  // Top tags across the discover pool — surfaced as one-tap chips
+  // Top tags across the discover pool. Surfaced as one-tap chips
   const topDiscoverTags = useMemo(() => {
     const counts = new Map<string, number>();
     for (const s of forest.discoverSeeds) {
@@ -176,7 +176,7 @@ const ArchiveForestView = () => {
       .map(([t, n]) => ({ tag: t, count: n }));
   }, [forest.discoverSeeds]);
 
-  // Per-pillar heat (sum of waters on seeds <48h old, per pillar) — surfaces what's hot today
+  // Per-pillar heat (sum of waters on seeds <48h old, per pillar). Surfaces what's hot today
   const pillarHeat = useMemo(() => {
     const cutoff = Date.now() - 48 * 3_600_000;
     const heat = new Map<string, number>();
@@ -374,7 +374,7 @@ const ArchiveForestView = () => {
         </motion.div>
       )}
 
-      {/* Blocked authors panel — visible on My Seeds tab when there are any */}
+      {/* Blocked authors panel. Visible on My Seeds tab when there are any */}
       {tab === "mine" && <BlockedAuthorsList />}
 
       {/* Recent appreciation activity */}

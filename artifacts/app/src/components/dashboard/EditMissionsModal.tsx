@@ -118,7 +118,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
         ...m,
         title: m.title.trim(),
         description: m.description.trim(),
-        duration: m.duration.trim() || "—",
+        duration: m.duration.trim() || ".",
         xp: Number(m.xp) || 10,
         persistent: !!m.persistent,
         url: m.url?.trim() || undefined,
@@ -128,7 +128,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                 ...v,
                 title: v.title.trim(),
                 description: v.description.trim(),
-                duration: v.duration.trim() || "—",
+                duration: v.duration.trim() || ".",
                 xp: Number(v.xp) || 10,
                 weight: Math.max(1, Number(v.weight) || 1),
                 url: v.url?.trim() || undefined,
@@ -172,7 +172,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
               ✏️
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">Edit Tasks — {displayName}</h2>
+              <h2 className="text-lg font-bold text-foreground">Edit Tasks. {displayName}</h2>
               <p className="text-xs text-foreground/60">Add, rename, remove or randomize missions. Changes are saved to your account.</p>
             </div>
           </div>
@@ -280,7 +280,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                 {hasVariants && (
                   <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] uppercase tracking-wider text-foreground/50 font-semibold">Variants — daily roll picks one</p>
+                      <p className="text-[11px] uppercase tracking-wider text-foreground/50 font-semibold">Variants. Daily roll picks one</p>
                       <button
                         onClick={() => addVariant(index)}
                         className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary transition-colors"

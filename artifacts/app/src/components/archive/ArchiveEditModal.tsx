@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
@@ -55,12 +55,27 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
     return urls;
   }, [content]);
 
-  if (!block) return null;
+  const togglePillar = useCallback((id: string) =>
+    setPillars((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id])), []);
 
-  const togglePillar = (id: string) =>
-    setPillars((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
-  const toggleDirection = (id: string) =>
-    setDirections((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
+  const toggleDirection = useCallback((id: string) =>
+    setDirections((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id])), []);
+
+  // Keyboard shortcuts for pillars (only when dialog is open and not typing)
+  const handlePillarKey = useCallback((e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
+    const pillar = allPillars.find(p => p.name[0]?.toLowerCase() === e.key.toLowerCase());
+    if (pillar) setPillars((prev) => (prev.includes(pillar.id) ? prev.filter((p) => p !== pillar.id) : [...prev, pillar.id]));
+  }, [allPillars]);
+
+  useEffect(() => {
+    if (!open || !block) return;
+    window.addEventListener("keydown", handlePillarKey);
+    return () => window.removeEventListener("keydown", handlePillarKey);
+  }, [open, block, handlePillarKey]);
+
+  if (!block) return null;
 
   const handleSave = async () => {
     setSaving(true);
@@ -87,8 +102,8 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
           <DialogTitle className="text-gradient-purple">Edit Block</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="bg-background/50 border-white/10" />
-          <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Content" className="min-h-[120px] bg-background/50 border-white/10" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="bg-background/50 border-white/10" onKeyDown={(e) => e.stopPropagation()} />
+          <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Content" className="min-h-[120px] bg-background/50 border-white/10" onKeyDown={(e) => e.stopPropagation()} />
 
           {imageUrls.length > 0 && (
             <div className="flex gap-2 flex-wrap">
@@ -107,11 +122,12 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
                 <button
                   key={p.id}
                   onClick={() => togglePillar(p.id)}
-                  className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1 ${
+                  className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1.5 ${
                     pillars.includes(p.id) ? "text-white" : "opacity-40 hover:opacity-70"
                   }`}
                   style={{ backgroundColor: pillars.includes(p.id) ? p.color : p.color + "22", color: pillars.includes(p.id) ? "#fff" : p.color }}
                 >
+                  <span className="w-4 h-4 rounded-full bg-black/30 text-[9px] font-bold flex items-center justify-center shrink-0">{p.name[0]}</span>
                   <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
                 </button>
               ))}
@@ -150,7 +166,7 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
                 })}
               />
             </div>
-            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" />
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Custom tags (comma separated)" className="bg-background/50 border-white/10" onKeyDown={(e) => e.stopPropagation()} />
           </div>
 
           {semanticSearch && (

@@ -46,13 +46,13 @@ const GUIDE_CARDS = [
   {
     emoji: "📦",
     title: "Archive: Your Second Brain",
-    desc: "Capture ideas, links and images from anywhere. Smart semantic search finds what you meant — not just what you typed. Tag by pillar, revisit via spaced repetition.",
+    desc: "Capture ideas, links and images from anywhere. Smart semantic search finds what you meant. Not just what you typed. Tag by pillar, revisit via spaced repetition.",
     glow: "from-cat-exploration/20",
   },
   {
     emoji: "🌳",
     title: "Forest: Knowledge, Shared",
-    desc: "Plant your best ideas as seeds. Friends and the public can water and save them. A quiet social layer for growth — no doomscrolling, just signal.",
+    desc: "Plant your best ideas as seeds. Friends and the public can water and save them. A quiet social layer for growth. No doomscrolling, just signal.",
     glow: "from-emerald-500/20",
   },
   {
@@ -64,7 +64,7 @@ const GUIDE_CARDS = [
   {
     emoji: "💰",
     title: "Finance, Without the Anxiety",
-    desc: "Track cash flow, subscriptions and loans with a 6-month savings curve. Numbers you can face — designed to inform, not to shame.",
+    desc: "Track cash flow, subscriptions and loans with a 6-month savings curve. Numbers you can face. Designed to inform, not to shame.",
     glow: "from-cat-creation/20",
   },
   {

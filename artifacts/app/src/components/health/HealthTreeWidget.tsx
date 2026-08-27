@@ -45,7 +45,7 @@ export default function HealthTreeWidget({ score, hideLabel }: Props) {
       ? "M75 170 Q72 130 76 100 Q78 80 82 100 Q88 130 85 170 Z"
       : "M76 170 Q74 130 78 100 Q80 80 82 100 Q86 130 84 170 Z";
 
-  // Branches — droopier when withered, upright when healthy
+  // Branches. Droopier when withered, upright when healthy
   const droop = stage <= 1 ? 12 : stage === 2 ? 6 : 0;
   const branches = (
     <g stroke={meta.trunk} strokeWidth={stage <= 1 ? 2.5 : 3} fill="none" strokeLinecap="round">
@@ -65,7 +65,7 @@ export default function HealthTreeWidget({ score, hideLabel }: Props) {
     </g>
   );
 
-  // Leaves — count & size scale with stage
+  // Leaves. Count & size scale with stage
   const leafConfigs: { cx: number; cy: number; r: number; delay: number }[] = [
     { cx: 80, cy: 50, r: 32, delay: 0 },
     { cx: 50, cy: 75, r: 22, delay: 0.2 },
@@ -146,7 +146,7 @@ export default function HealthTreeWidget({ score, hideLabel }: Props) {
         className="w-32 h-36"
         style={{ filter: stage === 6 ? `drop-shadow(0 0 14px ${meta.glow}90)` : undefined }}
       >
-        {/* Ground shadow — smaller when tree is dying */}
+        {/* Ground shadow. Smaller when tree is dying */}
         <ellipse cx="80" cy="172" rx={stage === 0 ? 26 : 40} ry="4" fill="hsl(var(--muted))" opacity="0.3" />
 
         {/* Trunk */}

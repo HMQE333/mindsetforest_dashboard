@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, X, Send, Plus, Trash2, Square, Search } from "lucide-react";
+import { Sparkles, X, Send, Plus, Trash2, Square, Search, Mic, MicOff } from "lucide-react";
+import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useAssistant } from "@/hooks/useAssistant";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,7 +13,9 @@ import {
   type ScopeId,
   type ArchiveItemRef,
 } from "@/lib/assistant-context";
-import { describeAction } from "@/lib/assistant-actions";
+import { describeAction, mindmapPreview } from "@/lib/assistant-actions";
+import { processVoiceTranscript } from "@/lib/voice-format";
+import { supabase } from "@/integrations/supabase/client";
 import type { AssistantMessage } from "@/hooks/useAssistant";
 
 function ScopeMenu({ isWatch }: { isWatch: boolean }) {
@@ -46,7 +49,7 @@ function ScopeMenu({ isWatch }: { isWatch: boolean }) {
       align="start"
       sideOffset={8}
       collisionPadding={8}
-      className={`${isWatch ? "w-[min(88vw,224px)] p-2" : "w-72 p-3"} rounded-2xl bg-card/95 backdrop-blur-xl border border-white/10 shadow-xl max-h-[70vh] overflow-y-auto`}
+      className={`${isWatch ? "w-[min(88vw,224px)] p-2" : "w-72 p-3"} rounded-2xl bg-card/95 backdrop-blur-xl border border-white/10 shadow-xl max-h-[70vh] overflow-y-auto z-[9999]`}
     >
       <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
         What can I read?
@@ -166,7 +169,7 @@ function ActionConfirm({ message }: { message: AssistantMessage }) {
   if (message.actionsResolved === "dismissed") {
     return (
       <div className="mt-2 text-[11px] px-3 py-2 rounded-xl bg-muted/40 border border-white/10 text-muted-foreground">
-        Dismissed — nothing was saved.
+        Dismissed. Nothing was saved.
       </div>
     );
   }
@@ -183,12 +186,21 @@ function ActionConfirm({ message }: { message: AssistantMessage }) {
         Confirm {actions.length === 1 ? "action" : `${actions.length} actions`}
       </p>
       <ul className="space-y-1 mb-3">
-        {actions.map((a, i) => (
-          <li key={i} className="text-xs text-foreground/85 flex items-start gap-1.5">
-            <span className="text-primary mt-0.5">•</span>
-            <span>{describeAction(a)}</span>
+        {actions.map((a, i) => {
+          const preview = mindmapPreview(a);
+          return (
+          <li key={i} className="text-xs text-foreground/85">
+            <div className="flex items-start gap-1.5">
+              <span className="text-primary mt-0.5">•</span>
+              <span>{describeAction(a)}</span>
+            </div>
+            {preview && (
+              <div className="ml-4 mt-1 text-[10px] text-muted-foreground font-mono whitespace-pre-wrap bg-black/20 rounded-lg px-2 py-1.5 border border-white/5 max-h-32 overflow-y-auto">
+                {preview}
+              </div>
+            )}
           </li>
-        ))}
+        )})}
       </ul>
       <div className="flex items-center gap-2">
         <button
@@ -211,9 +223,19 @@ function ActionConfirm({ message }: { message: AssistantMessage }) {
 }
 
 const SUGGESTIONS = [
-  "Summarize my progress this week",
-  "What should I focus on today?",
-  "How is my streak looking?",
+  { icon: "📊", label: "Summarize my progress this week" },
+  { icon: "🎯", label: "What should I focus on today?" },
+  { icon: "🔄", label: "Analyze my habit consistency" },
+  { icon: "💰", label: "Review my finances this month" },
+  { icon: "❤️", label: "How's my health trending?" },
+  { icon: "📅", label: "Plan my next 7 days" },
+  { icon: "📦", label: "What's in my archive about productivity?" },
+  { icon: "🏆", label: "Generate a new mission for me" },
+  { icon: "😴", label: "How's my sleep and recovery?" },
+  { icon: "🏷️", label: "What are my most used tags?" },
+  { icon: "🔥", label: "How's my streak going?" },
+  { icon: "🧘", label: "Summarize my breathing practice" },
+  { icon: "✍️", label: "Save a quick note (e.g. \"save: idea about X\")" },
 ];
 
 export default function AssistantPanel() {
@@ -233,7 +255,12 @@ export default function AssistantPanel() {
   } = useAssistant();
   const [input, setInput] = useState("");
   const [scopeOpen, setScopeOpen] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef("");
+  const lastChunkRef = useRef("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const isWatch = useIsWatch();
 
   useEffect(() => {
@@ -242,13 +269,114 @@ export default function AssistantPanel() {
     }
   }, [messages, open]);
 
-  if (!user) return null;
+  // Keep inputRef in sync for voice formatting (needs current value synchronously).
+  useEffect(() => { inputRef.current = input; }, [input]);
 
   const handleSend = () => {
     const text = input;
     setInput("");
     sendMessage(text);
   };
+
+  // Apply a transcribed+formatted chunk to the input, handling control commands.
+  const applyVoiceResult = useCallback((text: string, command: "pause" | "undo" | "clear" | null) => {
+    if (command === "clear") {
+      setInput("");
+      lastChunkRef.current = "";
+      return;
+    }
+    if (command === "undo") {
+      setInput((p) => {
+        const lc = lastChunkRef.current;
+        if (lc && p.endsWith(lc)) return p.slice(0, p.length - lc.length).trimEnd();
+        return p;
+      });
+      lastChunkRef.current = "";
+      return;
+    }
+    if (text) {
+      lastChunkRef.current = text;
+      setInput((p) => (p.trim() ? p.trimEnd() + " " + text : text));
+    }
+  }, []);
+
+  // Send a recorded audio blob to the ai-transcribe edge function (Whisper via
+  // OpenRouter), then format + append the result.
+  const transcribeAndAppend = useCallback(async (blob: Blob) => {
+    setTranscribing(true);
+    try {
+      // Blob -> base64 (chunked to avoid stack overflow on large buffers)
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      const base64 = btoa(binary);
+
+      const { data, error } = await supabase.functions.invoke("ai-transcribe", {
+        body: { audio: base64, format: "webm" },
+      });
+      if (error) throw new Error(error.message || "Transcription failed");
+
+      const rawText: string = data?.text || "";
+      if (!rawText.trim()) {
+        toast.error("Couldn't hear anything. Try again");
+        return;
+      }
+      const { text, command } = processVoiceTranscript(rawText, inputRef.current);
+      applyVoiceResult(text, command);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Transcription failed");
+    } finally {
+      setTranscribing(false);
+    }
+  }, [applyVoiceResult]);
+
+  const toggleVoice = useCallback(async () => {
+    // Stop an in-progress recording.
+    if (listening) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    // Start recording.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const rec = new MediaRecorder(stream, { mimeType });
+      const chunks: BlobPart[] = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setListening(false);
+        if (chunks.length === 0) return;
+        const blob = new Blob(chunks, { type: mimeType });
+        await transcribeAndAppend(blob);
+      };
+      rec.onerror = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setListening(false);
+        toast.error("Recording failed");
+      };
+      mediaRecorderRef.current = rec;
+      rec.start();
+      setListening(true);
+    } catch {
+      toast.error("Microphone access denied");
+    }
+  }, [listening, transcribeAndAppend]);
+
+  useEffect(() => {
+    return () => mediaRecorderRef.current?.stop();
+  }, []);
+
+  // All hooks are above this line. Early return must come after every hook to
+  // keep the hook count stable across renders (React invariant #310).
+  if (!user) return null;
 
   const activeScopeCount = selectedScopes.length + archiveItems.length;
 
@@ -369,7 +497,7 @@ export default function AssistantPanel() {
                 )}
                 {activeScopeCount === 0 && !isWatch && (
                   <span className="text-[10px] text-muted-foreground">
-                    No context selected — I'll use {currentScope ? SCOPE_MAP[currentScope]?.label : "the dashboard"}.
+                    No context selected. I'll use {currentScope ? SCOPE_MAP[currentScope]?.label : "the dashboard"}.
                   </span>
                 )}
                 {activeScopeCount === 0 && isWatch && (
@@ -392,16 +520,17 @@ export default function AssistantPanel() {
                         I answer using only the data you allow via the Context menu above.
                       </p>
                     )}
-                    <div className="space-y-1.5">
+                    <div className="grid grid-cols-1 gap-1.5">
                       {(isWatch ? SUGGESTIONS.slice(0, 1) : SUGGESTIONS).map((s) => (
                         <button
-                          key={s}
-                          onClick={() => sendMessage(s)}
-                          className={`w-full text-left rounded-xl bg-muted/40 border border-white/10 text-muted-foreground hover:text-foreground hover:border-white/20 transition-all ${
+                          key={s.label}
+                          onClick={() => sendMessage(s.label)}
+                          className={`w-full text-left rounded-xl bg-muted/40 border border-white/10 text-muted-foreground hover:text-foreground hover:border-white/20 transition-all flex items-center gap-2 ${
                             isWatch ? "text-[10px] px-2 py-1.5 leading-snug" : "text-xs px-3 py-2"
                           }`}
                         >
-                          {s}
+                          <span className="flex-shrink-0">{s.icon}</span>
+                          <span className="truncate">{s.label}</span>
                         </button>
                       ))}
                     </div>
@@ -449,6 +578,7 @@ export default function AssistantPanel() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
+                      e.stopPropagation();
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleSend();
@@ -458,6 +588,20 @@ export default function AssistantPanel() {
                     rows={1}
                     className={`flex-1 min-w-0 resize-none bg-transparent focus:outline-none max-h-28 py-1 text-foreground placeholder:text-muted-foreground ${isWatch ? "text-[11px]" : "text-sm"}`}
                   />
+                  <button
+                    onClick={toggleVoice}
+                    disabled={transcribing}
+                    className={`rounded-xl flex-shrink-0 transition-colors ${isWatch ? "p-1.5" : "p-2"} ${
+                      listening
+                        ? "bg-red-500/20 text-red-400 animate-pulse"
+                        : transcribing
+                          ? "bg-amber-500/20 text-amber-400 animate-pulse"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    }`}
+                    title={listening ? "Stop recording" : transcribing ? "Transcribing…" : "Voice input (Whisper)"}
+                  >
+                    {listening ? <MicOff className={isWatch ? "w-3 h-3" : "w-4 h-4"} /> : <Mic className={isWatch ? "w-3 h-3" : "w-4 h-4"} />}
+                  </button>
                   {isStreaming ? (
                     <button
                       onClick={stop}

@@ -24,11 +24,11 @@ Instructions:
 1. Extract ALL ingredients from the recipe above and convert quantities to ${servings} servings
 2. Go to auchan.pl and add each ingredient to my cart
 3. If an exact product is not available, find the closest alternative and add that instead
-4. Make sure every ingredient is accounted for — nothing should be missing
+4. Make sure every ingredient is accounted for. Nothing should be missing
 5. Group items by category (produce, dairy, meat, dry goods, spices, etc.)
 6. Once done, confirm the full cart list so I can review before checkout
 
-Let's go — start adding items to the cart.`;
+Let's go. Start adding items to the cart.`;
 }
 
 export default function ShoppingPromptModal({ open, onClose, recipeText, recipeTitle, defaultServings = 2 }: Props) {
@@ -41,7 +41,7 @@ export default function ShoppingPromptModal({ open, onClose, recipeText, recipeT
     navigator.clipboard.writeText(prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    toast.success("Shopping prompt copied — paste it into ChatGPT!");
+    toast.success("Shopping prompt copied. Paste it into ChatGPT!");
   };
 
   if (!open) return null;
@@ -127,7 +127,7 @@ export default function ShoppingPromptModal({ open, onClose, recipeText, recipeT
               className="w-full py-2.5 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all flex items-center justify-center gap-2"
             >
               {copied ? (
-                <><Check className="w-4 h-4" /> Copied — paste into ChatGPT!</>
+                <><Check className="w-4 h-4" /> Copied. Paste into ChatGPT!</>
               ) : (
                 <><Copy className="w-4 h-4" /> Copy Shopping Prompt</>
               )}

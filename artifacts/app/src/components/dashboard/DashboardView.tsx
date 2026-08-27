@@ -21,7 +21,7 @@ import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
   const { state, loading, completeMission, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
-  const { ladders, activeCategory: ladderCategory } = useLadderState();
+  const { activeLadder } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
   const { getCategories, preferences } = useUserSettings();
@@ -138,7 +138,7 @@ export default function DashboardView() {
 
   // Build ladder context for AI modal
   const ladderContext = useMemo(() => {
-    const ladder = ladders[ladderCategory];
+    const ladder = activeLadder;
     if (!ladder?.levels) return null;
     let total = 0, completed = 0;
     const completedTasks: string[] = [];
@@ -153,8 +153,8 @@ export default function DashboardView() {
       if (!allDone) { currentLevel = LADDER_LEVELS[i].title; }
     }
     if (total === 0) return null;
-    return { activeCategory: ladderCategory, currentLevel, completedTasks: completedTasks.filter(Boolean), totalCompleted: completed, totalTasks: total };
-  }, [ladders, ladderCategory]);
+    return { activeCategory: ladder.name, currentLevel, completedTasks: completedTasks.filter(Boolean), totalCompleted: completed, totalTasks: total };
+  }, [activeLadder]);
 
   if (loading) {
     return (
@@ -229,7 +229,7 @@ export default function DashboardView() {
         )}
       </AnimatePresence>
 
-      {/* Progress — precise stats across week / month / year / all-time */}
+      {/* Progress. Precise stats across week / month / year / all-time */}
       <DashboardStats
         history={weeklyHistory}
         fetchAllHistory={fetchAllHistory}

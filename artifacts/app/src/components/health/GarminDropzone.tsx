@@ -283,8 +283,8 @@ export default function GarminDropzone({ onParsed }: Props) {
     if (count === 0) {
       toast.warning(
         name.endsWith(".fit")
-          ? "Couldn't read that .FIT file — try exporting the run as TCX/GPX, or enter the numbers below."
-          : "Couldn't read run data from that file — enter the numbers manually below.",
+          ? "Couldn't read that .FIT file . try exporting the run as TCX/GPX, or enter the numbers below."
+          : "Couldn't read run data from that file . enter the numbers manually below.",
       );
       return;
     }
@@ -345,7 +345,7 @@ export default function GarminDropzone({ onParsed }: Props) {
             <span className="font-semibold text-foreground">Drop a Garmin Connect export</span> or click to browse
           </div>
           <div className="text-[10px] opacity-70 inline-flex items-center gap-1">
-            <Upload className="w-3 h-3" /> .TCX · .GPX · .CSV · .FIT — auto-fills the run below
+            <Upload className="w-3 h-3" /> .TCX · .GPX · .CSV · .FIT . auto-fills the run below
           </div>
         </div>
       )}

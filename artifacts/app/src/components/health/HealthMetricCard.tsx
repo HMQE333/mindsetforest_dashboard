@@ -88,7 +88,7 @@ export default function HealthMetricCard({ def, value, rangeLabel, status, previ
             className="text-3xl font-extrabold tabular-nums leading-none"
             style={{ color: value !== null ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}
           >
-            {value ?? "—"}
+            {value ?? "."}
           </span>
           <span className="text-xs text-muted-foreground">{def.unit}</span>
         </div>

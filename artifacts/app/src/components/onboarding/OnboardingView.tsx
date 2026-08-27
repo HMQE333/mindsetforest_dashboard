@@ -83,7 +83,7 @@ export default function OnboardingView({ onComplete }: Props) {
     if (!username) return { tone: "muted" as const, text: "3–20 chars · letters, numbers, underscores" };
     if (!usernameValid) return { tone: "error" as const, text: "Use a–z, 0–9, underscores only" };
     if (checking) return { tone: "muted" as const, text: "Checking availability…" };
-    if (available === true) return { tone: "ok" as const, text: "Available — looks great" };
+    if (available === true) return { tone: "ok" as const, text: "Available. Looks great" };
     if (available === false) return { tone: "error" as const, text: "That handle is already taken" };
     return { tone: "muted" as const, text: "3–20 chars · letters, numbers, underscores" };
   }, [username, usernameValid, checking, available]);
@@ -288,7 +288,7 @@ export default function OnboardingView({ onComplete }: Props) {
                 />
               </div>
 
-              {/* Emoji picker — categorized */}
+              {/* Emoji picker. Categorized */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">

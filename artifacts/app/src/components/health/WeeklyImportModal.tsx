@@ -59,7 +59,7 @@ export default function WeeklyImportModal({ open, onClose, onImport }: Props) {
   const process = async (f: File) => {
     setFileName(f.name);
     if (!f.name.toLowerCase().endsWith(".csv")) {
-      toast.warning("Please choose a .CSV file — download the template below for the right format.");
+      toast.warning("Please choose a .CSV file. Download the template below for the right format.");
       setParsed(null);
       return;
     }
@@ -133,7 +133,7 @@ export default function WeeklyImportModal({ open, onClose, onImport }: Props) {
 
         <div className="space-y-5">
           <p className="text-sm text-muted-foreground">
-            Import a whole week (or more) at once from a single CSV — one row per day. Fill in the
+            Import a whole week (or more) at once from a single CSV. One row per day. Fill in the
             template, or drop a Garmin Connect date-range export; matching columns fill automatically.
             Re-importing a day updates it.
           </p>
@@ -243,11 +243,11 @@ export default function WeeklyImportModal({ open, onClose, onImport }: Props) {
                             <Checkbox checked={on} onCheckedChange={() => toggle(e.entry_date)} aria-label={`Include ${e.entry_date}`} />
                           </td>
                           <td className="p-2 font-semibold text-foreground whitespace-nowrap">{e.entry_date}</td>
-                          <td className="p-2 tabular-nums">{e.resting_hr ?? "—"}</td>
-                          <td className="p-2 tabular-nums">{e.sleep_score ?? "—"}</td>
-                          <td className="p-2 tabular-nums">{e.body_battery ?? "—"}</td>
-                          <td className="p-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? "—"}</td>
-                          <td className="p-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : "—"}</td>
+                          <td className="p-2 tabular-nums">{e.resting_hr ?? "."}</td>
+                          <td className="p-2 tabular-nums">{e.sleep_score ?? "."}</td>
+                          <td className="p-2 tabular-nums">{e.body_battery ?? "."}</td>
+                          <td className="p-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? "."}</td>
+                          <td className="p-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : "."}</td>
                           <td className="p-2 tabular-nums text-muted-foreground">{d.filled}</td>
                         </tr>
                       );

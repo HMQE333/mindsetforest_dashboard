@@ -243,6 +243,15 @@ export default function CategoriesTab({ customCategories, onSave }: CategoriesTa
 
       <p className="text-[10px] text-muted-foreground/60 text-center">PNG only · max 256KB · square recommended</p>
 
+      <div className="bg-muted/30 rounded-xl p-3 text-xs space-y-1.5">
+        <p className="font-semibold text-foreground">📦 Jak działają kategorie:</p>
+        <ul className="space-y-1 text-muted-foreground">
+          <li>• Zmiana nazwy/ikony. Bezpieczna. Bloki zachowują przypisanie.</li>
+          <li>• Usunięcie kategorii. Bloki przejdą do <span className="text-foreground font-semibold">📦 Uncategorized</span>. Nie tracisz danych.</li>
+          <li>• W każdej chwili przypiszesz nową kategorię w edycji bloku (klawisz pierwszej litery).</li>
+        </ul>
+      </div>
+
       {dirty && (
         <motion.button
           initial={{ opacity: 0, y: 10 }}

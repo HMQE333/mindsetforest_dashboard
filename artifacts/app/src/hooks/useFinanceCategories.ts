@@ -17,14 +17,19 @@ export interface FinanceCategory {
 }
 
 const DEFAULT_EXPENSE: Array<Omit<FinanceCategory, "id" | "user_id" | "created_at">> = [
-  { kind: "expense", name: "Food",          icon: "🍔", color: "#F59E0B", sort_order: 0 },
-  { kind: "expense", name: "Transport",     icon: "🚗", color: "#3B82F6", sort_order: 1 },
-  { kind: "expense", name: "Entertainment", icon: "🎬", color: "#EC4899", sort_order: 2 },
-  { kind: "expense", name: "Bills",         icon: "💡", color: "#EF4444", sort_order: 3 },
-  { kind: "expense", name: "Health",        icon: "💊", color: "#10B981", sort_order: 4 },
-  { kind: "expense", name: "Shopping",      icon: "🛍️", color: "#A855F7", sort_order: 5 },
-  { kind: "expense", name: "Education",     icon: "📚", color: "#06B6D4", sort_order: 6 },
-  { kind: "expense", name: "Other",         icon: "🔣", color: "#6B7280", sort_order: 7 },
+  { kind: "expense", name: "Housing & Bills",        icon: "🏠", color: "#EF4444", sort_order: 0 },
+  { kind: "expense", name: "Food at Home",           icon: "🍳", color: "#F59E0B", sort_order: 1 },
+  { kind: "expense", name: "Eating Out",             icon: "🍔", color: "#F97316", sort_order: 2 },
+  { kind: "expense", name: "Transport",              icon: "🚗", color: "#3B82F6", sort_order: 3 },
+  { kind: "expense", name: "Software & Subscriptions", icon: "💻", color: "#8B5CF6", sort_order: 4 },
+  { kind: "expense", name: "Stuff / Shopping",       icon: "🛍️", color: "#EC4899", sort_order: 5 },
+  { kind: "expense", name: "Learning & Growth",      icon: "🧠", color: "#06B6D4", sort_order: 6 },
+  { kind: "expense", name: "Health & Fitness",       icon: "🥋", color: "#10B981", sort_order: 7 },
+  { kind: "expense", name: "Fun & Experiences",      icon: "🎮", color: "#14B8A6", sort_order: 8 },
+  { kind: "expense", name: "Business",               icon: "💼", color: "#6366F1", sort_order: 9 },
+  { kind: "expense", name: "Gifts & People",         icon: "🎁", color: "#A855F7", sort_order: 10 },
+  { kind: "expense", name: "Fees & Financial",       icon: "💸", color: "#78716C", sort_order: 11 },
+  { kind: "expense", name: "Uncategorized",          icon: "❓", color: "#9CA3AF", sort_order: 12 },
 ];
 
 const DEFAULT_INCOME: Array<Omit<FinanceCategory, "id" | "user_id" | "created_at">> = [

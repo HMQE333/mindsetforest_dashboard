@@ -10,7 +10,7 @@ interface Props {
 }
 
 /**
- * Readiness gauge — the "Morning Report" score in one glance.
+ * Readiness gauge. The "Morning Report" score in one glance.
  * Echoes the health tree's visual language (staged colour + soft glow +
  * spring-in animation) but as a radial dial: a filling ring, a glowing tip,
  * a counting number, and the day's verdict word in the centre.

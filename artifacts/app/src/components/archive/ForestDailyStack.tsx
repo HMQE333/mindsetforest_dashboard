@@ -33,7 +33,7 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
     return new Set();
   });
 
-  // Pillar focus — persisted across days
+  // Pillar focus. Persisted across days
   const [focusPillars, setFocusPillars] = useState<Set<string>>(() => {
     try {
       const raw = JSON.parse(localStorage.getItem(FOCUS_KEY) || "[]");
@@ -55,7 +55,7 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
     });
   };
 
-  // Muted pillars — soft-hide (not a block); persisted across days
+  // Muted pillars. Soft-hide (not a block); persisted across days
   const [mutedPillars, setMutedPillars] = useState<Set<string>>(() => {
     try {
       const raw = JSON.parse(localStorage.getItem(MUTE_KEY) || "[]");
@@ -361,7 +361,7 @@ const SeedSwipeCard = ({
           </div>
         )}
         <p className="text-sm text-foreground/90 leading-6 whitespace-pre-wrap font-serif">
-          {seed.content || "—"}
+          {seed.content || "."}
         </p>
       </div>
 

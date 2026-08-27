@@ -2,12 +2,13 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, AlertTriangle, ExternalLink } from "lucide-react";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import { useMemo } from "react";
 import { useLadderState } from "@/hooks/useLadderState";
 import { useHabitLoopState } from "@/hooks/useHabitLoopState";
 import { LADDER_LEVELS } from "@/lib/ladder-data";
 import { PlanningMention } from "@/hooks/usePlanningState";
 
-/** Shared dispatch helper — fired both from the side panel and from canvas chips. */
+/** Shared dispatch helper. Fired both from the side panel and from canvas chips. */
 export function navigateToMention(m: PlanningMention) {
   if (m.kind === "ladder") {
     window.dispatchEvent(new CustomEvent("lov:navigate-module", {
@@ -42,7 +43,14 @@ interface Props {
 export default function PlanningMentions({ mentions, onChange }: Props) {
   const { getCategories, preferences } = useUserSettings();
   const { ladders } = useLadderState();
-  const { allLoops } = useHabitLoopState();
+  const { projects: habitProjects } = useHabitLoopState();
+
+  // Compat: lookup by category (mentions still reference category IDs).
+  const loopsByCategory = useMemo(() => {
+    const map: Record<string, any> = {};
+    habitProjects.forEach(p => { if (p.category) map[p.category] = { currentLoop: p.currentLoop, loops: p.loops }; });
+    return map;
+  }, [habitProjects]);
 
   const enabled = preferences.enabledModules || [];
   const ladderOn = enabled.length === 0 || enabled.includes("ladder");
@@ -103,7 +111,7 @@ export default function PlanningMentions({ mentions, onChange }: Props) {
       );
     }
 
-    const loopState = allLoops?.[m.categoryId];
+    const loopState = loopsByCategory[m.categoryId];
     const loop = loopState?.loops?.[m.loopIndex];
     const exists = !!loop;
     return (
@@ -129,7 +137,7 @@ export default function PlanningMentions({ mentions, onChange }: Props) {
     );
   };
 
-  const loopsForCategory = allLoops?.[pickedCategory]?.loops || [];
+  const loopsForCategory = loopsByCategory[pickedCategory]?.loops || [];
 
   return (
     <div className="rounded-xl bg-muted/10 border border-white/5 p-3 space-y-2">

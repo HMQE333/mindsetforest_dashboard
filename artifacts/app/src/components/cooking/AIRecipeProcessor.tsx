@@ -13,7 +13,7 @@ const BASE_CHIPS = [
   { label: "Scale to 2 portions", prompt: "Scale all ingredient quantities for exactly 2 portions." },
   { label: "Scale to 6 portions", prompt: "Scale all ingredient quantities for exactly 6 portions." },
   { label: "Suggest temperatures", prompt: "Add precise cooking temperatures in Celsius for every step that involves heat." },
-  { label: "Simplify steps", prompt: "Rewrite only the instructions in simpler, shorter numbered steps. Keep ingredient list unchanged. Be concise — one action per step." },
+  { label: "Simplify steps", prompt: "Rewrite only the instructions in simpler, shorter numbered steps. Keep ingredient list unchanged. Be concise. One action per step." },
   { label: "Add nutritional estimate", prompt: "Provide a rough nutritional estimate per serving (calories, protein, carbs, fat)." },
   { label: "Make it healthier", prompt: "Suggest ingredient substitutions to make this recipe healthier while keeping the same dish." },
 ];
@@ -167,7 +167,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
     <div className="space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
 
-        {/* LEFT — Recipe paste */}
+        {/* LEFT. Recipe paste */}
         <div className="glass-card rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Paste Your Recipe</label>
@@ -180,7 +180,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
           <textarea
             value={recipe}
             onChange={e => setRecipe(e.target.value)}
-            placeholder="Paste any recipe here — ingredient list, instructions, units, anything..."
+            placeholder="Paste any recipe here. Ingredient list, instructions, units, anything..."
             rows={14}
             className="w-full bg-background/50 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 resize-none"
           />
@@ -197,7 +197,7 @@ export default function AIRecipeProcessor({ recipes, onSaveRecipe, ingredientCos
           </div>
         </div>
 
-        {/* RIGHT — Prompt + chips + result */}
+        {/* RIGHT. Prompt + chips + result */}
         <div className="space-y-4">
           <div className="glass-card rounded-2xl p-5 space-y-4">
             {/* Suggestion chips */}

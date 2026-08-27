@@ -15,8 +15,10 @@ export function usePillars(): Pillar[] {
   const categories = getCategories();
 
   return useMemo(
-    () =>
-      categories.map((c) => ({
+    () => [
+      // "Uncategorized". Always available, safe fallback
+      { id: "uncategorized", name: "Uncategorized", icon: "📦", color: "#6B7280", colorVar: "cat-uncategorized" },
+      ...categories.map((c) => ({
         id: c.id,
         name: c.name,
         icon: c.icon,
@@ -24,6 +26,7 @@ export function usePillars(): Pillar[] {
         color: c.color,
         colorVar: c.colorVar,
       })),
+    ],
     [categories]
   );
 }

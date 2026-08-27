@@ -46,7 +46,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
         mission: {
           title: suggestion.title,
           description: description.slice(0, 240),
-          duration: "—",
+          duration: ".",
           xp: 10,
           persistent: true,
         },

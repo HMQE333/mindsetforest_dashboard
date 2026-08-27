@@ -150,7 +150,7 @@ export default function WatchMetricCard({ def, entry, previous, history = [], in
   const readColor =
     trend?.tone === "good" ? SIGNAL.good : trend?.tone === "watch" ? SIGNAL.watch : SIGNAL.info;
 
-  // Trend line — the last few weeks, judged over time (needs ≥2 points to draw).
+  // Trend line. The last few weeks, judged over time (needs ≥2 points to draw).
   const showSpark = history.length >= 2;
   const sparkColor =
     trend?.tone === "good" ? SIGNAL.good : trend?.tone === "watch" ? SIGNAL.watch : def.color;
@@ -205,7 +205,7 @@ export default function WatchMetricCard({ def, entry, previous, history = [], in
             className="text-2xl font-extrabold tabular-nums leading-none"
             style={{ color: hasValue ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}
           >
-            {c.primary ?? "—"}
+            {c.primary ?? "."}
           </span>
           {c.unit && <span className="text-[11px] text-muted-foreground">{c.unit}</span>}
         </div>
@@ -254,7 +254,7 @@ export default function WatchMetricCard({ def, entry, previous, history = [], in
           </div>
         )}
 
-        {/* Trend line — the last few weeks, so "am I getting better?" reads at a glance */}
+        {/* Trend line. The last few weeks, so "am I getting better?" reads at a glance */}
         {showSpark && (
           <div className="mb-2">
             <div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
@@ -264,7 +264,7 @@ export default function WatchMetricCard({ def, entry, previous, history = [], in
           </div>
         )}
 
-        {/* Guidance line — mint = the move */}
+        {/* Guidance line. Mint = the move */}
         <div className="mt-auto flex items-start gap-1.5 pt-1">
           <span className="text-[11px] font-mono shrink-0" style={{ color: SIGNAL.good }}>→</span>
           <span className="text-[11px] text-muted-foreground leading-snug">{def.soIDo}</span>

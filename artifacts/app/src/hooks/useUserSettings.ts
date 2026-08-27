@@ -180,7 +180,7 @@ export function useUserSettings() {
   // Persist to user_onboarding while preserving preference keys this hook does
   // not manage (e.g. `bookmarks`, written by useBookmarks). Read-merge-write:
   // fetch the current preferences from the DB, overlay the keys we're saving,
-  // and upsert — so a settings save never clobbers unrelated preference keys.
+  // and upsert. So a settings save never clobbers unrelated preference keys.
   const persistOnboarding = useCallback(
     async (cats: CustomCategory[], prefs: UserPreferences) => {
       const { data, error: readErr } = await supabase
@@ -189,7 +189,7 @@ export function useUserSettings() {
         .eq("user_id", user!.id)
         .maybeSingle();
       // Abort on read failure: writing with an empty base would clobber
-      // unmanaged preference keys (e.g. bookmarks). Caller surfaces the error.
+      // unmanaged preference keys (e.g. Bookmarks). Caller surfaces the error.
       if (readErr) return { error: readErr };
       const existing = (data?.preferences as Record<string, unknown>) || {};
       const mergedPrefs = { ...existing, ...prefs };

@@ -13,8 +13,10 @@ export default function StatsXpTab() {
 
   const [draft, setDraft] = useState<TrackerXpConfig>(config);
   const [dirty, setDirty] = useState(false);
+  const hasEdited = useMemo(() => false, []); // stable ref. Never resets draft after mount
 
-  useEffect(() => { setDraft(config); setDirty(false); }, [config]);
+  // Only sync from server on first mount, not on every config refetch
+  useEffect(() => { setDraft(config); setDirty(false); }, []);
 
   const grouped = useMemo(() => {
     const out: Record<string, typeof metrics> = {};

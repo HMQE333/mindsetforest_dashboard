@@ -41,7 +41,7 @@ export default function PlanningBoards({ onOpenBoard }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-foreground">Boards</h2>
-          <p className="text-sm text-muted-foreground">Independent planning spaces — link projects or plan freely</p>
+          <p className="text-sm text-muted-foreground">Independent planning spaces. Link projects or plan freely</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}

@@ -8,12 +8,12 @@ export interface LadderLevels {
   [level: number]: LadderTask[];
 }
 
-export interface CategoryLadder {
+/** A named, independent ladder. Category is an optional context tag for AI. */
+export interface Ladder {
+  id: string;
+  name: string;
+  category?: string | null;
   levels: LadderLevels;
-}
-
-export interface AllLadders {
-  [categoryId: string]: CategoryLadder;
 }
 
 export const LADDER_LEVELS = [
@@ -25,11 +25,25 @@ export const LADDER_LEVELS = [
   { level: 5, title: "Mastery", emoji: "5️⃣", colors: { bg: "from-purple-500/20 to-purple-600/20", border: "border-purple-500/40", glow: "shadow-purple-500/30", text: "text-purple-200" } },
 ];
 
-export function createEmptyLadders(): AllLadders {
-  const categories = ["mind", "body", "creation", "exploration", "networking", "trading", "spirit", "order"];
-  const obj: AllLadders = {};
-  categories.forEach(cat => {
-    obj[cat] = { levels: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] } };
-  });
-  return obj;
+export function emptyLevels(): LadderLevels {
+  return { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] };
+}
+
+/** Backward compat: convert old category-keyed format to new array format. */
+export function migrateLadders(old: Record<string, { levels: LadderLevels }>): Ladder[] {
+  const result: Ladder[] = [];
+  const catNames: Record<string, string> = {
+    mind: "Mind", body: "Body", expression: "Expression", creation: "Expression",
+    exploration: "Exploration", people: "People", networking: "People",
+    money: "Money", trading: "Money", spirit: "Spirit", order: "Order",
+  };
+  for (const [key, val] of Object.entries(old)) {
+    result.push({
+      id: crypto.randomUUID(),
+      name: catNames[key] || key.charAt(0).toUpperCase() + key.slice(1),
+      category: key,
+      levels: val.levels || emptyLevels(),
+    });
+  }
+  return result;
 }

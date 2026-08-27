@@ -1,9 +1,9 @@
-// Forerunner 165 daily watch metrics — model, readiness scoring, and the
+// Forerunner 165 daily watch metrics. Model, readiness scoring, and the
 // field-guide voice (each number is a *signal*, mint = healthy direction,
 // amber = act on it). See attached_assets/forerunner-165-field-guide.
 //
 // The 165 does NOT produce Training Load / Training Status / Training Readiness.
-// Body Battery + Recovery Time do that job here — do not invent those fields.
+// Body Battery + Recovery Time do that job here. Do not invent those fields.
 
 export type WatchCluster = "A" | "B" | "C";
 
@@ -14,24 +14,24 @@ export const SIGNAL = {
   good: "hsl(168, 66%, 52%)", // mint
   watch: "hsl(38, 92%, 60%)", // amber
   info: "hsl(203, 55%, 66%)", // cool slate
-  rest: "hsl(0, 72%, 62%)", // deep — recover
+  rest: "hsl(0, 72%, 62%)", // deep. Recover
 } as const;
 
 export const CLUSTER_META: Record<WatchCluster, { num: string; title: string; sub: string }> = {
   A: {
     num: "A",
     title: "Recovery & readiness",
-    sub: "The “should I go hard today?” cluster — read before you pick the workout.",
+    sub: "The “should I go hard today?” cluster. Read before you pick the workout.",
   },
   B: {
     num: "B",
     title: "Fitness & output",
-    sub: "The “am I actually getting better?” cluster — slow trend lines, judged over weeks.",
+    sub: "The “am I actually getting better?” cluster. Slow trend lines, judged over weeks.",
   },
   C: {
     num: "C",
     title: "Everyday movement",
-    sub: "The base layer under everything above — cheap, and easy to neglect.",
+    sub: "The base layer under everything above. Cheap, and easy to neglect.",
   },
 };
 
@@ -61,9 +61,9 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Overnight · bpm",
     icon: "💓",
     color: "hsl(330, 80%, 62%)",
-    whatIs: "Your heart's beats per minute at complete rest, measured while you sleep — a simple window into fitness and recovery.",
+    whatIs: "Your heart's beats per minute at complete rest, measured while you sleep. A simple window into fitness and recovery.",
     good: { arrow: "↓", small: "Trends down", text: "Drifting 58 → 52 over weeks: a stronger, fitter, well-recovered heart." },
-    watch: { arrow: "↑", small: "Spikes up", text: "5–10 bpm over your normal one morning: poor sleep, alcohol, stress — or a bug moving in." },
+    watch: { arrow: "↑", small: "Spikes up", text: "5–10 bpm over your normal one morning: poor sleep, alcohol, stress. Or a bug moving in." },
     soIDo: "On a spiked morning, downgrade the hard session to an easy jog or rest. Water, food, early night.",
     payoff: "You catch fatigue and illness a day or two before you feel them.",
     betterDirection: "lower",
@@ -76,11 +76,11 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Baseline · ms",
     icon: "〰️",
     color: "hsl(168, 66%, 52%)",
-    whatIs: "Timing differences between heartbeats overnight vs your own baseline — how recovered your nervous system is. Needs ~3 weeks to calibrate; it's a trend.",
+    whatIs: "Timing differences between heartbeats overnight vs your own baseline. How recovered your nervous system is. Needs ~3 weeks to calibrate; it's a trend.",
     good: { arrow: "↑", small: "Balanced", text: "Sitting in your normal range: the body is coping well. Green light for a hard effort." },
     watch: { arrow: "↓", small: "Unbalanced / Low", text: "Below your range: accumulated fatigue, stress, under-sleep, or illness incoming." },
     soIDo: "Save hard sessions for Balanced days; keep it easy or rest when it reads Low. Don't fight a Low reading.",
-    payoff: "You train hard exactly when your body can absorb it — steadier progress, fewer burnout weeks.",
+    payoff: "You train hard exactly when your body can absorb it. Steadier progress, fewer burnout weeks.",
     betterDirection: "higher",
   },
   {
@@ -93,9 +93,9 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     color: "hsl(255, 70%, 68%)",
     whatIs: "How long and how well you slept. Deep sleep repairs the body; REM restores the brain. Everything else here depends on it.",
     good: { arrow: "↑", small: "Rises", text: "7–9 h with solid deep sleep: the recovery engine runs and every downstream number improves." },
-    watch: { arrow: "↓", small: "Drops", text: "Short nights or thin deep sleep: muscles and mind under-repaired — tomorrow's HRV, RHR and pace all suffer." },
+    watch: { arrow: "↓", small: "Drops", text: "Short nights or thin deep sleep: muscles and mind under-repaired. Tomorrow's HRV, RHR and pace all suffer." },
     soIDo: "Treat a low score as a signal to protect tonight: same bedtime, no late screens/caffeine/alcohol, cool dark room.",
-    payoff: "The cheapest performance drug you own. Fix it and HRV, energy, focus and pace all rise — for free.",
+    payoff: "The cheapest performance drug you own. Fix it and HRV, energy, focus and pace all rise. For free.",
     betterDirection: "higher",
   },
   {
@@ -106,8 +106,8 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Live · 5–100",
     icon: "🔋",
     color: "hsl(142, 60%, 55%)",
-    whatIs: "An “energy in the tank” gauge from HRV, stress, sleep and activity. Charges when you rest, drains when you exert — your everyday readiness dial.",
-    good: { arrow: "↑", small: "Wakes high", text: "85–100 in the morning: fully charged — spend it on your hardest workout or biggest work block." },
+    whatIs: "An “energy in the tank” gauge from HRV, stress, sleep and activity. Charges when you rest, drains when you exert. Your everyday readiness dial.",
+    good: { arrow: "↑", small: "Wakes high", text: "85–100 in the morning: fully charged. Spend it on your hardest workout or biggest work block." },
     watch: { arrow: "↓", small: "Bottoms early", text: "Flat by mid-afternoon day after day: chronic under-recovery, not just one tired afternoon." },
     soIDo: "Put demanding tasks where the battery actually is (usually morning). Draining fast daily? A walk, breathing, an earlier night.",
     payoff: "You stop fighting your own physiology and schedule effort where the energy already exists.",
@@ -121,7 +121,7 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Live · 0–100",
     icon: "🌡️",
     color: "hsl(24, 90%, 60%)",
-    whatIs: "Daytime “fight-or-flight” load read from your HRV — and not only workouts. Emails, deadlines, caffeine and bad sleep all push it up.",
+    whatIs: "Daytime “fight-or-flight” load read from your HRV. And not only workouts. Emails, deadlines, caffeine and bad sleep all push it up.",
     good: { arrow: "↓", small: "Dips through day", text: "Regular low-stress rest windows: a healthy, well-balanced nervous system." },
     watch: { arrow: "↑", small: "Pinned high", text: "Long stretches high with no dips: your day has no recovery windows built into it." },
     soIDo: "On a long high stretch, insert 5 min of slow breathing, a short walk, or step off the screen.",
@@ -136,11 +136,11 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Post-run · hrs",
     icon: "⏳",
     color: "hsl(203, 55%, 66%)",
-    whatIs: "A countdown to when you're ready for another hard effort. On the 165 this pairs with Body Battery as your recovery read — there's no Training Load here.",
+    whatIs: "A countdown to when you're ready for another hard effort. On the 165 this pairs with Body Battery as your recovery read. There's no Training Load here.",
     good: { arrow: "↓", small: "Reads short", text: "Near zero: you're fresh and cleared to load up again." },
     watch: { arrow: "↑", small: "Reads long", text: "36–48 h+ after a session: that workout hit hard and the adaptation needs real time." },
-    soIDo: "Don't stack another hard session inside the window — fill it with easy running, mobility or rest.",
-    payoff: "You actually get fitter — adaptation happens during recovery, not during the workout.",
+    soIDo: "Don't stack another hard session inside the window. Fill it with easy running, mobility or rest.",
+    payoff: "You actually get fitter. Adaptation happens during recovery, not during the workout.",
     betterDirection: "lower",
   },
   // ── B · Fitness & output ─────────────────────────────────
@@ -152,9 +152,9 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Trend · ml/kg/min",
     icon: "🫁",
     color: "hsl(168, 66%, 52%)",
-    whatIs: "An estimate of your aerobic engine — how well your body pulls in and uses oxygen. Higher is fitter. Moves slowly; judge it monthly.",
+    whatIs: "An estimate of your aerobic engine. How well your body pulls in and uses oxygen. Higher is fitter. Moves slowly; judge it monthly.",
     good: { arrow: "↑", small: "Climbs", text: "Ticks up over weeks: the training is working and your aerobic base is genuinely growing." },
-    watch: { arrow: "↓", small: "Slides", text: "Drifts down: usually under-recovery, too much intensity, illness or heat — not lost fitness overnight." },
+    watch: { arrow: "↓", small: "Slides", text: "Drifts down: usually under-recovery, too much intensity, illness or heat. Not lost fitness overnight." },
     soIDo: "Keep ~80% of runs genuinely easy (talk-in-full-sentences pace) and add just one hard session a week.",
     payoff: "Race times fall, everyday effort feels easier, and your resting HR quietly drops with it.",
     betterDirection: "higher",
@@ -167,10 +167,10 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     tag: "Per run · pace · dist · kcal",
     icon: "🏃",
     color: "hsl(210, 90%, 62%)",
-    whatIs: "The raw output of each run — plus wrist Running Power and cadence on the 165. Read pace against effort, not on its own.",
+    whatIs: "The raw output of each run. Plus wrist Running Power and cadence on the 165. Read pace against effort, not on its own.",
     good: { arrow: "↑", small: "Pace @ lower HR", text: "Same pace at a lower heart rate than a month ago: the clearest sign fitness is rising." },
     watch: { arrow: "↓", small: "Slips / cadence drops", text: "Pace fading at the same effort, or cadence falling as you tire: fatigue or form breaking down." },
-    soIDo: "Track pace-at-heart-rate, aim cadence ~170–180, and pace by effort — let the numbers confirm it after.",
+    soIDo: "Track pace-at-heart-rate, aim cadence ~170–180, and pace by effort. Let the numbers confirm it after.",
     payoff: "Smarter pacing → faster races and fewer injuries, because you stop redlining easy days.",
     betterDirection: "neutral",
   },
@@ -186,7 +186,7 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     good: { arrow: "↓", small: "Times / age fall", text: "Predicted times quicker and fitness age dropping: the trend line points the right way." },
     watch: { arrow: "↑", small: "Stalls / creeps up", text: "Predictions flat or fitness age creeping: a nudge to check consistency, sleep and load." },
     soIDo: "Set goal-race paces off the predictor, not ego. Use fitness age as a long-term north star.",
-    payoff: "Realistic targets you actually hit — plus a motivating scoreboard for months of quiet work.",
+    payoff: "Realistic targets you actually hit. Plus a motivating scoreboard for months of quiet work.",
     betterDirection: "lower",
   },
   // ── C · Everyday movement ────────────────────────────────
@@ -200,9 +200,9 @@ export const WATCH_METRICS: WatchMetricDef[] = [
     color: "hsl(142, 60%, 55%)",
     whatIs: "All-day movement, plus weekly minutes of moderate-to-vigorous activity. The quiet foundation that decides how fast you recover between runs.",
     good: { arrow: "↑", small: "Consistent movement", text: "Daily steps up and intensity minutes met: a strong health baseline that speeds recovery." },
-    watch: { arrow: "↓", small: "Run then sit", text: "Big runs but otherwise glued to a chair — the “active couch potato” trap dulls recovery." },
+    watch: { arrow: "↓", small: "Run then sit", text: "Big runs but otherwise glued to a chair. The “active couch potato” trap dulls recovery." },
     soIDo: "Hold a daily step floor (~7–8k) with easy walks, and use that movement as active recovery.",
-    payoff: "Better recovery between runs, steadier energy and metabolic health — the cheapest win there is.",
+    payoff: "Better recovery between runs, steadier energy and metabolic health. The cheapest win there is.",
     betterDirection: "higher",
   },
 ];
@@ -322,14 +322,14 @@ interface Signal {
 
 function recoverySignals(e: WatchEntry, prev?: WatchEntry | null): Signal[] {
   const out: Signal[] = [];
-  // Sleep — top of the loop.
+  // Sleep. Top of the loop.
   if (e.sleep_score != null) out.push({ weight: 0.3, norm: lerp(e.sleep_score, 35, 90) });
   // HRV status (preferred) or raw ms as a weak proxy.
   if (e.hrv_status) {
     const map: Record<string, number> = { balanced: 1, unbalanced: 0.45, low: 0.15 };
     out.push({ weight: 0.22, norm: map[e.hrv_status] ?? 0.5 });
   }
-  // Resting HR — lower is better; a spike vs yesterday drags it down.
+  // Resting HR. Lower is better; a spike vs yesterday drags it down.
   if (e.resting_hr != null) {
     let norm = lerp(78 - e.resting_hr, 0, 30); // 48bpm→1, 78bpm→0
     if (prev?.resting_hr != null && e.resting_hr - prev.resting_hr >= 5) {
@@ -339,9 +339,9 @@ function recoverySignals(e: WatchEntry, prev?: WatchEntry | null): Signal[] {
   }
   // Body Battery (morning reading).
   if (e.body_battery != null) out.push({ weight: 0.18, norm: lerp(e.body_battery, 15, 90) });
-  // Stress — lower is better.
+  // Stress. Lower is better.
   if (e.stress_level != null) out.push({ weight: 0.1, norm: 1 - lerp(e.stress_level, 20, 80) });
-  // Recovery time — long reads sap readiness.
+  // Recovery time. Long reads sap readiness.
   if (e.recovery_time_hrs != null) out.push({ weight: 0.1, norm: 1 - lerp(e.recovery_time_hrs, 0, 48) });
   return out;
 }
@@ -357,7 +357,7 @@ export function computeReadiness(e?: WatchEntry | null, prev?: WatchEntry | null
   // Base verdict by score.
   let verdict: Verdict = score >= 70 ? "hard" : score >= 45 ? "easy" : "rest";
 
-  // Guardrails — the loop's cautionary caps (worst wins).
+  // Guardrails. The loop's cautionary caps (worst wins).
   const cap = (v: Verdict) => {
     const order: Verdict[] = ["hard", "easy", "rest"];
     if (order.indexOf(v) > order.indexOf(verdict)) verdict = v;
@@ -375,25 +375,25 @@ export function computeReadiness(e?: WatchEntry | null, prev?: WatchEntry | null
 export const VERDICT_META: Record<Verdict, { word: string; line: string; color: string; emoji: string }> = {
   hard: {
     word: "GO HARD",
-    line: "Fully charged — spend it on your hardest session or biggest block.",
+    line: "Fully charged. Spend it on your hardest session or biggest block.",
     color: SIGNAL.good,
     emoji: "🔥",
   },
   easy: {
     word: "EASY",
-    line: "Keep it light — an easy jog, mobility, or a walk. Don't dig a hole.",
+    line: "Keep it light. An easy jog, mobility, or a walk. Don't dig a hole.",
     color: SIGNAL.watch,
     emoji: "🌤️",
   },
   rest: {
     word: "REST",
-    line: "Recover today — protect sleep, hydrate, gentle movement only.",
+    line: "Recover today. Protect sleep, hydrate, gentle movement only.",
     color: SIGNAL.rest,
     emoji: "🌙",
   },
 };
 
-// ── "What to improve" — words-first actions from amber signals ─
+// ── "What to improve". Words-first actions from amber signals ─
 export interface Improvement {
   id: string;
   tone: SignalTone;
@@ -404,12 +404,12 @@ export function whatToImprove(e?: WatchEntry | null, prev?: WatchEntry | null): 
   if (!e) return [];
   const out: Improvement[] = [];
 
-  // Sleep first — it's the top of the loop.
+  // Sleep first. It's the top of the loop.
   if (e.sleep_score != null && e.sleep_score < 70) {
     out.push({
       id: "sleep_score",
       tone: "watch",
-      text: `Sleep score ${Math.round(e.sleep_score)} — protect tonight: same bedtime, no late screens/caffeine, cool dark room.`,
+      text: `Sleep score ${Math.round(e.sleep_score)}. Protect tonight: same bedtime, no late screens/caffeine, cool dark room.`,
     });
   }
   if (e.resting_hr != null) {
@@ -418,13 +418,13 @@ export function whatToImprove(e?: WatchEntry | null, prev?: WatchEntry | null): 
       out.push({
         id: "resting_hr",
         tone: "watch",
-        text: `Resting HR up ${Math.round(up)} bpm (${Math.round(e.resting_hr)}) — make today an easy jog, hydrate, early night.`,
+        text: `Resting HR up ${Math.round(up)} bpm (${Math.round(e.resting_hr)}). Make today an easy jog, hydrate, early night.`,
       });
     } else if (e.resting_hr > 72) {
       out.push({
         id: "resting_hr",
         tone: "watch",
-        text: `Resting HR ${Math.round(e.resting_hr)} bpm is above your easy range — keep effort light and rebuild sleep.`,
+        text: `Resting HR ${Math.round(e.resting_hr)} bpm is above your easy range. Keep effort light and rebuild sleep.`,
       });
     }
   }
@@ -432,36 +432,36 @@ export function whatToImprove(e?: WatchEntry | null, prev?: WatchEntry | null): 
     out.push({
       id: "hrv_ms",
       tone: "watch",
-      text: `HRV reading ${e.hrv_status} — save hard efforts for a balanced day; keep it easy and don't fight it.`,
+      text: `HRV reading ${e.hrv_status}. Save hard efforts for a balanced day; keep it easy and don't fight it.`,
     });
   }
   if (e.body_battery != null && e.body_battery < 40) {
     out.push({
       id: "body_battery",
       tone: "watch",
-      text: `Body Battery woke at ${Math.round(e.body_battery)} — front-load demanding tasks, then a walk and an earlier night.`,
+      text: `Body Battery woke at ${Math.round(e.body_battery)}. Front-load demanding tasks, then a walk and an earlier night.`,
     });
   }
   if (e.stress_level != null && e.stress_level > 55) {
     out.push({
       id: "stress_level",
       tone: "watch",
-      text: `Stress pinned at ${Math.round(e.stress_level)} — insert 5 min of slow breathing or a short walk to reset.`,
+      text: `Stress pinned at ${Math.round(e.stress_level)}. Insert 5 min of slow breathing or a short walk to reset.`,
     });
   }
   if (e.recovery_time_hrs != null && e.recovery_time_hrs >= 24) {
     out.push({
       id: "recovery_time_hrs",
       tone: "info",
-      text: `Recovery Time ${Math.round(e.recovery_time_hrs)} h left — no hard stacking; easy running, mobility, or rest.`,
+      text: `Recovery Time ${Math.round(e.recovery_time_hrs)} h left. No hard stacking; easy running, mobility, or rest.`,
     });
   }
-  // Everyday movement — a quiet nudge if intensity target is missed.
+  // Everyday movement. A quiet nudge if intensity target is missed.
   if (e.intensity_minutes != null && e.intensity_minutes < 150) {
     out.push({
       id: "steps",
       tone: "info",
-      text: `Intensity minutes ${Math.round(e.intensity_minutes)}/150 this week — a couple of brisk walks close the gap.`,
+      text: `Intensity minutes ${Math.round(e.intensity_minutes)}/150 this week. A couple of brisk walks close the gap.`,
     });
   }
 
@@ -494,7 +494,7 @@ export function generateSampleWatchEntries(): WatchEntryInput[] {
     const d = new Date();
     d.setDate(d.getDate() - n);
     const pad = (x: number) => String(x).padStart(2, "0");
-    // Local calendar date — toISOString() shifts the day across timezones.
+    // Local calendar date. ToISOString() shifts the day across timezones.
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 

@@ -23,6 +23,7 @@ import {
   parseActions,
   type AssistantAction,
 } from "@/lib/assistant-actions";
+import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 
 export interface AssistantMessage {
   id: string;
@@ -169,6 +170,7 @@ function useAssistantValue() {
           user.id,
           scopesForSend,
           archiveItems,
+          trimmed,
         );
 
         // Inject action-protocol instructions for whatever writable scopes the
@@ -331,6 +333,149 @@ function useAssistantValue() {
               // provider, so nudge them to refetch immediately.
               window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
             }
+          } else if (action.type === "add_note") {
+            // Always auto-tag with "ainote"
+            const tags = [...(action.tags || [])];
+            if (!tags.includes("ainote")) tags.push("ainote");
+
+            const { error } = await supabase
+              .from("archive_blocks" as never)
+              .insert({
+                user_id: user.id,
+                title: action.title,
+                content: action.content,
+                pillars: action.pillars || ["uncategorized"],
+                tags,
+                directions: [],
+                source_url: null,
+                is_pinned: false,
+              } as never);
+
+            if (error) {
+              failed++;
+            } else {
+              ok++;
+              // Nudge the archive query to refetch immediately.
+              window.dispatchEvent(new CustomEvent(ARCHIVE_BLOCKS_CHANGED_EVENT));
+            }
+          } else if (action.type === "add_mindmap_nodes") {
+            // Batch insert: insert all nodes first, then link parent references.
+            // Each node is inserted with standalone=false so it's part of a tree.
+            const nodes = action.nodes;
+            const realIds: (string | null)[] = new Array(nodes.length).fill(null);
+
+            // Phase 1: insert all nodes
+            for (let i = 0; i < nodes.length; i++) {
+              const n = nodes[i];
+              const { data: inserted, error } = await (supabase.from("planning_tasks" as never) as never as {
+                insert: (rows: unknown[]) => Promise<{ data: { id: string }[] | null; error: unknown }>;
+              }).insert([{
+                user_id: user.id,
+                project_id: null,
+                board_id: null,
+                parent_id: null,
+                level: n.level,
+                title: n.title,
+                done: false,
+                deadline: null,
+                leverage: null,
+                energy: null,
+                time_minutes: null,
+                url: null,
+                icon: null,
+                notes: "",
+                standalone: false,
+                position_x: null,
+                position_y: null,
+                mentions: [],
+              }]).select("id");
+              if (error || !inserted?.[0]?.id) {
+                failed++;
+              } else {
+                realIds[i] = inserted[0].id;
+              }
+            }
+
+            // Phase 2: link parent references
+            for (let i = 0; i < nodes.length; i++) {
+              const n = nodes[i];
+              if (n.parentIndex != null && n.parentIndex >= 0 && n.parentIndex < nodes.length) {
+                const parentId = realIds[n.parentIndex];
+                const childId = realIds[i];
+                if (parentId && childId) {
+                  const { error } = await (supabase.from("planning_tasks" as never) as never as {
+                    update: (patch: unknown) => Promise<{ eq: (col: string, val: string) => Promise<{ error: unknown }> }>;
+                  }).update({ parent_id: parentId }).eq("id", childId).eq("user_id", user.id);
+                  if (!error) ok++;
+                }
+              }
+            }
+
+            // Count successful top-level inserts (those without write errors in phase 1)
+            ok += realIds.filter(id => id !== null).length;
+            window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
+          } else if (action.type === "extend_mindmap") {
+            // Find an existing node whose title partially matches attachTo (case-insensitive)
+            const search = action.attachTo.toLowerCase();
+            const { data: existing } = await (supabase.from("planning_tasks" as never) as never as {
+              select: (cols: string) => Promise<{ data: { id: string; title: string }[] | null; error: unknown }>;
+            }).select("id,title").eq("user_id", user.id).ilike("title", `%${search}%`).limit(5);
+            const match = (existing || []).find((t: any) => t.title?.toLowerCase().includes(search));
+            const parentId = match?.id || null;
+
+            const nodes = action.nodes;
+            const realIds: (string | null)[] = new Array(nodes.length).fill(null);
+
+            // Phase 1: insert all nodes (if parent found, set parent_id directly for root-of-batch nodes)
+            for (let i = 0; i < nodes.length; i++) {
+              const n = nodes[i];
+              const nodeParentId = n.parentIndex == null ? parentId : null; // only root-of-batch gets the target parent
+              const { data: inserted, error } = await (supabase.from("planning_tasks" as never) as never as {
+                insert: (rows: unknown[]) => Promise<{ data: { id: string }[] | null; error: unknown }>;
+              }).insert([{
+                user_id: user.id,
+                project_id: null,
+                board_id: null,
+                parent_id: nodeParentId,
+                level: n.level,
+                title: n.title,
+                done: false,
+                deadline: null,
+                leverage: null,
+                energy: null,
+                time_minutes: null,
+                url: null,
+                icon: null,
+                notes: "",
+                standalone: false,
+                position_x: null,
+                position_y: null,
+                mentions: [],
+              }]).select("id");
+              if (error || !inserted?.[0]?.id) {
+                failed++;
+              } else {
+                realIds[i] = inserted[0].id;
+              }
+            }
+
+            // Phase 2: link internal parent references (parentIndex within the batch)
+            for (let i = 0; i < nodes.length; i++) {
+              const n = nodes[i];
+              if (n.parentIndex != null && n.parentIndex >= 0 && n.parentIndex < nodes.length) {
+                const batchParentId = realIds[n.parentIndex];
+                const childId = realIds[i];
+                if (batchParentId && childId) {
+                  const { error } = await (supabase.from("planning_tasks" as never) as never as {
+                    update: (patch: unknown) => Promise<{ eq: (col: string, val: string) => Promise<{ error: unknown }> }>;
+                  }).update({ parent_id: batchParentId }).eq("id", childId).eq("user_id", user.id);
+                  if (!error) ok++;
+                }
+              }
+            }
+
+            ok += realIds.filter(id => id !== null).length;
+            window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
           }
         } catch {
           failed++;
@@ -339,7 +484,7 @@ function useAssistantValue() {
 
       const result =
         failed === 0
-          ? `Done — applied ${ok} action${ok === 1 ? "" : "s"}.`
+          ? `Done. Applied ${ok} action${ok === 1 ? "" : "s"}.`
           : `Applied ${ok}, but ${failed} failed. Please try again.`;
 
       setMessages((prev) =>

@@ -76,7 +76,7 @@ export function useWatchEntries() {
   const guardTable = (error: any): boolean => {
     if (isMissingTable(error)) {
       setTableReady(false);
-      toast.error("Watch tracking isn't switched on yet — apply the database update first.");
+      toast.error("Watch tracking isn't switched on yet. Apply the database update first.");
       return true;
     }
     return false;
@@ -186,7 +186,7 @@ export function useWatchEntries() {
     const existing = new Set(entries.map(e => e.entry_date));
     const samples = generateSampleWatchEntries().filter(s => !existing.has(s.entry_date));
     if (samples.length === 0) {
-      toast.info("You already have entries across the sample range — nothing to add");
+      toast.info("You already have entries across the sample range. Nothing to add");
       return;
     }
     const { data, error } = await (supabase.from("watch_entries") as any)
@@ -203,7 +203,7 @@ export function useWatchEntries() {
       for (const row of rows) byDate.set(row.entry_date, row);
       return Array.from(byDate.values()).sort((a, b) => b.entry_date.localeCompare(a.entry_date));
     });
-    toast.success(`Sample watch data added (${rows.length} days) — explore freely ⌚`);
+    toast.success(`Sample watch data added (${rows.length} days). Explore freely ⌚`);
   }, [user, entries]);
 
   return {
@@ -215,6 +215,16 @@ export function useWatchEntries() {
     updateEntry,
     deleteEntry,
     seedSampleData,
+    fetchEntries: () => {
+      if (!user) return;
+      supabase.from("watch_entries" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("entry_date", { ascending: false })
+        .then(({ data, error }) => {
+          if (!error && data) setEntries((data ?? []).map(normalize));
+        });
+    },
     latest: entries[0] ?? null,
     previous: entries[1] ?? null,
   };

@@ -424,7 +424,7 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
       break;
   }
 
-  // Frame style — remove all frame classes then add active one
+  // Frame style. Remove all frame classes then add active one
   const frameClasses = ["frame-default", "frame-aura", "frame-neon", "frame-frost", "frame-sharp", "frame-prism"];
   root.classList.remove(...frameClasses);
   if (frame && frame !== "default") {

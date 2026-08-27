@@ -10,8 +10,9 @@ interface Props {
 }
 
 const PALETTE = [
-  "#F59E0B", "#EF4444", "#EC4899", "#A855F7", "#8B5CF6",
-  "#3B82F6", "#06B6D4", "#10B981", "#84CC16", "#6B7280",
+  "#EF4444", "#F97316", "#F59E0B", "#84CC16", "#10B981",
+  "#14B8A6", "#06B6D4", "#3B82F6", "#6366F1", "#8B5CF6",
+  "#A855F7", "#EC4899", "#78716C", "#9CA3AF", "#6B7280",
 ];
 
 function CategoryRow({ cat, onUpdate, onDelete, onDragStart, onDragOver, onDrop }: {

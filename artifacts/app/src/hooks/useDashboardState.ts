@@ -103,7 +103,7 @@ function useDashboardStateValue() {
   const [loading, setLoading] = useState(true);
   // True only once the current user's row has been loaded from the DB. Because
   // this provider now mounts at the app root (before login), we must not persist
-  // until the real state is loaded — otherwise a mutation during the load window
+  // until the real state is loaded . otherwise a mutation during the load window
   // would upsert the default (currentXP:0, empty missions) row and clobber real data.
   const loadedRef = useRef(false);
 
@@ -129,7 +129,7 @@ function useDashboardStateValue() {
       if (cancelled) return;
 
       if (error) {
-        // Transient load failure. Do NOT mark loaded — keeping loadedRef false
+        // Transient load failure. Do NOT mark loaded . keeping loadedRef false
         // leaves persist() blocked so a subsequent mutation can't overwrite the
         // real (unread) row with default/stale state.
         setLoading(false);
@@ -161,7 +161,7 @@ function useDashboardStateValue() {
           rolledVariants,
         });
       } else {
-        // No existing row (new user) — start clean rather than inheriting any
+        // No existing row (new user) . start clean rather than inheriting any
         // prior in-memory state.
         setState({ ...defaultState, dayKey: todayISO() });
       }
@@ -442,7 +442,7 @@ const DashboardStateContext = createContext<DashboardStateApi | null>(null);
 // Single shared instance for the whole app. Without this, each component that
 // called useDashboardState() (DashboardView, OracleView, useTrackerXp) got its
 // own state loaded from the DB and its own persist() that upserts the ENTIRE
-// dashboard_state row — so awarding tracker/achievement XP through a stale (or
+// dashboard_state row . so awarding tracker/achievement XP through a stale (or
 // still-default) copy would overwrite the real XP and wipe mission progress.
 export function DashboardStateProvider({ children }: { children: ReactNode }) {
   const value = useDashboardStateValue();

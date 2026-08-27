@@ -101,7 +101,7 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
             <motion.span
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              title={`${waterRate.toFixed(1)} waters/hour — gaining heat`}
+              title={`${waterRate.toFixed(1)} waters/hour. Gaining heat`}
               className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-orange-500/15 text-orange-400 font-bold"
             >
               <Flame className="w-3 h-3" /> Rising
@@ -293,7 +293,7 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
                   </div>
                 )}
                 <p className="text-[15px] leading-7 text-foreground/90 whitespace-pre-wrap font-serif">
-                  {seed.content || "—"}
+                  {seed.content || "."}
                 </p>
                 {seed.source_url && (
                   <a href={seed.source_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">

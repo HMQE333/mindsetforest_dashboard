@@ -138,7 +138,7 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
         patternId={pattern.id}
       />
 
-      {/* Phase label — crossfade */}
+      {/* Phase label. Crossfade */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentPhase?.phase + "-" + phaseIndex}
@@ -180,7 +180,7 @@ const BreathingSession = ({ pattern, durationSeconds, vesselShape = "urn", activ
         })}
       </div>
 
-      {/* Progress bar — gradient matches pattern hue */}
+      {/* Progress bar. Gradient matches pattern hue */}
       <div className="w-48 h-1 rounded-full bg-muted overflow-hidden">
         <motion.div
           className="h-full rounded-full"

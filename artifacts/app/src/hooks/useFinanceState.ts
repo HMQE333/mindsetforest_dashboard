@@ -66,6 +66,21 @@ export function useFinanceState() {
     }
   }, [user]);
 
+  // Bulk insert (bank statement import). Returns count inserted.
+  const addTransactions = useCallback(async (rows: Array<Omit<FinanceTransaction, "id" | "user_id" | "created_at">>): Promise<number> => {
+    if (!user || rows.length === 0) return 0;
+    const payload = rows.map(tx => ({ ...tx, user_id: user.id }));
+    const { data, error } = await (supabase.from("finance_transactions") as any)
+      .insert(payload)
+      .select();
+    if (error) { toast.error("Failed to import transactions"); return 0; }
+    const inserted = (data || []) as any[];
+    if (inserted.length > 0) {
+      setTransactions(prev => [...inserted.map((d: any) => ({ ...d, amount: Number(d.amount) })), ...prev]);
+    }
+    return inserted.length;
+  }, [user]);
+
   const updateTransaction = useCallback(async (id: string, updates: Partial<FinanceTransaction>) => {
     if (!user) return;
     const { error } = await (supabase.from("finance_transactions") as any)
@@ -123,13 +138,13 @@ export function useFinanceState() {
     const monthTxs = transactions.filter(t => t.date.startsWith(currentMonth) && (t.type === "expense" || t.type === "subscription"));
     const catMap: Record<string, number> = {};
     monthTxs.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
-    let max = 0, cat = "—";
+    let max = 0, cat = ".";
     Object.entries(catMap).forEach(([k, v]) => { if (v > max) { max = v; cat = k; } });
     return cat;
   }, [transactions, currentMonth]);
 
   return {
-    transactions, loading, addTransaction, updateTransaction, deleteTransaction,
+    transactions, loading, addTransaction, addTransactions, updateTransaction, deleteTransaction,
     monthlyData, currentMonthTotals, activeSubscriptions, subscriptionTotal,
     outstandingLoans, biggestExpenseCategory, currentMonth,
   };

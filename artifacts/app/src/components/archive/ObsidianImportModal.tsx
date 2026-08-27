@@ -103,7 +103,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
           }
         }
       } catch {
-        // AI failed for this batch — keep heuristic suggestion already set
+        // AI failed for this batch. Keep heuristic suggestion already set
       }
       setProgress(Math.round(Math.min(i + CLASSIFY_BATCH, review.length) / review.length * 100));
       setProgressLabel(
@@ -122,7 +122,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
       }
       setStage("processing");
       setProgress(0);
-      setProgressLabel(`Parsed ${parsed.length} notes — starting AI review…`);
+      setProgressLabel(`Parsed ${parsed.length} notes. Starting AI review…`);
 
       const review: ReviewNote[] = parsed.map((n, i) => {
         const h = heuristicKeep(n);
@@ -170,7 +170,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
         await processNotes(parsed);
       } catch (e) {
         console.error("Obsidian import error:", e);
-        toast.error("Failed to read files — is the .zip a valid vault export?");
+        toast.error("Failed to read files. Is the .zip a valid vault export?");
         reset();
       }
     },
@@ -239,7 +239,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
           });
         });
       } catch {
-        // AI tagging failed for this batch — save with parsed tags only
+        // AI tagging failed for this batch. Save with parsed tags only
         batch.forEach((n) => {
           finalBlocks.push({
             title: n.title,

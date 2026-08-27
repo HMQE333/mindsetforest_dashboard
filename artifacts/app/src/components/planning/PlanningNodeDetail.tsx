@@ -187,7 +187,7 @@ export default function PlanningNodeDetail({ task, open, onClose, onUpdate }: Pr
                 )}
               </div>
 
-              {/* Mentions — Ladder & Habit Loop cross-references */}
+              {/* Mentions. Ladder & Habit Loop cross-references */}
               <PlanningMentions
                 mentions={task.mentions || []}
                 onChange={(next: PlanningMention[]) => onUpdate(task.id, { mentions: next })}

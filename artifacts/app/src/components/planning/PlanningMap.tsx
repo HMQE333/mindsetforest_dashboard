@@ -219,7 +219,7 @@ function countLeaves(taskId: string, allTasks: PlanningTask[]): number {
 /* ── Collision / empty-space helpers ───────────────────────── */
 // Approximate node footprint (px) used for overlap tests. Kept below the
 // tree spacing (X_SPACING 260 / Y_SPACING 120) so a clean computed layout
-// never registers as a collision — only manually-moved or ad-hoc nodes do.
+// never registers as a collision . only manually-moved or ad-hoc nodes do.
 const NODE_W = 230;
 const NODE_H = 112;
 
@@ -281,7 +281,7 @@ function layoutTree(project: UserProject, tasks: PlanningTask[], callbacks: any,
       let baseX: number;
       let baseY: number;
       if (hasPersisted) {
-        // Manually placed — respect the stored position exactly.
+        // Manually placed . respect the stored position exactly.
         baseX = child.position_x as number;
         baseY = child.position_y as number;
       } else if (parentMoved) {
@@ -557,7 +557,7 @@ function MapViewInner({ boardId, onBack }: { boardId: string; onBack?: () => voi
   const handleSelect = useCallback((taskId: string) => setSelectedTaskId(taskId), []);
   const handleUpdateTask = useCallback((taskId: string, updates: Partial<PlanningTask>) => updateTask(taskId, updates), [updateTask]);
 
-  // Context menu add — creates standalone node at click position
+  // Context menu add . creates standalone node at click position
   const handleContextAddChild = useCallback(async (parentId: string | null, level: TaskLevel, title: string) => {
     const pid = selectedProjectIds[0];
     if (!pid) return;
@@ -584,7 +584,7 @@ function MapViewInner({ boardId, onBack }: { boardId: string; onBack?: () => voi
     }
   }, [selectedProjectIds, handleAddLinkForProject, contextMenuPos, reactFlowInstance, addTask, occupiedPositions, insertScope]);
 
-  // Connect handler — adopt standalone node into tree, reconciling its container
+  // Connect handler . adopt standalone node into tree, reconciling its container
   // with the target root/parent so it lands in the correct project or board.
   const handleConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -602,7 +602,7 @@ function MapViewInner({ boardId, onBack }: { boardId: string; onBack?: () => voi
     toast({ title: "Node connected", description: `"${targetTask.title}" is now linked to the tree` });
   }, [rawTasks, updateTask, insertScope]);
 
-  // Drag stop — persist position for ALL nodes
+  // Drag stop . persist position for ALL nodes
   const handleNodeDragStop = useCallback((_: any, node: Node) => {
     const taskId = node.id.replace("task-", "");
     if (node.id.startsWith("project-")) return; // skip project root nodes
@@ -695,7 +695,7 @@ function MapViewInner({ boardId, onBack }: { boardId: string; onBack?: () => voi
     prevStructureRef.current = fullKey;
 
     if (structureChanged) {
-      // Tree structure changed — merge: keep existing manually-placed positions, use computed for new nodes
+      // Tree structure changed . merge: keep existing manually-placed positions, use computed for new nodes
       setNodes(prev => {
         const prevMap: Record<string, Node> = {};
         prev.forEach(n => { prevMap[n.id] = n; });
@@ -708,7 +708,7 @@ function MapViewInner({ boardId, onBack }: { boardId: string; onBack?: () => voi
         });
       });
     } else {
-      // Only data changed (title, done, etc.) — update data in place, keep positions
+      // Only data changed (title, done, etc.) . update data in place, keep positions
       setNodes(prev => {
         const nodeMap: Record<string, Node> = {};
         initialNodes.forEach(n => { nodeMap[n.id] = n; });

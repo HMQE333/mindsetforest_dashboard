@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Settings2 } from "lucide-react";
+import { Settings2, Upload } from "lucide-react";
 import { useFinanceState, TransactionType } from "@/hooks/useFinanceState";
 import FinanceOverview from "./FinanceOverview";
 import FinanceTransactions from "./FinanceTransactions";
@@ -8,6 +8,7 @@ import FinanceSubscriptions from "./FinanceSubscriptions";
 import FinanceLoans from "./FinanceLoans";
 import AddTransactionModal from "./AddTransactionModal";
 import FinanceCategoriesModal from "./FinanceCategoriesModal";
+import FinanceImportModal from "./FinanceImportModal";
 
 type SubTab = "overview" | "transactions" | "subscriptions" | "loans";
 
@@ -24,6 +25,7 @@ export default function FinanceView() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalDefaultType, setModalDefaultType] = useState<TransactionType>("expense");
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const openModal = (type?: TransactionType) => {
     setModalDefaultType(type || "expense");
@@ -59,6 +61,13 @@ export default function FinanceView() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setImportOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-muted/30 border border-border hover:border-primary/50 text-xs font-semibold text-foreground transition-all"
+          title="Import wyciągu bankowego"
+        >
+          <Upload className="w-3.5 h-3.5" /> Import
+        </button>
         <button
           onClick={() => setCategoriesOpen(true)}
           className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-muted/30 border border-border hover:border-primary/50 text-xs font-semibold text-foreground transition-all"
@@ -118,6 +127,12 @@ export default function FinanceView() {
         open={categoriesOpen}
         onClose={() => setCategoriesOpen(false)}
         initialKind={modalDefaultType === "income" ? "income" : "expense"}
+      />
+
+      <FinanceImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={finance.addTransactions}
       />
     </motion.div>
   );

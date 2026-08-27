@@ -250,7 +250,7 @@ export default function RecipeJournal({ recipes, onSave, onDelete }: RecipeJourn
       {filtered.length === 0 ? (
         <div className="text-center py-14 text-muted-foreground">
           <div className="text-4xl mb-3">🍳</div>
-          <p className="font-medium">{search || filterStatus !== "all" ? "No recipes match your filters" : "No recipes yet — add your first one!"}</p>
+          <p className="font-medium">{search || filterStatus !== "all" ? "No recipes match your filters" : "No recipes yet. Add your first one!"}</p>
         </div>
       ) : (
         <div className="space-y-3">

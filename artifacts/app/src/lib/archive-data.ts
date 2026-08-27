@@ -1,5 +1,8 @@
 import { CATEGORIES } from "./dashboard-data";
 
+/** Fired when archive blocks change from outside (e.g. AI saving a quick note). */
+export const ARCHIVE_BLOCKS_CHANGED_EVENT = "archive-blocks-changed";
+
 export const PILLARS = CATEGORIES.map((c) => ({
   id: c.id,
   name: c.name,

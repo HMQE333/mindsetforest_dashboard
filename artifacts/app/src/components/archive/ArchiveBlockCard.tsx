@@ -148,7 +148,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             <button
               onClick={(e) => { e.stopPropagation(); onResync(); }}
               className="mt-1 px-1.5 py-1 rounded-md bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition-all flex items-center gap-1 text-[10px] font-bold animate-pulse"
-              title="Author updated this seed — re-sync to get the latest version"
+              title="Author updated this seed. Re-sync to get the latest version"
             >
               <RefreshCw className="w-3 h-3" /> Update
             </button>
@@ -284,7 +284,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
                   </div>
                 )}
                 <p className="text-[15px] leading-7 text-foreground/90 whitespace-pre-wrap font-serif">
-                  {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "—"}
+                  {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "."}
                 </p>
                 {block.source_url && (
                   <a href={block.source_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">

@@ -71,7 +71,7 @@ export default function ReadinessSummary({ latest, previous }: Props) {
                 <span className="shrink-0 mt-1.5 w-2 h-2 rounded-full" style={{ background: SIGNAL.good }} />
                 <span className="text-foreground/90">
                   {readiness.hasData
-                    ? "Every signal is in the healthy zone — green light. Keep the routine you're on."
+                    ? "Every signal is in the healthy zone. Green light. Keep the routine you're on."
                     : "Log today's Morning Report numbers to get a readiness read and personalised actions."}
                 </span>
               </div>

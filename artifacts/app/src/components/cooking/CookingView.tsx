@@ -63,7 +63,7 @@ export default function CookingView() {
         ))}
       </div>
 
-      {/* Tab content — all panels stay mounted to preserve state */}
+      {/* Tab content. All panels stay mounted to preserve state */}
       <div className={activeTab === "journal" ? "" : "hidden"}>
         <RecipeJournal
           recipes={cooking.recipes}

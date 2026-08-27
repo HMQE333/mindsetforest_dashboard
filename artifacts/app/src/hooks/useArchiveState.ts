@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import type { ArchiveBlock } from "@/lib/archive-data";
+import { ARCHIVE_BLOCKS_CHANGED_EVENT, type ArchiveBlock } from "@/lib/archive-data";
 import { toast } from "sonner";
 
 async function embedBlock(blockId: string) {
@@ -32,23 +32,21 @@ function readCache(userId: string): ArchiveBlock[] | undefined {
 function writeCache(userId: string, blocks: ArchiveBlock[]) {
   try {
     localStorage.setItem(cacheKey(userId), JSON.stringify(blocks.slice(0, CACHE_MAX)));
-  } catch { /* quota exceeded — ignore */ }
+  } catch { /* quota exceeded. Ignore */ }
 }
 
 export function useArchiveState() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const queryKey = ["archive_blocks", user?.id];
-  const erroredOnceRef = useRef(false);
 
   const query = useQuery<ArchiveBlock[]>({
     queryKey,
     enabled: !!user,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
     gcTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    initialData: user ? readCache(user.id) : undefined,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("archive_blocks" as any)
@@ -56,34 +54,45 @@ export function useArchiveState() {
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      const result = (data as any as ArchiveBlock[]) || [];
-      writeCache(user!.id, result);
-      return result;
+      return (data as any as ArchiveBlock[]) || [];
     },
   });
 
   useEffect(() => {
     if (query.error) {
       console.error("fetch archive error:", query.error);
-      if (!query.data || query.data.length === 0) {
-        if (!erroredOnceRef.current) {
-          toast.error("Failed to load archive");
-          erroredOnceRef.current = true;
-        }
-      }
-    } else if (query.data) {
-      erroredOnceRef.current = false;
+      toast.error("Failed to load archive");
     }
-  }, [query.error, query.data]);
+  }, [query.error]);
+
+  // Polling: refetch every 5s to keep archive in sync across devices/windows.
+  // Much simpler than Realtime subscriptions and avoids supabase-js channel API issues.
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      qc.invalidateQueries({ queryKey });
+    }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // Refetch immediately when another part of the app (e.g. The AI assistant)
+  // saves a note to the archive, so it shows up without waiting for the poll.
+  useEffect(() => {
+    const handler = () => {
+      qc.invalidateQueries({ queryKey });
+    };
+    window.addEventListener(ARCHIVE_BLOCKS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(ARCHIVE_BLOCKS_CHANGED_EVENT, handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const blocks = query.data || [];
   const loading = query.isLoading && !query.data;
 
   const setBlocks = useCallback((updater: (prev: ArchiveBlock[]) => ArchiveBlock[]) => {
     qc.setQueryData<ArchiveBlock[]>(queryKey, (prev) => {
-      const next = updater(prev || []);
-      if (user) writeCache(user.id, next);
-      return next;
+      return updater(prev || []);
     });
   }, [qc, user?.id]);
 
@@ -179,8 +188,5 @@ export function useArchiveState() {
     }
   }, []);
 
-  const refreshing = query.isFetching && !!query.data;
-  const hasStaleError = !!query.error && !!query.data && query.data.length > 0;
-
-  return { blocks, loading, refreshing, hasStaleError, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, embedAll };
+  return { blocks, loading, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, embedAll };
 }

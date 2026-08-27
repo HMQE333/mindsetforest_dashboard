@@ -9,6 +9,7 @@ import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
 import ArchiveDigestView from "./ArchiveDigestView";
 import ArchiveForestView from "./ArchiveForestView";
 import ArchiveBookmarksView from "./ArchiveBookmarksView";
+import FileShareView from "./FileShareView";
 import PlantSeedModal from "./PlantSeedModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -53,6 +54,11 @@ const ArchiveView = () => {
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
   const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
+  const existingTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const b of archive.blocks) (b.tags || []).forEach((t) => s.add(t));
+    return Array.from(s).sort();
+  }, [archive.blocks]);
 
   // Digest count is now shown dynamically from the component itself
 
@@ -64,6 +70,7 @@ const ArchiveView = () => {
     { id: "digest", label: "Digest", icon: "🔁" },
     { id: "forest", label: "Forest", icon: "🌳" },
     { id: "bookmarks", label: "Bookmarks", icon: "⭐" },
+    { id: "fileshare", label: "File Share", icon: "📁" },
   ];
 
   const toggleSelect = (id: string) => {
@@ -220,16 +227,10 @@ const ArchiveView = () => {
         ))}
       </div>
 
-      {archive.hasStaleError && (
-        <div className="text-[11px] text-yellow-400/80 px-1">
-          ⚠️ Couldn't refresh — showing cached blocks.
-        </div>
-      )}
 
-      {/* Content — all sub-views stay mounted so state (search, scroll, selection) survives switching. */}
       <div className="relative">
         <div className={subView === "inbox" ? "" : "hidden"}>
-          <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} />
+          <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} existingTags={existingTags} />
         </div>
         <div className={subView === "library" ? "" : "hidden"}>
           <ArchiveLibrary
@@ -259,6 +260,9 @@ const ArchiveView = () => {
         </div>
         <div className={subView === "bookmarks" ? "" : "hidden"}>
           <ArchiveBookmarksView />
+        </div>
+        <div className={subView === "fileshare" ? "" : "hidden"}>
+          <FileShareView />
         </div>
       </div>
 

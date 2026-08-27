@@ -10,7 +10,12 @@ export type ScopeId =
   | "planning"
   | "health"
   | "finance"
-  | "oracle";
+  | "oracle"
+  | "archive"
+  | "breathing"
+  | "cooking"
+  | "calendar"
+  | "library";
 
 export interface ScopeDef {
   id: ScopeId;
@@ -27,6 +32,11 @@ export const SCOPES: ScopeDef[] = [
   { id: "health", label: "Health", icon: "❤️" },
   { id: "finance", label: "Finance", icon: "💰" },
   { id: "oracle", label: "Oracle", icon: "🔮" },
+  { id: "archive", label: "Archive", icon: "📦" },
+  { id: "breathing", label: "Breathing", icon: "🫁" },
+  { id: "cooking", label: "Cooking", icon: "🍳" },
+  { id: "calendar", label: "Calendar", icon: "📅" },
+  { id: "library", label: "Library", icon: "📚" },
 ];
 
 export const SCOPE_MAP: Record<ScopeId, ScopeDef> = Object.fromEntries(
@@ -98,65 +108,84 @@ async function gatherTracker(userId: string): Promise<string> {
 async function gatherLadder(userId: string): Promise<string> {
   const { data } = await supabase
     .from("ladder_state")
-    .select("ladders,active_category")
+    .select("ladders,active_ladder_id")
     .eq("user_id", userId)
     .maybeSingle();
   if (!data?.ladders) return "No ladder data yet.";
-  const ladders = data.ladders as Record<string, { levels?: Record<string, Array<{ text?: string; completed?: boolean }>> }>;
+  const arr = Array.isArray(data.ladders) ? data.ladders : [];
+  if (arr.length === 0) return "No ladders yet.";
   const lines: string[] = [];
-  for (const [cat, ladder] of Object.entries(ladders)) {
+  for (const ladder of arr) {
     let total = 0;
     let done = 0;
-    Object.values(ladder?.levels || {}).forEach((tasks) => {
-      (tasks || []).forEach((t) => {
+    Object.values(ladder?.levels || {}).forEach((tasks: any) => {
+      (tasks || []).forEach((t: any) => {
         total++;
         if (t.completed) done++;
       });
     });
-    if (total > 0) lines.push(`- ${catName(cat)}: ${done}/${total} rungs completed`);
+    if (total > 0) lines.push(`- ${ladder.name}: ${done}/${total} rungs completed`);
   }
   if (lines.length === 0) return "No ladder rungs created yet.";
-  return [`Active ladder: ${catName(data.active_category || "")}`, ...lines].join("\n");
+  const active = arr.find((l: any) => l.id === data.active_ladder_id);
+  return [`Active ladder: ${active?.name || "none"}`, ...lines].join("\n");
 }
 
 async function gatherHabitLoop(userId: string): Promise<string> {
   const { data } = await supabase
     .from("habit_loops")
-    .select("category_id,current_loop,loops")
+    .select("id,name,category_id,current_loop,loops")
     .eq("user_id", userId);
   if (!data || data.length === 0) return "No habit loops set up yet.";
-  const lines = (data as Array<{ category_id: string; current_loop: number; loops: unknown }>).map((row) => {
+  const lines = (data as any[]).map((row) => {
     const loops = Array.isArray(row.loops) ? row.loops : [];
-    return `- ${catName(row.category_id)}: ${loops.length} loop(s), currently on loop ${(row.current_loop || 0) + 1}`;
+    return `- ${row.name || row.category_id || "Untitled"}: ${loops.length} loop(s), currently on loop ${(row.current_loop || 0) + 1}`;
   });
   return ["Habit loop progress:", ...lines].join("\n");
 }
 
 async function gatherPlanning(userId: string): Promise<string> {
-  const { data } = await supabase
-    .from("planning_tasks")
-    .select("title,level,done,deadline")
+  const { data } = await (supabase.from("planning_tasks" as never) as never as { select: (cols: string) => never })
+    .select("id,title,level,done,deadline,parent_id,notes")
     .eq("user_id", userId)
-    .limit(300);
+    .limit(500) as never as { data: any[] | null; error: unknown };
   if (!data || data.length === 0) return "No planning tasks yet.";
+
   const total = data.length;
   const done = data.filter((t) => t.done).length;
   const byLevel: Record<string, number> = {};
   for (const t of data) byLevel[t.level] = (byLevel[t.level] || 0) + 1;
+
   const upcoming = data
     .filter((t) => !t.done && t.deadline)
     .sort((a, b) => String(a.deadline).localeCompare(String(b.deadline)))
     .slice(0, 8)
     .map((t) => `- ${t.title} (due ${t.deadline})`);
-  const openTitles = data
-    .filter((t) => !t.done)
-    .slice(0, 12)
-    .map((t) => `- ${t.title} [${t.level}]`);
+
+  // Build a tree view for the mindmap context
+  const rootTasks = data.filter((t) => !t.parent_id);
+  function buildTree(parentId: string | null, depth: number): string[] {
+    const children = data.filter((t) => t.parent_id === parentId);
+    if (children.length === 0) return [];
+    const lines: string[] = [];
+    const prefix = "  ".repeat(depth);
+    for (const child of children) {
+      const doneMark = child.done ? " ✓" : "";
+      lines.push(`${prefix}- [${child.level}] ${child.title}${doneMark}`);
+      lines.push(...buildTree(child.id, depth + 1));
+    }
+    return lines;
+  }
+  const tree = buildTree(null, 0);
+  const treePreview = tree.length > 0 ? ["Mindmap tree:", ...tree.slice(0, 40)] : [];
+  if (tree.length > 40) treePreview.push(`  ... and ${tree.length - 40} more nodes`);
+
   const parts = [
     `Planning: ${done}/${total} tasks done. Breakdown: ${Object.entries(byLevel).map(([l, n]) => `${l}=${n}`).join(", ")}.`,
   ];
+  if (treePreview.length) parts.push(...treePreview);
   if (upcoming.length) parts.push("Upcoming deadlines:", ...upcoming);
-  if (openTitles.length) parts.push("Open tasks (sample):", ...openTitles);
+
   return parts.join("\n");
 }
 
@@ -230,7 +259,138 @@ async function gatherOracle(userId: string): Promise<string> {
   ].join("\n");
 }
 
-const GATHERERS: Record<ScopeId, (userId: string) => Promise<string>> = {
+async function gatherArchive(userId: string, question?: string): Promise<string> {
+  // If there's a question, use semantic search to find relevant blocks
+  if (question) {
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-embed-block", {
+        body: { action: "search", query: question },
+      });
+      if (error) throw error;
+      const results = (data?.results || []) as Array<{
+        id: string; title: string; content: string; similarity: number;
+      }>;
+      if (results.length === 0) return "Archive search found no matching blocks for your question.";
+      return [
+        `Archive search for "${question}". Top ${Math.min(results.length, 5)} matches:`,
+        ...results.slice(0, 5).map((r, i) =>
+          `--- Match ${i + 1} (${Math.round(r.similarity * 100)}%): ${r.title || "Untitled"} ---\n${(r.content || "").slice(0, 2000)}`
+        ),
+      ].join("\n\n");
+    } catch (e) {
+      console.error("Semantic archive search failed:", e);
+      // Fall through to summary mode
+    }
+  }
+
+  // Summary mode (no question, or search failed)
+  const { data, count } = await supabase
+    .from("archive_blocks" as never)
+    .select("*", { count: "estimated", head: false })
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  const blocks = (data as unknown as Array<{ title: string; content: string; tags: string[]; pillars: string[]; directions: string[]; created_at: string }>) || [];
+  if (blocks.length === 0) return "No archive blocks yet.";
+  const tagCounts: Record<string, number> = {};
+  for (const b of blocks) {
+    for (const t of b.tags || []) tagCounts[t] = (tagCounts[t] || 0) + 1;
+  }
+  const topTags = Object.entries(tagCounts).sort((a,b) => b[1]-a[1]).slice(0, 8).map(([t,n]) => `#${t} (${n})`).join(", ");
+  const recent = blocks.slice(0, 6).map((b) => `- [${b.created_at?.slice(0,10)}] ${b.title || "Untitled"}`);
+  return [
+    `Archive: ${count ?? blocks.length} total blocks.`,
+    topTags ? `Top tags: ${topTags}` : "",
+    "Most recent:",
+    ...recent,
+  ].filter(Boolean).join("\n");
+}
+
+async function gatherBreathing(userId: string): Promise<string> {
+  const { data } = await supabase
+    .from("breathing_sessions")
+    .select("pattern_id,duration_seconds,completed_at")
+    .eq("user_id", userId)
+    .order("completed_at", { ascending: false })
+    .limit(10);
+  if (!data || data.length === 0) return "No breathing sessions yet.";
+  const total = data.reduce((sum: number, s: any) => sum + (s.duration_seconds || 0), 0);
+  const patterns = [...new Set(data.map((s: any) => s.pattern_id))];
+  const recent = data.slice(0, 5).map((s: any) => `- ${s.pattern_id}: ${Math.round(s.duration_seconds/60)}min on ${s.completed_at?.slice(0,10)}`);
+  return [
+    `Breathing: ${data.length} sessions, ${Math.round(total/60)} total minutes.`,
+    `Patterns used: ${patterns.join(", ")}`,
+    "Recent sessions:",
+    ...recent,
+  ].join("\n");
+}
+
+async function gatherCooking(userId: string): Promise<string> {
+  const { data: recipes } = await supabase
+    .from("cooking_recipes")
+    .select("title,tags,cooking_time_minutes,created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(15);
+  const { data: plan } = await supabase
+    .from("cooking_plan_entries")
+    .select("meal_type,recipe_title,date")
+    .eq("user_id", userId)
+    .gte("date", daysAgoISO(7))
+    .order("date", { ascending: false });
+  const recipeList = (recipes || []) as any[];
+  const planList = (plan || []) as any[];
+  const parts: string[] = [];
+  if (recipeList.length > 0) {
+    const lines = recipeList.slice(0, 8).map((r: any) => `- ${r.title}${r.cooking_time_minutes ? ` (${r.cooking_time_minutes}min)` : ""}${r.tags?.length ? ` [${r.tags.join(", ")}]` : ""}`);
+    parts.push(`Recipes (${recipeList.length} total):`, ...lines);
+  }
+  if (planList.length > 0) {
+    const lines = planList.slice(0, 5).map((p: any) => `- ${p.date}: ${p.meal_type}. ${p.recipe_title}`);
+    parts.push(`Meal plan (last 7 days, ${planList.length} entries):`, ...lines);
+  }
+  return parts.length > 0 ? parts.join("\n") : "No cooking recipes or meal plans yet.";
+}
+
+async function gatherCalendar(userId: string): Promise<string> {
+  const today = new Date().toISOString().split("T")[0];
+  const future = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+  const { data } = await supabase
+    .from("calendar_events")
+    .select("title,start_time,end_time,all_day,color")
+    .eq("user_id", userId)
+    .gte("start_time", today)
+    .lte("start_time", future)
+    .order("start_time")
+    .limit(30);
+  if (!data || data.length === 0) return "No upcoming calendar events in the next 30 days.";
+  const lines = (data as any[]).map((e: any) => {
+    const time = e.all_day ? "all day" : e.start_time?.slice(11, 16) || "";
+    return `- ${e.start_time?.slice(0,10)} ${time}: ${e.title}`;
+  });
+  return [`Calendar: ${data.length} upcoming events in next 30 days:`, ...lines].join("\n");
+}
+
+async function gatherLibrary(userId: string): Promise<string> {
+  const { data } = await supabase
+    .from("library_shares")
+    .select("title,type,category,tags,created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (!data || data.length === 0) return "No library items shared yet.";
+  const items = data as any[];
+  const byType: Record<string, number> = {};
+  for (const i of items) byType[i.type] = (byType[i.type] || 0) + 1;
+  const recent = items.slice(0, 8).map((i: any) => `- ${i.title} [${i.type}]${i.tags?.length ? ` tags: ${i.tags.join(", ")}` : ""}`);
+  return [
+    `Library: ${items.length} shared items. Types: ${Object.entries(byType).map(([t,n]) => `${t}(${n})`).join(", ")}`,
+    "Recent:",
+    ...recent,
+  ].join("\n");
+}
+
+const GATHERERS: Record<ScopeId, (userId: string, question?: string) => Promise<string>> = {
   dashboard: gatherDashboard,
   tracker: gatherTracker,
   ladder: gatherLadder,
@@ -239,6 +399,11 @@ const GATHERERS: Record<ScopeId, (userId: string) => Promise<string>> = {
   health: gatherHealth,
   finance: gatherFinance,
   oracle: gatherOracle,
+  archive: gatherArchive,
+  breathing: gatherBreathing,
+  cooking: gatherCooking,
+  calendar: gatherCalendar,
+  library: gatherLibrary,
 };
 
 async function gatherArchiveItems(userId: string, items: ArchiveItemRef[]): Promise<string> {
@@ -274,6 +439,7 @@ export async function gatherContext(
   userId: string,
   scopes: ScopeId[],
   archiveItems: ArchiveItemRef[] = [],
+  question?: string,
 ): Promise<{ text: string; citations: Citation[] }> {
   const sections: string[] = [];
   const citations: Citation[] = [];
@@ -283,7 +449,7 @@ export async function gatherContext(
     if (!gatherer) continue;
     let body: string;
     try {
-      body = await gatherer(userId);
+      body = await gatherer(userId, question);
     } catch (e) {
       body = "(section unavailable)";
     }

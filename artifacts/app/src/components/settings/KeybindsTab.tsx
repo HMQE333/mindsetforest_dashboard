@@ -92,7 +92,7 @@ export default function KeybindsTab({ customKeybinds, onSave }: KeybindsTabProps
   };
 
   const gridKeys = Object.entries(KEYBIND_LABELS).filter(([k]) => 
-    ["mind", "body", "creation", "exploration", "networking", "trading", "spirit", "order", "projects", "resetDay"].includes(k)
+    ["mind", "body", "expression", "exploration", "people", "money", "spirit", "order", "projects", "resetDay"].includes(k)
   );
   const missionKeys = Object.entries(KEYBIND_LABELS).filter(([k]) => 
     ["editTasks", "aiSuggestions", "resetDefaults"].includes(k)

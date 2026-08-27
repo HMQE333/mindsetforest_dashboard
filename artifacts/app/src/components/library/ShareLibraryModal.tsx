@@ -181,7 +181,7 @@ export default function ShareLibraryModal({ open, onClose, currentTab, currentFi
                   );
                 })}
                 {activeFilterChips.length === 0 && (
-                  <p className="text-xs text-muted-foreground italic">No filters active — share will show your full {currentTab} list.</p>
+                  <p className="text-xs text-muted-foreground italic">No filters active. Share will show your full {currentTab} list.</p>
                 )}
               </div>
             </div>
@@ -189,7 +189,7 @@ export default function ShareLibraryModal({ open, onClose, currentTab, currentFi
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-foreground">Visibility</p>
-                <p className="text-[10px] text-muted-foreground">{isPublic ? "Anyone with the link can view" : "Link disabled — not viewable"}</p>
+                <p className="text-[10px] text-muted-foreground">{isPublic ? "Anyone with the link can view" : "Link disabled. Not viewable"}</p>
               </div>
               <button
                 onClick={() => setIsPublic(p => !p)}

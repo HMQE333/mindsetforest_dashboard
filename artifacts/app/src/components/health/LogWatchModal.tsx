@@ -61,7 +61,7 @@ function TimeInput({
   const parse = kind === "pace" ? parsePace : parseDuration;
   const [text, setText] = useState(fmt(valueSec) ?? "");
 
-  // Sync when the numeric value changes from outside (e.g. file autofill).
+  // Sync when the numeric value changes from outside (e.g. File autofill).
   useEffect(() => {
     const parsed = parse(text);
     if (parsed !== valueSec) setText(fmt(valueSec) ?? "");
@@ -169,7 +169,7 @@ export default function LogWatchModal({ open, onClose, onSave, initial }: Props)
           {/* A · Recovery & readiness */}
           <section className="space-y-3">
             <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              A · Recovery & readiness <span className="text-muted-foreground/60 normal-case font-normal">— the Morning Report</span>
+              A · Recovery & readiness <span className="text-muted-foreground/60 normal-case font-normal">. The Morning Report</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {numField("resting_hr", "Resting HR (bpm)")}
@@ -181,7 +181,7 @@ export default function LogWatchModal({ open, onClose, onSave, initial }: Props)
                 <Label className="text-xs">HRV Status</Label>
                 <Select value={form.hrv_status ?? ""} onValueChange={v => setField("hrv_status", v || null)}>
                   <SelectTrigger className="h-10">
-                    <SelectValue placeholder="—" />
+                    <SelectValue placeholder="." />
                   </SelectTrigger>
                   <SelectContent>
                     {HRV_STATUS_OPTIONS.map(s => (
@@ -274,7 +274,7 @@ export default function LogWatchModal({ open, onClose, onSave, initial }: Props)
             <Textarea
               value={form.notes}
               onChange={e => setField("notes", e.target.value)}
-              placeholder="e.g. easy Z2 run, poor sleep, travel day"
+              placeholder="e.g. Easy Z2 run, poor sleep, travel day"
               rows={2}
             />
           </section>

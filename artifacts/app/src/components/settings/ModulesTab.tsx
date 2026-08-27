@@ -215,7 +215,7 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
                 <GripVertical className="h-4 w-4" />
               </div>
 
-              {/* Content — clickable to toggle */}
+              {/* Content. Clickable to toggle */}
               <button
                 onClick={() => toggle(mod.id)}
                 disabled={mod.alwaysOn}

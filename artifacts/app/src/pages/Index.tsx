@@ -305,7 +305,7 @@ const Index = () => {
         {activeTab === "health" && enabledModules.has("health") && (user ? <HealthView /> : renderAuthGate("health tracker"))}
       </div>
 
-      {/* Global Quick Capture — Ctrl/Cmd+N */}
+      {/* Global Quick Capture. Ctrl/Cmd+N */}
       {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
       {user && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
       {user && <FriendsPanel open={friendsOpen} onOpenChange={setFriendsOpen} />}
