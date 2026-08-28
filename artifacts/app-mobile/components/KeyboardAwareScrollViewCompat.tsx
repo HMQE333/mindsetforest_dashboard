@@ -23,7 +23,7 @@ export function KeyboardAwareScrollViewCompat({
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       {...props}
     >
-      {children}
+      {children as React.ReactNode}
     </KeyboardAwareScrollView>
   );
 }
