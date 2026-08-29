@@ -10,7 +10,7 @@ import AIPathModal from "./AIPathModal";
 
 export default function PathsView() {
   const {
-    paths, logs, loading, missingTables, stepsByPath, revisionsOf,
+    paths, logs, loading, missingTables, engineReady, stepsByPath, revisionsOf,
     createPath, updatePath, deletePath,
     addStep, updateStep, deleteStep, moveStep, logStep, undoToday,
     recordRevision, revertTo, setDiagnosis, scoreDiagnosis, snoozeStep,
@@ -102,6 +102,18 @@ export default function PathsView() {
         </div>
       ) : (
         <>
+          {!engineReady && (
+            <div className="mb-4 px-3.5 py-2.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.06]">
+              <p className="text-xs text-foreground/85">
+                Your paths are here, but the planning-loop migration hasn&apos;t run on this database yet.
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Diagnosis, history and the stall check are hidden until{" "}
+                <code className="px-1 py-0.5 rounded bg-white/10 font-mono">20260829120000_paths_engine.sql</code> is applied.
+              </p>
+            </div>
+          )}
+
           {/* Create */}
           <div className="flex items-center gap-2 mb-5">
             <input
@@ -143,6 +155,7 @@ export default function PathsView() {
                   onScore={(verdict, actual) => scoreDiagnosis(path.id, verdict, actual)}
                   onRevert={handleRevert}
                   onSnoozeStep={snoozeStep}
+                  engineReady={engineReady}
                   onUndo={undoToday}
                   onAddStep={(title, reps) => addStep(path.id, title, reps > 1 ? { mode: "reps", repsTarget: reps } : {})}
                   onUpdateStep={updateStep}

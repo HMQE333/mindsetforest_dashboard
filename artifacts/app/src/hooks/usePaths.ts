@@ -30,11 +30,35 @@ export function notifyPathsChanged() {
   window.dispatchEvent(new CustomEvent(PATHS_CHANGED_EVENT));
 }
 
+type PgError = { code?: string; message?: string } | null;
+
 /** Migration not applied yet - render a hint instead of crashing. */
-function isMissingTable(error: { code?: string; message?: string } | null): boolean {
+function isMissingTable(error: PgError): boolean {
   if (!error) return false;
   return error.code === "42P01" || error.code === "PGRST205" || /schema cache/i.test(error.message || "");
 }
+
+/**
+ * A column the code knows about but the database does not.
+ *
+ * This matters more than it looks. PostgREST rejects the WHOLE query when one
+ * selected column is missing, so a deploy that lands before its migration does
+ * not degrade - it makes every row disappear and renders a convincing "you have
+ * nothing here yet". Detecting it lets us fall back to the columns that have
+ * always existed and keep the user's data on screen.
+ */
+function isMissingColumn(error: PgError): boolean {
+  if (!error) return false;
+  return error.code === "42703"
+    || error.code === "PGRST204"
+    || /column .* does not exist/i.test(error.message || "");
+}
+
+// Columns that predate the planning-loop migration, and the ones it adds.
+const PATH_COLS_BASE = "id,name,category_id,archived,sort_order";
+const PATH_COLS_ENGINE = "diagnosis,diagnosis_verdict,diagnosis_actual,scored_at";
+const STEP_COLS_BASE = "id,path_id,title,stage,mode,reps_target,reps_done,xp,done,done_at,sort_order,created_at";
+const STEP_COLS_ENGINE = "snoozed_until";
 
 const LOG_WINDOW_DAYS = 60;
 
@@ -46,21 +70,22 @@ export function usePaths() {
   const [revisions, setRevisions] = useState<PathRevision[]>([]);
   const [loading, setLoading] = useState(true);
   const [missingTables, setMissingTables] = useState(false);
+  /** False until the planning-loop migration has run: diagnosis, history, stall check. */
+  const [engineReady, setEngineReady] = useState(true);
 
   const fetchAll = useCallback(async () => {
     if (!user) { setLoading(false); return; }
     const since = new Date();
     since.setDate(since.getDate() - LOG_WINDOW_DAYS);
 
-    const [pathsRes, stepsRes, logsRes, revRes] = await Promise.all([
-      (supabase.from("paths" as any) as any)
-        .select("id,name,category_id,archived,sort_order,diagnosis,diagnosis_verdict,diagnosis_actual,scored_at")
-        .eq("user_id", user.id)
-        .order("sort_order", { ascending: true }),
-      (supabase.from("path_steps" as any) as any)
-        .select("id,path_id,title,stage,mode,reps_target,reps_done,xp,done,done_at,sort_order,snoozed_until,created_at")
-        .eq("user_id", user.id)
-        .order("sort_order", { ascending: true }),
+    const readPaths = (cols: string) => (supabase.from("paths" as any) as any)
+      .select(cols).eq("user_id", user.id).order("sort_order", { ascending: true });
+    const readSteps = (cols: string) => (supabase.from("path_steps" as any) as any)
+      .select(cols).eq("user_id", user.id).order("sort_order", { ascending: true });
+
+    let [pathsRes, stepsRes, logsRes, revRes] = await Promise.all([
+      readPaths(`${PATH_COLS_BASE},${PATH_COLS_ENGINE}`),
+      readSteps(`${STEP_COLS_BASE},${STEP_COLS_ENGINE}`),
       (supabase.from("path_step_logs" as any) as any)
         .select("step_id,path_id,date,xp")
         .eq("user_id", user.id)
@@ -77,12 +102,30 @@ export function usePaths() {
       setLoading(false);
       return;
     }
+
+    // The planning-loop migration has not run here. Read what does exist rather
+    // than showing the user an empty screen over four missing columns.
+    const stale = isMissingColumn(pathsRes.error) || isMissingColumn(stepsRes.error);
+    if (stale) {
+      [pathsRes, stepsRes] = await Promise.all([readPaths(PATH_COLS_BASE), readSteps(STEP_COLS_BASE)]);
+    }
+    setEngineReady(!stale);
+
     setMissingTables(false);
-    if (pathsRes.data) setPaths(pathsRes.data as Path[]);
-    if (stepsRes.data) setSteps(stepsRes.data as PathStep[]);
+    if (pathsRes.data) {
+      setPaths((pathsRes.data as Record<string, unknown>[]).map(row => ({
+        diagnosis: null, diagnosis_verdict: null, diagnosis_actual: null, scored_at: null,
+        ...row,
+      })) as Path[]);
+    }
+    if (stepsRes.data) {
+      setSteps((stepsRes.data as Record<string, unknown>[]).map(row => ({
+        snoozed_until: null,
+        ...row,
+      })) as PathStep[]);
+    }
     if (logsRes.data) setLogs(logsRes.data as StepLog[]);
-    // Revisions arrived with the paths migration's follow-up; an account that
-    // has not run it yet simply has no history, which is a fine degradation.
+    // History arrived with the same migration; no history is a fine degradation.
     setRevisions((revRes?.data as PathRevision[]) || []);
     setLoading(false);
   }, [user]);
@@ -445,6 +488,7 @@ export function usePaths() {
     revisions,
     loading,
     missingTables,
+    engineReady,
     todaySteps,
     todayLog,
     stepsByPath,

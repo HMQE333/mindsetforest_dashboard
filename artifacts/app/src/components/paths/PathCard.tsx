@@ -33,6 +33,8 @@ interface Props {
   onScore: (verdict: DiagnosisVerdict, actual?: string) => void;
   onRevert: (revisionId: string) => void;
   onSnoozeStep: (stepId: string, days: number) => void;
+  /** False until the planning-loop migration has run - hide what cannot save. */
+  engineReady: boolean;
   /** Opened from a Planning mention - expand so the link lands somewhere useful. */
   focused?: boolean;
 }
@@ -41,7 +43,7 @@ export default function PathCard({
   path, steps, loggedTodayIds, streakOf, categories,
   onLog, onUndo, onAddStep, onUpdateStep, onDeleteStep, onMoveStep,
   onUpdatePath, onDeletePath, onAI, focused,
-  revisions, staleDays, onSetDiagnosis, onScore, onRevert, onSnoozeStep,
+  revisions, staleDays, onSetDiagnosis, onScore, onRevert, onSnoozeStep, engineReady,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -67,7 +69,7 @@ export default function PathCard({
   // the user has already parked. A check that fires daily gets ignored daily.
   const snoozed = !!active?.snoozed_until && active.snoozed_until >= todayKey();
   const stalled = active && !snoozed ? staleDays(active.id) : 0;
-  const showStuckCheck = !!active && !snoozed && stalled >= STALL_DAYS && Number.isFinite(stalled);
+  const showStuckCheck = engineReady && !!active && !snoozed && stalled >= STALL_DAYS && Number.isFinite(stalled);
 
   const submitName = () => {
     const name = nameDraft.trim();
@@ -283,6 +285,7 @@ export default function PathCard({
         />
       </div>
 
+      {engineReady && (
       <PathDiagnosis
         path={path}
         finished={finished}
@@ -290,6 +293,7 @@ export default function PathCard({
         onSetDiagnosis={onSetDiagnosis}
         onScore={onScore}
       />
+      )}
 
       {showStuckCheck && active && (
         <StuckCheck
@@ -372,6 +376,7 @@ export default function PathCard({
                   Label stage
                 </button>
               )}
+              {engineReady && (
               <button
                 onClick={() => setShowHistory(v => !v)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
@@ -382,6 +387,7 @@ export default function PathCard({
               >
                 <History className="h-3 w-3" /> History{revisions.length > 0 ? ` (${revisions.length})` : ""}
               </button>
+              )}
               <button
                 onClick={() => onUpdatePath({ archived: true })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-white/5 text-muted-foreground hover:text-foreground transition-all ml-auto"
