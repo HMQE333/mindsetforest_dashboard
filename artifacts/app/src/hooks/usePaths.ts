@@ -406,18 +406,20 @@ export function usePaths() {
     return step.xp;
   }, [user, steps, logs]);
 
-  /** Undo today's rep (mis-click). XP already granted stays granted. */
-  const undoToday = useCallback(async (stepId: string) => {
+  /** Undo today's rep (mis-click). Returns the XP that was undone so the caller can subtract it. */
+  const undoToday = useCallback(async (stepId: string): Promise<number> => {
     const step = steps.find(s => s.id === stepId);
-    if (!step) return;
+    if (!step) return 0;
     const date = todayKey();
-    await (supabase.from("path_step_logs" as any) as any).delete().eq("step_id", stepId).eq("date", date);
+    const undoneXP = step.xp;
+    await (supabase.from("path_step_logs" as never) as any).delete().eq("step_id", stepId).eq("date", date);
     const repsDone = Math.max(0, step.reps_done - 1);
     const patch = { reps_done: repsDone, done: false, done_at: null };
     setLogs(prev => prev.filter(l => !(l.step_id === stepId && l.date === date)));
     setSteps(prev => prev.map(s => (s.id === stepId ? { ...s, ...patch } : s)));
-    await (supabase.from("path_steps" as any) as any).update(patch).eq("id", stepId);
+    await (supabase.from("path_steps" as never) as any).update(patch).eq("id", stepId);
     notifyPathsChanged();
+    return undoneXP;
   }, [steps]);
 
   /** Titles + XP of steps logged today, so Home's daily snapshot stays accurate. */

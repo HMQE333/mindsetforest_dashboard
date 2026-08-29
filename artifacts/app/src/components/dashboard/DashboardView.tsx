@@ -21,7 +21,7 @@ import DashboardStats from "./DashboardStats";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, completeExternal, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, completeExternal, addXP, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -163,6 +163,11 @@ export default function DashboardView() {
     }
   }, [logStep, completeExternal]);
 
+  const handleUndoPathStep = useCallback(async (stepId: string) => {
+    const xp = await undoToday(stepId);
+    if (xp > 0) addXP(-xp);
+  }, [undoToday, addXP]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -228,7 +233,7 @@ export default function DashboardView() {
               steps={todaySteps}
               categories={categories}
               onLog={handleLogPathStep}
-              onUndo={undoToday}
+              onUndo={handleUndoPathStep}
               onOpenPaths={() => window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: "paths" } }))}
             />
             <CategoryGrid
