@@ -125,8 +125,7 @@ async function gatherPaths(userId: string): Promise<string> {
         : "complete";
       return `- ${p.name}${p.category_id ? ` [${catName(p.category_id)}]` : ""}: ${done}/${mine.length} steps done, now on "${activeLabel}"`;
     });
-  return lines.length > 0 ? ["Paths:", ...lines].join("
-") : "All paths archived.";
+  return lines.length > 0 ? ["Paths:", ...lines].join("\n") : "All paths archived.";
 }
 
 async function gatherPlanning(userId: string): Promise<string> {
