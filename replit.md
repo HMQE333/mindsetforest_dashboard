@@ -38,13 +38,53 @@ A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lova
 - Tables: `paths`, `path_steps`, `path_step_logs` — see `supabase/migrations/20260827120000_paths.sql`.
   That migration also drops `ladder_state` and `habit_loops`.
 
+## The planning loop: COMMIT, SELECT, SCORE
+
+Paths carries a written prior and grades it. The three pieces, and why each exists:
+
+- **COMMIT** - `paths.diagnosis`. One line naming the binding constraint, written before
+  the work. Optional and skippable: a prompt that blocks path creation would stop paths
+  being created. The AI drafts it in `ai-path-suggest` so the user approves rather than
+  composes.
+- **SCORE** - `paths.diagnosis_verdict`. Asked once, when the last step finishes: was the
+  named constraint the real one? Diagnosis hit-rate is the metric worth keeping; completion
+  counts are noisy and confounded. Past misses are fed back into the planner brief.
+- **SELECT** - `src/lib/path-router.ts`. When a step has not moved in 7 days the card asks
+  once what is in the way. The routing is a **fixed table evaluated on the client, with no
+  model call**, and only one of its six answers fetches information; the rest shrink the
+  step, rewrite the diagnosis, or legitimise stopping. If the `inform` route turns out to
+  dominate in practice, that is the evidence for building a retrieval layer - until then it
+  would be a subsystem built on a guess. `path_steps.snoozed_until` is the only state it
+  needs: every answer buys a few days of quiet, "wrong time" buys two weeks.
+
+### Plan history
+
+`path_revisions` stores the plan before every change, plus **why it changed**. The reason
+column is the load-bearing one - a diff log is a transcript nobody re-reads, a reasoned
+diff log is a reference class. Restoring is one click.
+
+The rule that shapes reverting and re-planning, implemented once in `src/lib/path-writes.ts`
+and used by both the Paths view and the assistant: **a revision changes the map, never the
+record.** A step with logged days against it is never deleted, whatever the old or new plan
+says - the XP and streaks hang off it.
+
+`revise_path` is the assistant's only editing action (everything else appends). It matches
+a path by name, replaces the whole step list, and snapshots first, so a rewrite argued out
+in chat is one click to undo.
+
 ## AI planning context
 
 - `supabase/functions/_shared/planner.ts` builds one context for every planning function
   (`ai-mission-suggest`, `ai-path-suggest`): the user's written `user_context.notes`, today's progress,
   14 days of completions, tasks they keep skipping, active paths, open planning nodes, today's calendar,
   latest watch numbers, and past accepted/rejected suggestions from `ai_suggestion_log`.
-- Personal context is edited in Settings → AI Context. Migration: `20260827130000_user_context.sql`.
+- Personal context lives on three shelves ordered by half-life: `user_context.notes`
+  (constants, decades), `.lenses` (how the user thinks, years), `.season` (what is true now,
+  weeks). Splitting them buys a conflict rule the prompt states explicitly: when the fast
+  shelf contradicts a slow one, the fast shelf is right about this case and the slow one is
+  right about the person. One box let a bad fortnight rewrite a permanent self-description.
+- Edited in Settings → AI Context. Migrations: `20260827130000_user_context.sql`,
+  `20260829120000_paths_engine.sql`.
 
 ## Architecture decisions
 

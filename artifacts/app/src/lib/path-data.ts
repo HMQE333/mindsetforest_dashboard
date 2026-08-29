@@ -22,6 +22,9 @@ export interface PathStep {
   done: boolean;
   done_at: string | null;
   sort_order: number;
+  /** Set by the stall check when the user answers "wrong time". */
+  snoozed_until: string | null;
+  created_at: string;
 }
 
 export interface Path {
@@ -30,6 +33,80 @@ export interface Path {
   category_id: string | null;
   archived: boolean;
   sort_order: number;
+  /**
+   * The binding constraint the user claims is in the way, written before the
+   * work starts. This is the line that gets scored - not the completion count.
+   */
+  diagnosis: string | null;
+  diagnosis_verdict: DiagnosisVerdict | null;
+  diagnosis_actual: string | null;
+  scored_at: string | null;
+}
+
+export type DiagnosisVerdict = "right" | "wrong" | "unknown";
+
+/**
+ * The plan as it stood before a change. Deliberately carries no `reps_done` or
+ * `done`: reverting changes the map, never the record of what was actually done.
+ */
+export interface SnapshotStep {
+  id: string;
+  title: string;
+  stage: string | null;
+  mode: StepMode;
+  reps_target: number;
+  xp: number;
+  sort_order: number;
+}
+
+export interface PathSnapshot {
+  name: string;
+  diagnosis: string | null;
+  steps: SnapshotStep[];
+}
+
+export type RevisionSource = "user" | "assistant" | "ai_plan" | "revert";
+
+export interface PathRevision {
+  id: string;
+  path_id: string;
+  snapshot: PathSnapshot;
+  /** Why the plan changed. A diff log without this is a chat transcript. */
+  reason: string | null;
+  source: RevisionSource;
+  created_at: string;
+}
+
+export function snapshotOf(path: Path, steps: PathStep[]): PathSnapshot {
+  return {
+    name: path.name,
+    diagnosis: path.diagnosis,
+    steps: sortSteps(steps).map(s => ({
+      id: s.id,
+      title: s.title,
+      stage: s.stage,
+      mode: s.mode,
+      reps_target: s.reps_target,
+      xp: s.xp,
+      sort_order: s.sort_order,
+    })),
+  };
+}
+
+/** One-line summary of what a revision changed, for the history list. */
+export function describeRevision(snapshot: PathSnapshot, current: PathSnapshot): string {
+  const before = snapshot.steps.length;
+  const after = current.steps.length;
+  const renamed = snapshot.steps.filter(s => {
+    const now = current.steps.find(c => c.id === s.id);
+    return now && now.title !== s.title;
+  }).length;
+  const bits: string[] = [];
+  if (after > before) bits.push(`+${after - before} step${after - before > 1 ? "s" : ""}`);
+  if (after < before) bits.push(`-${before - after} step${before - after > 1 ? "s" : ""}`);
+  if (renamed) bits.push(`${renamed} reworded`);
+  if (snapshot.diagnosis !== current.diagnosis) bits.push("diagnosis changed");
+  return bits.length ? bits.join(", ") : "reordered";
 }
 
 export interface StepLog {
@@ -105,6 +182,39 @@ export function stepStreak(logs: StepLog[], stepId: string, today: string = toda
     cursor = shiftDays(cursor, -1);
   }
   return streak;
+}
+
+function daysBetween(fromKey: string, today: string): number {
+  const [fy, fm, fd] = fromKey.split("-").map(Number);
+  const [ty, tm, td] = today.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+}
+
+/**
+ * How long the step has sat still. This is the only trigger in the app allowed
+ * to interrupt the user, so it has to be fair about where it counts from:
+ *
+ *   1. the last day it was actually logged, or
+ *   2. the day the step before it finished - the day this one became next, or
+ *   3. the day it was created.
+ *
+ * Counting from creation alone would nag about a step that only became
+ * reachable yesterday, which is how a useful check turns into noise.
+ */
+export function stepIdleDays(logs: StepLog[], ordered: PathStep[], stepId: string, today: string = todayKey()): number {
+  const dates = logs.filter(l => l.step_id === stepId).map(l => l.date).sort();
+  const last = dates[dates.length - 1];
+  if (last) return daysBetween(last, today);
+
+  const list = sortSteps(ordered);
+  const index = list.findIndex(s => s.id === stepId);
+  const step = list[index];
+  if (!step) return 0;
+
+  const previous = index > 0 ? list[index - 1] : null;
+  const baseline = previous?.done_at || step.created_at;
+  if (!baseline) return 0;
+  return daysBetween(todayKey(new Date(baseline)), today);
 }
 
 /** Human label for a step's remaining work. */

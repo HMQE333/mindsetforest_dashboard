@@ -8,7 +8,10 @@ import {
   createElement,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { revisePathPlan, findPathByName } from "@/lib/path-writes";
+import { notifyPathsChanged } from "@/hooks/usePaths";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboardState } from "@/hooks/useDashboardState";
 import { PLANNING_TASKS_CHANGED_EVENT } from "@/hooks/usePlanningState";
@@ -357,6 +360,38 @@ function useAssistantValue() {
               ok++;
               // Nudge the archive query to refetch immediately.
               window.dispatchEvent(new CustomEvent(ARCHIVE_BLOCKS_CHANGED_EVENT));
+            }
+          } else if (action.type === "revise_path") {
+            // The only action that edits rather than appends. It snapshots the
+            // old plan first, so the whole rewrite is one click to undo from
+            // the path's history.
+            const target = await findPathByName(user.id, action.pathName);
+            if (!target) {
+              failed++;
+            } else {
+              const result = await revisePathPlan({
+                userId: user.id,
+                pathId: target.id,
+                reason: action.reason,
+                source: "assistant",
+                diagnosis: action.diagnosis ?? null,
+                nextPlan: action.steps.map((step) => ({
+                  title: step.title,
+                  stage: step.stage ?? null,
+                  mode: (step.days || 1) > 1 ? ("reps" as const) : ("once" as const),
+                  repsTarget: step.days || 1,
+                  xp: step.xp,
+                })),
+              });
+              if (!result.ok) {
+                failed++;
+              } else {
+                ok++;
+                if (result.kept > 0) {
+                  toast(`${result.kept} step${result.kept > 1 ? "s" : ""} kept - already worked on.`);
+                }
+                notifyPathsChanged();
+              }
             }
           } else if (action.type === "add_mindmap_nodes") {
             // Batch insert: insert all nodes first, then link parent references.

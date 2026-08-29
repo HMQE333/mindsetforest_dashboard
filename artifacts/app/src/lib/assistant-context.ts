@@ -105,25 +105,34 @@ async function gatherTracker(userId: string): Promise<string> {
 
 async function gatherPaths(userId: string): Promise<string> {
   const { data: paths } = await (supabase.from("paths" as never) as never as { select: (cols: string) => never })
-    .select("id,name,category_id,archived")
+    .select("id,name,category_id,archived,diagnosis")
     .eq("user_id", userId) as never as { data: any[] | null };
   if (!paths || paths.length === 0) return "No paths set up yet.";
 
   const { data: steps } = await (supabase.from("path_steps" as never) as never as { select: (cols: string) => never })
-    .select("path_id,title,mode,reps_target,reps_done,done,sort_order")
+    .select("id,path_id,title,stage,mode,reps_target,reps_done,done,sort_order")
     .eq("user_id", userId) as never as { data: any[] | null };
   const all = steps || [];
 
+  // The full ordered plan, not just a summary line: revise_path replaces the
+  // whole list, so the model has to be able to see what it is rewriting.
   const lines = paths
     .filter((p) => !p.archived)
     .map((p) => {
       const mine = all.filter((s) => s.path_id === p.id).sort((a, b) => a.sort_order - b.sort_order);
       const done = mine.filter((s) => s.done).length;
+      const head = `- ${p.name}${p.category_id ? ` [${catName(p.category_id)}]` : ""}: ${done}/${mine.length} steps done`;
+      const diag = p.diagnosis ? `\n    constraint the user named: "${p.diagnosis}"` : "";
       const active = mine.find((s) => !s.done);
-      const activeLabel = active
-        ? `${active.title}${active.mode === "reps" ? ` (${active.reps_done}/${active.reps_target} days)` : ""}`
-        : "complete";
-      return `- ${p.name}${p.category_id ? ` [${catName(p.category_id)}]` : ""}: ${done}/${mine.length} steps done, now on "${activeLabel}"`;
+      const steps = mine
+        .map((s) => {
+          const mark = s.done ? "x" : s.id === active?.id ? ">" : " ";
+          const reps = s.mode === "reps" ? ` (${s.reps_done}/${s.reps_target} days)` : "";
+          const stage = s.stage ? `[${s.stage}] ` : "";
+          return `    [${mark}] ${stage}${s.title}${reps}`;
+        })
+        .join("\n");
+      return steps ? `${head}${diag}\n${steps}` : `${head}${diag}`;
     });
   return lines.length > 0 ? ["Paths:", ...lines].join("\n") : "All paths archived.";
 }

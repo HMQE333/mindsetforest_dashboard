@@ -18,7 +18,7 @@ interface Props {
   pathName: string;
   categoryName?: string;
   existingSteps: string[];
-  onApply: (steps: DraftedStep[]) => Promise<void> | void;
+  onApply: (steps: DraftedStep[], diagnosis: string | null) => Promise<void> | void;
   onClose: () => void;
 }
 
@@ -31,6 +31,9 @@ export default function AIPathModal({ pathName, categoryName, existingSteps, onA
   const { user } = useAuth();
   const [aim, setAim] = useState("");
   const [steps, setSteps] = useState<DraftedStep[]>([]);
+  // The model's read on what is actually in the way. Editable before it lands,
+  // because approving a sentence is cheap and composing one is not.
+  const [diagnosis, setDiagnosis] = useState("");
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -52,6 +55,7 @@ export default function AIPathModal({ pathName, categoryName, existingSteps, onA
       if (fnError) throw fnError;
       const drafted = (data?.steps || []) as DraftedStep[];
       setSteps(drafted);
+      setDiagnosis(typeof data?.diagnosis === "string" ? data.diagnosis : "");
       setPicked(new Set(drafted.map((_, i) => i)));
     } catch (e) {
       console.error("AI path suggestion failed:", e);
@@ -79,7 +83,7 @@ export default function AIPathModal({ pathName, categoryName, existingSteps, onA
         accepted: picked.has(i),
       })));
     }
-    await onApply(steps.filter((_, i) => picked.has(i)));
+    await onApply(steps.filter((_, i) => picked.has(i)), diagnosis.trim() || null);
     setApplying(false);
     onClose();
   };
@@ -135,6 +139,22 @@ export default function AIPathModal({ pathName, categoryName, existingSteps, onA
             </>
           ) : (
             <div className="space-y-2">
+              {diagnosis && (
+                <div className="mb-3 p-3 rounded-xl border border-primary/25 bg-primary/[0.06]">
+                  <p className="text-[10px] uppercase tracking-wider text-primary/80 font-bold mb-1.5">
+                    What it thinks is actually in the way
+                  </p>
+                  <textarea
+                    value={diagnosis}
+                    onChange={e => setDiagnosis(e.target.value)}
+                    rows={2}
+                    className="w-full bg-transparent text-sm text-foreground outline-none resize-none leading-snug"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Saved with the path and checked when it ends. Edit it if it is wrong - that is the point.
+                  </p>
+                </div>
+              )}
               {steps.map((s, i) => (
                 <button
                   key={i}

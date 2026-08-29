@@ -1,8 +1,15 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Sparkles, Archive } from "lucide-react";
-import { Path, PathStep, activeStep, nextStep, pathProgress, sortSteps } from "@/lib/path-data";
+import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Sparkles, Archive, History } from "lucide-react";
+import {
+  Path, PathStep, PathRevision, DiagnosisVerdict,
+  activeStep, nextStep, pathProgress, snapshotOf, sortSteps, todayKey,
+} from "@/lib/path-data";
+import { STALL_DAYS } from "@/lib/path-router";
 import { Category } from "@/lib/dashboard-data";
+import PathDiagnosis from "./PathDiagnosis";
+import PathHistory from "./PathHistory";
+import StuckCheck from "./StuckCheck";
 
 interface Props {
   path: Path;
@@ -19,6 +26,13 @@ interface Props {
   onUpdatePath: (patch: Partial<Pick<Path, "name" | "category_id" | "archived">>) => void;
   onDeletePath: () => void;
   onAI: () => void;
+  revisions: PathRevision[];
+  /** Days since the step last moved. Infinity when it has never been logged. */
+  staleDays: (stepId: string) => number;
+  onSetDiagnosis: (text: string) => void;
+  onScore: (verdict: DiagnosisVerdict, actual?: string) => void;
+  onRevert: (revisionId: string) => void;
+  onSnoozeStep: (stepId: string, days: number) => void;
   /** Opened from a Planning mention - expand so the link lands somewhere useful. */
   focused?: boolean;
 }
@@ -27,6 +41,7 @@ export default function PathCard({
   path, steps, loggedTodayIds, streakOf, categories,
   onLog, onUndo, onAddStep, onUpdateStep, onDeleteStep, onMoveStep,
   onUpdatePath, onDeletePath, onAI, focused,
+  revisions, staleDays, onSetDiagnosis, onScore, onRevert, onSnoozeStep,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -35,6 +50,9 @@ export default function PathCard({
   const [newReps, setNewReps] = useState(1);
   const [editingStep, setEditingStep] = useState<string | null>(null);
   const [editingStage, setEditingStage] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  // Bumped when the stall check decides the diagnosis, not the plan, is wrong.
+  const [editDiagnosis, setEditDiagnosis] = useState(0);
 
   useEffect(() => { if (focused) setExpanded(true); }, [focused]);
 
@@ -44,6 +62,12 @@ export default function PathCard({
   const upcoming = nextStep(ordered);
   const category = categories.find(c => c.id === path.category_id);
   const finished = ordered.length > 0 && !active;
+
+  // Ask about a stalled step at most once every few days, and never about one
+  // the user has already parked. A check that fires daily gets ignored daily.
+  const snoozed = !!active?.snoozed_until && active.snoozed_until >= todayKey();
+  const stalled = active && !snoozed ? staleDays(active.id) : 0;
+  const showStuckCheck = !!active && !snoozed && stalled >= STALL_DAYS && Number.isFinite(stalled);
 
   const submitName = () => {
     const name = nameDraft.trim();
@@ -259,6 +283,25 @@ export default function PathCard({
         />
       </div>
 
+      <PathDiagnosis
+        path={path}
+        finished={finished}
+        editSignal={editDiagnosis}
+        onSetDiagnosis={onSetDiagnosis}
+        onScore={onScore}
+      />
+
+      {showStuckCheck && active && (
+        <StuckCheck
+          path={path}
+          step={active}
+          days={stalled}
+          onShrink={(title) => onUpdateStep(active.id, { title })}
+          onRediagnose={() => { setExpanded(true); setEditDiagnosis(n => n + 1); }}
+          onSnooze={(days) => onSnoozeStep(active.id, days)}
+        />
+      )}
+
       {/* Collapsed: only what's next */}
       {!expanded && (
         <div className="mt-3 space-y-2">
@@ -330,6 +373,16 @@ export default function PathCard({
                 </button>
               )}
               <button
+                onClick={() => setShowHistory(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                  showHistory
+                    ? "border-primary/30 bg-primary/10 text-foreground"
+                    : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <History className="h-3 w-3" /> History{revisions.length > 0 ? ` (${revisions.length})` : ""}
+              </button>
+              <button
                 onClick={() => onUpdatePath({ archived: true })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-white/5 text-muted-foreground hover:text-foreground transition-all ml-auto"
               >
@@ -342,6 +395,14 @@ export default function PathCard({
                 Delete
               </button>
             </div>
+
+            {showHistory && (
+              <PathHistory
+                revisions={revisions}
+                current={snapshotOf(path, ordered)}
+                onRevert={onRevert}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>

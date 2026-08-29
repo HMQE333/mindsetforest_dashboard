@@ -43,7 +43,11 @@ Order matters: each step should be doable given the ones before it, and the firs
 A step is either done once, or repeated on separate days. Use "days" to say how many separate days a step needs - 1 means do it once. Use repetition only for things that genuinely need reps (drilling, practising, conditioning, writing daily); never to pad the path out.
 Six to ten steps total. Fewer good steps beat a long ladder nobody climbs.
 Use "stage" to group consecutive steps under a short label only when the path really has phases. Leave it out otherwise.
-Do not restate the goal as a step, and do not add review or reflection steps unless the user asked for them.`;
+Do not restate the goal as a step, and do not add review or reflection steps unless the user asked for them.
+
+A step title is a HANDLE, not an instruction. Six words at most, something the user can point at and argue with: "Negative-focused sets", not "Do 4 sets of as many push-ups as you can with good form, resting 90 seconds". Put the actual instruction in "reason". A plan the user cannot scan is a plan they cannot correct.
+
+Also name the binding constraint: the single thing standing between them and this goal, in one sentence. Not the goal restated, and not a list - the obstacle. If their context does not tell you enough to name it honestly, say what you would need to know instead. Every step you write should be an attack on that constraint.`;
 
     const userPrompt = [
       `Path: "${pathName}"${categoryName ? ` (life area: ${categoryName})` : ""}.`,
@@ -64,6 +68,10 @@ Do not restate the goal as a step, and do not add review or reflection steps unl
       parameters: {
         type: "object",
         properties: {
+          diagnosis: {
+            type: "string",
+            description: "The one thing actually in the way, in a sentence. The obstacle, not the goal.",
+          },
           steps: {
             type: "array",
             items: {
@@ -80,7 +88,7 @@ Do not restate the goal as a step, and do not add review or reflection steps unl
             },
           },
         },
-        required: ["steps"],
+        required: ["diagnosis", "steps"],
         additionalProperties: false,
       },
     });
@@ -93,7 +101,9 @@ Do not restate the goal as a step, and do not add review or reflection steps unl
       reason: s.reason ? String(s.reason).slice(0, 300) : undefined,
     })).filter((s) => s.title.length > 0);
 
-    return jsonResponse({ steps });
+    const diagnosis = parsed.diagnosis ? String(parsed.diagnosis).slice(0, 400) : null;
+
+    return jsonResponse({ steps, diagnosis });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("ai-path-suggest error:", message);

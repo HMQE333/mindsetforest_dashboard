@@ -86,15 +86,15 @@ export async function buildPlannerContext(
 ): Promise<{ profile: string; situation: string }> {
   const today = moment.date || new Date().toISOString().split("T")[0];
 
-  const [ctx, dash, history, paths, steps, planning, events, watch, suggestions] = await Promise.all([
-    safe(client.from("user_context").select("notes").eq("user_id", userId).maybeSingle()),
+  const [ctx, dash, history, paths, steps, planning, events, watch, suggestions, scored] = await Promise.all([
+    safe(client.from("user_context").select("notes,lenses,season").eq("user_id", userId).maybeSingle()),
     safe(client.from("dashboard_state")
       .select("current_xp,current_level,streak_days,missions_completed,categories_engaged,custom_missions,last_completion_date")
       .eq("user_id", userId).maybeSingle()),
     safe(client.from("daily_completions")
       .select("date,missions_completed,xp_earned,categories_engaged,completed_mission_titles")
       .eq("user_id", userId).gte("date", daysAgo(14)).order("date", { ascending: false })),
-    safe(client.from("paths").select("id,name,category_id,archived").eq("user_id", userId)),
+    safe(client.from("paths").select("id,name,category_id,archived,diagnosis,diagnosis_verdict,diagnosis_actual").eq("user_id", userId)),
     safe(client.from("path_steps").select("path_id,title,mode,reps_target,reps_done,done,sort_order").eq("user_id", userId)),
     safe(client.from("planning_tasks").select("title,level,done,deadline").eq("user_id", userId).eq("done", false).limit(50)),
     safe(client.from("calendar_events").select("title,event_date").eq("user_id", userId).eq("event_date", today)),
@@ -102,12 +102,35 @@ export async function buildPlannerContext(
       .eq("user_id", userId).order("entry_date", { ascending: false }).limit(3)),
     safe(client.from("ai_suggestion_log").select("title,status,scope")
       .eq("user_id", userId).neq("status", "offered").order("created_at", { ascending: false }).limit(40)),
+    // The reference class: priors this user wrote, and how they turned out.
+    safe(client.from("paths").select("name,diagnosis,diagnosis_verdict,diagnosis_actual")
+      .eq("user_id", userId).not("diagnosis_verdict", "is", null)
+      .order("scored_at", { ascending: false }).limit(20)),
   ]);
 
   // ---- profile (stable; belongs in the system prompt) ----
-  const notes = ((ctx as { notes?: string } | null)?.notes || "").trim();
-  const profile = notes
-    ? `WHO YOU ARE PLANNING FOR (written by the user):\n${notes}`
+  //
+  // Three shelves, ordered by how fast they change. Keeping them apart is what
+  // lets the prompt carry a conflict rule instead of averaging a hard month
+  // together with a permanent trait.
+  const shelves = (ctx as { notes?: string; lenses?: string; season?: string } | null) || {};
+  const constants = (shelves.notes || "").trim();
+  const lenses = (shelves.lenses || "").trim();
+  const season = (shelves.season || "").trim();
+
+  const profileParts: string[] = [];
+  if (constants) profileParts.push(`WHO YOU ARE PLANNING FOR (changes over years):\n${constants}`);
+  if (lenses) profileParts.push(`HOW THIS PERSON WORKS (changes slowly):\n${lenses}`);
+  if (season) profileParts.push(`WHAT IS TRUE RIGHT NOW (changes monthly):\n${season}`);
+  if (profileParts.length > 1) {
+    profileParts.push(
+      "CONFLICT RULE: where 'what is true right now' contradicts the slower sections, the fast " +
+      "section wins for this suggestion and the slow one still describes the person. Adapt the " +
+      "task to the season; do not conclude the season is who they are.",
+    );
+  }
+  const profile = profileParts.length > 0
+    ? profileParts.join("\n\n")
     : "The user has not written a personal context yet. Keep suggestions general and low-risk, and prefer short tasks.";
 
   // ---- situation (volatile; belongs in the user message) ----
@@ -166,7 +189,8 @@ export async function buildPlannerContext(
       const activeLabel = active
         ? `${active.title}${active.mode === "reps" ? ` (${active.reps_done}/${active.reps_target} days)` : ""}`
         : "finished";
-      return `  - ${p.name}: ${done}/${mine.length} steps, current step "${activeLabel}"`;
+      const prior = p.diagnosis ? ` | they say the real obstacle is: "${p.diagnosis}"` : "";
+      return `  - ${p.name}: ${done}/${mine.length} steps, current step "${activeLabel}"${prior}`;
     });
     lines.push(`Active paths:\n${pathLines.join("\n")}`);
   }
@@ -202,6 +226,21 @@ export async function buildPlannerContext(
     if (rejected.length > 0) lines.push(`Past suggestions the user REJECTED (avoid this shape): ${rejected.join("; ")}.`);
   }
 
+  // Priors this person has written and then graded. This is the only signal here
+  // that is about their judgement rather than their activity, so it is worth more
+  // than the completion counts above.
+  const graded = (scored as Record<string, unknown>[] | null) || [];
+  if (graded.length > 0) {
+    const right = graded.filter((g) => g.diagnosis_verdict === "right").length;
+    const wrong = graded.filter((g) => g.diagnosis_verdict === "wrong");
+    lines.push(`Past diagnoses: ${right} of ${graded.length} scored right by the user.`);
+    if (wrong.length > 0) {
+      const misses = wrong.slice(0, 5).map((g) =>
+        `thought "${g.diagnosis}"${g.diagnosis_actual ? `, was actually "${g.diagnosis_actual}"` : ""}`);
+      lines.push(`Where they misread the obstacle before: ${misses.join("; ")}. Watch for the same mistake.`);
+    }
+  }
+
   return { profile, situation: lines.join("\n") };
 }
 
@@ -213,6 +252,7 @@ export const PLANNER_RULES = [
   "Every suggestion must be doable without buying anything or waiting on another person, unless the user's context says otherwise.",
   "Write plain text. No markdown symbols, no bold, no headings.",
   "Give each suggestion a one-line reason tied to something concrete in the situation you were given.",
+  "Where the user has named the obstacle blocking a path, aim at that obstacle. If the plan you are writing does not attack it, say so plainly rather than quietly planning around it.",
 ].join("\n");
 
 interface ChatOptions {

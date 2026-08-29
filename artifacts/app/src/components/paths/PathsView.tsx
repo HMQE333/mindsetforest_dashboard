@@ -3,16 +3,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePaths } from "@/hooks/usePaths";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useDashboardState } from "@/hooks/useDashboardState";
-import { stepStreak, todayKey } from "@/lib/path-data";
+import { stepStreak, stepIdleDays, todayKey } from "@/lib/path-data";
 import { toast } from "sonner";
 import PathCard from "./PathCard";
 import AIPathModal from "./AIPathModal";
 
 export default function PathsView() {
   const {
-    paths, logs, loading, missingTables, stepsByPath,
+    paths, logs, loading, missingTables, stepsByPath, revisionsOf,
     createPath, updatePath, deletePath,
     addStep, updateStep, deleteStep, moveStep, logStep, undoToday,
+    recordRevision, revertTo, setDiagnosis, scoreDiagnosis, snoozeStep,
   } = usePaths();
   const { getCategories } = useUserSettings();
   const { completeExternal } = useDashboardState();
@@ -56,6 +57,20 @@ export default function PathsView() {
     const remaining = before.filter(s => !s.done && s.id !== stepId).length;
     if (stepDone && remaining === 0) toast.success("🏆 Path complete.");
     else if (stepDone) toast.success(`Step done · +${xp} XP`);
+  };
+
+  const handleRevert = async (revisionId: string) => {
+    const result = await revertTo(revisionId);
+    if (!result) return;
+    const bits = [
+      result.restored ? `${result.restored} restored` : "",
+      result.recreated ? `${result.recreated} brought back` : "",
+      result.removed ? `${result.removed} removed` : "",
+    ].filter(Boolean);
+    toast.success(`Plan restored${bits.length ? ` · ${bits.join(", ")}` : ""}`);
+    if (result.kept > 0) {
+      toast(`${result.kept} step${result.kept > 1 ? "s" : ""} kept - you had already worked on ${result.kept > 1 ? "them" : "it"}.`);
+    }
   };
 
   const handleCreate = async () => {
@@ -122,6 +137,12 @@ export default function PathsView() {
                   categories={categories}
                   onLog={(stepId) => handleLog(path.id, path.category_id, stepId)}
                   focused={focusedId === path.id}
+                  revisions={revisionsOf(path.id)}
+                  staleDays={(stepId) => stepIdleDays(logs, stepsByPath(path.id), stepId)}
+                  onSetDiagnosis={(text) => setDiagnosis(path.id, text)}
+                  onScore={(verdict, actual) => scoreDiagnosis(path.id, verdict, actual)}
+                  onRevert={handleRevert}
+                  onSnoozeStep={snoozeStep}
                   onUndo={undoToday}
                   onAddStep={(title, reps) => addStep(path.id, title, reps > 1 ? { mode: "reps", repsTarget: reps } : {})}
                   onUpdateStep={updateStep}
@@ -152,7 +173,11 @@ export default function PathsView() {
             pathName={aiPath.name}
             categoryName={categories.find(c => c.id === aiPath.category_id)?.name}
             existingSteps={stepsByPath(aiPath.id).map(s => s.title)}
-            onApply={async (drafted) => {
+            onApply={async (drafted, diagnosis) => {
+              if (stepsByPath(aiPath.id).length > 0) {
+                await recordRevision(aiPath.id, "AI drafted new steps", "ai_plan");
+              }
+              if (diagnosis && !aiPath.diagnosis) await setDiagnosis(aiPath.id, diagnosis);
               for (const s of drafted) {
                 await addStep(aiPath.id, s.title, {
                   mode: s.days > 1 ? "reps" : "once",

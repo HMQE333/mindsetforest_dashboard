@@ -39,6 +39,20 @@ export type AssistantAction =
       }[];
     }
   | {
+      /**
+       * Rewrite a path's plan. The one action here that EDITS rather than
+       * appends - which is the difference between an assistant that talks
+       * about your plan and one that changes it while you argue.
+       */
+      type: "revise_path";
+      pathName: string;
+      /** Why it changed. Shown in the history and kept as the reason forever. */
+      reason: string;
+      steps: { title: string; stage?: string | null; days?: number; xp?: number }[];
+      /** Optionally rewrite the binding constraint in the same move. */
+      diagnosis?: string;
+    }
+  | {
       type: "extend_mindmap";
       attachTo: string;
       nodes: {
@@ -56,6 +70,7 @@ export const ACTION_SCOPE: Record<ActionType, ScopeId> = {
   add_note: "archive",
   add_mindmap_nodes: "planning",
   extend_mindmap: "planning",
+  revise_path: "paths",
 };
 
 export const ACTIONS_SENTINEL = "[[ACTIONS_ENABLED]]";
@@ -121,6 +136,20 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         "nodes (array, max 15 — same format as add_mindmap_nodes). " +
         "Look at the tree shown above to pick the right attachTo. " +
         'Example: {"attachTo":"Research","nodes":[{"title":"Hire designer","level":"task","parentIndex":0}]}.',
+    );
+  }
+
+  if (scopes.includes("paths")) {
+    specs.push(
+      "- revise_path: rewrite the steps of an existing path. Use this whenever the user pushes back on a plan " +
+        '("too aggressive", "wrong order", "I can\'t do daily"). Do NOT reply with a new plan in prose - emit this action. ' +
+        "Fields: pathName (string, must match one of the active paths listed in the context), " +
+        "reason (string, required - one short line saying what the user objected to, in their words where possible), " +
+        "steps (array, max 20, IN ORDER - the complete new list, not a diff. Each: title (short handle, not an instruction), " +
+        "optional stage, optional days (number of separate days to repeat it; omit or 1 for a one-off), optional xp), " +
+        "diagnosis (string, optional - only when the conversation established that the real obstacle was misnamed). " +
+        "Steps the user has already worked on are preserved automatically, and the whole revision is one click to undo, " +
+        "so prefer proposing the honest plan over a timid edit.",
     );
   }
 
@@ -231,6 +260,41 @@ function coerceAction(raw: unknown): AssistantAction | null {
     return { type: "add_mission", categoryId, title: title.slice(0, 200), description, duration, xp };
   }
 
+  if (type === "revise_path") {
+    const pathName = typeof o.pathName === "string" ? o.pathName.trim() : "";
+    const reason = typeof o.reason === "string" ? o.reason.trim() : "";
+    const rawSteps = Array.isArray(o.steps) ? o.steps : [];
+    if (!pathName || rawSteps.length === 0) return null;
+    const steps = rawSteps
+      .slice(0, 20)
+      .map((raw) => {
+        if (!raw || typeof raw !== "object") return null;
+        const r = raw as Record<string, unknown>;
+        const title = typeof r.title === "string" ? r.title.trim() : "";
+        if (!title) return null;
+        const daysNum = Number(r.days);
+        const xpNum = Number(r.xp);
+        return {
+          title: title.slice(0, 200),
+          stage: typeof r.stage === "string" && r.stage.trim() ? r.stage.trim().slice(0, 60) : null,
+          days: Number.isFinite(daysNum) && daysNum > 1 ? Math.min(365, Math.round(daysNum)) : 1,
+          xp: Number.isFinite(xpNum) && xpNum > 0 ? Math.min(500, Math.round(xpNum)) : undefined,
+        };
+      })
+      .filter(Boolean) as { title: string; stage: string | null; days: number; xp?: number }[];
+    if (steps.length === 0) return null;
+    const diagnosis = typeof o.diagnosis === "string" && o.diagnosis.trim()
+      ? o.diagnosis.trim().slice(0, 400)
+      : undefined;
+    return {
+      type: "revise_path",
+      pathName: pathName.slice(0, 200),
+      reason: (reason || "revised in conversation").slice(0, 300),
+      steps,
+      diagnosis,
+    };
+  }
+
   if (type === "add_note") {
     const title = typeof o.title === "string" ? o.title.trim() : "";
     const content = typeof o.content === "string" ? o.content.trim() : "";
@@ -291,6 +355,17 @@ export function mindmapPreview(action: AssistantAction): string | null {
   if (action.type === "add_mindmap_nodes") {
     return "New map\n" + nodesToTreePreview(action.nodes);
   }
+  if (action.type === "revise_path") {
+    // The whole proposed plan, so the user agrees to something they can see
+    // rather than to a sentence describing it.
+    return action.steps
+      .map((step, i) => {
+        const days = (step.days || 1) > 1 ? `  x${step.days} days` : "";
+        const stage = step.stage ? `[${step.stage}] ` : "";
+        return `${String(i + 1).padStart(2, " ")}. ${stage}${step.title}${days}`;
+      })
+      .join("\n");
+  }
   if (action.type === "extend_mindmap") {
     return `+ Attach to "${action.attachTo}"\n` + nodesToTreePreview(action.nodes);
   }
@@ -313,6 +388,11 @@ export function describeAction(action: AssistantAction): string {
     const breakdown = nodesLevelBreakdown(action.nodes);
     const first = action.nodes[0];
     return `New mindmap "${first?.title || "..."}"  (${action.nodes.length} nodes — ${breakdown})`;
+  }
+  if (action.type === "revise_path") {
+    const repeated = action.steps.filter((s) => (s.days || 1) > 1).length;
+    const shape = repeated > 0 ? `${action.steps.length} steps, ${repeated} repeated` : `${action.steps.length} steps`;
+    return `Rewrite path "${action.pathName}" (${shape}) - ${action.reason}`;
   }
   if (action.type === "extend_mindmap") {
     const breakdown = nodesLevelBreakdown(action.nodes);
