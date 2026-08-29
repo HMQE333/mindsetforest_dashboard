@@ -10,12 +10,14 @@ import ProjectsTab from "./ProjectsTab";
 import ThemeTab from "./ThemeTab";
 import KeybindsTab from "./KeybindsTab";
 import ProfileTab from "./ProfileTab";
+import ContextTab from "./ContextTab";
 import StatsXpTab from "./StatsXpTab";
 
-type SettingsTab = "profile" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp";
+type SettingsTab = "profile" | "context" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile", label: "Profile", icon: "👤" },
+  { id: "context", label: "AI Context", icon: "🧭" },
   { id: "modules", label: "Modules", icon: "🧩" },
   { id: "theme", label: "Theme", icon: "🎨" },
   { id: "keybinds", label: "Keybinds", icon: "⌨️" },
@@ -103,6 +105,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <>
                   {activeTab === "profile" && (
                     <ProfileTab />
+                  )}
+                  {activeTab === "context" && (
+                    <ContextTab />
                   )}
                   {activeTab === "modules" && (
                     <ModulesTab

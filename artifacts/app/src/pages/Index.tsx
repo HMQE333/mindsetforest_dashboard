@@ -9,8 +9,7 @@ import { useOnboarding } from "@/hooks/useOnboarding";
 import { useQuickCapture } from "@/hooks/useQuickCapture";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import DashboardView from "@/components/dashboard/DashboardView";
-import LadderView from "@/components/ladder/LadderView";
-import HabitLoopView from "@/components/habitloop/HabitLoopView";
+import PathsView from "@/components/paths/PathsView";
 import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
 import GuideSection from "@/components/landing/GuideSection";
@@ -31,13 +30,12 @@ import { useFriends } from "@/hooks/useFriends";
 import { useAssistantCurrentScope } from "@/hooks/useAssistant";
 import type { ScopeId } from "@/lib/assistant-context";
 
-type Tab = "dashboard" | "tracker" | "ladder" | "habitloop" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning" | "health";
+type Tab = "dashboard" | "tracker" | "paths" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning" | "health";
 
 const TAB_TO_SCOPE: Partial<Record<Tab, ScopeId>> = {
   dashboard: "dashboard",
   tracker: "tracker",
-  ladder: "ladder",
-  habitloop: "habitloop",
+  paths: "paths",
   oracle: "oracle",
   finance: "finance",
   planning: "planning",
@@ -47,8 +45,7 @@ const TAB_TO_SCOPE: Partial<Record<Tab, ScopeId>> = {
 const ALL_TAB_LABELS: Record<Tab, string> = {
   dashboard: "🎮 Home",
   tracker: "📊 Stats",
-  ladder: "🪜 Ladder",
-  habitloop: "🔄 Habit Loop",
+  paths: "🪜 Paths",
   oracle: "🔮 Oracle",
   archive: "📦 Archive",
   library: "📚 Library",
@@ -60,7 +57,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
   health: "❤️ Health",
 };
 
-const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning", "health"];
+const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "paths", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning", "health"];
 
 const Index = () => {
   const { user } = useAuth();
@@ -77,25 +74,16 @@ const Index = () => {
   const { badgeCount } = useFriends();
   useAssistantCurrentScope(TAB_TO_SCOPE[activeTab] ?? null);
 
-  // Cross-module navigation: Planning Map "mentions" trigger jumps to Ladder/Habit Loop.
+  // Cross-module navigation: Planning mentions and the Home strip jump to Paths.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (!detail?.module) return;
-      if (detail.module === "ladder") {
-        setActiveTab("ladder");
-        // Forward to LadderView once it mounts.
+      if (detail?.module !== "paths") return;
+      setActiveTab("paths");
+      if (detail.pathId) {
+        // Forward to PathsView once it mounts.
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("lov:set-ladder-category", {
-            detail: { categoryId: detail.categoryId, level: detail.level },
-          }));
-        }, 50);
-      } else if (detail.module === "habitloop") {
-        setActiveTab("habitloop");
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("lov:set-loop-category", {
-            detail: { categoryId: detail.categoryId, loopIndex: detail.loopIndex },
-          }));
+          window.dispatchEvent(new CustomEvent("lov:focus-path", { detail: { pathId: detail.pathId } }));
         }, 50);
       }
     };
@@ -119,13 +107,13 @@ const Index = () => {
 
   // Split tab icons/labels for the grid
   const TAB_ICONS: Record<Tab, string> = {
-    dashboard: "🎮", tracker: "📊", ladder: "🪜", habitloop: "🔄",
+    dashboard: "🎮", tracker: "📊", paths: "🪜",
     oracle: "🔮", archive: "📦", library: "📚", cooking: "🍳",
     finance: "💰", breathing: "🌬️", calendar: "📅", planning: "🧠",
     health: "❤️",
   };
   const TAB_SHORT_LABELS: Record<Tab, string> = {
-    dashboard: "Home", tracker: "Stats", ladder: "Ladder", habitloop: "Habit Loop",
+    dashboard: "Home", tracker: "Stats", paths: "Paths",
     oracle: "Oracle", archive: "Archive", library: "Library", cooking: "Cooking",
     finance: "Finance", breathing: "Breathe", calendar: "Calendar", planning: "Planning",
     health: "Health",
@@ -292,8 +280,7 @@ const Index = () => {
 
         {/* Tab Content */}
         {activeTab === "dashboard" && (user ? <DashboardView /> : renderAuthGate("mission dashboard"))}
-        {activeTab === "ladder" && enabledModules.has("ladder") && (user ? <LadderView /> : renderAuthGate("mastery ladder"))}
-        {activeTab === "habitloop" && enabledModules.has("habitloop") && (user ? <HabitLoopView /> : renderAuthGate("habit loops"))}
+        {activeTab === "paths" && enabledModules.has("paths") && (user ? <PathsView /> : renderAuthGate("paths"))}
         {activeTab === "oracle" && enabledModules.has("oracle") && (user ? <OracleView /> : renderAuthGate("oracle"))}
         {activeTab === "archive" && enabledModules.has("archive") && (user ? <ArchiveView /> : renderAuthGate("archive"))}
         {activeTab === "library" && enabledModules.has("library") && (user ? <LibraryView /> : renderAuthGate("library"))}

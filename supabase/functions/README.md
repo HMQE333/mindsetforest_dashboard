@@ -7,7 +7,17 @@ These are the AI backend functions the app invokes via `supabase.functions.invok
 | Feature | Functions | Provider | Secret |
 | --- | --- | --- | --- |
 | **Archive vector embeddings** (semantic search, Forest search) | `ai-embed-block`, `forest-publish-seed` | **OpenAI** (`text-embedding-3-small`) | `OPENAI_API_KEY` |
-| Every other AI feature (missions, ladder, habit loop, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) | the 12 `ai-*` LLM functions | **OpenRouter** | `OPENROUTER_API_KEY` (+ optional `OPENROUTER_MODEL`) |
+| Every other AI feature (missions, paths, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) | the `ai-*` LLM functions | **OpenRouter** | `OPENROUTER_API_KEY` (+ optional `OPENROUTER_MODEL`) |
+
+### Shared planner
+
+`ai-mission-suggest` and `ai-path-suggest` both build their prompt with
+`_shared/planner.ts`. It authenticates the caller, then reads their written
+personal context (`user_context.notes`) plus a factual snapshot - today's
+progress, 14 days of completions, tasks they keep skipping, active paths, open
+planning nodes, today's calendar, latest watch numbers, and which past
+suggestions they accepted or rejected (`ai_suggestion_log`). Everything degrades
+to silence if a table is missing, so a partly set-up account still works.
 
 The LLM functions previously used the Lovable AI gateway; they now call
 `https://openrouter.ai/api/v1/chat/completions`. The default model is

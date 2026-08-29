@@ -4,9 +4,11 @@ import { useAuth } from "./useAuth";
 
 export type TaskLevel = "goal" | "phase" | "task" | "action" | "link";
 
-export type PlanningMention =
-  | { kind: "ladder"; categoryId: string; level: number }
-  | { kind: "loop"; categoryId: string; loopIndex: number };
+/**
+ * A link from a planning node to a Path (optionally to one specific step).
+ * Replaces the old ladder/loop mention pair - one kind instead of two.
+ */
+export type PlanningMention = { kind: "path"; pathId: string; stepId?: string | null };
 
 export interface PlanningTask {
   id: string;

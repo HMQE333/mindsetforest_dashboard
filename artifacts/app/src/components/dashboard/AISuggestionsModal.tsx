@@ -2,13 +2,16 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { logSuggestions, localMoment } from "@/hooks/useUserContext";
 
-interface LadderContext {
-  activeCategory: string;
-  currentLevel: string;
-  completedTasks: string[];
-  totalCompleted: number;
-  totalTasks: number;
+export interface PathContext {
+  paths: {
+    name: string;
+    categoryId: string | null;
+    activeStep: string;
+    progress: string;
+  }[];
 }
 
 interface AISuggestionsModalProps {
@@ -16,7 +19,7 @@ interface AISuggestionsModalProps {
   currentMissions: Mission[];
   onApply: (categoryId: string, missions: Mission[]) => void;
   onClose: () => void;
-  ladderContext?: LadderContext | null;
+  pathContext?: PathContext | null;
   projectName?: string;
 }
 
@@ -25,10 +28,11 @@ interface Suggestion extends Mission {
   reason?: string;
 }
 
-type ApplyMode = "replace" | "add" | "append";
+type ApplyMode = "replace" | "add";
 type AIMode = "focused" | "strategic" | "recovery";
 
-export default function AISuggestionsModal({ categoryId, currentMissions, onApply, onClose, ladderContext, projectName }: AISuggestionsModalProps) {
+export default function AISuggestionsModal({ categoryId, currentMissions, onApply, onClose, pathContext, projectName }: AISuggestionsModalProps) {
+  const { user } = useAuth();
   const category = CATEGORIES.find(c => c.id === categoryId);
   const displayName = projectName || category?.name || categoryId;
   const displayTagline = projectName ? "Project" : category?.tagline || "";
@@ -37,7 +41,6 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
   const [loading, setLoading] = useState(false);
   const [applyMode, setApplyMode] = useState<ApplyMode>("replace");
   const [aiMode, setAIMode] = useState<AIMode>("focused");
-  const [useLadder, setUseLadder] = useState(false);
   const [generated, setGenerated] = useState(false);
 
   const selectedCount = suggestions.filter(s => s.selected).length;
@@ -51,10 +54,12 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
         categoryTagline: displayTagline,
         currentMissions: currentMissions.map(m => m.title),
         aiMode,
+        moment: localMoment(),
         ...(projectName ? { projectName } : {}),
       };
-      if (useLadder && ladderContext) {
-        body.ladderContext = ladderContext;
+      // Path context always goes along - it is free signal, not a toggle to weigh.
+      if (pathContext && pathContext.paths.length > 0) {
+        body.pathContext = pathContext;
       }
       const { data, error } = await supabase.functions.invoke("ai-mission-suggest", { body });
 
@@ -67,7 +72,7 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
     } finally {
       setLoading(false);
     }
-  }, [category, displayName, displayTagline, projectName, currentMissions, aiMode, useLadder, ladderContext]);
+  }, [category, displayName, displayTagline, projectName, currentMissions, aiMode, pathContext]);
 
   const toggleSuggestion = (index: number) => {
     setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, selected: !s.selected } : s));
@@ -77,16 +82,18 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
     const selected = suggestions.filter(s => s.selected).map(({ selected, reason, ...m }) => m);
     if (selected.length === 0) return;
 
-    let result: Mission[];
-    if (applyMode === "replace") {
-      result = selected;
-    } else if (applyMode === "add") {
-      result = [...currentMissions, ...selected];
-    } else {
-      result = [...currentMissions, ...selected];
+    // Teach the planner: what got taken, and what got left behind.
+    if (user) {
+      logSuggestions(user.id, suggestions.map(s => ({
+        scope: "mission" as const,
+        categoryId,
+        title: s.title,
+        detail: { xp: s.xp, duration: s.duration },
+        accepted: s.selected,
+      })));
     }
 
-    onApply(categoryId, result);
+    onApply(categoryId, applyMode === "replace" ? selected : [...currentMissions, ...selected]);
     onClose();
   };
 
@@ -199,7 +206,6 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
                 {([
                   { value: "replace" as ApplyMode, label: "Replace current tasks", desc: "Clean slate. Recommended." },
                   { value: "add" as ApplyMode, label: "Add as new tasks", desc: "Keep existing, append selected." },
-                  { value: "append" as ApplyMode, label: "Append to bottom", desc: "Preserve order, add as optional." },
                 ]).map(opt => (
                   <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                     applyMode === opt.value ? "border-primary/30 bg-primary/10" : "border-white/10 bg-white/[0.03] hover:border-white/18"
@@ -214,24 +220,6 @@ export default function AISuggestionsModal({ categoryId, currentMissions, onAppl
                 ))}
               </div>
             </div>
-
-            {/* Ladder toggle */}
-            {ladderContext && (
-              <div className="p-3 rounded-2xl border border-white/10 bg-white/[0.04]">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-foreground/80 mb-2">Ladder Context</h3>
-                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                  useLadder ? "border-primary/30 bg-primary/10" : "border-white/10 bg-white/[0.03] hover:border-white/18"
-                }`}>
-                  <input type="checkbox" checked={useLadder} onChange={e => setUseLadder(e.target.checked)} className="accent-primary" />
-                  <div>
-                    <strong className="text-sm text-foreground block">🪜 Generate from Ladder</strong>
-                    <small className="text-xs text-foreground/50">
-                      Use your {ladderContext.activeCategory} ladder progress ({ladderContext.totalCompleted}/{ladderContext.totalTasks} tasks) to generate smarter missions
-                    </small>
-                  </div>
-                </label>
-              </div>
-            )}
 
             <div className="p-3 rounded-2xl border border-white/10 bg-white/[0.04]">
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-foreground/80 mb-2">AI mode</h3>

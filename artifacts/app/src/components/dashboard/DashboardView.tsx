@@ -1,12 +1,13 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDashboardState } from "@/hooks/useDashboardState";
-import { useLadderState } from "@/hooks/useLadderState";
+import { usePaths } from "@/hooks/usePaths";
 import { useUserProjects } from "@/hooks/useUserProjects";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDailyCompletions } from "@/hooks/useDailyCompletions";
 import { useUserSettings } from "@/hooks/useUserSettings";
-import { LADDER_LEVELS, LadderTask } from "@/lib/ladder-data";
+import { pathProgress, TodayStep } from "@/lib/path-data";
+import PathsTodayStrip from "./PathsTodayStrip";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
 import MissionView from "./MissionView";
@@ -20,8 +21,8 @@ import DashboardStats from "./DashboardStats";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
-  const { activeLadder } = useLadderState();
+  const { state, loading, completeMission, completeExternal, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
   const { getCategories, preferences } = useUserSettings();
@@ -37,12 +38,13 @@ export default function DashboardView() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const prevLevel = useRef(state.currentLevel);
 
-  // Save daily snapshot whenever missions are completed
+  // Save daily snapshot whenever missions are completed. Path steps logged
+  // today are folded in so the snapshot matches the XP actually awarded.
   useEffect(() => {
     if (state.missionsCompleted > 0) {
       // Collect completed mission titles and compute today's XP
-      const titles: string[] = [];
-      let todayXP = 0;
+      const titles: string[] = todayLog.map(l => l.title);
+      let todayXP = todayLog.reduce((sum, l) => sum + l.xp, 0);
       for (const missionId of state.completedMissions) {
         const [catId, idxStr] = [missionId.substring(0, missionId.lastIndexOf("-")), missionId.substring(missionId.lastIndexOf("-") + 1)];
         const missions = getMissions(catId);
@@ -59,7 +61,7 @@ export default function DashboardView() {
         titles,
       );
     }
-  }, [state.missionsCompleted, state.completedMissions]);
+  }, [state.missionsCompleted, state.completedMissions, todayLog]);
 
   // Listen for friend-suggestion accepts → add as a persistent mission to chosen category
   useEffect(() => {
@@ -136,25 +138,30 @@ export default function DashboardView() {
     customKeybinds: preferences.customKeybinds,
   });
 
-  // Build ladder context for AI modal
-  const ladderContext = useMemo(() => {
-    const ladder = activeLadder;
-    if (!ladder?.levels) return null;
-    let total = 0, completed = 0;
-    const completedTasks: string[] = [];
-    let currentLevel = LADDER_LEVELS[0].title;
-    for (let i = 0; i < 6; i++) {
-      const tasks: LadderTask[] = ladder.levels[i] || [];
-      tasks.forEach(t => {
-        total++;
-        if (t.completed) { completed++; completedTasks.push(t.text); }
-      });
-      const allDone = tasks.length > 0 && tasks.every(t => t.completed);
-      if (!allDone) { currentLevel = LADDER_LEVELS[i].title; }
+  // What the AI mission planner is told about the user's paths.
+  const pathContext = useMemo(() => {
+    if (todaySteps.length === 0) return null;
+    return {
+      paths: todaySteps.map(({ path, step }) => {
+        const progress = pathProgress(stepsByPath(path.id));
+        return {
+          name: path.name,
+          categoryId: path.category_id,
+          activeStep: step.title,
+          progress: `${progress.done}/${progress.total}`,
+        };
+      }),
+    };
+  }, [todaySteps, stepsByPath]);
+
+  const handleLogPathStep = useCallback(async ({ path, step }: TodayStep) => {
+    const xp = await logStep(step.id);
+    if (xp > 0) {
+      completeExternal(path.category_id, xp);
+      setFloatingXP({ id: Date.now(), xp });
+      setTimeout(() => setFloatingXP(null), 1500);
     }
-    if (total === 0) return null;
-    return { activeCategory: ladder.name, currentLevel, completedTasks: completedTasks.filter(Boolean), totalCompleted: completed, totalTasks: total };
-  }, [activeLadder]);
+  }, [logStep, completeExternal]);
 
   if (loading) {
     return (
@@ -217,6 +224,13 @@ export default function DashboardView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
+            <PathsTodayStrip
+              steps={todaySteps}
+              categories={categories}
+              onLog={handleLogPathStep}
+              onUndo={undoToday}
+              onOpenPaths={() => window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: "paths" } }))}
+            />
             <CategoryGrid
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
@@ -262,7 +276,7 @@ export default function DashboardView() {
             currentMissions={getMissions(aiCategory)}
             onApply={saveCustomMissions}
             onClose={() => setAICategory(null)}
-            ladderContext={ladderContext}
+            pathContext={pathContext}
             projectName={aiCategory.startsWith("project-") ? getProjectFromKey(aiCategory)?.name : undefined}
           />
         )}

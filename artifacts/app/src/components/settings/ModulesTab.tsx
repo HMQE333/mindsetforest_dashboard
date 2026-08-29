@@ -14,8 +14,7 @@ export interface ModuleConfig {
 const ALL_MODULES: ModuleConfig[] = [
   { id: "dashboard", label: "Home", icon: "🎮", description: "Main mission dashboard with XP & levels", alwaysOn: true },
   { id: "tracker", label: "Stats Tracker", icon: "📊", description: "Track daily metrics and habits" },
-  { id: "ladder", label: "Mastery Ladder", icon: "🪜", description: "6-level progression system per category" },
-  { id: "habitloop", label: "Habit Loop", icon: "🔄", description: "Repetition-based habit building" },
+  { id: "paths", label: "Paths", icon: "🪜", description: "Goals broken into steps - one-offs and repeat-for-N-days" },
   { id: "oracle", label: "Oracle & Rewards", icon: "🔮", description: "Sacrifice XP for real-life rewards" },
   { id: "archive", label: "Knowledge Archive", icon: "📦", description: "Store and organize knowledge blocks" },
   { id: "projects", label: "Projects", icon: "📂", description: "Custom project scopes for focused work" },

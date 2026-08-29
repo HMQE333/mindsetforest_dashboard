@@ -5,8 +5,7 @@ import { TRACKER_METRICS } from "@/lib/tracker-data";
 export type ScopeId =
   | "dashboard"
   | "tracker"
-  | "ladder"
-  | "habitloop"
+  | "paths"
   | "planning"
   | "health"
   | "finance"
@@ -26,8 +25,7 @@ export interface ScopeDef {
 export const SCOPES: ScopeDef[] = [
   { id: "dashboard", label: "Dashboard", icon: "🎮" },
   { id: "tracker", label: "Tracker stats", icon: "📊" },
-  { id: "ladder", label: "Ladder", icon: "🪜" },
-  { id: "habitloop", label: "Habit Loop", icon: "🔄" },
+  { id: "paths", label: "Paths", icon: "🪜" },
   { id: "planning", label: "Planning", icon: "🧠" },
   { id: "health", label: "Health", icon: "❤️" },
   { id: "finance", label: "Finance", icon: "💰" },
@@ -105,43 +103,30 @@ async function gatherTracker(userId: string): Promise<string> {
   ].join("\n");
 }
 
-async function gatherLadder(userId: string): Promise<string> {
-  const { data } = await supabase
-    .from("ladder_state")
-    .select("ladders,active_ladder_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!data?.ladders) return "No ladder data yet.";
-  const arr = Array.isArray(data.ladders) ? data.ladders : [];
-  if (arr.length === 0) return "No ladders yet.";
-  const lines: string[] = [];
-  for (const ladder of arr) {
-    let total = 0;
-    let done = 0;
-    Object.values(ladder?.levels || {}).forEach((tasks: any) => {
-      (tasks || []).forEach((t: any) => {
-        total++;
-        if (t.completed) done++;
-      });
-    });
-    if (total > 0) lines.push(`- ${ladder.name}: ${done}/${total} rungs completed`);
-  }
-  if (lines.length === 0) return "No ladder rungs created yet.";
-  const active = arr.find((l: any) => l.id === data.active_ladder_id);
-  return [`Active ladder: ${active?.name || "none"}`, ...lines].join("\n");
-}
+async function gatherPaths(userId: string): Promise<string> {
+  const { data: paths } = await (supabase.from("paths" as never) as never as { select: (cols: string) => never })
+    .select("id,name,category_id,archived")
+    .eq("user_id", userId) as never as { data: any[] | null };
+  if (!paths || paths.length === 0) return "No paths set up yet.";
 
-async function gatherHabitLoop(userId: string): Promise<string> {
-  const { data } = await supabase
-    .from("habit_loops")
-    .select("id,name,category_id,current_loop,loops")
-    .eq("user_id", userId);
-  if (!data || data.length === 0) return "No habit loops set up yet.";
-  const lines = (data as any[]).map((row) => {
-    const loops = Array.isArray(row.loops) ? row.loops : [];
-    return `- ${row.name || row.category_id || "Untitled"}: ${loops.length} loop(s), currently on loop ${(row.current_loop || 0) + 1}`;
-  });
-  return ["Habit loop progress:", ...lines].join("\n");
+  const { data: steps } = await (supabase.from("path_steps" as never) as never as { select: (cols: string) => never })
+    .select("path_id,title,mode,reps_target,reps_done,done,sort_order")
+    .eq("user_id", userId) as never as { data: any[] | null };
+  const all = steps || [];
+
+  const lines = paths
+    .filter((p) => !p.archived)
+    .map((p) => {
+      const mine = all.filter((s) => s.path_id === p.id).sort((a, b) => a.sort_order - b.sort_order);
+      const done = mine.filter((s) => s.done).length;
+      const active = mine.find((s) => !s.done);
+      const activeLabel = active
+        ? `${active.title}${active.mode === "reps" ? ` (${active.reps_done}/${active.reps_target} days)` : ""}`
+        : "complete";
+      return `- ${p.name}${p.category_id ? ` [${catName(p.category_id)}]` : ""}: ${done}/${mine.length} steps done, now on "${activeLabel}"`;
+    });
+  return lines.length > 0 ? ["Paths:", ...lines].join("
+") : "All paths archived.";
 }
 
 async function gatherPlanning(userId: string): Promise<string> {
@@ -393,8 +378,7 @@ async function gatherLibrary(userId: string): Promise<string> {
 const GATHERERS: Record<ScopeId, (userId: string, question?: string) => Promise<string>> = {
   dashboard: gatherDashboard,
   tracker: gatherTracker,
-  ladder: gatherLadder,
-  habitloop: gatherHabitLoop,
+  paths: gatherPaths,
   planning: gatherPlanning,
   health: gatherHealth,
   finance: gatherFinance,

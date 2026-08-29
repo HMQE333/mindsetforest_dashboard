@@ -1,6 +1,6 @@
 # MindsetForest
 
-A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lovable. Users sign in and track habits, stats, ladders, oracle, archive, library, finance, a social "forest", and more — with several AI-assisted features.
+A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lovable. Users sign in and track habits, stats, paths, oracle, archive, library, finance, a social "forest", and more — with several AI-assisted features.
 
 ## Run & Operate
 
@@ -25,8 +25,26 @@ A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lova
 
 - AI runs through Supabase **edge functions**, invoked from the client via `supabase.functions.invoke(...)`. Deployable source lives in `supabase/functions/` (see its `README.md`).
 - **Archive vector embeddings** (semantic search + Forest search) use **OpenAI** `text-embedding-3-small` → `OPENAI_API_KEY`. Functions: `ai-embed-block`, `forest-publish-seed`.
-- **Every other AI feature** (missions, ladder, habit loop, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) uses **OpenRouter** → `OPENROUTER_API_KEY`, default model `google/gemini-2.5-flash` (override via `OPENROUTER_MODEL`). These previously used the Lovable AI gateway.
+- **Every other AI feature** (missions, paths, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) uses **OpenRouter** → `OPENROUTER_API_KEY`, default model `google/gemini-2.5-flash` (override via `OPENROUTER_MODEL`). These previously used the Lovable AI gateway.
 - Connect keys with `supabase secrets set ...` then `supabase functions deploy` — see `supabase/functions/README.md`. Real keys are never committed (`supabase/functions/.env` is git-ignored).
+
+## Paths (replaces Mastery Ladder + Habit Loop)
+
+- One module. A **path** is a named goal; a **step** is either done once or repeated on N separate days.
+  The active step is just the first unfinished one — no level system, no "current loop" pointer.
+- Reps are logged per local calendar date (`path_step_logs` has `UNIQUE (step_id, date)`), so a rep means a day.
+- The active step of every live path is surfaced on Home above the category grid; completing it there awards
+  XP through `completeExternal()` in `useDashboardState` (XP + streak + category engagement).
+- Tables: `paths`, `path_steps`, `path_step_logs` — see `supabase/migrations/20260827120000_paths.sql`.
+  That migration also drops `ladder_state` and `habit_loops`.
+
+## AI planning context
+
+- `supabase/functions/_shared/planner.ts` builds one context for every planning function
+  (`ai-mission-suggest`, `ai-path-suggest`): the user's written `user_context.notes`, today's progress,
+  14 days of completions, tasks they keep skipping, active paths, open planning nodes, today's calendar,
+  latest watch numbers, and past accepted/rejected suggestions from `ai_suggestion_log`.
+- Personal context is edited in Settings → AI Context. Migration: `20260827130000_user_context.sql`.
 
 ## Architecture decisions
 

@@ -60,7 +60,22 @@ export interface UserPreferences {
   trackerXp?: TrackerXpConfig;
 }
 
-const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
+const DEFAULT_MODULES = ["dashboard", "tracker", "paths", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
+
+/**
+ * Mastery Ladder + Habit Loop were merged into one module ("paths"). Saved
+ * preferences still name the old ids, so fold them in on read - otherwise the
+ * Paths tab would be invisible for every existing user.
+ */
+function normalizeModuleIds(ids: string[] | undefined): string[] | undefined {
+  if (!ids) return ids;
+  const out: string[] = [];
+  for (const id of ids) {
+    const mapped = id === "ladder" || id === "habitloop" ? "paths" : id;
+    if (!out.includes(mapped)) out.push(mapped);
+  }
+  return out;
+}
 
 function getCachedCategories(): CustomCategory[] {
   try {
@@ -96,7 +111,11 @@ export function useUserSettings() {
       if (onb?.preferences) {
         const prefs = onb.preferences as unknown as UserPreferences;
         if (prefs.enabledModules && prefs.enabledModules.length > 0) {
-          setPreferences(prefs);
+          setPreferences({
+            ...prefs,
+            enabledModules: normalizeModuleIds(prefs.enabledModules)!,
+            moduleOrder: normalizeModuleIds(prefs.moduleOrder),
+          });
         }
         if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair || prefs.cardStyle) {
           applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default", prefs.customAccentHue, prefs.borderRadius, prefs.cardOpacity);

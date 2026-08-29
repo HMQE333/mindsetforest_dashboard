@@ -403,6 +403,43 @@ function useDashboardStateValue() {
     });
   }, [persist]);
 
+  /**
+   * A completion that isn't a mission (currently: a Path step). Same XP, streak
+   * and category-engagement effects as completing a mission, but no mission id -
+   * de-duplication happens at the source (path_step_logs is unique per day).
+   */
+  const completeExternal = useCallback((categoryId: string | null, xp: number) => {
+    setState(prev => {
+      const today = todayISO();
+      let streakDays = prev.streakDays;
+      if (prev.lastCompletionDate) {
+        if (prev.lastCompletionDate !== today) {
+          streakDays = prev.lastCompletionDate === yesterdayISO(today) ? streakDays + 1 : 1;
+        }
+      } else {
+        streakDays = 1;
+      }
+
+      const newXP = prev.currentXP + xp;
+      const newCategories = new Set(prev.categoriesEngaged);
+      if (categoryId) newCategories.add(categoryId);
+
+      const next: DashboardState = {
+        ...prev,
+        currentXP: newXP,
+        currentLevel: Math.floor(newXP / 100) + 1,
+        streakDays,
+        lastCompletionDate: today,
+        dayKey: today,
+        missionsCompleted: prev.missionsCompleted + 1,
+        categoriesEngaged: newCategories,
+      };
+
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const addXP = useCallback((amount: number) => {
     if (!amount) return;
     setState(prev => {
@@ -429,6 +466,7 @@ function useDashboardStateValue() {
     resetCategory,
     spendXP,
     addXP,
+    completeExternal,
     rerollMission,
     getMissions,
     getCompletedCount,

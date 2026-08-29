@@ -93,7 +93,7 @@ function TaskNode({ data }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const isStandalone = !!task.standalone;
-  const mentions: any[] = Array.isArray(task.mentions) ? task.mentions : [];
+  const mentions: any[] = (Array.isArray(task.mentions) ? task.mentions : []).filter((m: any) => m?.kind === "path");
   const visibleMentions = mentions.slice(0, 2);
   const hiddenCount = mentions.length - visibleMentions.length;
 
@@ -127,19 +127,16 @@ function TaskNode({ data }: NodeProps) {
       </div>
       {mentions.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {visibleMentions.map((m, i) => {
-            const isLadder = m.kind === "ladder";
-            return (
-              <button
-                key={i}
-                onClick={e => { e.stopPropagation(); navigateToMention(m); }}
-                className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md border transition-transform hover:scale-110 ${isLadder ? "bg-violet-500/15 border-violet-500/40 text-violet-200" : "bg-cyan-500/15 border-cyan-500/40 text-cyan-200"}`}
-                title={isLadder ? `Mastery Ladder · ${m.categoryId} · L${m.level}` : `Habit Loop · ${m.categoryId}`}
-              >
-                {isLadder ? `🪜 L${m.level}` : `🔄`}
-              </button>
-            );
-          })}
+          {visibleMentions.map((m, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); navigateToMention(m); }}
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md border transition-transform hover:scale-110 bg-violet-500/15 border-violet-500/40 text-violet-200"
+              title="Open in Paths"
+            >
+              🪜
+            </button>
+          ))}
           {hiddenCount > 0 && (
             <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-muted/30 border border-white/10 text-muted-foreground">
               +{hiddenCount}
