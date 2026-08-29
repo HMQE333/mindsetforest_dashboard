@@ -56,6 +56,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.path_revisions TO authenticated;
 GRANT ALL ON public.path_revisions TO service_role;
 ALTER TABLE public.path_revisions ENABLE ROW LEVEL SECURITY;
 
+-- Dropped first so re-running this file is safe. Postgres has no
+-- CREATE POLICY IF NOT EXISTS, and a second run that errors here would roll
+-- back the ADD COLUMNs above with it.
+DROP POLICY IF EXISTS "Users can view their own path revisions" ON public.path_revisions;
+DROP POLICY IF EXISTS "Users can insert their own path revisions" ON public.path_revisions;
+DROP POLICY IF EXISTS "Users can delete their own path revisions" ON public.path_revisions;
+
 CREATE POLICY "Users can view their own path revisions"
   ON public.path_revisions FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert their own path revisions"
@@ -68,15 +75,26 @@ CREATE POLICY "Users can delete their own path revisions"
 -- Ordered by rate of change, not by importance. The conflict rule that falls out:
 -- when a fast shelf contradicts a slow one, the fast shelf is right about this case
 -- and the slow shelf is right about the class.
-ALTER TABLE public.user_context
-  -- years: how you think. Lenses, doctrine, what has repeatedly worked for you.
-  ADD COLUMN IF NOT EXISTS lenses TEXT NOT NULL DEFAULT '',
-  -- weeks to months: what is true right now. Job, injury, term, living situation.
-  ADD COLUMN IF NOT EXISTS season TEXT NOT NULL DEFAULT '';
+-- Guarded: this file must not fail just because 20260827130000_user_context.sql
+-- has not been applied. The SQL editor runs a script as one transaction, so an
+-- error down here would silently roll back the path columns added at the top -
+-- and the app would then read no paths at all.
+DO $$
+BEGIN
+  IF to_regclass('public.user_context') IS NULL THEN
+    RAISE NOTICE 'Skipping context shelves: public.user_context does not exist yet. Run 20260827130000_user_context.sql, then re-run this file.';
+    RETURN;
+  END IF;
 
-COMMENT ON COLUMN public.user_context.notes IS
-  'Decades. Constants: who the user is, what does not change year to year.';
-COMMENT ON COLUMN public.user_context.lenses IS
-  'Years. How the user thinks and what has repeatedly worked for them.';
-COMMENT ON COLUMN public.user_context.season IS
-  'Weeks to months. The current situation. The fastest-moving written shelf.';
+  -- years: how you think. Lenses, doctrine, what has repeatedly worked for you.
+  ALTER TABLE public.user_context ADD COLUMN IF NOT EXISTS lenses TEXT NOT NULL DEFAULT '';
+  -- weeks to months: what is true right now. Job, injury, term, living situation.
+  ALTER TABLE public.user_context ADD COLUMN IF NOT EXISTS season TEXT NOT NULL DEFAULT '';
+
+  COMMENT ON COLUMN public.user_context.notes IS
+    'Decades. Constants: who the user is, what does not change year to year.';
+  COMMENT ON COLUMN public.user_context.lenses IS
+    'Years. How the user thinks and what has repeatedly worked for them.';
+  COMMENT ON COLUMN public.user_context.season IS
+    'Weeks to months. The current situation. The fastest-moving written shelf.';
+END $$;

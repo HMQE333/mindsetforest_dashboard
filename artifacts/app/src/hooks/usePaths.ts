@@ -39,26 +39,24 @@ function isMissingTable(error: PgError): boolean {
 }
 
 /**
- * A column the code knows about but the database does not.
+ * Paths and steps are read with `*` on purpose.
  *
- * This matters more than it looks. PostgREST rejects the WHOLE query when one
- * selected column is missing, so a deploy that lands before its migration does
- * not degrade - it makes every row disappear and renders a convincing "you have
- * nothing here yet". Detecting it lets us fall back to the columns that have
- * always existed and keep the user's data on screen.
+ * PostgREST rejects the WHOLE query when one named column is missing, so a
+ * deploy that lands before its migration does not degrade - every row vanishes
+ * and the UI renders a convincing "you have nothing here yet". Naming no
+ * columns removes that failure mode entirely rather than trying to recognise
+ * it after the fact: the database returns whatever it actually has, and the
+ * fields the migration has not added yet are filled in as null below.
+ *
+ * These tables are small and we were selecting nearly every column anyway.
  */
-function isMissingColumn(error: PgError): boolean {
-  if (!error) return false;
-  return error.code === "42703"
-    || error.code === "PGRST204"
-    || /column .* does not exist/i.test(error.message || "");
-}
-
-// Columns that predate the planning-loop migration, and the ones it adds.
-const PATH_COLS_BASE = "id,name,category_id,archived,sort_order";
-const PATH_COLS_ENGINE = "diagnosis,diagnosis_verdict,diagnosis_actual,scored_at";
-const STEP_COLS_BASE = "id,path_id,title,stage,mode,reps_target,reps_done,xp,done,done_at,sort_order,created_at";
-const STEP_COLS_ENGINE = "snoozed_until";
+const PATH_ENGINE_FIELDS = {
+  diagnosis: null,
+  diagnosis_verdict: null,
+  diagnosis_actual: null,
+  scored_at: null,
+};
+const STEP_ENGINE_FIELDS = { snoozed_until: null };
 
 const LOG_WINDOW_DAYS = 60;
 
@@ -78,14 +76,11 @@ export function usePaths() {
     const since = new Date();
     since.setDate(since.getDate() - LOG_WINDOW_DAYS);
 
-    const readPaths = (cols: string) => (supabase.from("paths" as any) as any)
-      .select(cols).eq("user_id", user.id).order("sort_order", { ascending: true });
-    const readSteps = (cols: string) => (supabase.from("path_steps" as any) as any)
-      .select(cols).eq("user_id", user.id).order("sort_order", { ascending: true });
-
-    let [pathsRes, stepsRes, logsRes, revRes] = await Promise.all([
-      readPaths(`${PATH_COLS_BASE},${PATH_COLS_ENGINE}`),
-      readSteps(`${STEP_COLS_BASE},${STEP_COLS_ENGINE}`),
+    const [pathsRes, stepsRes, logsRes, revRes] = await Promise.all([
+      (supabase.from("paths" as any) as any)
+        .select("*").eq("user_id", user.id).order("sort_order", { ascending: true }),
+      (supabase.from("path_steps" as any) as any)
+        .select("*").eq("user_id", user.id).order("sort_order", { ascending: true }),
       (supabase.from("path_step_logs" as any) as any)
         .select("step_id,path_id,date,xp")
         .eq("user_id", user.id)
@@ -103,27 +98,24 @@ export function usePaths() {
       return;
     }
 
-    // The planning-loop migration has not run here. Read what does exist rather
-    // than showing the user an empty screen over four missing columns.
-    const stale = isMissingColumn(pathsRes.error) || isMissingColumn(stepsRes.error);
-    if (stale) {
-      [pathsRes, stepsRes] = await Promise.all([readPaths(PATH_COLS_BASE), readSteps(STEP_COLS_BASE)]);
-    }
-    setEngineReady(!stale);
-
     setMissingTables(false);
-    if (pathsRes.data) {
-      setPaths((pathsRes.data as Record<string, unknown>[]).map(row => ({
-        diagnosis: null, diagnosis_verdict: null, diagnosis_actual: null, scored_at: null,
-        ...row,
-      })) as Path[]);
+
+    // Never swallow a read failure again: an empty list that is really an error
+    // is the bug that made every path look deleted.
+    if (pathsRes.error || stepsRes.error) {
+      console.error("Paths read failed:", pathsRes.error || stepsRes.error);
     }
-    if (stepsRes.data) {
-      setSteps((stepsRes.data as Record<string, unknown>[]).map(row => ({
-        snoozed_until: null,
-        ...row,
-      })) as PathStep[]);
-    }
+
+    const pathRows = (pathsRes.data as Record<string, unknown>[] | null) || [];
+    const stepRows = (stepsRes.data as Record<string, unknown>[] | null) || [];
+
+    // Whether the planning-loop migration has run is read off the rows we just
+    // got back, not off an error code. With no paths there is nothing to hide,
+    // so the features stay enabled.
+    setEngineReady(pathRows.length === 0 || "diagnosis" in pathRows[0]);
+
+    setPaths(pathRows.map(row => ({ ...PATH_ENGINE_FIELDS, ...row })) as unknown as Path[]);
+    setSteps(stepRows.map(row => ({ ...STEP_ENGINE_FIELDS, ...row })) as unknown as PathStep[]);
     if (logsRes.data) setLogs(logsRes.data as StepLog[]);
     // History arrived with the same migration; no history is a fine degradation.
     setRevisions((revRes?.data as PathRevision[]) || []);
@@ -181,7 +173,7 @@ export function usePaths() {
       .select()
       .single();
     if (error || !data) return null;
-    setPaths(prev => [...prev, data as Path]);
+    setPaths(prev => [...prev, { ...PATH_ENGINE_FIELDS, ...(data as object) } as unknown as Path]);
     notifyPathsChanged();
     return data as Path;
   }, [user, paths.length]);

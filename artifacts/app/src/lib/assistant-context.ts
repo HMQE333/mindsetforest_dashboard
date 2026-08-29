@@ -104,19 +104,15 @@ async function gatherTracker(userId: string): Promise<string> {
 }
 
 async function gatherPaths(userId: string): Promise<string> {
-  // Same fallback as usePaths: one column the database has not got yet must not
-  // turn into "you have no paths", which is a confident, wrong answer.
-  const readPaths = (cols: string) =>
-    (supabase.from("paths" as never) as never as { select: (cols: string) => never })
-      .select(cols)
-      .eq("user_id", userId) as never as { data: any[] | null; error: any };
-
-  let { data: paths, error } = await readPaths("id,name,category_id,archived,diagnosis");
-  if (error) ({ data: paths } = await readPaths("id,name,category_id,archived"));
+  // Same reason as usePaths: naming a column the database has not got yet turns
+  // "here are your paths" into "you have no paths", which is a confident lie.
+  const { data: paths } = await (supabase.from("paths" as never) as never as { select: (cols: string) => never })
+    .select("*")
+    .eq("user_id", userId) as never as { data: any[] | null };
   if (!paths || paths.length === 0) return "No paths set up yet.";
 
   const { data: steps } = await (supabase.from("path_steps" as never) as never as { select: (cols: string) => never })
-    .select("id,path_id,title,stage,mode,reps_target,reps_done,done,sort_order")
+    .select("*")
     .eq("user_id", userId) as never as { data: any[] | null };
   const all = steps || [];
 
