@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Layers, Zap, Map } from "lucide-react";
+import { LayoutDashboard, Layers, Zap, Map, Sparkles } from "lucide-react";
 import PlanningBoards from "./PlanningBoards";
 import PlanningStack from "./PlanningStack";
 import PlanningActions from "./PlanningActions";
 import PlanningMap from "./PlanningMap";
+import PlanningSimulation from "./PlanningSimulation";
 
-type SubView = "boards" | "stack" | "actions" | "map";
+type SubView = "boards" | "stack" | "actions" | "map" | "simulation";
 
 const navItems: { mode: SubView; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { mode: "boards", label: "Boards", icon: LayoutDashboard },
   { mode: "stack", label: "Stack", icon: Layers },
   { mode: "actions", label: "Actions", icon: Zap },
   { mode: "map", label: "Map", icon: Map },
+  { mode: "simulation", label: "Simulation", icon: Sparkles },
 ];
 
 export default function PlanningView() {
@@ -72,6 +74,7 @@ export default function PlanningView() {
       )}
       {view === "actions" && <PlanningActions boardId={activeBoardId} onBack={backToBoards} />}
       {view === "map" && activeBoardId && <PlanningMap boardId={activeBoardId} onBack={backToBoards} />}
+      {view === "simulation" && <PlanningSimulation boardId={activeBoardId} onBack={backToBoards} />}
       {view === "map" && !activeBoardId && (
         <div className="text-center py-12 text-muted-foreground text-sm">
           Open a board to see its map.

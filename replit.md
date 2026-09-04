@@ -26,7 +26,15 @@ A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lova
 - AI runs through Supabase **edge functions**, invoked from the client via `supabase.functions.invoke(...)`. Deployable source lives in `supabase/functions/` (see its `README.md`).
 - **Archive vector embeddings** (semantic search + Forest search) use **OpenAI** `text-embedding-3-small` → `OPENAI_API_KEY`. Functions: `ai-embed-block`, `forest-publish-seed`.
 - **Every other AI feature** (missions, ladder, habit loop, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) uses **OpenRouter** → `OPENROUTER_API_KEY`, default model `google/gemini-2.5-flash` (override via `OPENROUTER_MODEL`). These previously used the Lovable AI gateway.
+- **Planning simulations** (`ai-plan-simulate`, `ai-plan-chat`) also use OpenRouter, but on the model the user picks in **Settings → AI** — Claude Sonnet or GPT (`OPENROUTER_MODEL_SONNET` / `OPENROUTER_MODEL_GPT`). The chat researches the plan and the user's data before proposing edits, and returns edit *operations* against individual step ids rather than a rewritten plan.
 - Connect keys with `supabase secrets set ...` then `supabase functions deploy` — see `supabase/functions/README.md`. Real keys are never committed (`supabase/functions/.env` is git-ignored).
+
+## Planning simulations & schemes
+
+- **Simulation** (`Planning → Simulation`) is a generated walk-through of a whole project: phases, ~40-140 concrete steps, and loop blocks for repeated cycles, with the decisions made up front. Stored as one JSON document per simulation (`plan_simulations.plan`), not as `planning_tasks` rows, because it is regenerated, versioned and diffed as a whole.
+- Every mutation — AI edit, drag-and-drop, rename, tick — goes through `applyOps` in `src/lib/plan-model.ts`, and each one snapshots the previous plan into `plan_simulation_versions`, so any recent change can be undone from the History panel.
+- Personal context for the plan chat comes from `src/lib/plan-context.ts`, which reuses the assistant's gatherers with one rule: **productivity/consistency data is withheld until there is enough history** (14+ active days, 30+ completions, 21+ days of account age). Below that the prompt explicitly forbids the model from drawing conclusions about the user's consistency.
+- **Schemes** (`dashboard_schemes`) are named, loadable mission sets — "low energy day", "deep work". Loading one replaces today's missions via `applyMissionSet`, which re-maps completion ticks by mission title (so a task already done today stays done) and returns the previous set for the Undo button.
 
 ## Architecture decisions
 
@@ -39,6 +47,8 @@ A gamified life/productivity tracker ("Your Life. Your Quest.") ported from Lova
 - Wants the app functional and visually matching the original; does not need data migrated or preserved.
 
 ## Gotchas
+
+- The Simulation + Schemes tables live in `supabase/migrations/20260904120000_plan_simulations_and_schemes.sql` and must be applied to the Supabase project (`supabase db push`) before those features work; the client calls them through untyped `from(... as never)` accessors because `integrations/supabase/types.ts` is generated and does not know them yet.
 
 - Supabase config lives in **shared** env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID`). Vite embeds these at build time; restart the workflow after changing them.
 - `artifacts/api-server` and `artifacts/mockup-sandbox` workflows may show as failed — they are unused scaffold and don't affect the app.

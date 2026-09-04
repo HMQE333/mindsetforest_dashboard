@@ -257,6 +257,65 @@ function useDashboardStateValue() {
     });
   }, [persist]);
 
+  /**
+   * Replaces the whole day's mission set — used when loading a Scheme.
+   *
+   * Completion ticks are keyed by `${categoryId}-${index}`, which would point at
+   * the wrong task after a swap, so they are re-mapped by mission title: a task
+   * already completed today stays completed if the incoming set still contains
+   * it, and everything else starts fresh. Returns the previous set so the caller
+   * can offer an undo.
+   */
+  const applyMissionSet = useCallback((missionsByCategory: Record<string, Mission[]>): Record<string, Mission[]> => {
+    let previous: Record<string, Mission[]> = {};
+    setState(prev => {
+      previous = prev.customMissions;
+
+      // Titles completed today, per category, from the outgoing set.
+      const completedTitles: Record<string, Set<string>> = {};
+      for (const missionId of prev.completedMissions) {
+        const cut = missionId.lastIndexOf("-");
+        if (cut <= 0) continue;
+        const catId = missionId.substring(0, cut);
+        const idx = parseInt(missionId.substring(cut + 1), 10);
+        const list = prev.customMissions[catId] || CATEGORIES.find(c => c.id === catId)?.missions || [];
+        const title = list[idx]?.title;
+        if (title) (completedTitles[catId] ||= new Set()).add(title.trim().toLowerCase());
+      }
+
+      const nextCustom: Record<string, Mission[]> = {};
+      for (const [catId, missions] of Object.entries(missionsByCategory)) {
+        if (Array.isArray(missions) && missions.length > 0) nextCustom[catId] = missions;
+      }
+
+      const nextCompleted = new Set<string>();
+      const engaged = new Set<string>();
+      for (const cat of new Set([...Object.keys(nextCustom), ...CATEGORIES.map(c => c.id)])) {
+        const done = completedTitles[cat];
+        if (!done || done.size === 0) continue;
+        const list = nextCustom[cat] || CATEGORIES.find(c => c.id === cat)?.missions || [];
+        list.forEach((m, idx) => {
+          if (done.has((m.title || "").trim().toLowerCase())) {
+            nextCompleted.add(`${cat}-${idx}`);
+            engaged.add(cat);
+          }
+        });
+      }
+
+      const next: DashboardState = {
+        ...prev,
+        customMissions: nextCustom,
+        completedMissions: nextCompleted,
+        missionsCompleted: nextCompleted.size,
+        categoriesEngaged: engaged,
+        rolledVariants: rollAllVariants(nextCustom),
+      };
+      persist(next);
+      return next;
+    });
+    return previous;
+  }, [persist]);
+
   const saveCustomMissions = useCallback((categoryId: string, missions: Mission[]) => {
     setState(prev => {
       // Re-roll any variants for this category
@@ -424,6 +483,7 @@ function useDashboardStateValue() {
     completeMission,
     resetDay,
     saveCustomMissions,
+    applyMissionSet,
     addMission,
     splitMission,
     resetCategory,

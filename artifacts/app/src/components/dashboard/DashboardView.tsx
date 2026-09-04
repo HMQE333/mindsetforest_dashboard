@@ -17,10 +17,11 @@ import LevelUpModal from "./LevelUpModal";
 import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
+import SchemesBar from "./SchemesBar";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, resetDay, saveCustomMissions, applyMissionSet, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { activeLadder } = useLadderState();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -217,6 +218,11 @@ export default function DashboardView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
+            <SchemesBar
+              categories={categories}
+              customMissions={state.customMissions}
+              onApply={applyMissionSet}
+            />
             <CategoryGrid
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}

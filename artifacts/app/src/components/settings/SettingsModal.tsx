@@ -11,8 +11,9 @@ import ThemeTab from "./ThemeTab";
 import KeybindsTab from "./KeybindsTab";
 import ProfileTab from "./ProfileTab";
 import StatsXpTab from "./StatsXpTab";
+import AITab from "./AITab";
 
-type SettingsTab = "profile" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp";
+type SettingsTab = "profile" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp" | "ai";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile", label: "Profile", icon: "👤" },
@@ -24,6 +25,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "metrics", label: "Metrics", icon: "📊" },
   { id: "stats-xp", label: "Stats XP", icon: "✨" },
   { id: "rewards", label: "Rewards", icon: "🎁" },
+  { id: "ai", label: "AI", icon: "✦" },
 ];
 
 interface SettingsModalProps {
@@ -176,6 +178,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                   )}
                   {activeTab === "stats-xp" && (
                     <StatsXpTab />
+                  )}
+                  {activeTab === "ai" && (
+                    <AITab
+                      preferences={settings.preferences}
+                      onSave={settings.savePreferences}
+                    />
                   )}
                 </>
               )}

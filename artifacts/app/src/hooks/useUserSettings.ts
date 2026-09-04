@@ -8,6 +8,7 @@ import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
 import { REWARDS, Reward } from "@/lib/oracle-data";
 import { toast } from "sonner";
 import type { TrackerXpConfig } from "@/lib/tracker-xp";
+import type { AIModelChoice } from "@/lib/ai-model";
 
 export interface CustomCategory {
   id: string;
@@ -58,6 +59,8 @@ export interface UserPreferences {
   borderRadius?: number;
   moduleOrder?: string[];
   trackerXp?: TrackerXpConfig;
+  /** Model behind the plan simulation + plan chat. */
+  aiModel?: AIModelChoice;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
