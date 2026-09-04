@@ -18,6 +18,7 @@ import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
 import SchemesBar from "./SchemesBar";
+import EnergyPhaseBar from "./EnergyPhaseBar";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
@@ -218,6 +219,7 @@ export default function DashboardView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
+            {preferences.showEnergyPhases !== false && <EnergyPhaseBar />}
             <SchemesBar
               categories={categories}
               customMissions={state.customMissions}

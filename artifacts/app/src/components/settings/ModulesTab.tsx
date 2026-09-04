@@ -52,6 +52,8 @@ interface ModulesTabProps {
   onSaveCompletionEffect?: (effect: CompletionEffect) => void;
   showCompletionBadge?: boolean;
   onSaveCompletionBadge?: (val: boolean) => void;
+  showEnergyPhases?: boolean;
+  onSaveEnergyPhases?: (val: boolean) => void;
 }
 
 function getOrderedModules(order?: string[]): ModuleConfig[] {
@@ -67,7 +69,7 @@ function getOrderedModules(order?: string[]): ModuleConfig[] {
   return ordered;
 }
 
-export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge, showEnergyPhases = true, onSaveEnergyPhases }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [orderedModules, setOrderedModules] = useState<ModuleConfig[]>(() => getOrderedModules(moduleOrder));
   const [dirty, setDirty] = useState(false);
@@ -314,6 +316,27 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
           }`}>
             <motion.div layout className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${showCompletionBadge ? "bg-white" : "bg-white/80"}`}>
               <span className={`block w-2 h-2 rounded-full transition-colors ${showCompletionBadge ? "bg-primary" : "bg-muted-foreground/40"}`} />
+            </motion.div>
+          </div>
+        </button>
+      </div>
+
+      {/* Energy Phases Toggle */}
+      <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10">
+        <button
+          onClick={() => onSaveEnergyPhases?.(!showEnergyPhases)}
+          className="w-full flex items-center gap-3 text-left"
+        >
+          <span className="text-xl">⚡</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-foreground">Energy phases on dashboard</div>
+            <div className="text-xs text-muted-foreground">Gather → Strike → Reflect: name the beat you are in, so you stop doing all three at once</div>
+          </div>
+          <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 shrink-0 ${
+            showEnergyPhases ? "bg-primary justify-end" : "bg-muted/50 justify-start"
+          }`}>
+            <motion.div layout className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${showEnergyPhases ? "bg-white" : "bg-white/80"}`}>
+              <span className={`block w-2 h-2 rounded-full transition-colors ${showEnergyPhases ? "bg-primary" : "bg-muted-foreground/40"}`} />
             </motion.div>
           </div>
         </button>

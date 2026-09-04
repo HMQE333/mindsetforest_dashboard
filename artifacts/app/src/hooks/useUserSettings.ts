@@ -61,6 +61,8 @@ export interface UserPreferences {
   trackerXp?: TrackerXpConfig;
   /** Model behind the plan simulation + plan chat. */
   aiModel?: AIModelChoice;
+  /** Gather → Strike → Reflect bar on the dashboard. Defaults to on. */
+  showEnergyPhases?: boolean;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "ladder", "habitloop", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];

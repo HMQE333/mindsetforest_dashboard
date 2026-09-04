@@ -123,6 +123,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       onSaveCompletionBadge={(val) => {
                         settings.savePreferences({ ...settings.preferences, showCompletionBadge: val });
                       }}
+                      showEnergyPhases={settings.preferences.showEnergyPhases !== false}
+                      onSaveEnergyPhases={(val) => {
+                        settings.savePreferences({ ...settings.preferences, showEnergyPhases: val });
+                      }}
                     />
                   )}
                   {activeTab === "theme" && (
