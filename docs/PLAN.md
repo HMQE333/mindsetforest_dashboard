@@ -139,3 +139,24 @@ Faza późniejsza, za przełącznikiem per klasa: klasa związana z metryką god
 4. Reguły, uczenie, zarządzanie klasami, tray i autostart, import folderów z trackera.
 5. Zakres asystenta, funkcja AI do klasyfikacji, naprawa zepsutych zakresów asystenta, brakujące funkcje: transkrypcja, import wyciągów, tagi w Inbox.
 6. Pozostałe porządki z 2.2: Forest provider, archiwum bez pollingu, finance, health, ustawienia jako provider.
+
+## 5. Status (28 września 2026, wieczór)
+
+Wykonane na gałęzi `claude/gracious-clarke-bun1qo` (baza: `server-current`):
+
+- Etap 1: repo skonsolidowane (jeden katalog migracji, typy z produkcji, 440 martwych plików usuniętych, typecheck zielony, build i testy przechodzą). Cztery funkcje odzyskane z produkcji do `supabase/functions`.
+- Produkcja: wykonane migracje kontekstu użytkownika, silnika Paths i tabel czasu przy komputerze. Wdrożone aktualne `ai-mission-suggest` i `ai-path-suggest` z plannerem.
+- Etap 2: granica dnia o 4:00 (`lib/today.ts`), rollover dnia na Home, streak z dwoma zamrożeniami tygodniowo liczony z historii, cofanie kroków Paths z XP, zakładka XP w ustawieniach, wykres roczny bez losowych danych, zakresy asystenta (breathing, calendar, cooking, library), kropki po myślnikach, kolor Spirit, wylogowanie w nagłówku, skróty pod modalami, potwierdzenie resetu dnia.
+- Etap 3: agent `tracker/` (Python, 104 testy) i sekcja "Komputer" w Stats z klasyfikacją, folderami, regułami i uczeniem (po recenzji i poprawkach).
+
+Do zrobienia (kolejność wg rozdziału 4):
+
+- Etap 4: tray i autostart są w agencie; import folderów ze starego trackera pominięty na życzenie właściciela. Do dopracowania po pierwszym tygodniu prawdziwych danych: normalizacja kluczy przeglądarki i priory z pory dnia.
+- Etap 5: zakres "Komputer" dla asystenta jest zarejestrowany; funkcja AI do klasyfikacji nieprzypisanych kluczy (`ai-classify-usage`) jeszcze nie napisana. Transkrypcja, import wyciągów i tagi w Inbox są wdrożone na produkcji i mają kod w repo.
+- Etap 6: Forest jako jeden provider, archiwum bez odpytywania co 5 s, finanse (kategorie po id, subskrypcje miesięczne, waluta), health (PDF badań, tryb domyślny), ustawienia jako provider, stałe id misji zamiast pozycji na liście.
+
+Po stronie właściciela:
+
+1. Scalić gałąź do `main` i zbudować aplikację (`pnpm install && pnpm build`, wynik w `artifacts/app/dist`) na hostingu.
+2. Na komputerze z Windows: `tracker/README.md`, szybki start po polsku. Pierwsze uruchomienie przez `run-dev.bat` z konsolą, potem `install-autostart.bat`.
+3. W Stats, sekcja "Komputer", zakładka "Foldery": przypisać pierwsze aplikacje do klas; propozycje reguł pojawią się po każdej korekcie.
