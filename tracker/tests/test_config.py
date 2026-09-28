@@ -52,3 +52,9 @@ def test_search_paths_prefer_exe_dir():
 
 def test_config_dataclass_is_plain():
     assert Config(supabase_url="u").supabase_url == "u"
+
+
+def test_config_with_utf8_bom_loads(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"idle_minutes": 7}).encode("utf-8"))
+    assert load_config(path).idle_minutes == 7

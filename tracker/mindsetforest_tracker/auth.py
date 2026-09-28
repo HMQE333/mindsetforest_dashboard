@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -37,6 +38,10 @@ class AuthError(Exception):
 
 class AuthRequired(AuthError):
     """No usable session: the user has to sign in again from the tray."""
+
+
+class AuthUnavailable(AuthError):
+    """The auth server could not be reached (network, 5xx, 429). Tokens are kept; retry later."""
 
 
 @dataclass
@@ -85,6 +90,7 @@ class SupabaseAuth:
         self.clock = clock
         self.timeout = timeout
         self.tokens: Tokens | None = None
+        self._lock = threading.RLock()  # one refresh at a time: Supabase rotates refresh tokens
 
     # -- state ---------------------------------------------------------------
 
@@ -103,16 +109,30 @@ class SupabaseAuth:
     # -- persistence ---------------------------------------------------------
 
     def load_saved(self) -> bool:
-        """Load the saved refresh token. False when there is none or it is unreadable."""
+        """Load the saved refresh token. False when there is none or it is unreadable.
+
+        Any failure (corrupt file, DPAPI blob from another user/machine, which
+        raises ``pywintypes.error``) is logged, the file is moved aside as
+        ``session.bin.bad`` and the tray simply offers "Sign in...".
+        """
         try:
             blob = self.session_path.read_bytes()
         except FileNotFoundError:
             return False
+        except OSError as exc:
+            log.warning("Saved session unreadable (%s); sign in again", exc)
+            return False
         try:
             data = json.loads(unprotect(blob).decode("utf-8"))
             self.tokens = Tokens("", data["refresh_token"], data["user_id"], 0.0, data.get("email", ""))
-        except (ValueError, KeyError, UnicodeDecodeError) as exc:
-            log.error("Saved session unreadable (%s); sign in again", exc)
+        except Exception as exc:  # ValueError, KeyError, pywintypes.error, ...
+            bad = self.session_path.with_name(self.session_path.name + ".bad")
+            log.warning("Saved session unreadable (%s); moved to %s, sign in again", exc, bad)
+            try:
+                self.session_path.replace(bad)
+            except OSError as move_exc:
+                log.warning("Could not move bad session file: %s", move_exc)
+            self.tokens = None
             return False
         return self.has_session
 
@@ -125,8 +145,12 @@ class SupabaseAuth:
             {"refresh_token": self.tokens.refresh_token, "user_id": self.tokens.user_id,
              "email": self.tokens.email}
         ).encode("utf-8")
-        self.session_path.parent.mkdir(parents=True, exist_ok=True)
-        self.session_path.write_bytes(protect(payload))
+        try:
+            self.session_path.parent.mkdir(parents=True, exist_ok=True)
+            self.session_path.write_bytes(protect(payload))
+        except OSError as exc:
+            # The rotated token only lives in memory now; a restart will need a sign-in.
+            log.error("COULD NOT SAVE SESSION FILE %s: %s (token kept in memory only)", self.session_path, exc)
 
     def sign_out(self) -> None:
         self.tokens = None
@@ -139,37 +163,48 @@ class SupabaseAuth:
 
     def sign_in(self, email: str, password: str) -> Tokens:
         """Password grant. Saves the refresh token on success."""
-        tokens = self._token_request({"email": email, "password": password}, "password")
-        tokens.email = email
-        self.tokens = tokens
-        self._save()
-        return tokens
+        with self._lock:
+            tokens = self._token_request({"email": email, "password": password}, "password")
+            tokens.email = email
+            self.tokens = tokens
+            self._save()
+            return tokens
 
     def refresh(self) -> Tokens:
-        """Exchange the refresh token for a new pair. Raises AuthRequired when it is rejected."""
-        if not self.has_session:
-            raise AuthRequired("not signed in")
-        assert self.tokens is not None
-        email = self.tokens.email
-        try:
-            tokens = self._token_request({"refresh_token": self.tokens.refresh_token}, "refresh_token")
-        except AuthError as exc:
-            log.warning("Refresh rejected: %s", exc)
-            self.tokens.access_token = ""
-            raise AuthRequired(str(exc)) from exc
-        tokens.email = email
-        self.tokens = tokens
-        self._save()
-        return tokens
+        """Exchange the refresh token for a new pair.
+
+        Raises ``AuthRequired`` when the server rejects the token and
+        ``AuthUnavailable`` when it cannot be reached (tokens are kept as they
+        are so the next attempt can retry).
+        """
+        with self._lock:
+            if not self.has_session:
+                raise AuthRequired("not signed in")
+            assert self.tokens is not None
+            old = self.tokens
+            try:
+                tokens = self._token_request({"refresh_token": old.refresh_token}, "refresh_token")
+            except AuthUnavailable as exc:
+                log.warning("Refresh postponed, auth server unreachable: %s", exc)
+                raise
+            except AuthError as exc:
+                log.warning("Refresh rejected: %s", exc)
+                old.access_token = ""
+                raise AuthRequired(str(exc)) from exc
+            tokens.email = old.email
+            self.tokens = tokens
+            self._save()
+            return tokens
 
     def ensure_access_token(self, min_valid_seconds: float = 300.0) -> str:
         """Return a valid access token, refreshing when missing or about to expire."""
-        if not self.has_session:
-            raise AuthRequired("not signed in")
-        assert self.tokens is not None
-        if not self.tokens.access_token or self.tokens.expires_at - self.clock() < min_valid_seconds:
-            self.refresh()
-        return self.tokens.access_token
+        with self._lock:
+            if not self.has_session:
+                raise AuthRequired("not signed in")
+            assert self.tokens is not None
+            if not self.tokens.access_token or self.tokens.expires_at - self.clock() < min_valid_seconds:
+                self.refresh()
+            return self.tokens.access_token
 
     def headers(self) -> dict[str, str]:
         """``apikey`` + ``Authorization`` for PostgREST calls."""
@@ -183,7 +218,9 @@ class SupabaseAuth:
                 json=body, timeout=self.timeout,
             )
         except requests.RequestException as exc:
-            raise AuthError(f"network error: {exc}") from exc
+            raise AuthUnavailable(f"network error: {exc}") from exc
+        if resp.status_code == 429 or resp.status_code >= 500:
+            raise AuthUnavailable(_error_message(resp))
         if resp.status_code != 200:
             raise AuthError(_error_message(resp))
         data = resp.json()

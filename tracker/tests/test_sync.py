@@ -207,3 +207,114 @@ def test_no_session_raises_auth_required(tmp_path):
     assert auth.load_saved() is False
     with pytest.raises(AuthRequired):
         auth.headers()
+
+
+# -- review fixes -------------------------------------------------------------
+
+class PoisonHttp(FakeHttp):
+    """Rejects any upsert whose body contains an app called Poison."""
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.calls.append(("post", url, headers, json))
+        if "/rest/v1/" in url and any(r["app"] == "Poison" for r in json):
+            return FakeResponse(400, {"message": "invalid input syntax"})
+        return FakeResponse(201)
+
+
+def test_rejected_batch_is_retried_row_by_row_and_poison_rows_quarantined(tmp_path):
+    http = PoisonHttp()
+    store = Store()
+    store.upsert_session(Session("Code", "Code", "t", False, T0, T0 + 10), "d")
+    store.upsert_session(Session("Poison", "Poison", "t", False, T0 + 100, T0 + 110), "d")
+    store.upsert_session(Session("Word", "Word", "t", False, T0 + 200, T0 + 210), "d")
+    worker = SyncWorker(store, SyncClient(URL, "anon", make_auth(tmp_path, http), http=http))
+    assert worker.sync_once() == 2
+    assert store.unsynced() == []
+    assert [r.app for r in store.quarantined()] == ["Poison"]
+    assert worker.status.last_error is None and worker.status.backoff_seconds == 0
+    assert worker.status.quarantined_total == 1
+    assert [len(c[3]) for c in http.calls] == [3, 1, 1, 1]  # batch, then one by one
+    assert worker.sync_once() == 0 and len(http.calls) == 4  # quarantined row is not retried
+
+
+def test_429_is_retried_with_backoff_not_quarantined(tmp_path):
+    http = FakeHttp()
+    http.add("/rest/v1/", FakeResponse(429, text="slow down"))
+    store = Store()
+    fill_store(store, 1)
+    worker = SyncWorker(store, SyncClient(URL, "anon", make_auth(tmp_path, http), http=http))
+    assert worker.sync_once() == 0
+    assert worker.status.backoff_seconds == 60 and len(store.unsynced()) == 1 and store.quarantined() == []
+
+
+def test_refresh_network_error_keeps_tokens_and_is_not_auth_required(tmp_path):
+    from mindsetforest_tracker.auth import AuthUnavailable
+    http = FakeHttp()
+    http.add("/auth/v1/token", requests.ConnectionError("offline"))
+    auth = make_auth(tmp_path, http)
+    with pytest.raises(AuthUnavailable):
+        auth.refresh()
+    assert (auth.tokens.access_token, auth.tokens.refresh_token) == ("acc", "ref")
+    http.routes["/auth/v1/token"] = [FakeResponse(503, text="down")]
+    with pytest.raises(AuthUnavailable):
+        auth.refresh()
+    http.routes["/auth/v1/token"] = [FakeResponse(400, {"error_description": "Invalid Refresh Token"})]
+    with pytest.raises(AuthRequired):
+        auth.refresh()
+    assert auth.tokens.access_token == ""
+
+
+def test_sync_treats_refresh_network_error_as_retryable(tmp_path):
+    http = FakeHttp()
+    http.add("/rest/v1/", FakeResponse(401, {"message": "JWT expired"}))
+    http.add("/auth/v1/token", requests.ConnectionError("offline"))
+    store = Store()
+    fill_store(store, 2)
+    worker = SyncWorker(store, SyncClient(URL, "anon", make_auth(tmp_path, http), http=http))
+    assert worker.sync_once() == 0
+    assert worker.status.needs_login is False and "offline" in worker.status.last_error
+    assert worker.status.backoff_seconds == 60 and len(store.unsynced()) == 2
+
+
+def test_concurrent_ensure_access_token_refreshes_once(tmp_path):
+    import threading
+    http = FakeHttp()
+    http.add("/auth/v1/token?grant_type=refresh_token", FakeResponse(200, token_body(access="fresh", refresh="ref2")))
+    auth = make_auth(tmp_path, http, clock=lambda: 1000.0 + 3600)  # expired
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(auth.ensure_access_token())) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results == ["fresh"] * 8
+    assert len([c for c in http.calls if "refresh_token" in c[1]]) == 1
+    assert auth.tokens.refresh_token == "ref2"
+
+
+def test_save_failure_after_rotation_keeps_token_in_memory(tmp_path, caplog):
+    http = FakeHttp()
+    http.add("/auth/v1/token?grant_type=refresh_token", FakeResponse(200, token_body(access="fresh", refresh="ref2")))
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x")
+    auth = make_auth(tmp_path, http)
+    auth.session_path = blocker / "session.bin"  # parent is a file: mkdir/write raise OSError
+    tokens = auth.refresh()
+    assert tokens.access_token == "fresh" and auth.tokens.refresh_token == "ref2"
+    assert "COULD NOT SAVE SESSION FILE" in caplog.text
+
+
+def test_corrupt_session_file_is_moved_aside(tmp_path, caplog, monkeypatch):
+    import mindsetforest_tracker.auth as auth_module
+    path = tmp_path / "session.bin"
+    path.write_bytes(b"MFDPAPI1" + b"garbage-from-another-user")
+
+    def boom(blob):
+        raise RuntimeError("(-2146893813, 'CryptUnprotectData', 'Key not valid for use in specified state.')")
+
+    monkeypatch.setattr(auth_module, "unprotect", boom)
+    auth = SupabaseAuth(URL, "anon", path, http=FakeHttp())
+    assert auth.load_saved() is False and auth.has_session is False
+    assert not path.exists() and (tmp_path / "session.bin.bad").read_bytes().startswith(b"MFDPAPI1")
+    assert "session.bin.bad" in caplog.text
+    assert auth.load_saved() is False  # nothing left to load, no error

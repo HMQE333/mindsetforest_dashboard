@@ -47,19 +47,52 @@ def setup_logging(path: Path, console: bool) -> None:
         root.addHandler(stream)
 
 
-class SingleInstance:
-    """Pid-file guard so two trackers never run for the same user."""
+TRACKER_MARKERS = ("mindsetforest", "run_tracker")
 
-    def __init__(self, path: Path) -> None:
+
+def pid_is_tracker(pid: int) -> bool:
+    """True when ``pid`` is a live process that looks like this tracker.
+
+    PIDs are reused after a hard shutdown, so a lock file naming a live pid is
+    only honoured when that process's name, exe or command line mentions the
+    tracker (``MindsetForestTracker.exe``, ``run_tracker.py``,
+    ``mindsetforest_tracker``).
+    """
+    try:
+        proc = psutil.Process(pid)
+    except psutil.Error:
+        return False
+    parts: list[str] = []
+    for getter in (proc.name, proc.exe, lambda: " ".join(proc.cmdline())):
+        try:
+            parts.append(getter() or "")
+        except (psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+        except psutil.NoSuchProcess:
+            return False
+    text = " ".join(parts).lower()
+    return any(marker in text for marker in TRACKER_MARKERS)
+
+
+class SingleInstance:
+    """Pid-file guard so two trackers never run for the same user.
+
+    A stale lock (pid gone, or reused by an unrelated process) is taken over.
+    """
+
+    def __init__(self, path: Path, is_tracker: Callable[[int], bool] = pid_is_tracker) -> None:
         self.path = path
+        self.is_tracker = is_tracker
 
     def acquire(self) -> bool:
         try:
             other = int(self.path.read_text().strip())
         except (OSError, ValueError):
             other = 0
-        if other and other != os.getpid() and psutil.pid_exists(other):
+        if other and other != os.getpid() and self.is_tracker(other):
             return False
+        if other and other != os.getpid():
+            log.warning("Taking over stale lock file (pid %d is not a tracker)", other)
         self.path.write_text(str(os.getpid()))
         return True
 

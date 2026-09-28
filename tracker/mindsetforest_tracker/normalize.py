@@ -21,8 +21,10 @@ Rules for ``app_key`` (first match wins):
 4. UWP apps hosted by ``ApplicationFrameHost.exe`` use their window title.
 5. Everything else -> the display name (``"Document1 - Word"`` -> ``Word``).
 
-Titles are cleaned first: zero-width and non-breaking spaces removed and
-whitespace collapsed, because Edge puts a zero-width space in its own name.
+Titles are cleaned first: zero-width and non-breaking spaces, control
+characters and lone surrogates removed and whitespace collapsed. Edge puts a
+zero-width space in its own name, and a lone surrogate (win32 can hand one
+over) would make SQLite raise ``UnicodeEncodeError``.
 """
 from __future__ import annotations
 
@@ -80,7 +82,11 @@ DISPLAY_NAMES: dict[str, str] = {
 }
 
 _SEPARATOR_RE = re.compile(r"\s+[-\u2014\u2013|\u00b7]\s+")
-_INVISIBLE_RE = re.compile("[\u200b\u200c\u200d\u2060\ufeff]")
+_INVISIBLE_RE = re.compile(
+    "[\u200b\u200c\u200d\u2060\ufeff"          # zero-width characters
+    "\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f"       # C0/C1 controls (tab/newline become spaces below)
+    "\ud800-\udfff]"                              # lone surrogates
+)
 _COUNT_PREFIX_RE = re.compile(r"^\(\d+\+?\)\s*")
 _TRAILING_BRACKET_RE = re.compile(r"\s*(\[[^\]]*\]|\([^)]*\))$")
 _DOMAIN_RE = re.compile(
@@ -92,7 +98,7 @@ _DOMAIN_RE = re.compile(
 
 
 def clean_title(title: str) -> str:
-    """Remove invisible characters and collapse whitespace."""
+    """Remove invisible/control characters and lone surrogates, collapse whitespace."""
     text = _INVISIBLE_RE.sub("", title or "").replace("\u00a0", " ")
     return " ".join(text.split())
 

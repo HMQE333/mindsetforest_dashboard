@@ -128,3 +128,44 @@ def test_menu_refreshes_every_5s_but_not_while_own_window_is_in_front(tmp_path):
 def test_tray_helpers():
     assert format_duration(5) == "5s" and format_duration(750) == "12m 30s" and format_duration(7500) == "2h 05m"
     assert make_icon_image(32).size == (32, 32)
+
+
+# -- review fixes -------------------------------------------------------------
+
+def test_stale_lock_taken_over_unless_pid_is_a_tracker(tmp_path):
+    lock = tmp_path / "tracker.lock"
+    lock.write_text("4242")  # live pid reused by some other program
+    assert SingleInstance(lock, is_tracker=lambda pid: False).acquire() is True
+    assert lock.read_text() == str(os.getpid())
+    lock.write_text("4242")
+    assert SingleInstance(lock, is_tracker=lambda pid: pid == 4242).acquire() is False
+    assert lock.read_text() == "4242"  # untouched, the real tracker keeps it
+
+
+def test_pid_is_tracker_real_process():
+    from mindsetforest_tracker.main import pid_is_tracker
+    assert pid_is_tracker(999999999) is False  # no such process
+    assert isinstance(pid_is_tracker(os.getpid()), bool)
+
+
+def test_backdated_idle_zeroes_the_live_flushed_row(tmp_path):
+    """Reviewer scenario: focus B at t=101, one click at 102.5, no input after.
+
+    Without the tombstone the live flush at t=240 (B non-idle 101-240) would
+    survive as a stale row after B's active part shrinks to 1 s and is merged
+    into A. Sum of seconds must equal the wall span (400 s).
+    """
+    A = Sample("Code.exe", "a.py - proj - Visual Studio Code")
+    B = Sample("Spotify.exe", "Song - Artist")
+    samples = [A] * 101 + [B, B] + [Sample(B.exe, B.title, idle_seconds=t - 102) for t in range(103, 401)]
+    app = make_app(tmp_path, samples)
+    for t in range(0, 400):
+        app.tick(T0 + t)
+    app.now["t"] = T0 + 400
+    app.toggle_pause()  # closes B idle at 400
+    rows = {(r.app, r.idle, r.started_at): r for r in app.store.all_sessions()}
+    assert set(rows) == {("Code", False, iso_utc(T0)), ("Spotify", False, iso_utc(T0 + 101)), ("Spotify", True, iso_utc(T0 + 102))}
+    assert rows[("Code", False, iso_utc(T0))].seconds == 102
+    assert rows[("Spotify", False, iso_utc(T0 + 101))].seconds == 0  # stale live flush zeroed
+    assert rows[("Spotify", True, iso_utc(T0 + 102))].seconds == 298
+    assert sum(r.seconds for r in rows.values()) == 400

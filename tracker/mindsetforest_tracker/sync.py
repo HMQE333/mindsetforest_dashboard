@@ -6,7 +6,10 @@ with ``resolution=merge-duplicates``) and marks them synced. The open session
 is written to the store every minute with the same ``started_at`` and a growing
 ``ended_at``, so it is picked up here like any other row and the dashboard
 shows live time. On a network error rows stay unsynced and the worker backs
-off (60 s, 120 s, ... up to 10 min). Nothing here can crash the capture thread.
+off (60 s, 120 s, ... up to 10 min). When the server *rejects* a batch (4xx
+other than 401/429) it is retried row by row and the rows that fail on their
+own are quarantined (``synced = -1``) and logged, so one bad row never blocks
+the rest. Nothing here can crash the capture thread.
 """
 from __future__ import annotations
 
@@ -29,7 +32,15 @@ MAX_BACKOFF = 600.0
 
 
 class SyncError(Exception):
-    """Upload failed for a reason worth retrying later (network, 5xx)."""
+    """Upload failed for a reason worth retrying later (network, 5xx, 429)."""
+
+
+class SyncRejected(SyncError):
+    """The server refused the payload (4xx other than 401/429); retrying it unchanged is pointless."""
+
+    def __init__(self, status: int, text: str) -> None:
+        super().__init__(f"HTTP {status}: {text[:300]}")
+        self.status = status
 
 
 def build_payload(rows: Sequence[SessionRow], user_id: str) -> list[dict]:
@@ -81,6 +92,8 @@ class SyncClient:
                 continue
             if resp.status_code == 401:
                 raise AuthRequired("token rejected twice")
+            if resp.status_code != 429 and 400 <= resp.status_code < 500:
+                raise SyncRejected(resp.status_code, resp.text)
             raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
 
     def delete(self, device_id: str, started_at: str) -> None:
@@ -105,6 +118,7 @@ class SyncStatus:
     last_error: str | None = None
     needs_login: bool = False
     uploaded_total: int = 0
+    quarantined_total: int = 0
     backoff_seconds: float = 0.0
 
 
@@ -150,9 +164,14 @@ class SyncWorker(threading.Thread):
                     rows = self.store.unsynced(self.batch_size)
                     if not rows:
                         break
-                    self.client.upsert(build_payload(rows, self.client.auth.user_id))
-                    self.store.mark_synced(rows)
-                    uploaded += len(rows)
+                    try:
+                        self.client.upsert(build_payload(rows, self.client.auth.user_id))
+                    except SyncRejected as exc:
+                        log.warning("Batch of %d rejected (%s); retrying row by row", len(rows), exc)
+                        uploaded += self._upload_individually(rows)
+                    else:
+                        self.store.mark_synced(rows)
+                        uploaded += len(rows)
                     if len(rows) < self.batch_size:
                         break
                 self.status.last_sync_at = self.clock()
@@ -184,3 +203,19 @@ class SyncWorker(threading.Thread):
                 except Exception:
                     log.exception("on_status callback failed")
             return uploaded
+
+    def _upload_individually(self, rows: Sequence[SessionRow]) -> int:
+        """Upsert rows one at a time; quarantine the ones the server rejects."""
+        ok = 0
+        user_id = self.client.auth.user_id
+        for row in rows:
+            try:
+                self.client.upsert(build_payload([row], user_id))
+            except SyncRejected as exc:
+                self.store.quarantine([row])
+                self.status.quarantined_total += 1
+                log.error("Quarantined session %s (%s, %ss): %s", row.started_at, row.app_key, row.seconds, exc)
+                continue
+            self.store.mark_synced([row])
+            ok += 1
+        return ok

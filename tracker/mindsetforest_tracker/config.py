@@ -78,7 +78,7 @@ def load_config(path: Path | None = None) -> Config:
     raw: dict = {}
     if chosen.is_file():
         try:
-            raw = json.loads(chosen.read_text(encoding="utf-8"))
+            raw = json.loads(chosen.read_text(encoding="utf-8-sig"))  # PowerShell writes a BOM
         except (OSError, ValueError) as exc:
             log.error("Could not read %s: %s (using defaults)", chosen, exc)
     known = {f.name for f in fields(Config)} - {"path"}

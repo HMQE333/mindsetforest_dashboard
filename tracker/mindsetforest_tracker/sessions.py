@@ -10,12 +10,17 @@ one at the same instant. Rules worth knowing:
   is crossed the split is back-dated to the last input, because that is when
   the user really stopped (clamped to the current session's start).
 * Sleep/hibernate shows up as a wall-clock jump larger than ``sleep_gap``
-  between two ticks: the open session is closed at the last good tick and the
-  gap itself is not recorded.
+  between two ticks, and a clock set backwards as ``ts < last_ts``: either way
+  the open session is closed at the last good tick and a fresh one starts at
+  the new time. Nothing is merged across such a break. A ``started_at`` is
+  never reused: if a fresh session would collide with one already opened
+  (possible after a backwards step) it is bumped by one second.
 * Sessions shorter than ``min_seconds`` are merged into a neighbour: into the
   previous session when it ends exactly where the short one starts, else into
-  the next one (which then starts where the short one did). Never dropped
-  unless there is no adjacent neighbour at all.
+  the next one (which then starts where the short one did). The short session
+  is also emitted as a zero-length *tombstone* (``ended_at == started_at``):
+  ``Store.upsert_session`` applies it only to a row it already holds, which
+  zeroes a live-flushed copy that would otherwise keep its stale duration.
 * ``local_date`` follows the 04:00 rule: a session that starts at 01:30 local
   time belongs to the previous calendar day.
 
@@ -106,6 +111,7 @@ class SessionTracker:
         self._last_ts: float | None = None
         self._last_closed: Session | None = None
         self._carry: tuple[float, float] | None = None
+        self._started: set[float] = set()  # every started_at handed out, to avoid collisions
 
     # -- configuration -------------------------------------------------------
 
@@ -131,8 +137,8 @@ class SessionTracker:
         """
         ts = float(math.floor(ts))
         out: list[Session] = []
-        if self._last_ts is not None and ts - self._last_ts > self.sleep_gap:
-            out += self._close(self._last_ts)
+        if self._last_ts is not None and (ts - self._last_ts > self.sleep_gap or ts < self._last_ts):
+            out += self._close(self._last_ts)  # sleep, or the clock was set back
             self._last_closed = None
             self._carry = None
         self._last_ts = ts
@@ -144,7 +150,7 @@ class SessionTracker:
             self._open(activity, ts)
             return out
         if (activity.app_key, activity.title, activity.idle) == (cur.app_key, cur.window_title, cur.idle):
-            cur.ended_at = ts
+            cur.ended_at = max(cur.started_at, ts)
             return out
         split_at = ts
         same_window = activity.app_key == cur.app_key and activity.title == cur.window_title
@@ -182,11 +188,17 @@ class SessionTracker:
         return Activity(app, app_key(sample.exe, title), title, sample.idle_seconds >= self.idle_threshold)
 
     def _open(self, activity: Activity, at: float) -> None:
-        start = at
         if self._carry and self._carry[1] == at:
-            start = self._carry[0]
+            start = self._carry[0]  # takes over the merged short session's row
+        else:
+            start = at
+            while start in self._started:
+                start += 1.0
         self._carry = None
-        self._current = Session(activity.app, activity.app_key, activity.title, activity.idle, start, at)
+        self._started.add(start)
+        if len(self._started) > 50_000:
+            self._started = {s for s in self._started if s >= at - 86_400}
+        self._current = Session(activity.app, activity.app_key, activity.title, activity.idle, start, max(at, start))
 
     def _close(self, at: float) -> list[Session]:
         cur = self._current
@@ -195,11 +207,12 @@ class SessionTracker:
         self._current = None
         cur.ended_at = max(cur.started_at, at)
         if cur.seconds < self.min_seconds:
+            tombstone = replace(cur, ended_at=cur.started_at)
             prev = self._last_closed
             if prev is not None and prev.ended_at == cur.started_at:
                 prev.ended_at = cur.ended_at
-                return [replace(prev)]
+                return [replace(prev), tombstone]
             self._carry = (cur.started_at, cur.ended_at)
-            return []
+            return [tombstone]
         self._last_closed = cur
         return [replace(cur)]

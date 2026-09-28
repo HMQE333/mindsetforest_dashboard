@@ -56,7 +56,7 @@ def test_idle_backdating_is_clamped_to_session_start():
     tr = SessionTracker(idle_minutes=3)
     # already 100 s idle when the window appears; threshold (180 s) crossed at t=80
     out = run(tr, [(t, Sample(CODE.exe, CODE.title, idle_seconds=100 + t)) for t in range(0, 81)])
-    assert out == []  # zero-length active session is merged, not emitted
+    assert [(s.app, s.seconds) for s in out] == [("Code", 0)]  # zero-length tombstone only
     assert tr.current.idle is True and tr.current.started_at == T0
 
 
@@ -92,6 +92,7 @@ def test_short_session_merged_into_previous_neighbour():
     assert [(s.app, s.started_at, s.ended_at) for s in out] == [
         ("Code", T0, T0 + 10),      # closed when Slack appears
         ("Code", T0, T0 + 11),      # re-emitted after absorbing the 1 s Slack blip
+        ("Slack", T0 + 10, T0 + 10),  # tombstone for the blip's own started_at
         ("Chrome", T0 + 11, T0 + 20),
     ]
 
@@ -99,7 +100,7 @@ def test_short_session_merged_into_previous_neighbour():
 def test_short_first_session_merged_into_next():
     tr = SessionTracker(min_seconds=2)
     out = run(tr, ticks(SLACK, 0, 1) + ticks(CODE, 1, 10) + ticks(CHROME, 10, 11))
-    assert [(s.app, s.started_at, s.ended_at) for s in out] == [("Code", T0, T0 + 10)]
+    assert [(s.app, s.started_at, s.ended_at) for s in out] == [("Slack", T0, T0), ("Code", T0, T0 + 10)]
 
 
 def test_short_session_not_merged_across_a_pause():
@@ -107,6 +108,7 @@ def test_short_session_not_merged_across_a_pause():
     out = run(tr, ticks(CODE, 0, 10) + [(t, None) for t in range(10, 15)] + ticks(SLACK, 15, 16) + ticks(CHROME, 16, 20) + ticks(CODE, 20, 21))
     assert [(s.app, s.started_at, s.ended_at) for s in out] == [
         ("Code", T0, T0 + 10),
+        ("Slack", T0 + 15, T0 + 15),   # tombstone
         ("Chrome", T0 + 15, T0 + 20),  # Slack blip carried into Chrome, not back into Code
     ]
 
@@ -155,3 +157,20 @@ def test_to_row_uses_utc_z_and_start_for_local_date():
     assert row["started_at"] == "2026-09-28T01:50:00Z" and row["ended_at"] == "2026-09-28T02:10:00Z"
     assert row["seconds"] == 1200 and row["local_date"] == "2026-09-27" and row["idle"] is False
     assert iso_utc(0) == "1970-01-01T00:00:00Z"
+
+
+def test_backwards_clock_closes_at_last_tick_and_starts_fresh():
+    tr = SessionTracker()
+    out = run(tr, ticks(CODE, 0, 11) + ticks(CODE, 5, 8))  # clock set back 6 s
+    assert len(out) == 1 and (out[0].started_at, out[0].ended_at) == (T0, T0 + 10)
+    assert tr.current.started_at == T0 + 5 and tr.current.ended_at == T0 + 7 and tr.current.seconds == 2
+
+
+def test_backwards_clock_never_reuses_a_started_at():
+    tr = SessionTracker()
+    out = run(tr, ticks(CODE, 0, 11) + ticks(CHROME, 0, 3))  # lands exactly on Code's started_at
+    assert out[0].started_at == T0
+    assert tr.current.app == "Chrome" and tr.current.started_at == T0 + 1  # bumped, no collision
+    assert tr.current.ended_at == T0 + 2 and tr.current.seconds >= 0
+    out = run(tr, ticks(SLACK, 3, 6))
+    assert out[-1].app == "Chrome" and out[-1].ended_at == T0 + 3

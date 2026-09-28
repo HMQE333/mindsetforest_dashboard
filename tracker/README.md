@@ -34,8 +34,11 @@ and the same idle state. Each row uploaded to `app_usage_sessions` has:
 | `local_date` | the day the session belongs to, using a **04:00 local** day boundary (01:30 at night belongs to the previous day) |
 | `device_id` | random UUID generated once per installation |
 
-Sessions shorter than 2 seconds (accidental alt-tabs) are merged into their
-neighbour instead of being dropped.
+Sessions shorter than `min_session_seconds` (default 2, e.g. an accidental
+alt-tab) are merged into the adjacent neighbour: the previous session when it
+ends exactly where the short one starts, otherwise the next one. A session
+interrupted by sleep, a backwards clock step or *Pause* is closed at the last
+good tick, not merged.
 
 ### Privacy
 
@@ -66,14 +69,19 @@ neighbour instead of being dropped.
      "tick_seconds": 1,
      "sync_seconds": 60,
      "device_name": "",
+     "min_session_seconds": 2,
      "ignored_apps": []
    }
    ```
 
    `config.json` is looked for next to the exe/script first, then in
-   `%APPDATA%\MindsetForest\config.json`. `device_name` defaults to the
-   computer name. The anon key is the public one from Supabase -> Project
-   Settings -> API; it is not a secret, your login is what grants access.
+   `%APPDATA%\MindsetForest\config.json` (a UTF-8 BOM, as written by
+   PowerShell, is fine). `device_name` defaults to the computer name.
+   `min_session_seconds` is the merge threshold described above. The anon
+   key is the public one from Supabase -> Project Settings -> API; it is not
+   a secret, your login is what grants access. Set the environment variable
+   `MINDSETFOREST_HOME` to move the data folder somewhere other than
+   `%APPDATA%\MindsetForest`.
 4. Run `run-dev.bat` (installs `requirements.txt` and starts the tracker with a
    console so you can watch the log). A green tree icon appears in the tray.
 5. **First sign-in**: tray icon -> *Sign in...* -> your MindsetForest email and
@@ -118,18 +126,26 @@ neighbour instead of being dropped.
 | cloud | table `app_usage_sessions` in your Supabase project |
 
 Rows are written locally as soon as a session closes, and the *open* session
-is written every 60 seconds so a long session shows up in the dashboard while
-it is still running. Every `sync_seconds` (60) the sync thread upserts unsynced
-rows in batches of 200 (`on_conflict=user_id,device_id,started_at`). When
-offline, rows wait locally and the tracker retries with back-off (1, 2, 4, 8,
-10 minutes). Synced rows older than 90 days are purged from the local
-database.
+is written every `sync_seconds` (60 by default) so a long session shows up in
+the dashboard while it is still running. On the same interval the sync thread
+upserts unsynced rows in batches of 200
+(`on_conflict=user_id,device_id,started_at`). When offline, rows wait locally
+and the tracker retries with back-off (1, 2, 4, 8, 10 minutes). If the server
+rejects a batch (HTTP 4xx other than 401/429) it is retried row by row and the
+rows that still fail are quarantined locally (`synced = -1` in `tracker.db`)
+and logged, so one bad row never blocks the rest. Synced rows older than 90
+days are purged from the local database. `MINDSETFOREST_HOME` overrides the
+data folder.
 
 ## Troubleshooting
 
 * **No tray icon** - check `tracker.log`. "Another tracker instance is already
-  running" means a second copy was started; there is a `tracker.lock` with the
-  other process id.
+  running" means a second copy was started; `tracker.lock` holds the other
+  process id. A lock left behind by a crash is taken over automatically
+  (the pid must belong to a running tracker to count).
+* **"Saved session unreadable ... moved to session.bin.bad"** - the token
+  file could not be decrypted (copied from another PC/user, or corrupt). Sign
+  in again from the tray.
 * **"Not signed in" / balloon asking to sign in** - the saved token was
   rejected (password changed, session revoked). Use *Sign in...* again.
 * **"Sync error: ..."** in the menu - the last upload failed; the message is

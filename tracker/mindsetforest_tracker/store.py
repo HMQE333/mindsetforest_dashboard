@@ -7,7 +7,15 @@ added at upload time) plus ``synced`` and ``rev``. Rows are keyed by
 server upsert (``on_conflict=user_id,device_id,started_at``) merges it.
 
 ``rev`` increments whenever a row's content changes so that a sync that was
-already in flight cannot mark a newer version as synced.
+already in flight cannot mark a newer version as synced. ``synced`` is 0
+(pending), 1 (uploaded) or -1 (quarantined: the server rejected the row, it is
+kept for inspection but never retried unless its content changes).
+
+A zero-length session (``ended_at == started_at``) is a tombstone from the
+session tracker: it only ever updates a row that already exists.
+
+The schema is versioned with ``PRAGMA user_version``; ``MIGRATIONS`` maps each
+version to the SQL that reaches it, so a future column is one ``ALTER`` away.
 """
 from __future__ import annotations
 
@@ -41,6 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_synced ON sessions (synced, id);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
+# version -> SQL that upgrades the database *to* that version (run in order).
+MIGRATIONS: dict[int, str] = {1: SCHEMA}
+
 UPSERT = """
 INSERT INTO sessions (device_id, app, app_key, window_title, started_at, ended_at,
                       seconds, idle, local_date)
@@ -73,7 +84,8 @@ class SessionRow:
     seconds: int
     idle: bool
     local_date: str
-    synced: bool
+    synced: bool        # uploaded (synced == 1)
+    quarantined: bool   # rejected by the server (synced == -1)
     rev: int
 
 
@@ -89,7 +101,19 @@ class Store:
         with self._lock:
             if path != ":memory:":
                 self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        version = self.schema_version()
+        for target in sorted(MIGRATIONS):
+            if version < target:
+                self._conn.executescript(MIGRATIONS[target])
+                self._conn.execute(f"PRAGMA user_version = {target}")
+                version = target
+
+    def schema_version(self) -> int:
+        """Current ``PRAGMA user_version`` (0 = empty database)."""
+        return int(self._conn.execute("PRAGMA user_version").fetchone()[0])
 
     def close(self) -> None:
         with self._lock:
@@ -98,11 +122,21 @@ class Store:
     # -- sessions ------------------------------------------------------------
 
     def upsert_session(self, session: Session, device_id: str, tz: tzinfo | None = None) -> None:
-        """Insert or update (by ``started_at``) one session."""
+        """Insert or update (by ``started_at``) one session.
+
+        A zero-length session is a tombstone: it zeroes an existing row (so the
+        server copy is zeroed by the next upsert) but never creates one.
+        """
         row = session.to_row(tz)
         row["idle"] = int(row["idle"])
         row["device_id"] = device_id
         with self._lock, self._conn:
+            if row["seconds"] == 0:
+                exists = self._conn.execute(
+                    "SELECT 1 FROM sessions WHERE started_at = ?", (row["started_at"],)
+                ).fetchone()
+                if not exists:
+                    return
             self._conn.execute(UPSERT, row)
 
     def delete_session(self, started_at: str) -> bool:
@@ -132,6 +166,26 @@ class Store:
                 "UPDATE sessions SET synced = 1 WHERE id = ? AND rev = ?", pairs
             )
         return cur.rowcount if cur.rowcount >= 0 else 0
+
+    def quarantine(self, rows: Iterable[SessionRow]) -> int:
+        """Mark rows the server rejected (``synced = -1``) so they stop blocking uploads."""
+        pairs = [(r.id, r.rev) for r in rows]
+        with self._lock, self._conn:
+            cur = self._conn.executemany(
+                "UPDATE sessions SET synced = -1 WHERE id = ? AND rev = ?", pairs
+            )
+        return cur.rowcount if cur.rowcount >= 0 else 0
+
+    def quarantined(self) -> list[SessionRow]:
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM sessions WHERE synced = -1 ORDER BY id").fetchall()
+        return [_to_row(r) for r in rows]
+
+    def all_sessions(self) -> list[SessionRow]:
+        """Every row, oldest first (diagnostics and tests)."""
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM sessions ORDER BY started_at").fetchall()
+        return [_to_row(r) for r in rows]
 
     def purge_synced_older_than(self, days: int = 90, now: datetime | None = None) -> int:
         """Delete synced rows whose ``ended_at`` is older than ``days``."""
@@ -177,5 +231,5 @@ def _to_row(row: sqlite3.Row) -> SessionRow:
         id=row["id"], device_id=row["device_id"], app=row["app"], app_key=row["app_key"],
         window_title=row["window_title"], started_at=row["started_at"], ended_at=row["ended_at"],
         seconds=row["seconds"], idle=bool(row["idle"]), local_date=row["local_date"],
-        synced=bool(row["synced"]), rev=row["rev"],
+        synced=row["synced"] == 1, quarantined=row["synced"] == -1, rev=row["rev"],
     )

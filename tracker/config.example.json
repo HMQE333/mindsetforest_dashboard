@@ -6,5 +6,6 @@
   "tick_seconds": 1,
   "sync_seconds": 60,
   "device_name": "",
+  "min_session_seconds": 2,
   "ignored_apps": []
 }

@@ -68,3 +68,9 @@ def test_browser_site_prefers_domain_over_segments():
 def test_editor_project_only_for_editors():
     assert editor_project("notepad.exe", "a - b - c") is None
     assert editor_project("code.exe", "a - b") is None
+
+
+def test_clean_title_strips_control_chars_and_lone_surrogates():
+    assert clean_title("a\ud83d\x00b\x1f\x9fc") == "abc"
+    assert clean_title("tab\tand\nnewline") == "tab and newline"
+    assert clean_title("emoji \U0001F600 ok") == "emoji \U0001F600 ok"  # real astral chars kept

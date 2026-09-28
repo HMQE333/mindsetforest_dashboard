@@ -85,3 +85,56 @@ def test_kv_and_device_id_persist_across_reopen(tmp_path):
     st2 = Store(path)
     assert st2.device_id() == dev and len(dev) == 36
     assert st2.get_kv("last_error") == "boom" and st2.get_kv("missing", "dflt") == "dflt"
+
+
+# -- review fixes -------------------------------------------------------------
+
+def test_tombstone_zeroes_existing_row_but_never_creates_one():
+    st = Store()
+    st.upsert_session(sess(start=T0 + 101, end=T0 + 240, app="B"), "d")  # live flush of the open session
+    st.mark_synced(st.unsynced())
+    st.upsert_session(sess(start=T0 + 101, end=T0 + 101, app="B"), "d")  # tombstone
+    row = st.get_session(iso_utc(T0 + 101))
+    assert row.seconds == 0 and row.ended_at == row.started_at and row.synced is False
+    st.upsert_session(sess(start=T0 + 500, end=T0 + 500, app="B"), "d")  # tombstone for an unwritten blip
+    assert st.get_session(iso_utc(T0 + 500)) is None and st.count() == 1
+
+
+def test_quarantine_excluded_from_unsynced_until_content_changes():
+    st = Store()
+    st.upsert_session(sess(), "d")
+    rows = st.unsynced()
+    assert st.quarantine(rows) == 1
+    assert st.unsynced() == [] and [(r.synced, r.quarantined) for r in st.quarantined()] == [(False, True)]
+    st.upsert_session(sess(end=T0 + 90), "d")  # changed content gets another chance
+    assert len(st.unsynced()) == 1 and st.quarantined() == []
+
+
+def test_schema_version_and_future_migration(tmp_path, monkeypatch):
+    import mindsetforest_tracker.store as store_module
+    path = tmp_path / "v.db"
+    st = Store(path)
+    assert st.schema_version() == 1
+    st.upsert_session(sess(), "d")
+    st.close()
+    monkeypatch.setitem(store_module.MIGRATIONS, 2, "ALTER TABLE sessions ADD COLUMN note TEXT NOT NULL DEFAULT '';")
+    st2 = Store(path)
+    assert st2.schema_version() == 2
+    cols = [r[1] for r in st2._conn.execute("PRAGMA table_info(sessions)").fetchall()]
+    assert "note" in cols
+    st2.upsert_session(sess(end=T0 + 120), "d")  # UPSERT still works with the extra column
+    assert st2.get_session(iso_utc(T0)).seconds == 120 and st2.count() == 1
+    st2.close()
+    assert Store(path).schema_version() == 2  # idempotent reopen
+
+
+def test_lone_surrogate_title_is_sanitized_before_sqlite():
+    from mindsetforest_tracker.capture import Sample
+    from mindsetforest_tracker.sessions import SessionTracker
+    tr = SessionTracker()
+    tr.feed(T0, Sample("chrome.exe", "Cats \ud83d - YouTube\x00 - Google Chrome"))
+    closed = tr.close_current(T0 + 30)
+    st = Store()
+    st.upsert_session(closed[0], "d")  # would raise UnicodeEncodeError unsanitized
+    row = st.unsynced()[0]
+    assert row.window_title == "Cats - YouTube - Google Chrome" and row.app_key == "Browser | YouTube"
