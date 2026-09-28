@@ -1,2 +1,5 @@
 .vercel
 .env*
+
+# keep the template
+!.env.example
