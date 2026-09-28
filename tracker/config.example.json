@@ -1,0 +1,10 @@
+{
+  "supabase_url": "https://YOUR-PROJECT.supabase.co",
+  "supabase_anon_key": "YOUR-ANON-PUBLIC-KEY",
+  "dashboard_url": "https://mindsetforest.app",
+  "idle_minutes": 3,
+  "tick_seconds": 1,
+  "sync_seconds": 60,
+  "device_name": "",
+  "ignored_apps": []
+}
