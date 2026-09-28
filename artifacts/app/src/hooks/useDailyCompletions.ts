@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { todayKey, lastNDays } from "@/lib/today";
 
 export interface DailyCompletion {
   date: string;
@@ -10,19 +11,21 @@ export interface DailyCompletion {
   completed_mission_titles: string[];
 }
 
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function last7Days(): string[] {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-  }
-  return days;
+/**
+ * Every day the user did something on Home (a mission or XP logged). This is
+ * the set the streak is computed over. Null when the read failed, so the
+ * caller can keep the last persisted streak instead of dropping to 0.
+ */
+export async function activeDayKeys(userId: string): Promise<Set<string> | null> {
+  const { data, error } = await supabase
+    .from("daily_completions")
+    .select("date")
+    .eq("user_id", userId)
+    .or("missions_completed.gt.0,xp_earned.gt.0")
+    .order("date", { ascending: false })
+    .limit(1000);
+  if (error || !data) return null;
+  return new Set(data.map(d => d.date));
 }
 
 export function useDailyCompletions() {
@@ -33,7 +36,7 @@ export function useDailyCompletions() {
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     const load = async () => {
-      const days = last7Days();
+      const days = lastNDays(7);
       const { data, error } = await (supabase.from("daily_completions" as any) as any)
         .select("date, missions_completed, xp_earned, categories_engaged, completed_mission_titles")
         .eq("user_id", user.id)
@@ -64,7 +67,7 @@ export function useDailyCompletions() {
     completedTitles: string[],
   ) => {
     if (!user) return;
-    const date = todayISO();
+    const date = todayKey();
     await (supabase.from("daily_completions" as any) as any)
       .upsert([{
         user_id: user.id,
@@ -102,5 +105,5 @@ export function useDailyCompletions() {
     return [];
   }, [user]);
 
-  return { history, loading, saveDailySnapshot, fetchAllHistory, last7Days };
+  return { history, loading, saveDailySnapshot, fetchAllHistory };
 }

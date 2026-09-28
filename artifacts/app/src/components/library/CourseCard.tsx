@@ -3,6 +3,7 @@ import { Course, COURSE_STATUS_LABELS } from "@/lib/course-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, ExternalLink, Link2 } from "lucide-react";
+import { EMPTY } from "@/lib/utils";
 
 interface CourseCardProps {
   course: Course;
@@ -31,7 +32,7 @@ export default function CourseCard({ course, index, onClick, view }: CourseCardP
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm text-foreground truncate">{course.title}</h3>
             <p className="text-xs text-muted-foreground truncate">
-              {[course.platform, course.instructor].filter(Boolean).join(" • ") || "."}
+              {[course.platform, course.instructor].filter(Boolean).join(" • ") || EMPTY}
             </p>
           </div>
           {hasUrl && (

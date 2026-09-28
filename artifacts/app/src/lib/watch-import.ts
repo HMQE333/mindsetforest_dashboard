@@ -3,6 +3,7 @@
 // with flexible column-name matching so header wording doesn't have to be exact.
 
 import { parsePace, parseDuration, HRV_STATUS_OPTIONS, type WatchEntryInput } from "./watch-data";
+import { addDays, formatLocalDate, todayKey } from "@/lib/today";
 
 // ── value helpers ──────────────────────────────────────────
 const pad = (n: number | string) => String(n).padStart(2, "0");
@@ -43,7 +44,7 @@ export function parseCsvDate(raw?: string | null): string | null {
   const d = new Date(t);
   if (!Number.isNaN(d.getTime())) {
     // Use the *local* calendar date. ToISOString() converts to UTC and can shift the day.
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return formatLocalDate(d);
   }
   return null;
 }
@@ -242,11 +243,7 @@ export function parseWatchCsv(text: string): WatchImportResult {
 /** A ready-to-fill CSV template (header + two example rows for recent dates). */
 export function buildWatchCsvTemplate(): string {
   const header = WATCH_CSV_COLUMNS.map(c => c.label).join(",");
-  const isoDaysAgo = (n: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString().split("T")[0];
-  };
+  const isoDaysAgo = (n: number) => addDays(todayKey(), -n);
   const rowFor = (date: string) =>
     WATCH_CSV_COLUMNS.map(c => (c.key === "entry_date" ? date : c.example)).join(",");
   return [header, rowFor(isoDaysAgo(1)), rowFor(isoDaysAgo(0))].join("\n") + "\n";

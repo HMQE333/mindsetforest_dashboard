@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
+import { todayKey } from "@/lib/today";
 
 /**
  * The user's personal context, on three shelves ordered by how fast they change.
@@ -103,10 +104,12 @@ export async function logSuggestions(userId: string, items: LoggedSuggestion[]):
 }
 
 /** The local "now" the server cannot infer. */
-export function localMoment(): { date: string; hour: number } {
+export function localMoment(): { date: string; hour: number; tzOffsetMinutes: number } {
   const d = new Date();
   return {
-    date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    date: todayKey(),
     hour: d.getHours(),
+    // Minutes east of UTC, so the server can rebuild the local day if `date` is missing.
+    tzOffsetMinutes: -d.getTimezoneOffset(),
   };
 }

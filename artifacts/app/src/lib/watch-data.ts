@@ -5,6 +5,8 @@
 // The 165 does NOT produce Training Load / Training Status / Training Readiness.
 // Body Battery + Recovery Time do that job here. Do not invent those fields.
 
+import { addDays, todayKey } from "@/lib/today";
+
 export type WatchCluster = "A" | "B" | "C";
 
 export type SignalTone = "good" | "watch" | "info";
@@ -490,13 +492,7 @@ export function watchTrend(
 // runs a week (easy / tempo / long / easy) sit on top of the daily wellness.
 export function generateSampleWatchEntries(): WatchEntryInput[] {
   const DAYS = 84; // 12 weeks
-  const dayOffset = (n: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    const pad = (x: number) => String(x).padStart(2, "0");
-    // Local calendar date. ToISOString() shifts the day across timezones.
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
+  const dayOffset = (n: number) => addDays(todayKey(), -n);
 
   // Deterministic PRNG (mulberry32) so the demo looks the same every load.
   let seed = 20260704;

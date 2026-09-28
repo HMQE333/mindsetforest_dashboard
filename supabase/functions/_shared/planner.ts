@@ -45,11 +45,24 @@ export interface LocalMoment {
   date?: string;
   /** Local hour, 0-23. */
   hour?: number;
+  /** Minutes east of UTC, so the local day can be rebuilt here when `date` is missing. */
+  tzOffsetMinutes?: number;
   /** Minutes the user believes they have left today, if the client knows. */
   freeMinutes?: number;
 }
 
 const DAY_MS = 86400000;
+
+/** The owner's day ends at 04:00 local - the same rule as the client's `todayKey()`. */
+const DAY_START_HOUR = 4;
+
+/** The user's day key: what the client sent, else rebuilt from its tz offset, else UTC. */
+function localToday(moment: LocalMoment): string {
+  if (moment.date) return moment.date;
+  if (moment.tzOffsetMinutes === undefined) return new Date().toISOString().split("T")[0];
+  const shifted = new Date(Date.now() + moment.tzOffsetMinutes * 60000 - DAY_START_HOUR * 3600000);
+  return shifted.toISOString().split("T")[0];
+}
 
 function daysAgo(days: number): string {
   const d = new Date(Date.now() - days * DAY_MS);
@@ -84,7 +97,7 @@ export async function buildPlannerContext(
   userId: string,
   moment: LocalMoment = {},
 ): Promise<{ profile: string; situation: string }> {
-  const today = moment.date || new Date().toISOString().split("T")[0];
+  const today = localToday(moment);
 
   const [ctx, dash, history, paths, steps, planning, events, watch, suggestions, scored] = await Promise.all([
     safe(client.from("user_context").select("notes,lenses,season").eq("user_id", userId).maybeSingle()),
@@ -97,7 +110,7 @@ export async function buildPlannerContext(
     safe(client.from("paths").select("id,name,category_id,archived,diagnosis,diagnosis_verdict,diagnosis_actual").eq("user_id", userId)),
     safe(client.from("path_steps").select("path_id,title,mode,reps_target,reps_done,done,sort_order").eq("user_id", userId)),
     safe(client.from("planning_tasks").select("title,level,done,deadline").eq("user_id", userId).eq("done", false).limit(50)),
-    safe(client.from("calendar_events").select("title,event_date").eq("user_id", userId).eq("event_date", today)),
+    safe(client.from("calendar_events").select("title,date").eq("user_id", userId).eq("date", today)),
     safe(client.from("watch_entries").select("entry_date,body_battery,sleep_score,resting_hr,stress_level,recovery_time_hrs")
       .eq("user_id", userId).order("entry_date", { ascending: false }).limit(3)),
     safe(client.from("ai_suggestion_log").select("title,status,scope")

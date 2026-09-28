@@ -7,6 +7,11 @@
  * unfinished one, so reordering steps is all it takes to change what's next.
  */
 
+import { addDays, dayKey, daysBetween, todayKey } from "@/lib/today";
+
+/** Re-exported so Paths callers keep one import for their day keys. */
+export { todayKey };
+
 export type StepMode = "once" | "reps";
 
 export interface PathStep {
@@ -128,18 +133,6 @@ export interface TodayStep {
 
 export const DEFAULT_STEP_XP = 20;
 
-/** Local calendar date (never toISOString - that shifts the day near midnight). */
-export function todayKey(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function shiftDays(key: string, delta: number): string {
-  const [y, m, d] = key.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + delta);
-  return todayKey(dt);
-}
-
 export function sortSteps(steps: PathStep[]): PathStep[] {
   return [...steps].sort((a, b) => a.sort_order - b.sort_order);
 }
@@ -174,20 +167,14 @@ export function pathProgress(steps: PathStep[]): { done: number; total: number; 
 export function stepStreak(logs: StepLog[], stepId: string, today: string = todayKey()): number {
   const days = new Set(logs.filter(l => l.step_id === stepId).map(l => l.date));
   if (days.size === 0) return 0;
-  let cursor = days.has(today) ? today : shiftDays(today, -1);
+  let cursor = days.has(today) ? today : addDays(today, -1);
   if (!days.has(cursor)) return 0;
   let streak = 0;
   while (days.has(cursor)) {
     streak++;
-    cursor = shiftDays(cursor, -1);
+    cursor = addDays(cursor, -1);
   }
   return streak;
-}
-
-function daysBetween(fromKey: string, today: string): number {
-  const [fy, fm, fd] = fromKey.split("-").map(Number);
-  const [ty, tm, td] = today.split("-").map(Number);
-  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
 }
 
 /**
@@ -214,7 +201,7 @@ export function stepIdleDays(logs: StepLog[], ordered: PathStep[], stepId: strin
   const previous = index > 0 ? list[index - 1] : null;
   const baseline = previous?.done_at || step.created_at;
   if (!baseline) return 0;
-  return daysBetween(todayKey(new Date(baseline)), today);
+  return daysBetween(dayKey(new Date(baseline)), today);
 }
 
 /** Human label for a step's remaining work. */

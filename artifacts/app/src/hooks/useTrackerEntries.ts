@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { todayKey, lastNDays, computeStreak } from "@/lib/today";
 
 export interface TrackerEntry {
   id: string;
@@ -41,8 +42,7 @@ export function useTrackerEntries() {
 
   const addEntry = useCallback(async (metricId: string, value: number) => {
     if (!user) return;
-    const now = new Date();
-    const date = now.toISOString().split("T")[0];
+    const date = todayKey();
 
     const { data, error } = await supabase
       .from("tracker_entries")
@@ -69,14 +69,13 @@ export function useTrackerEntries() {
 
 // Helper functions that work on TrackerEntry[]
 export function getTodayTotal(entries: TrackerEntry[], metricId: string): number {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayKey();
   return entries.filter((e) => e.metricId === metricId && e.date === today).reduce((s, e) => s + e.value, 0);
 }
 
 export function getLast7DaysTotal(entries: TrackerEntry[], metricId: string): number {
-  const now = Date.now();
-  const ago = now - 7 * 86400000;
-  return entries.filter((e) => e.metricId === metricId && new Date(e.createdAt).getTime() >= ago).reduce((s, e) => s + e.value, 0);
+  const week = new Set(lastNDays(7));
+  return entries.filter((e) => e.metricId === metricId && week.has(e.date)).reduce((s, e) => s + e.value, 0);
 }
 
 export function getAllTimeTotal(entries: TrackerEntry[], metricId: string): number {
@@ -84,20 +83,7 @@ export function getAllTimeTotal(entries: TrackerEntry[], metricId: string): numb
 }
 
 export function getStreakDays(entries: TrackerEntry[]): number {
-  if (entries.length === 0) return 0;
-  const uniqueDates = [...new Set(entries.map((e) => e.date))].sort().reverse();
-  const today = new Date().toISOString().split("T")[0];
-  let streak = 0;
-  let expected = today;
-  for (const date of uniqueDates) {
-    if (date === expected) {
-      streak++;
-      const d = new Date(expected);
-      d.setDate(d.getDate() - 1);
-      expected = d.toISOString().split("T")[0];
-    } else if (date < expected) break;
-  }
-  return streak;
+  return computeStreak(entries.map((e) => e.date));
 }
 
 export function getMonthTotal(entries: TrackerEntry[], metricId: string, year: number, month: number): number {
@@ -129,13 +115,9 @@ export function getHabitScore(entries: TrackerEntry[], metricId: string): { scor
   const avg = dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length;
 
   // Last 7 days consistency
-  const today = new Date();
   let activeDays = 0;
   let recentTotal = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
+  for (const dateStr of lastNDays(7)) {
     if (dailyMap[dateStr]) {
       activeDays++;
       recentTotal += dailyMap[dateStr];

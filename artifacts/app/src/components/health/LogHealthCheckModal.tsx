@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { formatLocalDate, todayKey } from "@/lib/today";
 import HealthRatingSelector from "./HealthRatingSelector";
 import LabExtractDropzone from "./LabExtractDropzone";
 import type { HealthEntry, HealthEntryInput } from "@/lib/health-data";
@@ -34,7 +35,7 @@ const NUM_FIELDS = [
 
 function emptyForm(defaultHeight?: number | null): HealthEntryInput {
   return {
-    entry_date: new Date().toISOString().split("T")[0],
+    entry_date: todayKey(),
     self_rating: 7,
     weight_kg: null, height_cm: defaultHeight ?? null,
     bp_systolic: null, bp_diastolic: null, resting_hr: null,
@@ -116,7 +117,7 @@ export default function LogHealthCheckModal({ open, onClose, onSave, initial, de
                 <Calendar
                   mode="single"
                   selected={form.entry_date ? new Date(form.entry_date + "T12:00:00") : undefined}
-                  onSelect={d => d && setField("entry_date", d.toISOString().split("T")[0])}
+                  onSelect={d => d && setField("entry_date", formatLocalDate(d))}
                   className={cn("p-3 pointer-events-auto")}
                   disabled={d => d > new Date()}
                 />

@@ -11,6 +11,7 @@ import {
   type WatchEntry,
   type WatchMetricDef,
 } from "@/lib/watch-data";
+import { EMPTY } from "@/lib/utils";
 
 interface Props {
   def: WatchMetricDef;
@@ -205,7 +206,7 @@ export default function WatchMetricCard({ def, entry, previous, history = [], in
             className="text-2xl font-extrabold tabular-nums leading-none"
             style={{ color: hasValue ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}
           >
-            {c.primary ?? "."}
+            {c.primary ?? EMPTY}
           </span>
           {c.unit && <span className="text-[11px] text-muted-foreground">{c.unit}</span>}
         </div>

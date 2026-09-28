@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { TrackerEntry, getDateTotal } from "@/hooks/useTrackerEntries";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
+import { keyToDate, todayKey } from "@/lib/today";
 
 interface TrackerCalendarProps {
   entries: TrackerEntry[];
@@ -10,7 +11,7 @@ interface TrackerCalendarProps {
 
 export default function TrackerCalendar({ entries }: TrackerCalendarProps) {
   const [expanded, setExpanded] = useState(false);
-  const [viewDate, setViewDate] = useState(new Date());
+  const [viewDate, setViewDate] = useState(() => keyToDate(todayKey()));
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -108,7 +109,7 @@ export default function TrackerCalendar({ entries }: TrackerCalendarProps) {
                   const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                   const activity = activityMap[dateStr];
                   const intensity = activity ? Math.min(activity.total / maxTotal, 1) : 0;
-                  const isToday = dateStr === new Date().toISOString().split("T")[0];
+                  const isToday = dateStr === todayKey();
                   const isSelected = dateStr === selectedDate;
 
                   return (

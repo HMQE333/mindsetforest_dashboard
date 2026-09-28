@@ -138,7 +138,7 @@ export function useFinanceState() {
     const monthTxs = transactions.filter(t => t.date.startsWith(currentMonth) && (t.type === "expense" || t.type === "subscription"));
     const catMap: Record<string, number> = {};
     monthTxs.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
-    let max = 0, cat = ".";
+    let max = 0, cat = "";
     Object.entries(catMap).forEach(([k, v]) => { if (v > max) { max = v; cat = k; } });
     return cat;
   }, [transactions, currentMonth]);

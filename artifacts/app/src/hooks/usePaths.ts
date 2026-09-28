@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { revisePathPlan, PlanStep } from "@/lib/path-writes";
+import { dayKey } from "@/lib/today";
 import {
   Path,
   PathStep,
@@ -84,7 +85,7 @@ export function usePaths() {
       (supabase.from("path_step_logs" as any) as any)
         .select("step_id,path_id,date,xp")
         .eq("user_id", user.id)
-        .gte("date", todayKey(since)),
+        .gte("date", dayKey(since)),
       (supabase.from("path_revisions" as any) as any)
         .select("id,path_id,snapshot,reason,source,created_at")
         .eq("user_id", user.id)
@@ -382,7 +383,7 @@ export function usePaths() {
   const snoozeStep = useCallback(async (stepId: string, days: number) => {
     const until = new Date();
     until.setDate(until.getDate() + days);
-    const patch = { snoozed_until: todayKey(until) };
+    const patch = { snoozed_until: dayKey(until) };
     setSteps(prev => prev.map(s => (s.id === stepId ? { ...s, ...patch } : s)));
     await (supabase.from("path_steps" as any) as any).update(patch).eq("id", stepId);
     notifyPathsChanged();
@@ -441,13 +442,27 @@ export function usePaths() {
     return step.xp;
   }, [user, steps, logs]);
 
-  /** Undo today's rep (mis-click). Returns the XP that was undone so the caller can subtract it. */
+  /**
+   * Undo today's rep (mis-click). Returns the XP to take back, or 0 when no
+   * log row was actually deleted - the caller must never refund XP that was
+   * not awarded (already undone in another tab, or never logged).
+   */
   const undoToday = useCallback(async (stepId: string): Promise<number> => {
     const step = steps.find(s => s.id === stepId);
     if (!step) return 0;
     const date = todayKey();
-    const undoneXP = step.xp;
-    await (supabase.from("path_step_logs" as never) as any).delete().eq("step_id", stepId).eq("date", date);
+    const { data, error } = await (supabase.from("path_step_logs" as never) as any)
+      .delete()
+      .eq("step_id", stepId)
+      .eq("date", date)
+      .select("xp");
+    const deleted = (!error && Array.isArray(data) ? data : []) as { xp: number | null }[];
+    if (deleted.length === 0) {
+      setLogs(prev => prev.filter(l => !(l.step_id === stepId && l.date === date)));
+      notifyPathsChanged();
+      return 0;
+    }
+    const undoneXP = deleted.reduce((s, l) => s + (l.xp ?? step.xp), 0);
     const repsDone = Math.max(0, step.reps_done - 1);
     const patch = { reps_done: repsDone, done: false, done_at: null };
     setLogs(prev => prev.filter(l => !(l.step_id === stepId && l.date === date)));

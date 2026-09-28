@@ -30,6 +30,8 @@ import ReadinessSummary from "./ReadinessSummary";
 import LogWatchModal from "./LogWatchModal";
 import WeeklyImportModal from "./WeeklyImportModal";
 import IntervalsIntegration from "./IntervalsIntegration";
+import { addDays, todayKey } from "@/lib/today";
+import { EMPTY } from "@/lib/utils";
 
 const CORE_METRIC_IDS = [
   "weight_kg",
@@ -50,7 +52,7 @@ function rangeLabel(id: string): string {
   if (!def) return "";
   if (id === "bp") return "<120/<80 mmHg";
   if (def.optimal) return `${def.optimal[0]}–${def.optimal[1]} ${def.unit}`;
-  return ".";
+  return EMPTY;
 }
 
 function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
@@ -93,7 +95,7 @@ function StatPill({ label, value, unit }: { label: string; value: string | numbe
     <div className="bg-muted/30 rounded-lg px-3 py-2 text-center">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-sm font-bold text-foreground tabular-nums">
-        {value != null ? value : "."}{unit ? <span className="text-[10px] text-muted-foreground ml-0.5">{unit}</span> : null}
+        {value != null ? value : EMPTY}{unit ? <span className="text-[10px] text-muted-foreground ml-0.5">{unit}</span> : null}
       </div>
     </div>
   );
@@ -206,10 +208,8 @@ export default function HealthView() {
   // ── Watch view ──────────────────────────────────────────
   const filteredEntries = useMemo(() => {
     if (watchFilter === "all") return watch.entries;
-    const now = new Date();
     const days: Record<string, number> = { "1w": 7, "1m": 30, "3m": 90, "1y": 365 };
-    const cutoff = new Date(now.getTime() - (days[watchFilter] || 0) * 86400000)
-      .toISOString().split("T")[0];
+    const cutoff = addDays(todayKey(), -(days[watchFilter] || 0));
     return watch.entries.filter(e => e.entry_date >= cutoff);
   }, [watch.entries, watchFilter]);
 
@@ -392,14 +392,14 @@ export default function HealthView() {
                               {r.score} {vm.emoji}
                             </span>
                           ) : (
-                            "."
+                            EMPTY
                           )}
                         </td>
-                        <td className="py-2 tabular-nums">{e.resting_hr ?? "."}</td>
-                        <td className="py-2 tabular-nums">{e.sleep_score ?? "."}</td>
-                        <td className="py-2 tabular-nums">{e.vo2max ?? "."}</td>
-                        <td className="py-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? "."}</td>
-                        <td className="py-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : "."}</td>
+                        <td className="py-2 tabular-nums">{e.resting_hr ?? EMPTY}</td>
+                        <td className="py-2 tabular-nums">{e.sleep_score ?? EMPTY}</td>
+                        <td className="py-2 tabular-nums">{e.vo2max ?? EMPTY}</td>
+                        <td className="py-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? EMPTY}</td>
+                        <td className="py-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : EMPTY}</td>
                         <td className="py-2">
                           <div className="flex items-center gap-1 justify-end">
                             <button
@@ -535,12 +535,12 @@ export default function HealthView() {
                 >
                   <td className="py-2 font-semibold text-foreground">{e.entry_date}</td>
                   <td className="py-2 tabular-nums">{e.self_rating}/10</td>
-                  <td className="py-2 tabular-nums">{e.weight_kg ?? "."}</td>
+                  <td className="py-2 tabular-nums">{e.weight_kg ?? EMPTY}</td>
                   <td className="py-2 tabular-nums">
-                    {e.bp_systolic != null && e.bp_diastolic != null ? `${e.bp_systolic}/${e.bp_diastolic}` : "."}
+                    {e.bp_systolic != null && e.bp_diastolic != null ? `${e.bp_systolic}/${e.bp_diastolic}` : EMPTY}
                   </td>
-                  <td className="py-2 tabular-nums">{e.fasting_glucose_mgdl ?? "."}</td>
-                  <td className="py-2 tabular-nums">{e.ldl_mgdl ?? "."}</td>
+                  <td className="py-2 tabular-nums">{e.fasting_glucose_mgdl ?? EMPTY}</td>
+                  <td className="py-2 tabular-nums">{e.ldl_mgdl ?? EMPTY}</td>
                   <td className="py-2">
                     <div className="flex items-center gap-1 justify-end">
                       <button

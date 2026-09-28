@@ -4,6 +4,7 @@ import { ChevronDown } from "lucide-react";
 import { ThemeMode, AccentColor, FrameStyle, HeroLayout, FontPair, BackgroundPattern, CardStyle, UserPreferences } from "@/hooks/useUserSettings";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Slider } from "@/components/ui/slider";
+import { EMPTY } from "@/lib/utils";
 
 const THEMES: { id: ThemeMode; label: string; icon: string; description: string; preview: { bg: string; card: string; text: string } }[] = [
   { id: "dark", label: "Dark", icon: "🌙", description: "Default dark RPG theme", preview: { bg: "#0a0b10", card: "#111320", text: "#e8e8f0" } },
@@ -581,7 +582,7 @@ export default function ThemeTab({ currentTheme, currentAccent, currentFrame, cu
         <div className="mt-3 px-1">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] text-muted-foreground font-medium">Custom Hue</span>
-            <span className="text-[10px] font-mono text-muted-foreground">{customHue != null ? `${customHue}°` : "."}</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{customHue != null ? `${customHue}°` : EMPTY}</span>
           </div>
           <div className="relative">
             <Slider

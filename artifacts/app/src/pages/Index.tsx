@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -60,7 +60,7 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
 const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "paths", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning", "health"];
 
 const Index = () => {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
@@ -176,13 +176,22 @@ const Index = () => {
               <div className="flex items-center gap-2">
                 <FriendsButton badgeCount={badgeCount} onClick={() => setFriendsOpen(true)} />
               </div>
-              <button
-                onClick={() => setSettingsOpen(true)}
-                className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
-                title="Settings"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={async () => { await signOut(); navigate("/auth"); }}
+                  className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
+                  title="Sign out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           )}
 

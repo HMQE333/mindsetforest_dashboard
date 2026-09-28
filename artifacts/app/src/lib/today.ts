@@ -84,8 +84,10 @@ export function computeStreak(
 ): number {
   const active = new Set(activeDays);
   if (active.size === 0) return 0;
+  // Start from today if it already has activity, else from yesterday. A missed
+  // yesterday is not a broken streak: it consumes a freeze like any other miss,
+  // so the hero keeps showing the streak in the morning before the first log.
   let cursor = active.has(today) ? today : addDays(today, -1);
-  if (!active.has(cursor)) return 0;
   let streak = 0;
   const missedInWindow: string[] = [];
   for (let guard = 0; guard < 3660; guard++) {
@@ -93,7 +95,7 @@ export function computeStreak(
       streak++;
     } else {
       // drop misses that fell out of the rolling 7-day window
-      while (missedInWindow.length && daysBetween(missedInWindow[0], cursor) >= 7) missedInWindow.shift();
+      while (missedInWindow.length && daysBetween(cursor, missedInWindow[0]) >= 7) missedInWindow.shift();
       if (missedInWindow.length >= freezesPerWeek) break;
       missedInWindow.push(cursor);
     }

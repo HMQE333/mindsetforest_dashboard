@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { TrackerEntry } from "@/hooks/useTrackerEntries";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
+import { todayKey } from "@/lib/today";
 
 interface TrackerRecentLogProps {
   entries: TrackerEntry[];
@@ -38,7 +39,7 @@ export default function TrackerRecentLog({ entries }: TrackerRecentLogProps) {
           if (!metric) return null;
           const time = new Date(entry.createdAt);
           const timeStr = time.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" });
-          const isToday = entry.date === new Date().toISOString().split("T")[0];
+          const isToday = entry.date === todayKey();
 
           return (
             <motion.div

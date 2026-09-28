@@ -164,7 +164,9 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   <h4 className="text-lg font-semibold text-foreground mb-2">{mission.title}</h4>
                   <p className="text-sm text-foreground/70 mb-3 leading-relaxed">{mission.description}</p>
                   <div className="flex gap-4 text-sm">
-                    <span className="text-foreground/60 flex items-center gap-1">⏱️ {mission.duration}</span>
+                    {mission.duration && mission.duration !== "." && (
+                      <span className="text-foreground/60 flex items-center gap-1">⏱️ {mission.duration}</span>
+                    )}
                     <span className="font-bold flex items-center gap-1" style={{ color: displayColor }}>
                       ⭐ +{mission.xp} XP
                     </span>

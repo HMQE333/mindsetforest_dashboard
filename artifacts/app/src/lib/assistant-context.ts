@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
+import { addDays, todayKey } from "@/lib/today";
 
 export type ScopeId =
   | "dashboard"
@@ -56,7 +57,7 @@ const catName = (id: string) => CATEGORIES.find((c) => c.id === id)?.name || id;
 const metricLabel = (id: string) => TRACKER_METRICS.find((m) => m.id === id)?.label || id;
 
 function daysAgoISO(days: number): string {
-  return new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+  return addDays(todayKey(), -days);
 }
 
 async function gatherDashboard(userId: string): Promise<string> {
@@ -302,14 +303,14 @@ async function gatherArchive(userId: string, question?: string): Promise<string>
 async function gatherBreathing(userId: string): Promise<string> {
   const { data } = await supabase
     .from("breathing_sessions")
-    .select("pattern_id,duration_seconds,completed_at")
+    .select("pattern,duration_seconds,completed_at")
     .eq("user_id", userId)
     .order("completed_at", { ascending: false })
     .limit(10);
   if (!data || data.length === 0) return "No breathing sessions yet.";
-  const total = data.reduce((sum: number, s: any) => sum + (s.duration_seconds || 0), 0);
-  const patterns = [...new Set(data.map((s: any) => s.pattern_id))];
-  const recent = data.slice(0, 5).map((s: any) => `- ${s.pattern_id}: ${Math.round(s.duration_seconds/60)}min on ${s.completed_at?.slice(0,10)}`);
+  const total = data.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const patterns = [...new Set(data.map((s) => s.pattern))];
+  const recent = data.slice(0, 5).map((s) => `- ${s.pattern}: ${Math.round((s.duration_seconds || 0) / 60)}min on ${s.completed_at?.slice(0, 10)}`);
   return [
     `Breathing: ${data.length} sessions, ${Math.round(total/60)} total minutes.`,
     `Patterns used: ${patterns.join(", ")}`,
@@ -321,66 +322,96 @@ async function gatherBreathing(userId: string): Promise<string> {
 async function gatherCooking(userId: string): Promise<string> {
   const { data: recipes } = await supabase
     .from("cooking_recipes")
-    .select("title,tags,cooking_time_minutes,created_at")
+    .select("id,title,cook_time,difficulty,status,rating")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(15);
   const { data: plan } = await supabase
     .from("cooking_plan_entries")
-    .select("meal_type,recipe_title,date")
+    .select("plan_date,meal_type,custom_label,recipe_id")
     .eq("user_id", userId)
-    .gte("date", daysAgoISO(7))
-    .order("date", { ascending: false });
-  const recipeList = (recipes || []) as any[];
-  const planList = (plan || []) as any[];
+    .gte("plan_date", daysAgoISO(7))
+    .order("plan_date", { ascending: false });
+  const recipeList = recipes || [];
+  const planList = plan || [];
+
+  // Plan rows point at recipes by id; older recipes may fall outside the list above.
+  const titleOf = new Map(recipeList.map((r) => [r.id, r.title]));
+  const missing = [...new Set(planList.map((p) => p.recipe_id).filter((id): id is string => !!id && !titleOf.has(id)))];
+  if (missing.length > 0) {
+    const { data: extra } = await supabase.from("cooking_recipes").select("id,title").in("id", missing);
+    for (const r of extra || []) titleOf.set(r.id, r.title);
+  }
+
   const parts: string[] = [];
   if (recipeList.length > 0) {
-    const lines = recipeList.slice(0, 8).map((r: any) => `- ${r.title}${r.cooking_time_minutes ? ` (${r.cooking_time_minutes}min)` : ""}${r.tags?.length ? ` [${r.tags.join(", ")}]` : ""}`);
+    const lines = recipeList.slice(0, 8).map((r) => {
+      const bits = [r.cook_time, r.difficulty, r.status, r.rating != null ? `${r.rating}/5` : ""].filter(Boolean);
+      return `- ${r.title}${bits.length ? ` (${bits.join(", ")})` : ""}`;
+    });
     parts.push(`Recipes (${recipeList.length} total):`, ...lines);
   }
   if (planList.length > 0) {
-    const lines = planList.slice(0, 5).map((p: any) => `- ${p.date}: ${p.meal_type}. ${p.recipe_title}`);
+    const lines = planList.slice(0, 5).map((p) => {
+      const what = (p.recipe_id && titleOf.get(p.recipe_id)) || p.custom_label || "unnamed";
+      return `- ${p.plan_date}: ${p.meal_type}. ${what}`;
+    });
     parts.push(`Meal plan (last 7 days, ${planList.length} entries):`, ...lines);
   }
   return parts.length > 0 ? parts.join("\n") : "No cooking recipes or meal plans yet.";
 }
 
 async function gatherCalendar(userId: string): Promise<string> {
-  const today = new Date().toISOString().split("T")[0];
-  const future = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+  const today = todayKey();
+  const future = addDays(today, 30);
   const { data } = await supabase
     .from("calendar_events")
-    .select("title,start_time,end_time,all_day,color")
+    .select("date,title,tag,notes")
     .eq("user_id", userId)
-    .gte("start_time", today)
-    .lte("start_time", future)
-    .order("start_time")
+    .gte("date", today)
+    .lte("date", future)
+    .order("date")
     .limit(30);
   if (!data || data.length === 0) return "No upcoming calendar events in the next 30 days.";
-  const lines = (data as any[]).map((e: any) => {
-    const time = e.all_day ? "all day" : e.start_time?.slice(11, 16) || "";
-    return `- ${e.start_time?.slice(0,10)} ${time}: ${e.title}`;
-  });
+  const lines = data.map((e) =>
+    `- ${e.date}: ${e.title}${e.tag ? ` [${e.tag}]` : ""}${e.notes ? `. ${e.notes.slice(0, 80)}` : ""}`
+  );
   return [`Calendar: ${data.length} upcoming events in next 30 days:`, ...lines].join("\n");
 }
 
 async function gatherLibrary(userId: string): Promise<string> {
-  const { data } = await supabase
-    .from("library_shares")
-    .select("title,type,category,tags,created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  if (!data || data.length === 0) return "No library items shared yet.";
-  const items = data as any[];
-  const byType: Record<string, number> = {};
-  for (const i of items) byType[i.type] = (byType[i.type] || 0) + 1;
-  const recent = items.slice(0, 8).map((i: any) => `- ${i.title} [${i.type}]${i.tags?.length ? ` tags: ${i.tags.join(", ")}` : ""}`);
-  return [
-    `Library: ${items.length} shared items. Types: ${Object.entries(byType).map(([t,n]) => `${t}(${n})`).join(", ")}`,
-    "Recent:",
-    ...recent,
-  ].join("\n");
+  const [{ data: books }, { data: courses }] = await Promise.all([
+    supabase
+      .from("user_books")
+      .select("title,author,status,pages_read,total_pages")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("user_courses")
+      .select("title,platform,progress_pct,status")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+  ]);
+  const bookList = books || [];
+  const courseList = courses || [];
+  if (bookList.length === 0 && courseList.length === 0) return "No books or courses in the library yet.";
+  const parts: string[] = [];
+  if (bookList.length > 0) {
+    const lines = bookList.slice(0, 10).map((b) => {
+      const progress = b.total_pages > 0 ? ` ${b.pages_read}/${b.total_pages} pages` : "";
+      return `- ${b.title}${b.author ? ` by ${b.author}` : ""} [${b.status}]${progress}`;
+    });
+    parts.push(`Books (${bookList.length}):`, ...lines);
+  }
+  if (courseList.length > 0) {
+    const lines = courseList.slice(0, 10).map((c) =>
+      `- ${c.title}${c.platform ? ` (${c.platform})` : ""} [${c.status}] ${c.progress_pct}%`
+    );
+    parts.push(`Courses (${courseList.length}):`, ...lines);
+  }
+  return parts.join("\n");
 }
 
 const GATHERERS: Record<ScopeId, (userId: string, question?: string) => Promise<string>> = {

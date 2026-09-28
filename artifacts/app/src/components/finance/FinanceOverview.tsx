@@ -47,7 +47,7 @@ export default function FinanceOverview({ monthlyData, currentMonthTotals, subsc
       {/* Quick info */}
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         <span className="px-3 py-1.5 rounded-lg bg-muted/30 border border-border">
-          📊 Top expense: <span className="text-foreground font-medium">{biggestExpenseCategory}</span>
+          📊 Top expense: <span className="text-foreground font-medium">{biggestExpenseCategory || "No expenses yet"}</span>
         </span>
         {outstandingLoansTotal > 0 && (
           <span className="px-3 py-1.5 rounded-lg bg-muted/30 border border-border">

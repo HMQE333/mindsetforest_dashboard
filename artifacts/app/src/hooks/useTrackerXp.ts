@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useUserSettings } from "./useUserSettings";
 import { useDashboardState } from "./useDashboardState";
+import { todayKey } from "@/lib/today";
 import {
   TrackerXpConfig,
   computeEntryXp,
@@ -16,11 +17,6 @@ interface GrantRow {
   ref_id: string;
   xp: number;
   date: string;
-}
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function useTrackerXp() {
@@ -63,7 +59,7 @@ export function useTrackerXp() {
   }, [user]);
 
   const todayEntryXp = useMemo(() => {
-    const today = todayISO();
+    const today = todayKey();
     return grants
       .filter(g => g.source === "entry" && g.date === today)
       .reduce((s, g) => s + g.xp, 0);
@@ -91,7 +87,7 @@ export function useTrackerXp() {
     // Daily cap. Compute today's entry total from the freshest grants so that
     // several logs submitted in quick succession can't collectively exceed it.
     if (config.dailyCap > 0) {
-      const today = todayISO();
+      const today = todayKey();
       const earnedToday = grantsRef.current
         .filter(g => g.source === "entry" && g.date === today)
         .reduce((s, g) => s + g.xp, 0);
@@ -102,7 +98,7 @@ export function useTrackerXp() {
 
     const { data, error } = await supabase
       .from("tracker_xp_grants")
-      .insert({ user_id: user.id, source: "entry", ref_id: metricId, xp, date: todayISO() })
+      .insert({ user_id: user.id, source: "entry", ref_id: metricId, xp, date: todayKey() })
       .select("id, source, ref_id, xp, date")
       .single();
     if (error || !data) return 0;
@@ -124,7 +120,7 @@ export function useTrackerXp() {
 
     const { data, error } = await supabase
       .from("tracker_xp_grants")
-      .insert({ user_id: user.id, source: "milestone", ref_id: achievementId, xp, date: todayISO() })
+      .insert({ user_id: user.id, source: "milestone", ref_id: achievementId, xp, date: todayKey() })
       .select("id, source, ref_id, xp, date")
       .single();
     if (error || !data) {

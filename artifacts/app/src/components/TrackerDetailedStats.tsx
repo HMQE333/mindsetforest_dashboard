@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { TrackerEntry, getMonthTotal, getYearTotal, getDailyAverage, getHabitScore, getLast7DaysTotal } from "@/hooks/useTrackerEntries";
 import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
+import { keyToDate, todayKey } from "@/lib/today";
+import { EMPTY } from "@/lib/utils";
 
 interface TrackerDetailedStatsProps {
   entries: TrackerEntry[];
@@ -24,7 +26,7 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
   const [selectedMetricId, setSelectedMetricId] = useState<string>(TRACKER_METRICS[0]?.id || "");
 
   const metric = TRACKER_METRICS.find((m) => m.id === selectedMetricId);
-  const now = new Date();
+  const now = keyToDate(todayKey());
   const year = now.getFullYear();
 
   const stats = useMemo(() => {
@@ -114,7 +116,7 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
                           s.extra === "above" ? "text-green-400" : s.extra === "below" ? "text-destructive" : "text-muted-foreground"
                         }`}
                       >
-                        {s.extra === "above" ? "↑ Above avg" : s.extra === "below" ? "↓ Below avg" : ". Average"}
+                        {s.extra === "above" ? "↑ Above avg" : s.extra === "below" ? "↓ Below avg" : `${EMPTY} Average`}
                       </div>
                     )}
                   </div>

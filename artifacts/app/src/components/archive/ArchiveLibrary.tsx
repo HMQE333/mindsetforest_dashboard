@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import { todayKey } from "@/lib/today";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -123,7 +124,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `archive-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `archive-export-${todayKey()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${blocks.length} blocks`);

@@ -102,6 +102,21 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
 
       const key = e.key.toLowerCase();
 
+      // An open overlay (settings, friends, any dialog) owns the keyboard. The
+      // one exception is our own shortcuts panel, which its toggle key or
+      // Escape may still close.
+      const openDialog = document.querySelector('[role="dialog"]');
+      if (openDialog) {
+        if (
+          openDialog.hasAttribute("data-shortcuts-panel") &&
+          (key === binds.toggleShortcuts.toLowerCase() || key === "k" || key === "escape")
+        ) {
+          e.preventDefault();
+          actions.toggleShortcutsPanel();
+        }
+        return;
+      }
+
       // Global
       if (key === binds.toggleShortcuts.toLowerCase() || key === "k") {
         e.preventDefault();
@@ -118,7 +133,9 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
       if (actions.context === "grid") {
         if (key === binds.resetDay.toLowerCase()) {
           e.preventDefault();
-          actions.resetDay();
+          if (window.confirm("Reset today's progress? Completed missions and today's counters will be cleared.")) {
+            actions.resetDay();
+          }
           return;
         }
         const categoryId = gridKeyMap[key];

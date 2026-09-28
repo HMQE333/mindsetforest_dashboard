@@ -4,6 +4,7 @@ import { Plus, Trash2, Pencil } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { monthKey, keyToDate, todayKey } from "@/lib/today";
 
 interface FocusItem {
   id: string;
@@ -26,8 +27,8 @@ export default function MonthlyFocusBanner({ pulseStyle = "glow" }: MonthlyFocus
   const [loading, setLoading] = useState(true);
   const [pulse, setPulse] = useState(false);
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthLabel = new Date().toLocaleString("default", { month: "long", year: "numeric" });
+  const currentMonth = monthKey();
+  const monthLabel = keyToDate(todayKey()).toLocaleString("default", { month: "long", year: "numeric" });
 
   useEffect(() => {
     if (!user) return;

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { TrackerEntry } from "@/hooks/useTrackerEntries";
+import { todayKey } from "@/lib/today";
 
 interface TrackerOverviewBarProps {
   entries: TrackerEntry[];
@@ -7,7 +8,7 @@ interface TrackerOverviewBarProps {
 }
 
 export default function TrackerOverviewBar({ entries, streak }: TrackerOverviewBarProps) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayKey();
   const todayEntries = entries.filter((e) => e.date === today);
   const uniqueMetricsToday = new Set(todayEntries.map((e) => e.metricId)).size;
   const totalLogsToday = todayEntries.length;

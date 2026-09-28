@@ -11,13 +11,14 @@ interface MetricsTabProps {
   onReset: () => Promise<void>;
 }
 
+// Keyed by the current pillar ids; the CSS variable names are the original ones.
 const CATEGORY_COLOR_MAP: Record<string, string> = {
   mind: "cat-mind",
   body: "cat-body",
-  creation: "cat-creation",
+  expression: "cat-creation",
   exploration: "cat-exploration",
-  networking: "cat-networking",
-  trading: "cat-trading",
+  people: "cat-networking",
+  money: "cat-trading",
   spirit: "cat-spirit",
   order: "cat-order",
 };

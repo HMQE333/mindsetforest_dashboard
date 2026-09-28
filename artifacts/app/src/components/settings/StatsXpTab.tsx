@@ -13,10 +13,15 @@ export default function StatsXpTab() {
 
   const [draft, setDraft] = useState<TrackerXpConfig>(config);
   const [dirty, setDirty] = useState(false);
-  const hasEdited = useMemo(() => false, []); // stable ref. Never resets draft after mount
 
-  // Only sync from server on first mount, not on every config refetch
-  useEffect(() => { setDraft(config); setDirty(false); }, []);
+  // Follow the loaded config (preferences arrive after mount) until the user
+  // starts editing; a dirty draft is never clobbered by a refetch. Keyed on the
+  // serialised config because the memo's identity changes every render.
+  const configKey = JSON.stringify(config);
+  useEffect(() => {
+    if (!dirty) setDraft(config);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configKey, dirty]);
 
   const grouped = useMemo(() => {
     const out: Record<string, typeof metrics> = {};

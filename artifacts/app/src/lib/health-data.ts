@@ -1,6 +1,8 @@
 // Standard adult reference ranges (AHA / ADA / WHO).
 // All thresholds use US units (mg/dL, %, kg, cm, mmHg, bpm) as in the database schema.
 
+import { formatLocalDate, keyToDate, todayKey } from "@/lib/today";
+
 export type HealthStatus = "optimal" | "borderline" | "out" | "unknown";
 
 export type HealthGroup = "metabolic" | "cardiovascular" | "blood" | "body";
@@ -298,11 +300,10 @@ export type HealthEntryInput = Omit<HealthEntry, "id" | "user_id" | "created_at"
 
 /** Generate sample seed entries for first-load demo data. */
 export function generateSampleEntries(): HealthEntryInput[] {
-  const today = new Date();
   const dayOffset = (n: number) => {
-    const d = new Date(today);
+    const d = keyToDate(todayKey());
     d.setMonth(d.getMonth() - n);
-    return d.toISOString().split("T")[0];
+    return formatLocalDate(d);
   };
   return [
     {

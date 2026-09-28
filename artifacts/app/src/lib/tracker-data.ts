@@ -1,3 +1,5 @@
+import { todayKey, lastNDays, computeStreak } from "@/lib/today";
+
 export interface TrackerMetric {
   id: string;
   label: string;
@@ -140,7 +142,7 @@ export function addEntry(metricId: string, value: number): TrackerEntry[] {
   const entry: TrackerEntry = {
     metricId,
     value,
-    date: now.toISOString().split("T")[0],
+    date: todayKey(),
     timestamp: now.getTime(),
   };
   entries.push(entry);
@@ -149,7 +151,7 @@ export function addEntry(metricId: string, value: number): TrackerEntry[] {
 }
 
 export function getTodayTotal(entries: TrackerEntry[], metricId: string): number {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayKey();
   return entries
     .filter((e) => e.metricId === metricId && e.date === today)
     .reduce((sum, e) => sum + e.value, 0);
@@ -170,35 +172,13 @@ export function getLast7DaysTotal(entries: TrackerEntry[], metricId: string): nu
 }
 
 export function getStreakDays(entries: TrackerEntry[]): number {
-  if (entries.length === 0) return 0;
-  const uniqueDates = [...new Set(entries.map((e) => e.date))].sort().reverse();
-  const today = new Date().toISOString().split("T")[0];
-  
-  let streak = 0;
-  let expectedDate = today;
-  
-  for (const date of uniqueDates) {
-    if (date === expectedDate) {
-      streak++;
-      const d = new Date(expectedDate);
-      d.setDate(d.getDate() - 1);
-      expectedDate = d.toISOString().split("T")[0];
-    } else if (date < expectedDate) {
-      break;
-    }
-  }
-  
-  return streak;
+  return computeStreak(entries.map((e) => e.date));
 }
 
 export function getDailyData(entries: TrackerEntry[], metricId: string, days: number = 7) {
   const result: { date: string; value: number }[] = [];
-  const now = new Date();
-  
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
+
+  for (const dateStr of lastNDays(days)) {
     const dayTotal = entries
       .filter((e) => e.metricId === metricId && e.date === dateStr)
       .reduce((sum, e) => sum + e.value, 0);

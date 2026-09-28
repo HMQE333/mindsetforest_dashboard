@@ -5,37 +5,10 @@ import { TrackerEntry, getMonthTotal } from "@/hooks/useTrackerEntries";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import PillarIcon from "@/components/shared/PillarIcon";
+import { keyToDate, todayKey } from "@/lib/today";
 
 interface TrackerActivityPulseProps {
   entries: TrackerEntry[];
-}
-
-// Sample data for demo
-function generateSampleData(): TrackerEntry[] {
-  const samples: TrackerEntry[] = [];
-  const now = new Date();
-  const metricIds = TRACKER_METRICS.map((m) => m.id);
-
-  for (let monthOffset = 11; monthOffset >= 0; monthOffset--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - monthOffset, 1);
-    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-
-    for (const metricId of metricIds) {
-      const count = Math.floor(Math.random() * 15) + 2;
-      for (let i = 0; i < count; i++) {
-        const day = Math.min(Math.floor(Math.random() * daysInMonth) + 1, daysInMonth);
-        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        samples.push({
-          id: `sample-${Date.now()}-${Math.random()}`,
-          metricId,
-          value: Math.floor(Math.random() * 10) + 1,
-          date,
-          createdAt: new Date(date).toISOString(),
-        });
-      }
-    }
-  }
-  return samples;
 }
 
 const bgColorMap: Record<string, string> = {
@@ -54,9 +27,7 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
   const { getCategories } = useUserSettings();
   const categories = getCategories();
 
-  const allEntries = useMemo(() => [...entries, ...generateSampleData()], [entries]);
-
-  const now = new Date();
+  const now = keyToDate(todayKey());
   const year = now.getFullYear();
 
   const months = useMemo(() => {
@@ -97,14 +68,14 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
       const monthlyTotals = months.map((mo) => {
         let total = 0;
         for (const mid of metricIds) {
-          total += getMonthTotal(allEntries, mid, mo.year, mo.month);
+          total += getMonthTotal(entries, mid, mo.year, mo.month);
         }
         return total;
       });
       const max = Math.max(1, ...monthlyTotals);
       return { ...cat, monthlyTotals, max };
     });
-  }, [allEntries, months, CATS]);
+  }, [entries, months, CATS]);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
@@ -184,10 +155,6 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
                   />
                 ))}
                 <span className="text-[9px] text-muted-foreground">More</span>
-              </div>
-
-              <div className="text-[9px] text-muted-foreground/50 text-right mt-1 italic">
-                * Includes sample data for preview
               </div>
             </div>
           </motion.div>

@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
+import { todayKey, computeStreak } from "@/lib/today";
+import { activeDayKeys } from "./useDailyCompletions";
 
 export interface DashboardState {
   currentXP: number;
@@ -24,22 +26,6 @@ export interface DashboardState {
   completedMissions: Set<string>;
   customMissions: Record<string, Mission[]>;
   rolledVariants: Record<string, number>;
-}
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function yesterdayISO(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() - 1);
-  return todayISOFrom(dt);
-}
-
-function todayISOFrom(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function rollVariant(variants: MissionVariant[]): number {
@@ -84,10 +70,27 @@ function rollAllVariants(
   return rolled;
 }
 
+/**
+ * The per-day counters, cleared once the 04:00 boundary has passed since the
+ * state was last touched. Applied on load and before every completion, so a
+ * tab left open overnight cannot merge two days.
+ */
+function rolloverIfNeeded(prev: DashboardState, today: string): DashboardState {
+  if (prev.dayKey === today) return prev;
+  return {
+    ...prev,
+    dayKey: today,
+    missionsCompleted: 0,
+    categoriesEngaged: new Set(),
+    completedMissions: new Set(),
+    rolledVariants: rollAllVariants(prev.customMissions),
+  };
+}
+
 const defaultState: DashboardState = {
   currentXP: 0,
   currentLevel: 1,
-  streakDays: 1,
+  streakDays: 0,
   lastCompletionDate: null,
   dayKey: null,
   missionsCompleted: 0,
@@ -99,8 +102,11 @@ const defaultState: DashboardState = {
 
 function useDashboardStateValue() {
   const { user } = useAuth();
-  const [state, setState] = useState<DashboardState>({ ...defaultState, dayKey: todayISO() });
+  const [state, setState] = useState<DashboardState>({ ...defaultState, dayKey: todayKey() });
   const [loading, setLoading] = useState(true);
+  // Days with a mission or XP logged (from daily_completions), plus today once a
+  // completion happens. The streak is computed over this set, never incremented.
+  const activeDaysRef = useRef<Set<string>>(new Set());
   // True only once the current user's row has been loaded from the DB. Because
   // this provider now mounts at the app root (before login), we must not persist
   // until the real state is loaded . otherwise a mutation during the load window
@@ -113,7 +119,8 @@ function useDashboardStateValue() {
     if (!user) {
       // Logged out (or not yet logged in): reset to defaults so a previous
       // user's state can never leak or be persisted under a new session.
-      setState({ ...defaultState, dayKey: todayISO() });
+      setState({ ...defaultState, dayKey: todayKey() });
+      activeDaysRef.current = new Set();
       setLoading(false);
       return;
     }
@@ -121,12 +128,16 @@ function useDashboardStateValue() {
     setLoading(true);
     let cancelled = false;
     const load = async () => {
-      const { data, error } = await supabase
-        .from("dashboard_state")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const [{ data, error }, activeDays] = await Promise.all([
+        supabase
+          .from("dashboard_state")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        activeDayKeys(user.id),
+      ]);
       if (cancelled) return;
+      if (activeDays) activeDaysRef.current = activeDays;
 
       if (error) {
         // Transient load failure. Do NOT mark loaded . keeping loadedRef false
@@ -142,28 +153,29 @@ function useDashboardStateValue() {
       }
 
       if (data) {
-        const today = todayISO();
-        const needsReset = data.day_key !== today;
+        const today = todayKey();
         const customMissions = (data.custom_missions as unknown as Record<string, Mission[]>) || {};
         const existingRolled = ((data as { rolled_variants?: Record<string, number> }).rolled_variants) || {};
-        const rolledVariants = needsReset ? rollAllVariants(customMissions) : existingRolled;
 
-        setState({
+        const loaded: DashboardState = {
           currentXP: data.current_xp,
           currentLevel: data.current_level,
-          streakDays: data.streak_days,
+          // Recomputed from history so a run of missed days drops the streak
+          // before the next completion. Kept as stored if the history read failed.
+          streakDays: activeDays ? computeStreak(activeDays, today) : data.streak_days,
           lastCompletionDate: data.last_completion_date,
-          dayKey: needsReset ? today : data.day_key,
-          missionsCompleted: needsReset ? 0 : data.missions_completed,
-          categoriesEngaged: new Set(needsReset ? [] : (data.categories_engaged || [])),
-          completedMissions: new Set(needsReset ? [] : (data.completed_missions || [])),
+          dayKey: data.day_key,
+          missionsCompleted: data.missions_completed,
+          categoriesEngaged: new Set(data.categories_engaged || []),
+          completedMissions: new Set(data.completed_missions || []),
           customMissions,
-          rolledVariants,
-        });
+          rolledVariants: existingRolled,
+        };
+        setState(rolloverIfNeeded(loaded, today));
       } else {
         // No existing row (new user) . start clean rather than inheriting any
         // prior in-memory state.
-        setState({ ...defaultState, dayKey: todayISO() });
+        setState({ ...defaultState, dayKey: todayKey() });
       }
       loadedRef.current = true;
       setLoading(false);
@@ -182,7 +194,7 @@ function useDashboardStateValue() {
       current_level: s.currentLevel,
       streak_days: s.streakDays,
       last_completion_date: s.lastCompletionDate,
-      day_key: s.dayKey || todayISO(),
+      day_key: s.dayKey || todayKey(),
       missions_completed: s.missionsCompleted,
       categories_engaged: Array.from(s.categoriesEngaged),
       completed_missions: Array.from(s.completedMissions),
@@ -196,34 +208,28 @@ function useDashboardStateValue() {
 
   const completeMission = useCallback((categoryId: string, missionIndex: number, xp: number) => {
     setState(prev => {
+      const today = todayKey();
+      const base = rolloverIfNeeded(prev, today);
       const missionId = `${categoryId}-${missionIndex}`;
-      if (prev.completedMissions.has(missionId)) return prev;
+      if (base.completedMissions.has(missionId)) return prev;
 
-      const today = todayISO();
-      let streakDays = prev.streakDays;
-      if (prev.lastCompletionDate) {
-        if (prev.lastCompletionDate !== today) {
-          streakDays = prev.lastCompletionDate === yesterdayISO(today) ? streakDays + 1 : 1;
-        }
-      } else {
-        streakDays = 1;
-      }
+      activeDaysRef.current.add(today);
+      const streakDays = computeStreak(activeDaysRef.current, today);
 
-      const newXP = prev.currentXP + xp;
+      const newXP = base.currentXP + xp;
       const newLevel = Math.floor(newXP / 100) + 1;
-      const newCompleted = new Set(prev.completedMissions);
+      const newCompleted = new Set(base.completedMissions);
       newCompleted.add(missionId);
-      const newCategories = new Set(prev.categoriesEngaged);
+      const newCategories = new Set(base.categoriesEngaged);
       newCategories.add(categoryId);
 
       const next: DashboardState = {
-        ...prev,
+        ...base,
         currentXP: newXP,
         currentLevel: newLevel,
         streakDays,
         lastCompletionDate: today,
-        dayKey: today,
-        missionsCompleted: prev.missionsCompleted + 1,
+        missionsCompleted: base.missionsCompleted + 1,
         categoriesEngaged: newCategories,
         completedMissions: newCompleted,
       };
@@ -249,7 +255,7 @@ function useDashboardStateValue() {
         categoriesEngaged: new Set(),
         completedMissions: new Set(),
         customMissions: newCustomMissions,
-        dayKey: todayISO(),
+        dayKey: todayKey(),
         rolledVariants: rollAllVariants(newCustomMissions),
       };
       persist(next);
@@ -410,31 +416,47 @@ function useDashboardStateValue() {
    */
   const completeExternal = useCallback((categoryId: string | null, xp: number) => {
     setState(prev => {
-      const today = todayISO();
-      let streakDays = prev.streakDays;
-      if (prev.lastCompletionDate) {
-        if (prev.lastCompletionDate !== today) {
-          streakDays = prev.lastCompletionDate === yesterdayISO(today) ? streakDays + 1 : 1;
-        }
-      } else {
-        streakDays = 1;
-      }
+      const today = todayKey();
+      const base = rolloverIfNeeded(prev, today);
 
-      const newXP = prev.currentXP + xp;
-      const newCategories = new Set(prev.categoriesEngaged);
+      activeDaysRef.current.add(today);
+      const streakDays = computeStreak(activeDaysRef.current, today);
+
+      const newXP = base.currentXP + xp;
+      const newCategories = new Set(base.categoriesEngaged);
       if (categoryId) newCategories.add(categoryId);
 
       const next: DashboardState = {
-        ...prev,
+        ...base,
         currentXP: newXP,
         currentLevel: Math.floor(newXP / 100) + 1,
         streakDays,
         lastCompletionDate: today,
-        dayKey: today,
-        missionsCompleted: prev.missionsCompleted + 1,
+        missionsCompleted: base.missionsCompleted + 1,
         categoriesEngaged: newCategories,
       };
 
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  /**
+   * Reverses a completeExternal (a Path step undone). The XP and the day's
+   * mission count come back; the streak is left alone - it is recomputed from
+   * history on the next load. `categoryId` is accepted for symmetry with
+   * completeExternal; engagement is not reversed because other completions
+   * may have touched the same category.
+   */
+  const undoExternal = useCallback((_categoryId: string | null, xp: number) => {
+    setState(prev => {
+      const newXP = Math.max(0, prev.currentXP - xp);
+      const next: DashboardState = {
+        ...prev,
+        currentXP: newXP,
+        currentLevel: Math.max(1, Math.floor(newXP / 100) + 1),
+        missionsCompleted: Math.max(0, prev.missionsCompleted - 1),
+      };
       persist(next);
       return next;
     });
@@ -467,6 +489,7 @@ function useDashboardStateValue() {
     spendXP,
     addXP,
     completeExternal,
+    undoExternal,
     rerollMission,
     getMissions,
     getCompletedCount,

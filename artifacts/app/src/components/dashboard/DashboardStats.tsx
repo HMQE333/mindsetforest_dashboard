@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, Download } from "lucide-react";
 import { DailyCompletion } from "@/hooks/useDailyCompletions";
 import { Category } from "@/lib/dashboard-data";
+import { todayKey } from "@/lib/today";
+import { EMPTY } from "@/lib/utils";
 
 type Period = "week" | "month" | "year" | "all";
 
@@ -75,7 +77,7 @@ async function exportCSV(all: DailyCompletion[], dashboardState?: DashboardStats
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `mindsetforest-progress-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `mindsetforest-progress-${todayKey()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -101,9 +103,10 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
 
   // Current + previous window entries for the selected period.
   const { current, previous, buckets, bucketLabel } = useMemo(() => {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const today = todayKey();
+    const yyyy = Number(today.slice(0, 4));
+    const mm = today.slice(5, 7);
+    const monthIdx = Number(mm) - 1;
     const source = period === "week" ? history : allHistory || [];
 
     if (period === "week") {
@@ -118,19 +121,19 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
 
     if (period === "month") {
       const prefix = `${yyyy}-${mm}`;
-      const pm = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-      const py = now.getMonth() === 0 ? yyyy - 1 : yyyy;
+      const pm = monthIdx === 0 ? 11 : monthIdx - 1;
+      const py = monthIdx === 0 ? yyyy - 1 : yyyy;
       const prevPrefix = `${py}-${String(pm + 1).padStart(2, "0")}`;
       const cur = source.filter((d) => d.date.startsWith(prefix));
       const prev = source.filter((d) => d.date.startsWith(prevPrefix));
-      const daysInMonth = new Date(yyyy, now.getMonth() + 1, 0).getDate();
+      const daysInMonth = new Date(yyyy, monthIdx + 1, 0).getDate();
       const byDay = new Map<string, number>();
       for (const d of cur) byDay.set(d.date, (byDay.get(d.date) || 0) + d.xp_earned);
       const buckets = Array.from({ length: daysInMonth }, (_, i) => {
         const day = String(i + 1).padStart(2, "0");
         return { label: String(i + 1), value: byDay.get(`${prefix}-${day}`) || 0 };
       });
-      return { current: cur, previous: prev, buckets, bucketLabel: `${MONTH_LABELS[now.getMonth()]} ${yyyy}` };
+      return { current: cur, previous: prev, buckets, bucketLabel: `${MONTH_LABELS[monthIdx]} ${yyyy}` };
     }
 
     if (period === "year") {
@@ -179,10 +182,10 @@ export default function DashboardStats({ history, fetchAllHistory, dashboardStat
   if (history.length === 0 && (allHistory === null || allHistory.length === 0)) return null;
 
   const deltaBadge = (delta: number | null) => {
-    if (delta === null) return <span className="text-muted-foreground">.</span>;
+    if (delta === null) return <span className="text-muted-foreground">{EMPTY}</span>;
     if (delta > 0) return <span className="text-green-400">↑ {delta}%</span>;
     if (delta < 0) return <span className="text-destructive">↓ {Math.abs(delta)}%</span>;
-    return <span className="text-muted-foreground">. 0%</span>;
+    return <span className="text-muted-foreground">{EMPTY} 0%</span>;
   };
 
   return (

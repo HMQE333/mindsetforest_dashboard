@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, EMPTY } from "@/lib/utils";
+import { formatLocalDate, todayKey } from "@/lib/today";
 import GarminDropzone, { type RunFields } from "./GarminDropzone";
 import {
   HRV_STATUS_OPTIONS,
@@ -31,7 +32,7 @@ interface Props {
 
 function emptyForm(): WatchEntryInput {
   return {
-    entry_date: new Date().toISOString().split("T")[0],
+    entry_date: todayKey(),
     source: "manual",
     resting_hr: null, hrv_ms: null, hrv_status: null,
     sleep_score: null, sleep_deep_min: null, sleep_rem_min: null, sleep_light_min: null, sleep_awake_min: null,
@@ -158,7 +159,7 @@ export default function LogWatchModal({ open, onClose, onSave, initial }: Props)
                 <Calendar
                   mode="single"
                   selected={form.entry_date ? new Date(form.entry_date + "T12:00:00") : undefined}
-                  onSelect={d => d && setField("entry_date", d.toISOString().split("T")[0])}
+                  onSelect={d => d && setField("entry_date", formatLocalDate(d))}
                   className={cn("p-3 pointer-events-auto")}
                   disabled={d => d > new Date()}
                 />
@@ -181,7 +182,7 @@ export default function LogWatchModal({ open, onClose, onSave, initial }: Props)
                 <Label className="text-xs">HRV Status</Label>
                 <Select value={form.hrv_status ?? ""} onValueChange={v => setField("hrv_status", v || null)}>
                   <SelectTrigger className="h-10">
-                    <SelectValue placeholder="." />
+                    <SelectValue placeholder={EMPTY} />
                   </SelectTrigger>
                   <SelectContent>
                     {HRV_STATUS_OPTIONS.map(s => (

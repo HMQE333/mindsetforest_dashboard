@@ -7,6 +7,7 @@ import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import AuthorPeekPopover from "./AuthorPeekPopover";
 import { useForestCollections } from "@/hooks/useForestCollections";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EMPTY } from "@/lib/utils";
 
 interface Props {
   seed: SeedWithAuthor;
@@ -293,7 +294,7 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
                   </div>
                 )}
                 <p className="text-[15px] leading-7 text-foreground/90 whitespace-pre-wrap font-serif">
-                  {seed.content || "."}
+                  {seed.content || EMPTY}
                 </p>
                 {seed.source_url && (
                   <a href={seed.source_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">

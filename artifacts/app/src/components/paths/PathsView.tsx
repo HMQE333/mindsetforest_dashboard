@@ -16,7 +16,7 @@ export default function PathsView() {
     recordRevision, revertTo, setDiagnosis, scoreDiagnosis, snoozeStep,
   } = usePaths();
   const { getCategories } = useUserSettings();
-  const { completeExternal } = useDashboardState();
+  const { completeExternal, undoExternal } = useDashboardState();
   const categories = getCategories();
 
   const [newName, setNewName] = useState("");
@@ -57,6 +57,11 @@ export default function PathsView() {
     const remaining = before.filter(s => !s.done && s.id !== stepId).length;
     if (stepDone && remaining === 0) toast.success("🏆 Path complete.");
     else if (stepDone) toast.success(`Step done · +${xp} XP`);
+  };
+
+  const handleUndo = async (pathCategoryId: string | null, stepId: string) => {
+    const xp = await undoToday(stepId);
+    if (xp > 0) undoExternal(pathCategoryId, xp);
   };
 
   const handleRevert = async (revisionId: string) => {
@@ -156,7 +161,7 @@ export default function PathsView() {
                   onRevert={handleRevert}
                   onSnoozeStep={snoozeStep}
                   engineReady={engineReady}
-                  onUndo={undoToday}
+                  onUndo={(stepId) => handleUndo(path.category_id, stepId)}
                   onAddStep={(title, reps) => addStep(path.id, title, reps > 1 ? { mode: "reps", repsTarget: reps } : {})}
                   onUpdateStep={updateStep}
                   onDeleteStep={deleteStep}

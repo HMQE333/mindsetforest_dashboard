@@ -11,6 +11,7 @@ import {
   buildWatchCsvTemplate,
   type ParsedWatchDay,
 } from "@/lib/watch-import";
+import { EMPTY } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -243,11 +244,11 @@ export default function WeeklyImportModal({ open, onClose, onImport }: Props) {
                             <Checkbox checked={on} onCheckedChange={() => toggle(e.entry_date)} aria-label={`Include ${e.entry_date}`} />
                           </td>
                           <td className="p-2 font-semibold text-foreground whitespace-nowrap">{e.entry_date}</td>
-                          <td className="p-2 tabular-nums">{e.resting_hr ?? "."}</td>
-                          <td className="p-2 tabular-nums">{e.sleep_score ?? "."}</td>
-                          <td className="p-2 tabular-nums">{e.body_battery ?? "."}</td>
-                          <td className="p-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? "."}</td>
-                          <td className="p-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : "."}</td>
+                          <td className="p-2 tabular-nums">{e.resting_hr ?? EMPTY}</td>
+                          <td className="p-2 tabular-nums">{e.sleep_score ?? EMPTY}</td>
+                          <td className="p-2 tabular-nums">{e.body_battery ?? EMPTY}</td>
+                          <td className="p-2 tabular-nums">{fmtPace(e.run_pace_sec) ?? EMPTY}</td>
+                          <td className="p-2 tabular-nums">{e.steps != null ? e.steps.toLocaleString() : EMPTY}</td>
                           <td className="p-2 tabular-nums text-muted-foreground">{d.filled}</td>
                         </tr>
                       );

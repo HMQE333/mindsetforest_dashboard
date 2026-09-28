@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveAIPreviewModal from "./ArchiveAIPreviewModal";
+import { EMPTY } from "@/lib/utils";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
@@ -285,7 +286,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
                   </div>
                 )}
                 <p className="text-[15px] leading-7 text-foreground/90 whitespace-pre-wrap font-serif">
-                  {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "."}
+                  {block.content.replace(IMAGE_TAG_REGEX, "").trim() || EMPTY}
                 </p>
                 {block.source_url && (
                   <a href={block.source_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">

@@ -14,6 +14,7 @@ const COLOR_PRESETS = [
   { color: "#F97316", lightColor: "#FB923C", label: "Orange" },
   { color: "#06B6D4", lightColor: "#22D3EE", label: "Cyan" },
   { color: "#FBBF24", lightColor: "#FCD34D", label: "Gold" },
+  { color: "#2DD4BF", lightColor: "#5EEAD4", label: "Teal" },
   { color: "#6366F1", lightColor: "#818CF8", label: "Indigo" },
   { color: "#D946EF", lightColor: "#E879F9", label: "Pink" },
   { color: "#A1A1AA", lightColor: "#D4D4D8", label: "Gray" },

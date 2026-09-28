@@ -5,6 +5,8 @@ import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import { useFriends } from "@/hooks/useFriends";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { usePillars } from "@/hooks/usePillars";
+import { todayKey } from "@/lib/today";
+import { EMPTY } from "@/lib/utils";
 
 const DAILY_LIMIT = 5;
 const STORAGE_KEY = "forest_daily_seen_v1";
@@ -23,7 +25,7 @@ const ForestDailyStack = ({ onOpenDiscover }: { onOpenDiscover?: () => void }) =
   const allPillars = usePillars();
   const friendIds = useMemo(() => new Set(friends.accepted.map((f) => f.friend.user_id)), [friends.accepted]);
 
-  const dayKey = new Date().toISOString().slice(0, 10);
+  const dayKey = todayKey();
 
   const [seenToday, setSeenToday] = useState<Set<string>>(() => {
     try {
@@ -361,7 +363,7 @@ const SeedSwipeCard = ({
           </div>
         )}
         <p className="text-sm text-foreground/90 leading-6 whitespace-pre-wrap font-serif">
-          {seed.content || "."}
+          {seed.content || EMPTY}
         </p>
       </div>
 

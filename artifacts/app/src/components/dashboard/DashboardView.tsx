@@ -21,7 +21,7 @@ import DashboardStats from "./DashboardStats";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, completeExternal, addXP, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -165,8 +165,11 @@ export default function DashboardView() {
 
   const handleUndoPathStep = useCallback(async (stepId: string) => {
     const xp = await undoToday(stepId);
-    if (xp > 0) addXP(-xp);
-  }, [undoToday, addXP]);
+    if (xp > 0) {
+      const categoryId = todaySteps.find(s => s.step.id === stepId)?.path.category_id ?? null;
+      undoExternal(categoryId, xp);
+    }
+  }, [undoToday, undoExternal, todaySteps]);
 
   if (loading) {
     return (
