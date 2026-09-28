@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images" | "digest" | "forest" | "bookmarks";
+type SubView = "inbox" | "library" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;

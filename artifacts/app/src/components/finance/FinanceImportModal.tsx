@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, Upload, CheckSquare, Square as SquareIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { FinanceTransaction } from "@/hooks/useFinanceState";
 import { useFinanceCategories } from "@/hooks/useFinanceCategories";
 import { toast } from "sonner";
 
@@ -17,7 +18,7 @@ interface ImportRow {
 interface Props {
   open: boolean;
   onClose: () => void;
-  onImport: (rows: Array<{ date: string; title: string; amount: number; type: "income" | "expense"; category: string }>) => Promise<number>;
+  onImport: (rows: Array<Omit<FinanceTransaction, "id" | "user_id" | "created_at">>) => Promise<number>;
 }
 
 export default function FinanceImportModal({ open, onClose, onImport }: Props) {
@@ -78,7 +79,7 @@ export default function FinanceImportModal({ open, onClose, onImport }: Props) {
           date, title, amount, type, category,
           is_recurring: false, recurring_day: null, person_name: "", is_settled: false, notes: "",
         }));
-      const count = await onImport(toImport as any);
+      const count = await onImport(toImport);
       if (count > 0) {
         toast.success(`Zaimportowano ${count} transakcji`);
         setRows([]);

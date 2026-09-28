@@ -68,6 +68,7 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }
+    return undefined;
   }, [lightboxIndex, handleKeyDown]);
 
   if (loading) {

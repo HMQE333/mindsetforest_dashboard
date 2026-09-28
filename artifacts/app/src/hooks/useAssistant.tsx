@@ -402,9 +402,7 @@ function useAssistantValue() {
             // Phase 1: insert all nodes
             for (let i = 0; i < nodes.length; i++) {
               const n = nodes[i];
-              const { data: inserted, error } = await (supabase.from("planning_tasks" as never) as never as {
-                insert: (rows: unknown[]) => Promise<{ data: { id: string }[] | null; error: unknown }>;
-              }).insert([{
+              const { data: inserted, error } = await supabase.from("planning_tasks").insert([{
                 user_id: user.id,
                 project_id: null,
                 board_id: null,
@@ -438,9 +436,7 @@ function useAssistantValue() {
                 const parentId = realIds[n.parentIndex];
                 const childId = realIds[i];
                 if (parentId && childId) {
-                  const { error } = await (supabase.from("planning_tasks" as never) as never as {
-                    update: (patch: unknown) => Promise<{ eq: (col: string, val: string) => Promise<{ error: unknown }> }>;
-                  }).update({ parent_id: parentId }).eq("id", childId).eq("user_id", user.id);
+                  const { error } = await supabase.from("planning_tasks").update({ parent_id: parentId }).eq("id", childId).eq("user_id", user.id);
                   if (!error) ok++;
                 }
               }
@@ -452,9 +448,7 @@ function useAssistantValue() {
           } else if (action.type === "extend_mindmap") {
             // Find an existing node whose title partially matches attachTo (case-insensitive)
             const search = action.attachTo.toLowerCase();
-            const { data: existing } = await (supabase.from("planning_tasks" as never) as never as {
-              select: (cols: string) => Promise<{ data: { id: string; title: string }[] | null; error: unknown }>;
-            }).select("id,title").eq("user_id", user.id).ilike("title", `%${search}%`).limit(5);
+            const { data: existing } = await supabase.from("planning_tasks").select("id,title").eq("user_id", user.id).ilike("title", `%${search}%`).limit(5);
             const match = (existing || []).find((t: any) => t.title?.toLowerCase().includes(search));
             const parentId = match?.id || null;
 
@@ -465,9 +459,7 @@ function useAssistantValue() {
             for (let i = 0; i < nodes.length; i++) {
               const n = nodes[i];
               const nodeParentId = n.parentIndex == null ? parentId : null; // only root-of-batch gets the target parent
-              const { data: inserted, error } = await (supabase.from("planning_tasks" as never) as never as {
-                insert: (rows: unknown[]) => Promise<{ data: { id: string }[] | null; error: unknown }>;
-              }).insert([{
+              const { data: inserted, error } = await supabase.from("planning_tasks").insert([{
                 user_id: user.id,
                 project_id: null,
                 board_id: null,
@@ -501,9 +493,7 @@ function useAssistantValue() {
                 const batchParentId = realIds[n.parentIndex];
                 const childId = realIds[i];
                 if (batchParentId && childId) {
-                  const { error } = await (supabase.from("planning_tasks" as never) as never as {
-                    update: (patch: unknown) => Promise<{ eq: (col: string, val: string) => Promise<{ error: unknown }> }>;
-                  }).update({ parent_id: batchParentId }).eq("id", childId).eq("user_id", user.id);
+                  const { error } = await supabase.from("planning_tasks").update({ parent_id: batchParentId }).eq("id", childId).eq("user_id", user.id);
                   if (!error) ok++;
                 }
               }

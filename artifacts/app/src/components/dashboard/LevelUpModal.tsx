@@ -15,6 +15,7 @@ export default function LevelUpModal({ level, show }: LevelUpModalProps) {
       const timer = setTimeout(() => setVisible(false), 3000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [show, level]);
 
   return (

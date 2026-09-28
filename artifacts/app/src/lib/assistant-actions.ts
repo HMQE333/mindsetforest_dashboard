@@ -92,7 +92,7 @@ const LEVEL_ICONS: Record<string, string> = {
 function nodesToTreePreview(nodes: { title: string; level: string; parentIndex?: number }[]): string {
   const lines: string[] = [];
   function walk(parentIdx: number | null, depth: number) {
-    const children = nodes.filter((_, i) => {
+    const children = nodes.filter((n) => {
       if (parentIdx === null) return n.parentIndex === undefined || n.parentIndex == null;
       return n.parentIndex === parentIdx;
     });

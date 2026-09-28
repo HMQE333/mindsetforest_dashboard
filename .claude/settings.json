@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sS --max-time 60 https://api.supabase.com/v1/projects/ozmephoezqjlblamwrnk/*)"
+    ]
+  }
+}

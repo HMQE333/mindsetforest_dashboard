@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -93,6 +93,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      board_projects: {
+        Row: {
+          board_id: string
+          created_at: string
+          id: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          board_id: string
+          created_at?: string
+          id?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          board_id?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_projects_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "planning_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_projects_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "user_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bookmarks: {
+        Row: {
+          created_at: string
+          id: string
+          title: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       breathing_sessions: {
         Row: {
@@ -829,36 +892,6 @@ export type Database = {
         }
         Relationships: []
       }
-      habit_loops: {
-        Row: {
-          category_id: string
-          created_at: string
-          current_loop: number
-          id: string
-          loops: Json
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          category_id?: string
-          created_at?: string
-          current_loop?: number
-          id?: string
-          loops?: Json
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          category_id?: string
-          created_at?: string
-          current_loop?: number
-          id?: string
-          loops?: Json
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       health_entries: {
         Row: {
           bp_diastolic: number | null
@@ -934,138 +967,6 @@ export type Database = {
         }
         Relationships: []
       }
-      watch_entries: {
-        Row: {
-          body_battery: number | null
-          created_at: string
-          entry_date: string
-          fitness_age: number | null
-          hrv_ms: number | null
-          hrv_status: string | null
-          id: string
-          intensity_minutes: number | null
-          notes: string
-          race_10k_sec: number | null
-          race_5k_sec: number | null
-          race_half_sec: number | null
-          race_marathon_sec: number | null
-          recovery_time_hrs: number | null
-          resting_hr: number | null
-          run_avg_hr: number | null
-          run_cadence_spm: number | null
-          run_distance_km: number | null
-          run_kcal: number | null
-          run_pace_sec: number | null
-          run_power_w: number | null
-          sleep_awake_min: number | null
-          sleep_deep_min: number | null
-          sleep_light_min: number | null
-          sleep_rem_min: number | null
-          sleep_score: number | null
-          source: string
-          steps: number | null
-          stress_level: number | null
-          updated_at: string
-          user_id: string
-          vo2max: number | null
-        }
-        Insert: {
-          body_battery?: number | null
-          created_at?: string
-          entry_date?: string
-          fitness_age?: number | null
-          hrv_ms?: number | null
-          hrv_status?: string | null
-          id?: string
-          intensity_minutes?: number | null
-          notes?: string
-          race_10k_sec?: number | null
-          race_5k_sec?: number | null
-          race_half_sec?: number | null
-          race_marathon_sec?: number | null
-          recovery_time_hrs?: number | null
-          resting_hr?: number | null
-          run_avg_hr?: number | null
-          run_cadence_spm?: number | null
-          run_distance_km?: number | null
-          run_kcal?: number | null
-          run_pace_sec?: number | null
-          run_power_w?: number | null
-          sleep_awake_min?: number | null
-          sleep_deep_min?: number | null
-          sleep_light_min?: number | null
-          sleep_rem_min?: number | null
-          sleep_score?: number | null
-          source?: string
-          steps?: number | null
-          stress_level?: number | null
-          updated_at?: string
-          user_id: string
-          vo2max?: number | null
-        }
-        Update: {
-          body_battery?: number | null
-          created_at?: string
-          entry_date?: string
-          fitness_age?: number | null
-          hrv_ms?: number | null
-          hrv_status?: string | null
-          id?: string
-          intensity_minutes?: number | null
-          notes?: string
-          race_10k_sec?: number | null
-          race_5k_sec?: number | null
-          race_half_sec?: number | null
-          race_marathon_sec?: number | null
-          recovery_time_hrs?: number | null
-          resting_hr?: number | null
-          run_avg_hr?: number | null
-          run_cadence_spm?: number | null
-          run_distance_km?: number | null
-          run_kcal?: number | null
-          run_pace_sec?: number | null
-          run_power_w?: number | null
-          sleep_awake_min?: number | null
-          sleep_deep_min?: number | null
-          sleep_light_min?: number | null
-          sleep_rem_min?: number | null
-          sleep_score?: number | null
-          source?: string
-          steps?: number | null
-          stress_level?: number | null
-          updated_at?: string
-          user_id?: string
-          vo2max?: number | null
-        }
-        Relationships: []
-      }
-      ladder_state: {
-        Row: {
-          active_category: string | null
-          created_at: string
-          id: string
-          ladders: Json
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          active_category?: string | null
-          created_at?: string
-          id?: string
-          ladders?: Json
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          active_category?: string | null
-          created_at?: string
-          id?: string
-          ladders?: Json
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       library_shares: {
         Row: {
           created_at: string
@@ -1135,6 +1036,205 @@ export type Database = {
         }
         Relationships: []
       }
+      path_revisions: {
+        Row: {
+          created_at: string
+          id: string
+          path_id: string
+          reason: string | null
+          snapshot: Json
+          source: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          path_id: string
+          reason?: string | null
+          snapshot: Json
+          source?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          path_id?: string
+          reason?: string | null
+          snapshot?: Json
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "path_revisions_path_id_fkey"
+            columns: ["path_id"]
+            isOneToOne: false
+            referencedRelation: "paths"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      path_step_logs: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          path_id: string
+          step_id: string
+          user_id: string
+          xp: number
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          path_id: string
+          step_id: string
+          user_id: string
+          xp?: number
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          path_id?: string
+          step_id?: string
+          user_id?: string
+          xp?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "path_step_logs_path_id_fkey"
+            columns: ["path_id"]
+            isOneToOne: false
+            referencedRelation: "paths"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "path_step_logs_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "path_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      path_steps: {
+        Row: {
+          created_at: string
+          done: boolean
+          done_at: string | null
+          id: string
+          mode: string
+          path_id: string
+          reps_done: number
+          reps_target: number
+          snoozed_until: string | null
+          sort_order: number
+          stage: string | null
+          title: string
+          user_id: string
+          xp: number
+        }
+        Insert: {
+          created_at?: string
+          done?: boolean
+          done_at?: string | null
+          id?: string
+          mode?: string
+          path_id: string
+          reps_done?: number
+          reps_target?: number
+          snoozed_until?: string | null
+          sort_order?: number
+          stage?: string | null
+          title: string
+          user_id: string
+          xp?: number
+        }
+        Update: {
+          created_at?: string
+          done?: boolean
+          done_at?: string | null
+          id?: string
+          mode?: string
+          path_id?: string
+          reps_done?: number
+          reps_target?: number
+          snoozed_until?: string | null
+          sort_order?: number
+          stage?: string | null
+          title?: string
+          user_id?: string
+          xp?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "path_steps_path_id_fkey"
+            columns: ["path_id"]
+            isOneToOne: false
+            referencedRelation: "paths"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paths: {
+        Row: {
+          archived: boolean
+          category_id: string | null
+          created_at: string
+          diagnosis: string | null
+          diagnosis_actual: string | null
+          diagnosis_verdict: string | null
+          id: string
+          name: string
+          scored_at: string | null
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          archived?: boolean
+          category_id?: string | null
+          created_at?: string
+          diagnosis?: string | null
+          diagnosis_actual?: string | null
+          diagnosis_verdict?: string | null
+          id?: string
+          name: string
+          scored_at?: string | null
+          sort_order?: number
+          user_id: string
+        }
+        Update: {
+          archived?: boolean
+          category_id?: string | null
+          created_at?: string
+          diagnosis?: string | null
+          diagnosis_actual?: string | null
+          diagnosis_verdict?: string | null
+          id?: string
+          name?: string
+          scored_at?: string | null
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      planning_board_backfill: {
+        Row: {
+          done_at: string
+          user_id: string
+        }
+        Insert: {
+          done_at?: string
+          user_id: string
+        }
+        Update: {
+          done_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       planning_boards: {
         Row: {
           created_at: string
@@ -1158,60 +1258,6 @@ export type Database = {
           id?: string
           name?: string
           sort_order?: number
-          user_id?: string
-        }
-        Relationships: []
-      }
-      board_projects: {
-        Row: {
-          board_id: string
-          created_at: string
-          id: string
-          project_id: string
-          user_id: string
-        }
-        Insert: {
-          board_id: string
-          created_at?: string
-          id?: string
-          project_id: string
-          user_id: string
-        }
-        Update: {
-          board_id?: string
-          created_at?: string
-          id?: string
-          project_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "board_projects_board_id_fkey"
-            columns: ["board_id"]
-            isOneToOne: false
-            referencedRelation: "planning_boards"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "board_projects_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "user_projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      planning_board_backfill: {
-        Row: {
-          done_at: string
-          user_id: string
-        }
-        Insert: {
-          done_at?: string
-          user_id: string
-        }
-        Update: {
-          done_at?: string
           user_id?: string
         }
         Relationships: []
@@ -1288,6 +1334,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "planning_tasks_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "planning_boards"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "planning_tasks_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
@@ -1299,13 +1352,6 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "user_projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planning_tasks_board_id_fkey"
-            columns: ["board_id"]
-            isOneToOne: false
-            referencedRelation: "planning_boards"
             referencedColumns: ["id"]
           },
         ]
@@ -1647,8 +1693,6 @@ export type Database = {
           emoji: string
           icon: string
           id: string
-          layout_x: number | null
-          layout_y: number | null
           name: string
           parent_category: string | null
           user_id: string
@@ -1659,8 +1703,6 @@ export type Database = {
           emoji?: string
           icon?: string
           id?: string
-          layout_x?: number | null
-          layout_y?: number | null
           name: string
           parent_category?: string | null
           user_id: string
@@ -1671,8 +1713,6 @@ export type Database = {
           emoji?: string
           icon?: string
           id?: string
-          layout_x?: number | null
-          layout_y?: number | null
           name?: string
           parent_category?: string | null
           user_id?: string
@@ -1700,6 +1740,111 @@ export type Database = {
           module?: string
           tag?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      watch_entries: {
+        Row: {
+          body_battery: number | null
+          created_at: string
+          entry_date: string
+          fitness_age: number | null
+          hrv_ms: number | null
+          hrv_status: string | null
+          id: string
+          intensity_minutes: number | null
+          notes: string
+          race_10k_sec: number | null
+          race_5k_sec: number | null
+          race_half_sec: number | null
+          race_marathon_sec: number | null
+          recovery_time_hrs: number | null
+          resting_hr: number | null
+          run_avg_hr: number | null
+          run_cadence_spm: number | null
+          run_distance_km: number | null
+          run_kcal: number | null
+          run_pace_sec: number | null
+          run_power_w: number | null
+          sleep_awake_min: number | null
+          sleep_deep_min: number | null
+          sleep_light_min: number | null
+          sleep_rem_min: number | null
+          sleep_score: number | null
+          source: string
+          steps: number | null
+          stress_level: number | null
+          updated_at: string
+          user_id: string
+          vo2max: number | null
+        }
+        Insert: {
+          body_battery?: number | null
+          created_at?: string
+          entry_date?: string
+          fitness_age?: number | null
+          hrv_ms?: number | null
+          hrv_status?: string | null
+          id?: string
+          intensity_minutes?: number | null
+          notes?: string
+          race_10k_sec?: number | null
+          race_5k_sec?: number | null
+          race_half_sec?: number | null
+          race_marathon_sec?: number | null
+          recovery_time_hrs?: number | null
+          resting_hr?: number | null
+          run_avg_hr?: number | null
+          run_cadence_spm?: number | null
+          run_distance_km?: number | null
+          run_kcal?: number | null
+          run_pace_sec?: number | null
+          run_power_w?: number | null
+          sleep_awake_min?: number | null
+          sleep_deep_min?: number | null
+          sleep_light_min?: number | null
+          sleep_rem_min?: number | null
+          sleep_score?: number | null
+          source?: string
+          steps?: number | null
+          stress_level?: number | null
+          updated_at?: string
+          user_id: string
+          vo2max?: number | null
+        }
+        Update: {
+          body_battery?: number | null
+          created_at?: string
+          entry_date?: string
+          fitness_age?: number | null
+          hrv_ms?: number | null
+          hrv_status?: string | null
+          id?: string
+          intensity_minutes?: number | null
+          notes?: string
+          race_10k_sec?: number | null
+          race_5k_sec?: number | null
+          race_half_sec?: number | null
+          race_marathon_sec?: number | null
+          recovery_time_hrs?: number | null
+          resting_hr?: number | null
+          run_avg_hr?: number | null
+          run_cadence_spm?: number | null
+          run_distance_km?: number | null
+          run_kcal?: number | null
+          run_pace_sec?: number | null
+          run_power_w?: number | null
+          sleep_awake_min?: number | null
+          sleep_deep_min?: number | null
+          sleep_light_min?: number | null
+          sleep_rem_min?: number | null
+          sleep_score?: number | null
+          source?: string
+          steps?: number | null
+          stress_level?: number | null
+          updated_at?: string
+          user_id?: string
+          vo2max?: number | null
         }
         Relationships: []
       }
@@ -1781,12 +1926,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1810,11 +1955,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1835,11 +1980,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1860,11 +2005,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1877,11 +2022,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

@@ -106,14 +106,10 @@ async function gatherTracker(userId: string): Promise<string> {
 async function gatherPaths(userId: string): Promise<string> {
   // Same reason as usePaths: naming a column the database has not got yet turns
   // "here are your paths" into "you have no paths", which is a confident lie.
-  const { data: paths } = await (supabase.from("paths" as never) as never as { select: (cols: string) => never })
-    .select("*")
-    .eq("user_id", userId) as never as { data: any[] | null };
+  const { data: paths } = await supabase.from("paths").select("*").eq("user_id", userId);
   if (!paths || paths.length === 0) return "No paths set up yet.";
 
-  const { data: steps } = await (supabase.from("path_steps" as never) as never as { select: (cols: string) => never })
-    .select("*")
-    .eq("user_id", userId) as never as { data: any[] | null };
+  const { data: steps } = await supabase.from("path_steps").select("*").eq("user_id", userId);
   const all = steps || [];
 
   // The full ordered plan, not just a summary line: revise_path replaces the
@@ -140,11 +136,13 @@ async function gatherPaths(userId: string): Promise<string> {
 }
 
 async function gatherPlanning(userId: string): Promise<string> {
-  const { data } = await (supabase.from("planning_tasks" as never) as never as { select: (cols: string) => never })
+  const { data: planningRows } = await supabase
+    .from("planning_tasks")
     .select("id,title,level,done,deadline,parent_id,notes")
     .eq("user_id", userId)
-    .limit(500) as never as { data: any[] | null; error: unknown };
-  if (!data || data.length === 0) return "No planning tasks yet.";
+    .limit(500);
+  if (!planningRows || planningRows.length === 0) return "No planning tasks yet.";
+  const data = planningRows;
 
   const total = data.length;
   const done = data.filter((t) => t.done).length;

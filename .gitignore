@@ -51,3 +51,12 @@ Thumbs.db
 # Supabase edge-function secrets (real API keys — never commit)
 supabase/functions/.env
 supabase/.env
+
+# Local env files (Vite reads artifacts/app/.env*; copy from .env.example)
+.env
+.env.local
+artifacts/app/.env
+artifacts/app/.env.local
+
+# Claude Code personal settings
+.claude/settings.local.json
