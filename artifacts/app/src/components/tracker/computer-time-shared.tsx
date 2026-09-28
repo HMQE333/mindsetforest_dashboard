@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import type { Category } from "@/lib/dashboard-data";
 import { formatHm, type AppClass, type AppKind, type ClassificationSource, type RuleSource } from "@/lib/app-usage-classify";
 
@@ -41,20 +41,46 @@ export interface KindPalette extends Record<AppKind, string> {
   unassigned: string;
 }
 
-/** Kind fallback colours resolved from the current theme (computed once per mount). */
+function computePalette(): KindPalette {
+  return {
+    work: cssHsl("--primary"),
+    learning: cssHsl("--cat-mind"),
+    communication: cssHsl("--cat-networking"),
+    watching: cssHsl("--muted-foreground", 0.75),
+    waste: cssHsl("--destructive", 0.85),
+    neutral: cssHsl("--muted-foreground", 0.4),
+    unassigned: cssHsl("--stat-value", 0.5),
+  };
+}
+
+function samePalette(a: KindPalette, b: KindPalette): boolean {
+  return (Object.keys(a) as (keyof KindPalette)[]).every((k) => a[k] === b[k]);
+}
+
+/**
+ * Kind fallback colours resolved from the current theme. Themes are applied
+ * as classes/styles on <html> (see ThemeTab), so a MutationObserver there is
+ * enough to follow a theme switch without recomputing on every render.
+ */
 export function useKindPalette(): KindPalette {
-  return useMemo(
-    () => ({
-      work: cssHsl("--primary"),
-      learning: cssHsl("--cat-mind"),
-      communication: cssHsl("--cat-networking"),
-      watching: cssHsl("--muted-foreground", 0.75),
-      waste: cssHsl("--destructive", 0.85),
-      neutral: cssHsl("--muted-foreground", 0.4),
-      unassigned: cssHsl("--stat-value", 0.5),
-    }),
-    [],
-  );
+  const [palette, setPalette] = useState<KindPalette>(computePalette);
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    const refresh = () => setPalette((prev) => {
+      const next = computePalette();
+      return samePalette(prev, next) ? prev : next;
+    });
+    refresh();
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  return palette;
+}
+
+/** Translucent version of any CSS colour (hex or hsl()), for chip and bar backgrounds. */
+export function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 }
 
 /** class.color, else the pillar's colour, else the kind fallback. */
@@ -117,14 +143,43 @@ export const pillBase = "px-3 py-1.5 rounded-lg text-xs font-semibold transition
 export const pillActive = "text-primary border-current bg-secondary/80";
 export const pillIdle = "text-muted-foreground border-border/50 hover:border-border";
 
-export function ClassChip({ name, color, muted }: { name: string; color: string; muted?: boolean }) {
+/**
+ * Confidence bands (PLAN 3.3): solid for a sure assignment (>= 0.9), outlined
+ * with "?" for a guess (0.5 to 0.9), dashed for nothing assigned.
+ */
+export type ChipVariant = "solid" | "outline" | "dashed";
+
+export function chipVariant(confidence: number, assigned: boolean): ChipVariant {
+  if (!assigned) return "dashed";
+  return confidence >= 0.9 ? "solid" : "outline";
+}
+
+export function ClassChip({
+  name,
+  color,
+  variant = "solid",
+  title,
+}: {
+  name: string;
+  color: string;
+  variant?: ChipVariant;
+  title?: string;
+}) {
+  const style =
+    variant === "solid"
+      ? { background: tint(color, 15), color, border: "1px solid transparent" }
+      : variant === "outline"
+        ? { background: "transparent", color, border: `1px solid ${tint(color, 60)}` }
+        : { background: "transparent", color, border: `1px dashed ${tint(color, 60)}`, opacity: 0.75 };
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap ${muted ? "opacity-60" : ""}`}
-      style={{ background: `${color}22`, color }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap"
+      style={style}
+      title={title}
     >
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
       {name}
+      {variant === "outline" && <span aria-label="niepewne">?</span>}
     </span>
   );
 }

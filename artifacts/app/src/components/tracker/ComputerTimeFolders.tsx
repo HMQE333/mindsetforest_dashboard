@@ -89,11 +89,12 @@ export default function ComputerTimeFolders({ agg, sessions, classes, rules, pro
 
   const handleLabel = async (t: AppKeyTotal, classId: string) => {
     if (classId === NONE_VALUE) return;
+    const cls = classById.get(classId);
     setBusy(t.appKey);
-    const ok = await labelKey(t.appKey, classId);
+    // A class bound to a project labels the key with that project as well.
+    const ok = await labelKey(t.appKey, classId, cls?.project_id ?? null);
     setBusy(null);
     if (!ok) return;
-    const cls = classById.get(classId);
     const labels = rules
       .filter((r) => r.source === "label" && r.field === "app_key" && r.match_kind === "exact")
       .map((r) => {
@@ -152,7 +153,11 @@ export default function ComputerTimeFolders({ agg, sessions, classes, rules, pro
         const isUnassigned = g.id === "";
         return (
           <div key={g.id || "unassigned"} className={`rounded-xl border ${isUnassigned ? "border-yellow-400/30 bg-yellow-400/5" : "border-border/40 bg-secondary/20"}`}>
-            <button onClick={() => toggle(g.id)} className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/30 rounded-xl transition-colors">
+            <button
+              onClick={() => toggle(g.id)}
+              aria-expanded={isOpen}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/30 rounded-xl transition-colors"
+            >
               {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: g.color }} />
               <span className="text-sm font-semibold text-foreground/90 truncate">{g.name}</span>
@@ -207,7 +212,10 @@ export default function ComputerTimeFolders({ agg, sessions, classes, rules, pro
                           </TooltipContent>
                         </Tooltip>
                         <Select value={t.classId || NONE_VALUE} onValueChange={(v) => handleLabel(t, v)} disabled={busy === t.appKey}>
-                          <SelectTrigger className="h-7 w-32 sm:w-40 text-[11px] bg-secondary/40 border-border/50 shrink-0">
+                          <SelectTrigger
+                            className="h-7 w-32 sm:w-40 text-[11px] bg-secondary/40 border-border/50 shrink-0"
+                            aria-label={`Klasa dla ${t.appKey}`}
+                          >
                             <SelectValue placeholder="Klasa" />
                           </SelectTrigger>
                           <SelectContent>

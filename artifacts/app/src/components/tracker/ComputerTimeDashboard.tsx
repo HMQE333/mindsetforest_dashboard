@@ -1,28 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import type { Category } from "@/lib/dashboard-data";
-import { addDays } from "@/lib/today";
+import { addDays, daysBetween, todayKey } from "@/lib/today";
 import {
-  aggregateUsage,
   classifyAll,
-  emptyKinds,
-  median,
+  logicalMinutesOfDay,
+  weekdayBaseline,
   type AppClass,
   type AppKind,
   type ClassifyContext,
-  type KindSeconds,
   type UsageAggregate,
   type UsageSession,
+  type WeekdayBaseline,
 } from "@/lib/app-usage-classify";
 import { EMPTY } from "@/lib/utils";
 import {
+  ClassChip,
   KIND_LABELS,
   UNASSIGNED_LABEL,
   chartTooltipStyle,
+  chipVariant,
   classColor,
   formatHm,
   pct,
   signedHm,
+  tint,
   useKindPalette,
 } from "./computer-time-shared";
 
@@ -34,10 +36,12 @@ interface Props {
   /** Inclusive range the sessions cover. */
   from: string;
   to: string;
-  fetchDailyRows: (dates: string[]) => Promise<UsageSession[]>;
+  /** Full sessions (with titles) for the given day keys, so title rules apply to the baseline too. */
+  fetchSessionsForDates: (dates: string[]) => Promise<UsageSession[]>;
 }
 
 const TILE_KINDS: AppKind[] = ["work", "learning", "communication", "watching", "waste"];
+const BASELINE_WEEKS = [1, 2, 3, 4];
 
 /** Higher is better for productive kinds; for waste a drop is the good news. */
 function deltaTone(kind: AppKind | "unassigned", delta: number): string {
@@ -49,43 +53,40 @@ function deltaTone(kind: AppKind | "unassigned", delta: number): string {
   return good ? "text-green-400" : bad ? "text-destructive" : "text-muted-foreground";
 }
 
-export default function ComputerTimeDashboard({ classes, categories, ctx, agg, from, to, fetchDailyRows }: Props) {
+interface BaselineState {
+  baseline: WeekdayBaseline | null;
+  /** True when the day compared is today and the baseline was cut at the current time of day. */
+  partial: boolean;
+}
+
+export default function ComputerTimeDashboard({ classes, categories, ctx, agg, from, to, fetchSessionsForDates }: Props) {
   const palette = useKindPalette();
   const singleDay = from === to;
-  const dayCount = useMemo(() => {
-    const [y1, m1, d1] = from.split("-").map(Number);
-    const [y2, m2, d2] = to.split("-").map(Number);
-    return Math.max(1, Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000) + 1);
-  }, [from, to]);
+  const dayCount = Math.max(1, daysBetween(from, to) + 1);
 
-  // Baseline: the same weekday over the previous four weeks, per kind.
-  const [baseline, setBaseline] = useState<{ byKind: KindSeconds; unassigned: number } | null>(null);
+  // Baseline: the same weekday over the previous four weeks, median over the
+  // days that have data, truncated to the current time of day for a partial today.
+  const [state, setState] = useState<BaselineState>({ baseline: null, partial: false });
   useEffect(() => {
     if (!singleDay) {
-      setBaseline(null);
+      setState({ baseline: null, partial: false });
       return;
     }
     let cancelled = false;
-    const dates = [1, 2, 3, 4].map((w) => addDays(to, -7 * w));
-    fetchDailyRows(dates).then((rows) => {
+    const dates = BASELINE_WEEKS.map((w) => addDays(to, -7 * w));
+    const partial = to === todayKey();
+    const cutoff = partial ? logicalMinutesOfDay(new Date()) : null;
+    fetchSessionsForDates(dates).then((rows) => {
       if (cancelled) return;
-      if (rows.length === 0) {
-        setBaseline(null);
-        return;
-      }
-      const daily = aggregateUsage(rows, classes, classifyAll(rows, ctx));
-      const byDate = new Map(daily.byDay.map((d) => [d.date, d]));
-      const med = emptyKinds();
-      for (const k of Object.keys(med) as AppKind[]) {
-        med[k] = median(dates.map((d) => byDate.get(d)?.byKind[k] ?? 0)) ?? 0;
-      }
-      const unassigned = median(dates.map((d) => byDate.get(d)?.unclassified ?? 0)) ?? 0;
-      setBaseline({ byKind: med, unassigned });
+      const baseline = rows.length === 0 ? null : weekdayBaseline(rows, classes, classifyAll(rows, ctx), dates, cutoff);
+      setState({ baseline, partial });
     });
     return () => {
       cancelled = true;
     };
-  }, [singleDay, to, classes, ctx, fetchDailyRows]);
+  }, [singleDay, to, classes, ctx, fetchSessionsForDates]);
+
+  const baseline = state.baseline;
 
   const tiles = useMemo(() => {
     const list: { key: AppKind | "unassigned"; label: string; seconds: number; base: number | null; color: string }[] = TILE_KINDS.map((k) => ({
@@ -99,7 +100,7 @@ export default function ComputerTimeDashboard({ classes, categories, ctx, agg, f
       key: "unassigned",
       label: UNASSIGNED_LABEL,
       seconds: agg.unclassifiedSeconds,
-      base: baseline ? baseline.unassigned : null,
+      base: baseline ? baseline.unclassified : null,
       color: palette.unassigned,
     });
     return list;
@@ -176,7 +177,11 @@ export default function ComputerTimeDashboard({ classes, categories, ctx, agg, f
       </div>
       {singleDay && (
         <p className="text-[10px] text-muted-foreground -mt-3">
-          Porównanie z medianą tego samego dnia tygodnia z poprzednich 4 tygodni.
+          {baseline
+            ? `Porównanie z medianą tego samego dnia tygodnia z ${baseline.days} ${baseline.days === 1 ? "dnia" : "dni"} w poprzednich 4 tygodniach${
+                state.partial ? ", liczoną do tej samej pory dnia" : ""
+              }.`
+            : "Brak porównania: potrzebne są co najmniej 2 takie same dni tygodnia z danymi w poprzednich 4 tygodniach."}
         </p>
       )}
 
@@ -233,12 +238,14 @@ export default function ComputerTimeDashboard({ classes, categories, ctx, agg, f
                   <div key={t.appKey} className="flex items-center gap-3" title={t.titles.join("\n")}>
                     <div className="w-36 sm:w-44 shrink-0 min-w-0">
                       <div className="text-xs font-semibold truncate text-foreground/90">{t.appKey}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">{cls ? cls.name : UNASSIGNED_LABEL}</div>
+                      <div className="mt-0.5">
+                        <ClassChip name={cls ? cls.name : UNASSIGNED_LABEL} color={color} variant={chipVariant(t.confidence, !!cls)} title={t.why} />
+                      </div>
                     </div>
                     <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.max(4, (t.seconds / maxTop) * 100)}%`, background: color, boxShadow: `0 0 8px ${color}66` }}
+                        style={{ width: `${Math.max(4, (t.seconds / maxTop) * 100)}%`, background: color, boxShadow: `0 0 8px ${tint(color, 40)}` }}
                       />
                     </div>
                     <span className="text-[11px] font-mono text-muted-foreground w-12 text-right shrink-0">{formatHm(t.seconds)}</span>

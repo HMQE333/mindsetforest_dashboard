@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { Category } from "@/lib/dashboard-data";
 import type { AppClass, Classification, UsageSession } from "@/lib/app-usage-classify";
-import { ClassChip, UNASSIGNED_LABEL, classColor, clockTime, formatHm, useKindPalette } from "./computer-time-shared";
+import { ClassChip, UNASSIGNED_LABEL, chipVariant, classColor, clockTime, formatHm, useKindPalette } from "./computer-time-shared";
 
 interface Props {
   sessions: UsageSession[];
@@ -16,6 +16,7 @@ const PAGE = 200;
 
 export default function ComputerTimeTimeline({ sessions, classifications, classes, categories, from, to }: Props) {
   const palette = useKindPalette();
+  const dayInputId = useId();
   const [day, setDay] = useState(to);
   const [shown, setShown] = useState(PAGE);
 
@@ -42,8 +43,9 @@ export default function ComputerTimeTimeline({ sessions, classifications, classe
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Dzień</label>
+        <label htmlFor={dayInputId} className="text-[10px] text-muted-foreground uppercase tracking-wider">Dzień</label>
         <input
+          id={dayInputId}
           type="date"
           value={day}
           min={from}
@@ -84,7 +86,7 @@ export default function ComputerTimeTimeline({ sessions, classifications, classe
                   {s.window_title || s.app_key}
                 </span>
                 <span className="shrink-0 hidden sm:inline-flex">
-                  <ClassChip name={cls ? cls.name : UNASSIGNED_LABEL} color={color} muted={!cls} />
+                  <ClassChip name={cls ? cls.name : UNASSIGNED_LABEL} color={color} variant={chipVariant(c.confidence, !!cls)} title={c.why} />
                 </span>
               </div>
             );

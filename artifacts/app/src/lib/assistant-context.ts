@@ -160,9 +160,15 @@ async function gatherComputer(userId: string): Promise<string> {
   if (classRes.error || syncRes.error) return "Computer time is not set up yet (usage tables missing).";
   if (!syncRes.data) return "No computer sessions yet: the desktop agent has not synced anything.";
 
+  // A failed rules or projects read must not masquerade as "everything is unassigned".
+  const caveats: string[] = [];
+  if (ruleRes.error) caveats.push("Rules could not be loaded (reguły niedostępne): the split below uses class keywords only, so unassigned time is overstated.");
+  if (projRes.error) caveats.push("Projects could not be loaded (projekty niedostępne): no per-project totals.");
+
   const rows: UsageSession[] = [];
   const PAGE = 1000;
   for (let offset = 0; offset < 10_000; offset += PAGE) {
+    // Full ordering matches the view's grouping key, so pages never overlap or skip.
     const { data, error } = await supabase
       .from("app_usage_daily")
       .select(DAILY_COLUMNS)
@@ -170,6 +176,9 @@ async function gatherComputer(userId: string): Promise<string> {
       .gte("local_date", from30)
       .lte("local_date", today)
       .order("local_date", { ascending: true })
+      .order("device_id", { ascending: true })
+      .order("app_key", { ascending: true })
+      .order("idle", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error || !data) break;
     for (const r of data) {
@@ -181,8 +190,14 @@ async function gatherComputer(userId: string): Promise<string> {
   if (rows.length === 0) return `No computer sessions in the last 30 days. Last sync: ${syncRes.data.ended_at}.`;
 
   const classes = (classRes.data || []).map(rowToClass);
-  const rules = (ruleRes.data || []).map(rowToRule);
-  const projects = (projRes.data || []).map((p) => ({ id: p.id, name: p.name }));
+  const rules = ruleRes.error ? [] : (ruleRes.data || []).map(rowToRule);
+  const projects = projRes.error ? [] : (projRes.data || []).map((p) => ({ id: p.id, name: p.name }));
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
+  const projectLines = (agg: UsageAggregate) =>
+    Object.entries(agg.byProject)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, secs]) => `${projectName.get(id) || id} ${formatHm(secs)}`)
+      .join(", ");
   const ctx = { classes, rules, projects };
   const classifications = classifyAll(rows, ctx);
   const agg30 = aggregateUsage(rows, classes, classifications);
@@ -221,15 +236,18 @@ async function gatherComputer(userId: string): Promise<string> {
 
   const lines = [
     `Screen time from the desktop agent. Last sync: ${syncRes.data.ended_at} (device ${syncRes.data.device_id.slice(0, 8)}).`,
+    ...caveats,
     `Today so far: ${formatHm(aggToday.totalSeconds)}, focus ${focusText(aggToday.focusRatio)} (${kindLine(aggToday)}).`,
     `Last 7 days: ${formatHm(agg7.totalSeconds)} total, focus ratio ${focusText(agg7.focusRatio)} (work+learning over all active non-neutral time).`,
     `  Per kind: ${kindLine(agg7)}`,
     `  Per class: ${classLines(agg7)}`,
+    ...(projectLines(agg7) ? [`  Per project: ${projectLines(agg7)}`] : []),
     "  Top apps per kind:",
     ...topPerKind(agg7),
     `Last 30 days: ${formatHm(agg30.totalSeconds)} total, focus ratio ${focusText(agg30.focusRatio)}, unassigned ${formatHm(agg30.unclassifiedSeconds)}.`,
     `  Per kind: ${kindLine(agg30)}`,
     `  Per class: ${classLines(agg30)}`,
+    ...(projectLines(agg30) ? [`  Per project: ${projectLines(agg30)}`] : []),
   ];
   if (best && worst && best.date !== worst.date) {
     lines.push(

@@ -4,16 +4,25 @@ import {
   classifyAll,
   aggregateUsage,
   computeAppPriors,
+  competingRule,
+  logicalMinutesOfDay,
+  planLabelWrite,
   proposeRule,
+  regexPatternProblem,
+  ruleHealth,
   testRule,
   formatHm,
   median,
   siteToken,
+  weekdayBaseline,
+  PRIORITY_LABEL,
+  PRIORITY_MANUAL,
   type AppClass,
   type AppRule,
   type UsageSession,
   type ClassifyContext,
 } from "../lib/app-usage-classify";
+import { dailyRowToSession, rowToSession } from "../lib/app-usage-rows";
 
 // ---------------------------------------------------------------------------
 // fixtures
@@ -151,6 +160,36 @@ describe("classifySession: rules", () => {
 });
 
 // ---------------------------------------------------------------------------
+// regex safety
+// ---------------------------------------------------------------------------
+
+describe("regex safety", () => {
+  it("screens dangerous shapes statically", () => {
+    expect(regexPatternProblem("^browser \\| you")).toBeNull();
+    expect(regexPatternProblem("a".repeat(201))).toMatch(/200/);
+    expect(regexPatternProblem("(a)\\1")).toMatch(/wsteczne/);
+    expect(regexPatternProblem("^(a+)+$")).toMatch(/Zagnieżdżone/);
+    expect(regexPatternProblem("(?:.*)+x")).toMatch(/Zagnieżdżone/);
+    expect(regexPatternProblem("(\\w+\\s?)*$")).toMatch(/Zagnieżdżone/);
+    expect(regexPatternProblem("a+*")).toMatch(/Kwantyfikator/);
+    expect(regexPatternProblem("([unclosed")).toMatch(/Niepoprawne/);
+  });
+
+  it("a regex that blows the probe budget is disabled for the session and flagged", () => {
+    const slow = rule({ match_kind: "regex", pattern: "^(a|a)*$", class_id: "waste", priority: 50 });
+    const invalid = rule({ match_kind: "regex", pattern: "^(a+)+$", class_id: "waste", enabled: false });
+    const fine = rule({ match_kind: "regex", pattern: "^a+$", class_id: "work" });
+    const rules = [slow, invalid, fine];
+    const health = ruleHealth(rules);
+    expect(health.get(slow.id)?.status).toBe("slow");
+    expect(health.get(invalid.id)?.status).toBe("invalid");
+    expect(health.get(fine.id)?.status).toBe("ok");
+    const c = classifySession(sess({ app_key: "aaaa" }), ctx(rules));
+    expect(c.ruleId).toBe(fine.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // classifySession: keywords, priors, none
 // ---------------------------------------------------------------------------
 
@@ -177,7 +216,7 @@ describe("classifySession: keywords and priors", () => {
     expect(c3.classId).toBe("mf");
   });
 
-  it("uses the per-app prior only at share >= 0.7", () => {
+  it("uses the per-app prior only at share >= 0.7 and with enough history", () => {
     const s = sess({ app_key: "Figma" });
     const low = classifySession(s, ctx([], { priors: { Figma: { classId: "work", share: 0.6 } } }));
     expect(low.source).toBe("none");
@@ -185,20 +224,54 @@ describe("classifySession: keywords and priors", () => {
     expect(high.source).toBe("prior");
     expect(high.classId).toBe("work");
     expect(high.confidence).toBeCloseTo(0.55 + 0.15 * 0.8, 3);
+    const thin = classifySession(s, ctx([], { priors: { Figma: { classId: "work", share: 1, seconds: 600 } } }));
+    expect(thin.source).toBe("none");
   });
 
   it("classifyAll derives priors from rule/keyword decisions for the second pass", () => {
     const r = rule({ field: "title", match_kind: "substring", pattern: "repo", class_id: "work" });
     const sessions = [
-      sess({ app_key: "Figma", app: "Figma", window_title: "repo design", seconds: 800 }),
+      sess({ app_key: "Figma", app: "Figma", window_title: "repo design", seconds: 3000 }),
       sess({ app_key: "Figma", app: "Figma", window_title: "logo", seconds: 100 }),
     ];
     const priors = computeAppPriors(sessions, sessions.map((s) => classifySession(s, ctx([r]))));
-    expect(priors.Figma.share).toBe(1);
+    expect(priors.Figma).toMatchObject({ classId: "work", share: 1, seconds: 3000 });
     const all = classifyAll(sessions, ctx([r]));
     expect(all[0].source).toBe("rule");
     expect(all[1].source).toBe("prior");
     expect(all[1].classId).toBe("work");
+  });
+
+  it("an unknown browser site never inherits the browser's history", () => {
+    const rules = [rule({ pattern: "Browser | GitHub", class_id: "work" }), rule({ pattern: "Browser | YouTube", class_id: "watch" })];
+    const sessions = [
+      sess({ app_key: "Browser | GitHub", app: "Chrome", seconds: 5 * 3600 }),
+      sess({ app_key: "Browser | YouTube", app: "Chrome", seconds: 3600 }),
+      sess({ app_key: "Browser | new-site", app: "Chrome", seconds: 900 }),
+      sess({ app_key: "Code | new-project", app: "Code", seconds: 900 }),
+    ];
+    const all = classifyAll(sessions, ctx(rules, { classes: CLASSES.map((c) => ({ ...c, keywords: [] })) }));
+    expect(all[2].source).toBe("none");
+    expect(all[3].source).toBe("none");
+    const priors = computeAppPriors(sessions, all);
+    expect(priors.Chrome).toBeUndefined();
+    expect(priors["Browser | GitHub"].classId).toBe("work");
+  });
+
+  it("priors ignore idle time and need 30 minutes of history", () => {
+    const r = rule({ field: "title", match_kind: "substring", pattern: "budget", class_id: "work" });
+    const idleWaste = rule({ field: "title", match_kind: "substring", pattern: "party", class_id: "waste" });
+    const sessions = [
+      sess({ app_key: "Word", app: "Word", window_title: "budget.docx", seconds: 1000 }),
+      sess({ app_key: "Word", app: "Word", window_title: "party.docx", seconds: 20000, idle: true }),
+    ];
+    const thin = computeAppPriors(sessions, sessions.map((s) => classifySession(s, ctx([r, idleWaste]))));
+    expect(thin.Word).toBeUndefined(); // 1000 s non-idle is below the 30-minute floor
+    sessions.push(sess({ app_key: "Word", app: "Word", window_title: "budget v2.docx", seconds: 1000 }));
+    const priors = computeAppPriors(sessions, sessions.map((s) => classifySession(s, ctx([r, idleWaste]))));
+    expect(priors.Word).toMatchObject({ classId: "work", share: 1, seconds: 2000 });
+    const unknown = classifySession(sess({ app_key: "Word", app: "Word", window_title: "letter.docx" }), ctx([], { priors }));
+    expect(unknown.classId).toBe("work");
   });
 
   it("returns none when nothing applies", () => {
@@ -303,6 +376,23 @@ describe("proposeRule", () => {
     expect(p).toMatchObject({ field: "title", match_kind: "substring", pattern: "mindsetforest", project_id: "p1", class_id: "work" });
   });
 
+  it("planLabelWrite keeps a manual rule and upserts a label otherwise", () => {
+    const manual = rule({ pattern: "Word", class_id: "work", source: "manual", priority: PRIORITY_MANUAL });
+    const label = rule({ pattern: "Excel", class_id: "work", source: "label", priority: PRIORITY_LABEL });
+    expect(planLabelWrite([manual, label], "Word")).toEqual({ mode: "update", ruleId: manual.id });
+    expect(planLabelWrite([manual, label], "Excel")).toEqual({ mode: "upsert", priority: PRIORITY_LABEL });
+    expect(planLabelWrite([manual, label], "Nowy")).toEqual({ mode: "upsert", priority: PRIORITY_LABEL });
+  });
+
+  it("competingRule names the rule that outranks a fresh label", () => {
+    const manualApp = rule({ field: "app", pattern: "Chrome", class_id: "neutral", source: "manual", priority: PRIORITY_MANUAL });
+    const label = rule({ pattern: "Browser | GitHub", class_id: "work", source: "label", priority: PRIORITY_LABEL });
+    const s = sess({ app_key: "Browser | GitHub", app: "Chrome" });
+    expect(competingRule(s, ctx([manualApp, label]), "work")?.id).toBe(manualApp.id);
+    expect(competingRule(s, ctx([label]), "work")).toBeNull();
+    expect(competingRule(s, ctx([manualApp, label]), "neutral")).toBeNull();
+  });
+
   it("siteToken, testRule, formatHm and median", () => {
     expect(siteToken("Browser | GitHub")).toBe("GitHub");
     expect(siteToken("Code | x")).toBeNull();
@@ -316,5 +406,67 @@ describe("proposeRule", () => {
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1, 2, 3])).toBe(2.5);
     expect(median([])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// weekday baseline and row adapters
+// ---------------------------------------------------------------------------
+
+describe("weekday baseline", () => {
+  const rules = [rule({ pattern: "Code", class_id: "work" })];
+  // local ISO strings so the time-of-day cutoff is deterministic across zones
+  const at = (date: string, hh: number, mm = 0) => {
+    const [y, m, d] = date.split("-").map(Number);
+    return new Date(y, m - 1, d, hh, mm).toISOString();
+  };
+  const day = (date: string, hh: number, seconds: number) =>
+    sess({ app_key: "Code", local_date: date, started_at: at(date, hh), ended_at: at(date, hh, 30), seconds });
+
+  it("minutes since 04:00 honour the day boundary", () => {
+    expect(logicalMinutesOfDay(new Date(2026, 8, 28, 4, 0))).toBe(0);
+    expect(logicalMinutesOfDay(new Date(2026, 8, 28, 10, 30))).toBe(390);
+    expect(logicalMinutesOfDay(new Date(2026, 8, 28, 3, 59))).toBe(1439);
+  });
+
+  it("takes the median over the days that have data and needs at least two", () => {
+    const dates = ["2026-09-21", "2026-09-14", "2026-09-07", "2026-08-31"];
+    const one = [day("2026-09-21", 9, 3600)];
+    expect(weekdayBaseline(one, CLASSES, classifyAll(one, ctx(rules)), dates, null)).toBeNull();
+    const three = [day("2026-09-21", 9, 3600), day("2026-09-14", 9, 1800), day("2026-09-07", 9, 7200)];
+    const b = weekdayBaseline(three, CLASSES, classifyAll(three, ctx(rules)), dates, null);
+    expect(b?.days).toBe(3);
+    expect(b?.byKind.work).toBe(3600); // median of 3600, 1800, 7200, missing day ignored
+  });
+
+  it("a partial today is compared with the same time-of-day slice of earlier days", () => {
+    const dates = ["2026-09-21", "2026-09-14"];
+    const sessions = [day("2026-09-21", 9, 1800), day("2026-09-21", 20, 3600), day("2026-09-14", 9, 1800), day("2026-09-14", 21, 3600)];
+    const cls = classifyAll(sessions, ctx(rules));
+    expect(weekdayBaseline(sessions, CLASSES, cls, dates, null)?.byKind.work).toBe(5400);
+    // cutoff at 12:00 local = 480 minutes after 04:00
+    expect(weekdayBaseline(sessions, CLASSES, cls, dates, 480)?.byKind.work).toBe(1800);
+  });
+});
+
+describe("row adapters", () => {
+  const row = {
+    id: "x",
+    device_id: "d",
+    app: "Code",
+    app_key: "Code | p",
+    window_title: "t",
+    started_at: "2026-09-28T08:00:00Z",
+    ended_at: "2026-09-28T08:00:00Z",
+    seconds: 0,
+    idle: false,
+    local_date: "2026-09-28",
+  };
+  it("drops zero-second tombstones", () => {
+    expect(rowToSession(row)).toBeNull();
+    expect(rowToSession({ ...row, seconds: 5 })?.seconds).toBe(5);
+    const daily = { local_date: "2026-09-28", device_id: "d", app: "Code", app_key: "Code | p", idle: false, seconds: 0, session_count: 1, last_seen_at: null };
+    expect(dailyRowToSession(daily)).toBeNull();
+    expect(dailyRowToSession({ ...daily, seconds: 60 })?.seconds).toBe(60);
   });
 });

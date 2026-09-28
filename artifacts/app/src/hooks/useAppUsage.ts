@@ -6,6 +6,9 @@ import { useAuth } from "./useAuth";
 import { useUserProjects } from "./useUserProjects";
 import {
   classifyAll,
+  competingRule,
+  describeRule,
+  planLabelWrite,
   type AppClass,
   type AppKind,
   type AppRule,
@@ -40,6 +43,11 @@ export interface LastSync {
   device: string;
 }
 
+export interface UseAppUsageOptions {
+  /** False keeps every load idle (the section is collapsed); flip it once to start loading. */
+  enabled?: boolean;
+}
+
 type PgError = { code?: string; message?: string } | null;
 
 /** PostgREST hides a missing table behind PGRST205 ("could not find the table"). */
@@ -50,6 +58,32 @@ function isMissingTable(error: PgError): boolean {
 
 const PAGE_SIZE = 1000;
 const MAX_ROWS = 60_000;
+const DAILY_MAX_ROWS = 5000;
+
+type SessionFilter = { from: string; to: string } | { dates: string[] };
+
+/** All session rows matching the filter, one page of 1000 at a time, in started_at order. */
+async function fetchSessionPages(userId: string, filter: SessionFilter): Promise<{ rows: UsageSession[]; error: PgError }> {
+  const all: UsageSession[] = [];
+  let offset = 0;
+  for (;;) {
+    const base = supabase.from("app_usage_sessions").select(SESSION_COLUMNS).eq("user_id", userId);
+    const filtered = "dates" in filter ? base.in("local_date", filter.dates) : base.gte("local_date", filter.from).lte("local_date", filter.to);
+    const { data, error } = await filtered
+      .order("started_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) return { rows: all, error };
+    const rows = data || [];
+    for (const r of rows) {
+      const s = rowToSession(r);
+      if (s) all.push(s);
+    }
+    if (rows.length < PAGE_SIZE || all.length >= MAX_ROWS) break;
+    offset += PAGE_SIZE;
+  }
+  return { rows: all, error: null };
+}
 
 export interface ClassInput {
   name: string;
@@ -85,7 +119,8 @@ export const DEFAULT_CLASSES: ClassInput[] = [
   { name: "Neutralne", kind: "neutral", keywords: ["Explorer", "Locked"], is_default: true, sort_order: 5 },
 ];
 
-export function useAppUsage(range: UsageRange) {
+export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {}) {
+  const enabled = options.enabled ?? true;
   const { user } = useAuth();
   const { projects } = useUserProjects();
   const [sessions, setSessions] = useState<UsageSession[]>([]);
@@ -97,6 +132,13 @@ export function useAppUsage(range: UsageRange) {
   const [vocabLoaded, setVocabLoaded] = useState(false);
   const seededRef = useRef(false);
   const userId = user?.id ?? null;
+
+  // One counter per resource: only the latest request for that resource may
+  // commit state, so a slow 30-day load cannot overwrite a later "today" load,
+  // and two vocabulary refetches after quick edits cannot land out of order.
+  const vocabReq = useRef(0);
+  const sessionsReq = useRef(0);
+  const syncReq = useRef(0);
 
   const guard = useCallback((error: PgError, what: string): boolean => {
     if (!error) return false;
@@ -111,55 +153,50 @@ export function useAppUsage(range: UsageRange) {
 
   // --- reads -----------------------------------------------------------------
 
-  const fetchVocabulary = useCallback(async () => {
-    if (!userId) return;
+  /** Loads classes + rules. Commits only when still the latest request; always returns what it read. */
+  const loadVocabulary = useCallback(async (): Promise<{ classes: AppClass[]; rules: AppRule[] } | null> => {
+    if (!userId) return null;
+    const id = ++vocabReq.current;
     const [classRes, ruleRes] = await Promise.all([
       supabase.from("app_classes").select("*").eq("user_id", userId).order("sort_order", { ascending: true }),
       supabase.from("app_rules").select("*").eq("user_id", userId).order("priority", { ascending: false }),
     ]);
-    if (classRes.error) {
-      guard(classRes.error, "wczytać klasy");
-      return;
+    const latest = vocabReq.current === id;
+    if (classRes.error || ruleRes.error) {
+      if (latest) guard(classRes.error || ruleRes.error, classRes.error ? "wczytać klasy" : "wczytać reguły");
+      return null;
     }
-    if (ruleRes.error) {
-      guard(ruleRes.error, "wczytać reguły");
-      return;
+    const result = { classes: (classRes.data || []).map(rowToClass), rules: (ruleRes.data || []).map(rowToRule) };
+    if (latest) {
+      setTableReady(true);
+      setClasses(result.classes);
+      setRules(result.rules);
+      setVocabLoaded(true);
     }
-    setTableReady(true);
-    setClasses((classRes.data || []).map(rowToClass));
-    setRules((ruleRes.data || []).map(rowToRule));
-    setVocabLoaded(true);
+    return result;
   }, [userId, guard]);
 
-  const fetchSessions = useCallback(async () => {
-    if (!userId) return;
-    const all: UsageSession[] = [];
-    let offset = 0;
-    for (;;) {
-      const { data, error } = await supabase
-        .from("app_usage_sessions")
-        .select(SESSION_COLUMNS)
-        .eq("user_id", userId)
-        .gte("local_date", range.from)
-        .lte("local_date", range.to)
-        .order("started_at", { ascending: true })
-        .order("id", { ascending: true })
-        .range(offset, offset + PAGE_SIZE - 1);
+  const loadSessions = useCallback(
+    async (silent: boolean) => {
+      if (!userId) return;
+      const id = ++sessionsReq.current;
+      if (!silent) setLoading(true);
+      const { rows, error } = await fetchSessionPages(userId, { from: range.from, to: range.to });
+      if (sessionsReq.current !== id) return; // a newer range or refetch owns the state now
       if (error) {
         guard(error, "wczytać sesje");
-        return;
+      } else {
+        setTableReady(true);
+        setSessions(rows);
       }
-      const rows = data || [];
-      for (const r of rows) all.push(rowToSession(r));
-      if (rows.length < PAGE_SIZE || all.length >= MAX_ROWS) break;
-      offset += PAGE_SIZE;
-    }
-    setTableReady(true);
-    setSessions(all);
-  }, [userId, range.from, range.to, guard]);
+      setLoading(false);
+    },
+    [userId, range.from, range.to, guard],
+  );
 
-  const fetchLastSync = useCallback(async () => {
+  const loadLastSync = useCallback(async () => {
     if (!userId) return;
+    const id = ++syncReq.current;
     const { data, error } = await supabase
       .from("app_usage_sessions")
       .select("ended_at,device_id")
@@ -167,6 +204,7 @@ export function useAppUsage(range: UsageRange) {
       .order("ended_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (syncReq.current !== id) return;
     if (error) {
       if (isMissingTable(error)) setTableReady(false);
       return;
@@ -174,10 +212,11 @@ export function useAppUsage(range: UsageRange) {
     setLastSync(data ? { at: data.ended_at, device: data.device_id } : null);
   }, [userId]);
 
+  /** Silent full refresh (no loading flash): used by visibilitychange, the change event and the button. */
   const refetch = useCallback(async () => {
-    if (!userId) return;
-    await Promise.all([fetchVocabulary(), fetchSessions(), fetchLastSync()]);
-  }, [userId, fetchVocabulary, fetchSessions, fetchLastSync]);
+    if (!userId || !enabled) return;
+    await Promise.all([loadVocabulary(), loadSessions(true), loadLastSync()]);
+  }, [userId, enabled, loadVocabulary, loadSessions, loadLastSync]);
 
   useEffect(() => {
     if (!userId) {
@@ -187,19 +226,19 @@ export function useAppUsage(range: UsageRange) {
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([fetchVocabulary(), fetchSessions(), fetchLastSync()]).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, fetchVocabulary, fetchSessions, fetchLastSync]);
+    if (!enabled) return;
+    loadVocabulary();
+    loadLastSync();
+  }, [userId, enabled, loadVocabulary, loadLastSync]);
+
+  useEffect(() => {
+    if (!userId || !enabled) return;
+    loadSessions(false);
+  }, [userId, enabled, loadSessions]);
 
   // The writer is another process: catch up whenever the tab comes back.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !enabled) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") refetch();
     };
@@ -210,11 +249,21 @@ export function useAppUsage(range: UsageRange) {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(APP_USAGE_CHANGED_EVENT, onChanged);
     };
-  }, [userId, refetch]);
+  }, [userId, enabled, refetch]);
+
+  /** Full sessions (with titles) for a handful of dates: the weekday baseline. */
+  const fetchSessionsForDates = useCallback(
+    async (dates: string[]): Promise<UsageSession[]> => {
+      if (!userId || dates.length === 0) return [];
+      const { rows } = await fetchSessionPages(userId, { dates });
+      return rows;
+    },
+    [userId],
+  );
 
   /**
-   * Daily rollup rows for a handful of dates (the weekday baseline), returned
-   * as pseudo-sessions without titles so the same classifier applies.
+   * Daily rollup rows for a handful of dates as pseudo-sessions (no titles).
+   * Capped at 5000 rows; the cap is logged rather than silently truncated.
    */
   const fetchDailyRows = useCallback(
     async (dates: string[]): Promise<UsageSession[]> => {
@@ -223,8 +272,12 @@ export function useAppUsage(range: UsageRange) {
         .from("app_usage_daily")
         .select(DAILY_COLUMNS)
         .eq("user_id", userId)
-        .in("local_date", dates);
+        .in("local_date", dates)
+        .order("local_date", { ascending: true })
+        .order("app_key", { ascending: true })
+        .range(0, DAILY_MAX_ROWS - 1);
       if (error || !data) return [];
+      if (data.length >= DAILY_MAX_ROWS) console.warn(`app_usage_daily: ${DAILY_MAX_ROWS}-row cap hit for ${dates.join(",")}; totals are truncated`);
       const out: UsageSession[] = [];
       for (const r of data) {
         const s = dailyRowToSession(r);
@@ -255,19 +308,19 @@ export function useAppUsage(range: UsageRange) {
     if (error) {
       // A concurrent seed (second tab) trips the unique name: not an error worth showing.
       if (error.code !== "23505") guard(error, "utworzyć domyślne klasy");
-      await fetchVocabulary();
+      await loadVocabulary();
       return false;
     }
-    await fetchVocabulary();
+    await loadVocabulary();
     return true;
-  }, [userId, guard, fetchVocabulary]);
+  }, [userId, guard, loadVocabulary]);
 
   useEffect(() => {
-    if (!userId || loading || !tableReady || !vocabLoaded || seededRef.current) return;
+    if (!userId || !enabled || loading || !tableReady || !vocabLoaded || seededRef.current) return;
     if (classes.length > 0) return;
     seededRef.current = true;
     seedDefaultClasses();
-  }, [userId, loading, tableReady, vocabLoaded, classes.length, seedDefaultClasses]);
+  }, [userId, enabled, loading, tableReady, vocabLoaded, classes.length, seedDefaultClasses]);
 
   // --- classes -----------------------------------------------------------------
 
@@ -291,10 +344,10 @@ export function useAppUsage(range: UsageRange) {
         guard(error, "utworzyć klasę");
         return null;
       }
-      await fetchVocabulary();
+      await loadVocabulary();
       return rowToClass(data);
     },
-    [userId, classes.length, guard, fetchVocabulary],
+    [userId, classes.length, guard, loadVocabulary],
   );
 
   const updateClass = useCallback(
@@ -315,10 +368,10 @@ export function useAppUsage(range: UsageRange) {
         guard(error, "zapisać klasę");
         return false;
       }
-      await fetchVocabulary();
+      await loadVocabulary();
       return true;
     },
-    [userId, guard, fetchVocabulary],
+    [userId, guard, loadVocabulary],
   );
 
   const deleteClass = useCallback(
@@ -329,10 +382,10 @@ export function useAppUsage(range: UsageRange) {
         guard(error, "usunąć klasę");
         return false;
       }
-      await fetchVocabulary();
+      await loadVocabulary();
       return true;
     },
-    [userId, guard, fetchVocabulary],
+    [userId, guard, loadVocabulary],
   );
 
   // --- rules -------------------------------------------------------------------
@@ -358,10 +411,10 @@ export function useAppUsage(range: UsageRange) {
         else guard(error, "utworzyć regułę");
         return null;
       }
-      await fetchVocabulary();
+      await loadVocabulary();
       return rowToRule(data);
     },
-    [userId, guard, fetchVocabulary],
+    [userId, guard, loadVocabulary],
   );
 
   const updateRule = useCallback(
@@ -383,10 +436,10 @@ export function useAppUsage(range: UsageRange) {
         else guard(error, "zapisać regułę");
         return false;
       }
-      await fetchVocabulary();
+      await loadVocabulary();
       return true;
     },
-    [userId, guard, fetchVocabulary],
+    [userId, guard, loadVocabulary],
   );
 
   const deleteRule = useCallback(
@@ -397,39 +450,66 @@ export function useAppUsage(range: UsageRange) {
         guard(error, "usunąć regułę");
         return false;
       }
-      await fetchVocabulary();
+      await loadVocabulary();
       return true;
     },
-    [userId, guard, fetchVocabulary],
+    [userId, guard, loadVocabulary],
   );
 
-  /** One-click assignment of a key: an exact app_key rule with source "label". */
+  const projectRefs = useMemo(() => projects.map((p) => ({ id: p.id, name: p.name })), [projects]);
+
+  /**
+   * One-click assignment of a key. A hand-written (manual) rule for the same
+   * key keeps its source and priority and only changes target; otherwise an
+   * exact app_key rule is upserted with source "label" at the label priority.
+   * If a higher-priority rule still decides for this key afterwards, the toast
+   * names it instead of letting the folder silently snap back.
+   */
   const labelKey = useCallback(
     async (appKey: string, classId: string, projectId?: string | null): Promise<boolean> => {
       if (!userId) return false;
-      const payload: TablesInsert<"app_rules"> = {
-        user_id: userId,
-        field: "app_key",
-        match_kind: "exact",
-        pattern: appKey,
-        class_id: classId,
-        project_id: projectId ?? null,
-        priority: 0,
-        source: "label",
-        confidence: 1,
-        enabled: true,
-      };
-      const { error } = await supabase
-        .from("app_rules")
-        .upsert(payload, { onConflict: "user_id,field,match_kind,pattern" });
+      const plan = planLabelWrite(rules, appKey);
+      let error: PgError = null;
+      if (plan.mode === "update") {
+        const res = await supabase
+          .from("app_rules")
+          .update({ class_id: classId, project_id: projectId ?? null })
+          .eq("id", plan.ruleId)
+          .eq("user_id", userId);
+        error = res.error;
+      } else {
+        const payload: TablesInsert<"app_rules"> = {
+          user_id: userId,
+          field: "app_key",
+          match_kind: "exact",
+          pattern: appKey,
+          class_id: classId,
+          project_id: projectId ?? null,
+          priority: plan.priority,
+          source: "label",
+          confidence: 1,
+          enabled: true,
+        };
+        const res = await supabase.from("app_rules").upsert(payload, { onConflict: "user_id,field,match_kind,pattern" });
+        error = res.error;
+      }
       if (error) {
         guard(error, "przypisać klasę");
         return false;
       }
-      await fetchVocabulary();
+      const fresh = await loadVocabulary();
+      if (fresh) {
+        const sample = sessions.find((s) => s.app_key === appKey && !s.idle) || sessions.find((s) => s.app_key === appKey);
+        if (sample) {
+          const winner = competingRule(sample, { classes: fresh.classes, rules: fresh.rules, projects: projectRefs }, classId);
+          if (winner) {
+            toast.warning(`Nadal wygrywa reguła o wyższym priorytecie (${winner.priority}): ${describeRule(winner)}. Zmień ją w zakładce Aplikacje.`);
+          }
+        }
+      }
       return true;
     },
-    [userId, guard, fetchVocabulary],
+    [userId, rules, sessions, projectRefs, guard, loadVocabulary],
   );
 
   const acceptSuggestion = useCallback(
@@ -440,8 +520,6 @@ export function useAppUsage(range: UsageRange) {
   const rejectSuggestion = useCallback(async (ruleId: string): Promise<boolean> => deleteRule(ruleId), [deleteRule]);
 
   // --- derived -----------------------------------------------------------------
-
-  const projectRefs = useMemo(() => projects.map((p) => ({ id: p.id, name: p.name })), [projects]);
 
   const ctx = useMemo<ClassifyContext>(() => ({ classes, rules, projects: projectRefs }), [classes, rules, projectRefs]);
 
@@ -471,6 +549,7 @@ export function useAppUsage(range: UsageRange) {
     devices,
     refetch,
     fetchDailyRows,
+    fetchSessionsForDates,
     seedDefaultClasses,
     createClass,
     updateClass,

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Category } from "@/lib/dashboard-data";
 import type { AppClass, UsageAggregate } from "@/lib/app-usage-classify";
-import { ClassChip, UNASSIGNED_LABEL, classColor, formatHm, pct, useKindPalette } from "./computer-time-shared";
+import { ClassChip, UNASSIGNED_LABEL, chipVariant, classColor, formatHm, pct, useKindPalette } from "./computer-time-shared";
 
 interface Props {
   agg: UsageAggregate;
@@ -36,6 +36,7 @@ export default function ComputerTimeAllTime({ agg, classes, categories, from, to
         </span>
         <input
           value={query}
+          aria-label="Filtruj aplikacje"
           onChange={(e) => {
             setQuery(e.target.value);
             setShown(PAGE);
@@ -69,7 +70,7 @@ export default function ComputerTimeAllTime({ agg, classes, categories, from, to
                 <span className="text-[11px] font-mono text-muted-foreground w-12 text-right shrink-0">{formatHm(t.seconds)}</span>
                 <span className="text-[10px] font-mono text-muted-foreground w-9 text-right shrink-0">{pct(t.seconds, agg.totalSeconds)}</span>
                 <span className="hidden md:inline-flex shrink-0 w-28 justify-end">
-                  <ClassChip name={cls ? cls.name : UNASSIGNED_LABEL} color={color} muted={!cls} />
+                  <ClassChip name={cls ? cls.name : UNASSIGNED_LABEL} color={color} variant={chipVariant(t.confidence, !!cls)} title={t.why} />
                 </span>
               </div>
             );

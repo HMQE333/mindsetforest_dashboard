@@ -6,7 +6,9 @@ import type { Category } from "@/lib/dashboard-data";
 import type { ClassInput, RuleInput } from "@/hooks/useAppUsage";
 import {
   APP_KINDS,
-  isInvalidRegexRule,
+  PRIORITY_MANUAL,
+  regexPatternProblem,
+  ruleHealth,
   testRule,
   type AppClass,
   type AppKind,
@@ -191,7 +193,15 @@ interface RuleDraft {
   enabled: boolean;
 }
 
-const emptyRuleDraft = (classId: string): RuleDraft => ({ field: "app_key", match_kind: "exact", pattern: "", class_id: classId, project_id: NONE, priority: "0", enabled: true });
+const emptyRuleDraft = (classId: string): RuleDraft => ({
+  field: "app_key",
+  match_kind: "exact",
+  pattern: "",
+  class_id: classId,
+  project_id: NONE,
+  priority: String(PRIORITY_MANUAL),
+  enabled: true,
+});
 
 function draftFromRule(r: AppRule): RuleDraft {
   return { field: r.field, match_kind: r.match_kind, pattern: r.pattern, class_id: r.class_id, project_id: r.project_id || NONE, priority: String(r.priority), enabled: r.enabled };
@@ -228,6 +238,8 @@ function RuleForm({
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof RuleDraft>(k: K, v: RuleDraft[K]) => setD((p) => ({ ...p, [k]: v }));
   const preview = useMemo(() => summariseMatches(d, sessions), [d, sessions]);
+  // A dangerous or broken regex is refused here, before it can reach the matcher.
+  const problem = d.match_kind === "regex" ? regexPatternProblem(d.pattern) : null;
   return (
     <div className="rounded-xl border border-primary/30 bg-secondary/30 p-3 text-xs space-y-2">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -290,11 +302,13 @@ function RuleForm({
           <Switch checked={d.enabled} onCheckedChange={(v) => set("enabled", v)} />
           <span className="text-[11px] text-muted-foreground">włączona</span>
         </label>
-        <span className="text-[11px] text-muted-foreground">{preview.summary}</span>
+        <span className={`text-[11px] ${problem ? "text-destructive" : "text-muted-foreground"}`} role={problem ? "alert" : undefined}>
+          {problem ?? preview.summary}
+        </span>
         <span className="ml-auto flex gap-2">
           <button onClick={onCancel} className="px-3 py-1 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground">Anuluj</button>
           <button
-            disabled={!d.pattern.trim() || !d.class_id || saving}
+            disabled={!d.pattern.trim() || !d.class_id || saving || problem !== null}
             onClick={async () => {
               setSaving(true);
               await onSave(ruleDraftToInput(d));
@@ -322,9 +336,8 @@ interface MatchSummary {
 
 function summariseMatches(d: Pick<RuleDraft, "field" | "match_kind" | "pattern">, sessions: UsageSession[]): MatchSummary {
   if (!d.pattern.trim()) return { summary: "Wpisz wzorzec, aby zobaczyć trafienia.", keys: [], invalid: false };
-  if (d.match_kind === "regex" && isInvalidRegexRule({ id: "", field: d.field, match_kind: "regex", pattern: d.pattern, class_id: "", project_id: null, priority: 0, source: "manual", confidence: 1, enabled: true, hits: 0, created_at: "" })) {
-    return { summary: "Niepoprawne wyrażenie regularne.", keys: [], invalid: true };
-  }
+  const problem = d.match_kind === "regex" ? regexPatternProblem(d.pattern) : null;
+  if (problem) return { summary: problem, keys: [], invalid: true };
   const hits = testRule({ field: d.field, match_kind: d.match_kind, pattern: d.pattern }, sessions);
   const byKey = new Map<string, { seconds: number; titles: Map<string, number> }>();
   let total = 0;
@@ -412,6 +425,8 @@ export default function ComputerTimeApps(props: Props) {
 
   const classById = useMemo(() => new Map(classes.map((c) => [c.id, c])), [classes]);
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  /** Invalid or slow patterns, so a rule can be fixed or deleted here even if it never classifies. */
+  const health = useMemo(() => ruleHealth(rules), [rules]);
 
   /** Matches in the loaded range per rule, from the classification results. */
   const localHits = useMemo(() => {
@@ -575,7 +590,8 @@ export default function ComputerTimeApps(props: Props) {
             {activeRules.map((r) => {
               const cls = classById.get(r.class_id);
               const project = r.project_id ? projectById.get(r.project_id) : undefined;
-              const invalid = isInvalidRegexRule(r);
+              const h = health.get(r.id);
+              const broken = !!h && h.status !== "ok";
               if (ruleEditor && ruleEditor.id === r.id) {
                 return (
                   <RuleForm
@@ -598,9 +614,19 @@ export default function ComputerTimeApps(props: Props) {
                   <span className="text-[10px] text-muted-foreground w-24 shrink-0 hidden sm:inline">
                     {FIELD_LABELS[r.field]} · {MATCH_LABELS[r.match_kind]}
                   </span>
-                  <span className={`font-mono font-semibold truncate min-w-0 flex-1 ${invalid ? "text-destructive" : "text-foreground/90"}`} title={invalid ? "Niepoprawne wyrażenie regularne" : r.pattern}>
+                  <span className={`font-mono font-semibold truncate min-w-0 flex-1 ${broken ? "text-destructive" : "text-foreground/90"}`} title={broken && h ? h.reason ?? r.pattern : r.pattern}>
                     {r.pattern}
                   </span>
+                  {broken && h && (
+                    <span
+                      className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                        h.status === "slow" ? "bg-amber-400/15 text-amber-300" : "bg-destructive/15 text-destructive"
+                      }`}
+                      title={h.reason ?? ""}
+                    >
+                      {h.status === "slow" ? "wolna" : "błąd"}
+                    </span>
+                  )}
                   <span className="text-muted-foreground shrink-0">→</span>
                   <span className="font-semibold truncate w-24 sm:w-32 shrink-0" style={{ color: cls ? classColor(cls, palette, categories) : undefined }}>
                     {cls?.name || "?"}

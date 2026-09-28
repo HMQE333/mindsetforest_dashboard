@@ -14,6 +14,8 @@
  * `aggregateUsage`, so a session is counted in exactly one place.
  */
 
+import { DAY_START_HOUR } from "@/lib/today";
+
 export type AppKind = "work" | "learning" | "communication" | "waste" | "neutral" | "watching";
 
 export const APP_KINDS: AppKind[] = ["work", "learning", "communication", "watching", "waste", "neutral"];
@@ -75,6 +77,8 @@ export interface AppPrior {
   classId: string;
   /** Share (0..1) of the app's already-classified time that went to classId. */
   share: number;
+  /** Classified, non-idle seconds behind the share (must reach PRIOR_MIN_HISTORY_SECONDS). */
+  seconds?: number;
 }
 
 export interface ClassifyContext {
@@ -99,10 +103,88 @@ export interface Classification {
 }
 
 export const PRIOR_MIN_SHARE = 0.7;
+/** A per-app prior needs this much classified, non-idle history before it applies. */
+export const PRIOR_MIN_HISTORY_SECONDS = 1800;
 export const KEYWORD_CONFIDENCE = 0.75;
 
+/** Rule priorities by origin: manual > label > learned, unless the user says otherwise. */
+export const PRIORITY_MANUAL = 10;
+export const PRIORITY_LABEL = 5;
+export const PRIORITY_LEARNED = 0;
+
+/** "Browser | YouTube" and "Code | project" carry a site/project token; "Word" does not. */
+export function hasKeyToken(appKey: string): boolean {
+  return appKey.includes(" | ");
+}
+
 // ---------------------------------------------------------------------------
-// Rule preparation (sorted once, regexes compiled once)
+// Regex safety
+// ---------------------------------------------------------------------------
+
+export const MAX_REGEX_PATTERN_LENGTH = 200;
+
+/**
+ * Static screening of a user regex before it is ever compiled. Catches the
+ * classic catastrophic-backtracking shapes (a quantified group that is itself
+ * quantified, stacked quantifiers) and backreferences, which the timing probe
+ * in prepareRules cannot afford to discover at runtime. Returns a Polish
+ * explanation or null when the pattern looks safe.
+ */
+export function regexPatternProblem(pattern: string): string | null {
+  if (pattern.length > MAX_REGEX_PATTERN_LENGTH) return `Wzorzec ma ponad ${MAX_REGEX_PATTERN_LENGTH} znaków`;
+  if (/\\[1-9]|\\k</.test(pattern)) return "Odwołania wsteczne (\\1, \\k<...>) nie są dozwolone";
+  // (a+)+  (a*b)*  (x{2,})+  (?:.*)+   a quantified group followed by a quantifier
+  if (/\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/.test(pattern)) {
+    return "Zagnieżdżone kwantyfikatory (np. (a+)+) mogą zawiesić przeglądarkę";
+  }
+  // a+*  a{2,}*  stacked quantifiers
+  if (/(\+|\*|\{\d*,?\d*\})\s*[+*]/.test(pattern)) return "Kwantyfikator po kwantyfikatorze (np. a+*) jest niedozwolony";
+  try {
+    new RegExp(pattern, "i");
+  } catch (e) {
+    return `Niepoprawne wyrażenie: ${e instanceof Error ? e.message.replace(/^Invalid regular expression: /, "") : "błąd składni"}`;
+  }
+  return null;
+}
+
+/** Total time the one-off probe of a freshly loaded regex may take. */
+export const REGEX_PROBE_BUDGET_MS = 20;
+/**
+ * Probe lengths grow slowly on purpose: a regex that is exponential in the
+ * input finishes 2^16 steps in a millisecond and 2^24 in a fraction of a
+ * second, so the budget trips before the string gets long enough to hang.
+ */
+const PROBE_LENGTHS = [12, 16, 20, 24, 32, 48, 64];
+
+const nowMs = (): number => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+/** True when the compiled regex blows the time budget on adversarial input. */
+export function regexIsSlow(regex: RegExp, budgetMs: number = REGEX_PROBE_BUDGET_MS): boolean {
+  const start = nowMs();
+  for (const n of PROBE_LENGTHS) {
+    const probes = ["a".repeat(n - 1) + "!", "a ".repeat(n / 2) + "!", "ab".repeat(n / 2)];
+    for (const p of probes) {
+      try {
+        regex.lastIndex = 0;
+        regex.test(p);
+      } catch {
+        return true;
+      }
+      if (nowMs() - start > budgetMs) return true;
+    }
+  }
+  return false;
+}
+
+export type RuleHealthStatus = "ok" | "invalid" | "slow";
+
+export interface RuleHealth {
+  status: RuleHealthStatus;
+  reason: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Rule preparation (sorted once, regexes compiled and probed once)
 // ---------------------------------------------------------------------------
 
 const SOURCE_RANK: Record<string, number> = { manual: 0, label: 1, learned: 2 };
@@ -113,6 +195,7 @@ interface PreparedRule {
   pattern: string; // lower-cased for exact/substring, normalised host for domain
   regex: RegExp | null;
   invalid: boolean;
+  health: RuleHealth;
 }
 
 const preparedCache = new WeakMap<AppRule[], PreparedRule[]>();
@@ -141,32 +224,62 @@ export function prepareRules(rules: AppRule[]): PreparedRule[] {
     if (ma !== mb) return ma - mb;
     return a.created_at.localeCompare(b.created_at);
   });
+  const OK: RuleHealth = { status: "ok", reason: null };
   const prepared: PreparedRule[] = usable.map((rule) => {
     if (rule.match_kind === "regex") {
+      const problem = regexPatternProblem(rule.pattern);
+      if (problem) return { rule, pattern: rule.pattern, regex: null, invalid: true, health: { status: "invalid", reason: problem } };
+      let regex: RegExp;
       try {
-        return { rule, pattern: rule.pattern, regex: new RegExp(rule.pattern, "i"), invalid: false };
+        regex = new RegExp(rule.pattern, "i");
       } catch {
-        return { rule, pattern: rule.pattern, regex: null, invalid: true };
+        return { rule, pattern: rule.pattern, regex: null, invalid: true, health: { status: "invalid", reason: "Niepoprawne wyrażenie" } };
       }
+      // Probed once per loaded rules array; a slow regex is off for this session.
+      if (regexIsSlow(regex)) {
+        return {
+          rule,
+          pattern: rule.pattern,
+          regex: null,
+          invalid: true,
+          health: { status: "slow", reason: `Wzorzec przekroczył budżet ${REGEX_PROBE_BUDGET_MS} ms i jest wyłączony w tej sesji` },
+        };
+      }
+      return { rule, pattern: rule.pattern, regex, invalid: false, health: OK };
     }
     if (rule.match_kind === "domain") {
-      return { rule, pattern: normaliseDomain(rule.pattern), regex: null, invalid: false };
+      return { rule, pattern: normaliseDomain(rule.pattern), regex: null, invalid: false, health: OK };
     }
-    return { rule, pattern: rule.pattern.trim().toLowerCase(), regex: null, invalid: false };
+    return { rule, pattern: rule.pattern.trim().toLowerCase(), regex: null, invalid: false, health: OK };
   });
   preparedCache.set(rules, prepared);
   return prepared;
 }
 
-/** True when the regex of this rule could not be compiled (shown in the rules list). */
-export function isInvalidRegexRule(rule: AppRule): boolean {
-  if (rule.match_kind !== "regex") return false;
-  try {
-    new RegExp(rule.pattern, "i");
-    return false;
-  } catch {
-    return true;
+/**
+ * Health of every rule in the array: probed rules from the prepared cache,
+ * static screening for the rest (disabled, suggested), so the rules list can
+ * flag a broken pattern before it is ever switched on.
+ */
+export function ruleHealth(rules: AppRule[]): Map<string, RuleHealth> {
+  const out = new Map<string, RuleHealth>();
+  for (const p of prepareRules(rules)) out.set(p.rule.id, p.health);
+  for (const r of rules) {
+    if (out.has(r.id)) continue;
+    const problem = r.match_kind === "regex" ? regexPatternProblem(r.pattern) : null;
+    out.set(r.id, problem ? { status: "invalid", reason: problem } : { status: "ok", reason: null });
   }
+  return out;
+}
+
+/** Static problem of a regex rule (compile error or dangerous shape), null when fine. */
+export function regexRuleProblem(rule: Pick<AppRule, "match_kind" | "pattern">): string | null {
+  return rule.match_kind === "regex" ? regexPatternProblem(rule.pattern) : null;
+}
+
+/** True when the regex of this rule is unusable (shown in the rules list). */
+export function isInvalidRegexRule(rule: Pick<AppRule, "match_kind" | "pattern">): boolean {
+  return regexRuleProblem(rule) !== null;
 }
 
 function fieldValue(session: UsageSession, field: RuleField): string {
@@ -394,10 +507,12 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
     };
   }
 
-  // (c) per-app prior
+  // (c) per-app prior. The app-level fallback is only for keys without a
+  // site/project token: "Browser | new-site" must not inherit Chrome's history.
   if (ctx.priors) {
-    const prior = ctx.priors[session.app_key] || ctx.priors[session.app];
-    if (prior && prior.share >= PRIOR_MIN_SHARE) {
+    const prior = ctx.priors[session.app_key] || (hasKeyToken(session.app_key) ? undefined : ctx.priors[session.app]);
+    const enoughHistory = !prior || prior.seconds === undefined || prior.seconds >= PRIOR_MIN_HISTORY_SECONDS;
+    if (prior && prior.share >= PRIOR_MIN_SHARE && enoughHistory) {
       return {
         classId: prior.classId,
         projectId: null,
@@ -430,9 +545,12 @@ export function computeAppPriors(sessions: UsageSession[], classifications: Clas
   };
   sessions.forEach((s, i) => {
     const c = classifications[i];
-    if (!c || !c.classId || (c.source !== "rule" && c.source !== "keyword")) return;
-    add(s.app, c.classId, s.seconds);
-    if (s.app_key !== s.app) add(s.app_key, c.classId, s.seconds);
+    // Idle spans say nothing about what the app is for.
+    if (s.idle || !c || !c.classId || (c.source !== "rule" && c.source !== "keyword")) return;
+    add(s.app_key, c.classId, s.seconds);
+    // The app-level entry only learns from keys without a site/project token,
+    // so it describes "this app on its own", never "every site in this browser".
+    if (s.app_key !== s.app && !hasKeyToken(s.app_key)) add(s.app, c.classId, s.seconds);
   });
   const out: Record<string, AppPrior> = {};
   for (const [key, m] of perKey) {
@@ -442,7 +560,7 @@ export function computeAppPriors(sessions: UsageSession[], classifications: Clas
       total += secs;
       if (!best || secs > best[1]) best = [classId, secs];
     }
-    if (best && total > 0) out[key] = { classId: best[0], share: best[1] / total };
+    if (best && total >= PRIOR_MIN_HISTORY_SECONDS) out[key] = { classId: best[0], share: best[1] / total, seconds: total };
   }
   return out;
 }
@@ -758,6 +876,83 @@ export function proposeRule(
     }
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Labelling: what a one-click assignment may write
+// ---------------------------------------------------------------------------
+
+export type LabelWritePlan =
+  /** A hand-written rule for this key exists: move its target, keep its source and priority. */
+  | { mode: "update"; ruleId: string }
+  /** Insert or refresh the label rule at the label priority. */
+  | { mode: "upsert"; priority: number };
+
+export function planLabelWrite(rules: AppRule[], appKey: string): LabelWritePlan {
+  const existing = rules.find((r) => r.field === "app_key" && r.match_kind === "exact" && r.pattern === appKey);
+  if (existing && existing.source === "manual") return { mode: "update", ruleId: existing.id };
+  return { mode: "upsert", priority: PRIORITY_LABEL };
+}
+
+/**
+ * After a label is written, the rule that still outranks it for this session
+ * (null when the label wins or when nothing else decides). Lets the UI say
+ * which rule to edit instead of silently snapping back.
+ */
+export function competingRule(session: UsageSession, ctx: ClassifyContext, chosenClassId: string): AppRule | null {
+  const c = classifySession(session, ctx);
+  if (c.classId === chosenClassId || !c.ruleId) return null;
+  return ctx.rules.find((r) => r.id === c.ruleId) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Weekday baseline (same weekday, previous weeks), time-of-day aware
+// ---------------------------------------------------------------------------
+
+/** Minutes since the 04:00 start of the logical day, local time. */
+export function logicalMinutesOfDay(at: Date, dayStartHour: number = DAY_START_HOUR): number {
+  return (at.getHours() * 60 + at.getMinutes() - dayStartHour * 60 + 1440) % 1440;
+}
+
+export interface WeekdayBaseline {
+  byKind: KindSeconds;
+  unclassified: number;
+  /** Comparable days the medians were taken over. */
+  days: number;
+}
+
+/**
+ * Median per kind over the comparable days only (days that have any counted
+ * time); null when fewer than two are available. `cutoffMinutes` keeps only
+ * sessions that started before that time-of-day, so a partial today is
+ * compared with the same slice of earlier days.
+ */
+export function weekdayBaseline(
+  sessions: UsageSession[],
+  classes: AppClass[],
+  classifications: Classification[],
+  dates: string[],
+  cutoffMinutes: number | null,
+): WeekdayBaseline | null {
+  const keep: number[] = [];
+  sessions.forEach((s, i) => {
+    if (cutoffMinutes === null) {
+      keep.push(i);
+      return;
+    }
+    const at = new Date(s.started_at);
+    if (Number.isFinite(at.getTime()) && logicalMinutesOfDay(at) <= cutoffMinutes) keep.push(i);
+  });
+  const agg = aggregateUsage(keep.map((i) => sessions[i]), classes, keep.map((i) => classifications[i]));
+  const byDate = new Map(agg.byDay.map((d) => [d.date, d]));
+  const present = dates.filter((d) => (byDate.get(d)?.total ?? 0) > 0);
+  if (present.length < 2) return null;
+  const byKind = emptyKinds();
+  for (const k of Object.keys(byKind) as AppKind[]) {
+    byKind[k] = median(present.map((d) => byDate.get(d)?.byKind[k] ?? 0)) ?? 0;
+  }
+  const unclassified = median(present.map((d) => byDate.get(d)?.unclassified ?? 0)) ?? 0;
+  return { byKind, unclassified, days: present.length };
 }
 
 // ---------------------------------------------------------------------------

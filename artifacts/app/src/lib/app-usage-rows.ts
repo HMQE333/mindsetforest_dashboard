@@ -62,7 +62,9 @@ export type SessionRow = Pick<
   "id" | "device_id" | "app" | "app_key" | "window_title" | "started_at" | "ended_at" | "seconds" | "idle" | "local_date"
 >;
 
-export function rowToSession(r: SessionRow): UsageSession {
+/** Null for a zero-second row: the agent writes those as tombstones, they are not sessions. */
+export function rowToSession(r: SessionRow): UsageSession | null {
+  if (!(r.seconds > 0)) return null;
   return {
     id: r.id,
     device_id: r.device_id,
@@ -89,7 +91,7 @@ export type DailyRow = Pick<
  * apply). Good enough for baselines and summaries, not for the timeline.
  */
 export function dailyRowToSession(r: DailyRow): UsageSession | null {
-  if (!r.local_date || !r.app_key) return null;
+  if (!r.local_date || !r.app_key || !(r.seconds && r.seconds > 0)) return null;
   return {
     id: `${r.local_date}|${r.device_id || ""}|${r.app_key}|${r.idle ? 1 : 0}`,
     device_id: r.device_id || "",
