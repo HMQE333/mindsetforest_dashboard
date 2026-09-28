@@ -1203,6 +1203,45 @@ export type Database = {
         }
         Relationships: []
       }
+      mission_presets: {
+        Row: {
+          created_at: string
+          description: string
+          emoji: string
+          id: string
+          last_applied_at: string | null
+          missions: Json
+          name: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          emoji?: string
+          id?: string
+          last_applied_at?: string | null
+          missions?: Json
+          name: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          emoji?: string
+          id?: string
+          last_applied_at?: string | null
+          missions?: Json
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       oracle_state: {
         Row: {
           created_at: string

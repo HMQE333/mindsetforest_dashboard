@@ -286,6 +286,24 @@ function useDashboardStateValue() {
     });
   }, [persist]);
 
+  /**
+   * Replace every mission list on Home with a preset. XP and today's mission
+   * counter stay; the per-mission checkmarks are cleared because missions are
+   * identified by their position in the list and the lists just changed.
+   */
+  const applyMissionPreset = useCallback((missions: Record<string, Mission[]>) => {
+    setState(prev => {
+      const next: DashboardState = {
+        ...prev,
+        customMissions: missions,
+        completedMissions: new Set(),
+        rolledVariants: rollAllVariants(missions),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const addMission = useCallback((categoryId: string, mission: Mission) => {
     setState(prev => {
       const current = prev.customMissions[categoryId]
@@ -483,6 +501,7 @@ function useDashboardStateValue() {
     completeMission,
     resetDay,
     saveCustomMissions,
+    applyMissionPreset,
     addMission,
     splitMission,
     resetCategory,

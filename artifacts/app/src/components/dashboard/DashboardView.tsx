@@ -8,6 +8,7 @@ import { useDailyCompletions } from "@/hooks/useDailyCompletions";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { pathProgress, TodayStep } from "@/lib/path-data";
 import PathsTodayStrip from "./PathsTodayStrip";
+import MissionPresets from "./MissionPresets";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
 import MissionView from "./MissionView";
@@ -21,7 +22,7 @@ import DashboardStats from "./DashboardStats";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -232,6 +233,7 @@ export default function DashboardView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
+            <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />
             <PathsTodayStrip
               steps={todaySteps}
               categories={categories}
