@@ -187,7 +187,13 @@ export default function DashboardView() {
         onResetDay={resetDay}
         onShowShortcuts={() => setShowShortcuts(true)}
         heroLayout={preferences.heroLayout}
-        extraActions={showMonthlyFocus ? <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} /> : undefined}
+        extraActions={
+          // Header controls next to Reset Day: monthly focus + the mission presets trigger.
+          <>
+            {showMonthlyFocus && <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} />}
+            <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />
+          </>
+        }
       />
 
       {/* Weekly Progress - moved to bottom */}
@@ -233,7 +239,6 @@ export default function DashboardView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />
             <PathsTodayStrip
               steps={todaySteps}
               categories={categories}

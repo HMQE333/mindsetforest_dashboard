@@ -1,6 +1,19 @@
 import { CATEGORIES } from "@/lib/dashboard-data";
 import type { ScopeId } from "@/lib/assistant-context";
 
+/** Sections of the app the assistant can open with `navigate`. */
+export const APP_MODULES = [
+  "dashboard", "tracker", "paths", "oracle", "archive", "library", "cooking",
+  "finance", "breathing", "calendar", "planning", "health", "settings",
+] as const;
+export type AppModule = (typeof APP_MODULES)[number];
+export const MODULE_LABELS: Record<AppModule, string> = {
+  dashboard: "Home", tracker: "Stats", paths: "Paths", oracle: "Oracle", archive: "Archive",
+  library: "Library", cooking: "Cooking", finance: "Finance", breathing: "Breathing",
+  calendar: "Calendar", planning: "Planning", health: "Health", settings: "Settings",
+};
+const VALID_MODULES = new Set<string>(APP_MODULES);
+
 /**
  * Structured write actions the assistant can propose. These are never applied
  * automatically. The panel shows a confirm step first, and every action is
@@ -31,6 +44,17 @@ export type AssistantAction =
        */
       type: "apply_preset";
       presetName: string;
+    }
+  | {
+      /** Open a section of the app. Harmless and instant, so it needs no confirm step. */
+      type: "navigate";
+      module: AppModule;
+    }
+  | {
+      /** Tick one of today's missions on Home. Matched by title against the list in the context. */
+      type: "complete_mission";
+      title: string;
+      categoryId?: string;
     }
   | {
       type: "add_note";
@@ -73,7 +97,10 @@ export type AssistantAction =
 
 export type ActionType = AssistantAction["type"];
 
-export const ACTION_SCOPE: Record<ActionType, ScopeId> = {
+/** Which granted scope an action needs; null means always allowed (navigation). */
+export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
+  navigate: null,
+  complete_mission: "dashboard",
   add_task: "planning",
   add_mission: "dashboard",
   apply_preset: "dashboard",
@@ -126,6 +153,13 @@ function nodesLevelBreakdown(nodes: { level: string }[]): string {
 export function buildActionInstructions(scopes: ScopeId[]): string {
   const specs: string[] = [];
 
+  specs.push(
+    "- navigate: open a section of the app for the user. Field: module (one of " +
+      APP_MODULES.map((m) => `"${m}" (${MODULE_LABELS[m]})`).join(", ") +
+      '). Use it whenever the user asks to open / go to / show a section ("pokaż statystyki", "open finance"). ' +
+      "It runs immediately without confirmation, so pair it with a one-line reply.",
+  );
+
   if (scopes.includes("planning")) {
     specs.push(
       "- add_task: create a standalone planning task. Fields: title (string, required), " +
@@ -176,6 +210,13 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         'Use when the user asks to switch to / turn on / load a preset by name ("włącz monk mode", "load lock in"). ' +
         "Field: presetName (string - must be one of the names under \"Saved mission presets\" in the context; " +
         "never invent a preset and never use this to add single missions - that is add_mission).",
+    );
+    specs.push(
+      "- complete_mission: tick one of today's missions on Home as done (awards its XP). Fields: " +
+        "title (string - copy the exact title from the \"Today's missions\" list in the context), " +
+        "categoryId (optional - the id in parentheses after the pillar name). " +
+        'Use when the user says they did / finished / completed a mission ("zrobiłem pompki", "I read my 20 pages"). ' +
+        "Never tick a mission that is already [x]; say it is done instead.",
     );
   }
 
@@ -276,6 +317,19 @@ function coerceAction(raw: unknown): AssistantAction | null {
     return { type: "add_mission", categoryId, title: title.slice(0, 200), description, duration, xp };
   }
 
+  if (type === "navigate") {
+    const module = typeof o.module === "string" ? o.module.trim().toLowerCase() : "";
+    if (!VALID_MODULES.has(module)) return null;
+    return { type: "navigate", module: module as AppModule };
+  }
+
+  if (type === "complete_mission") {
+    const title = typeof o.title === "string" ? o.title.trim() : "";
+    if (!title) return null;
+    const categoryId = typeof o.categoryId === "string" && o.categoryId.trim() ? o.categoryId.trim().slice(0, 80) : undefined;
+    return { type: "complete_mission", title: title.slice(0, 200), categoryId };
+  }
+
   if (type === "apply_preset") {
     const presetName = typeof o.presetName === "string" ? o.presetName.trim() : "";
     if (!presetName) return null;
@@ -367,7 +421,9 @@ export function parseActions(text: string, allowedScopes: ScopeId[]): ParseResul
   const actions: AssistantAction[] = [];
   for (const item of list) {
     const action = coerceAction(item);
-    if (action && allowed.has(ACTION_SCOPE[action.type])) actions.push(action);
+    if (!action) continue;
+    const scope = ACTION_SCOPE[action.type];
+    if (scope === null || allowed.has(scope)) actions.push(action);
   }
   return { text: cleaned, actions };
 }
@@ -406,6 +462,12 @@ export function describeAction(action: AssistantAction): string {
     const cat = CATEGORIES.find((c) => c.id === action.categoryId)?.name || action.categoryId;
     return `Add mission to ${cat}: "${action.title}" (+${action.xp ?? 20} XP)`;
   }
+  if (action.type === "navigate") {
+    return `Open ${MODULE_LABELS[action.module]}`;
+  }
+  if (action.type === "complete_mission") {
+    return `Mark mission done: "${action.title}"`;
+  }
   if (action.type === "apply_preset") {
     return `Load mission preset "${action.presetName}" (replaces every mission list on Home)`;
   }
@@ -427,4 +489,10 @@ export function describeAction(action: AssistantAction): string {
   const pillar = PILLAR_NAMES[action.pillars?.[0] || ""] || "Uncategorized";
   const tagBits = action.tags && action.tags.length > 0 ? ` #${action.tags.join(" #")}` : "";
   return `Save note to ${pillar}: "${action.title}"${tagBits} #ainote`;
+}
+
+/** Actions that run as soon as they are parsed, without the confirm card. */
+export const AUTO_APPLY_ACTIONS = new Set<ActionType>(["navigate"]);
+export function isAutoApply(action: AssistantAction): boolean {
+  return AUTO_APPLY_ACTIONS.has(action.type);
 }

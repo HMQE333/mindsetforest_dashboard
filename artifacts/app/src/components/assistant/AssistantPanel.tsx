@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, X, Send, Plus, Trash2, Square, Search, Mic, MicOff } from "lucide-react";
+import { Sparkles, X, Send, Plus, Trash2, Square, Search, Mic, MicOff, Headphones, PhoneOff, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useAssistant } from "@/hooks/useAssistant";
@@ -15,6 +15,9 @@ import {
 } from "@/lib/assistant-context";
 import { describeAction, mindmapPreview } from "@/lib/assistant-actions";
 import { processVoiceTranscript } from "@/lib/voice-format";
+import { useVoiceMode } from "@/hooks/useVoiceMode";
+import { VOICE_PROMPTS, isStopPhrase, parseYesNo, type VoiceLang } from "@/lib/voice-mode";
+import { prettyModelName } from "@/lib/assistant-api";
 import { supabase } from "@/integrations/supabase/client";
 import type { AssistantMessage } from "@/hooks/useAssistant";
 
@@ -27,6 +30,9 @@ function ScopeMenu({ isWatch }: { isWatch: boolean }) {
     archiveItems,
     addArchiveItem,
     removeArchiveItem,
+    autoContext,
+    setAutoContext,
+    autoScopes,
   } = useAssistant();
   const [archiveQuery, setArchiveQuery] = useState("");
   const [archiveResults, setArchiveResults] = useState<ArchiveItemRef[]>([]);
@@ -51,8 +57,32 @@ function ScopeMenu({ isWatch }: { isWatch: boolean }) {
       collisionPadding={8}
       className={`${isWatch ? "w-[min(88vw,224px)] p-2" : "w-72 p-3"} rounded-2xl bg-card/95 backdrop-blur-xl border border-white/10 shadow-xl max-h-[70vh] overflow-y-auto z-[9999]`}
     >
+      <button
+        type="button"
+        onClick={() => setAutoContext(!autoContext)}
+        role="switch"
+        aria-checked={autoContext}
+        className={`w-full flex items-center gap-2 px-2.5 py-2 mb-2 rounded-xl text-sm transition-all border ${
+          autoContext
+            ? "bg-primary/15 border-primary/30 text-foreground"
+            : "border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/5"
+        }`}
+      >
+        <Wand2 className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="flex-1 text-left font-semibold">Auto-context</span>
+        <span className={`w-8 h-4 rounded-full relative transition-colors flex-shrink-0 ${autoContext ? "bg-primary/70" : "bg-white/15"}`}>
+          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${autoContext ? "left-4" : "left-0.5"}`} />
+        </span>
+      </button>
+      {!isWatch && (
+        <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+          {autoContext
+            ? "I pick the sections each question needs. Tick any below to pin it for every question."
+            : "Only the sections you tick below are read."}
+        </p>
+      )}
       <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-        What can I read?
+        {autoContext ? "Pinned sections" : "What can I read?"}
       </p>
       <div className="space-y-1">
         {SCOPES.map((s) => {
@@ -80,6 +110,11 @@ function ScopeMenu({ isWatch }: { isWatch: boolean }) {
               {isCurrent && !isWatch && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-bold flex-shrink-0">
                   this page
+                </span>
+              )}
+              {autoContext && !active && autoScopes.includes(s.id) && !isWatch && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/10 text-muted-foreground font-bold flex-shrink-0">
+                  auto
                 </span>
               )}
             </button>
@@ -236,6 +271,9 @@ const SUGGESTIONS = [
   { icon: "🔥", label: "How's my streak going?" },
   { icon: "🧘", label: "Summarize my breathing practice" },
   { icon: "✍️", label: "Save a quick note (e.g. \"save: idea about X\")" },
+  { icon: "🧘", label: "Włącz preset Monk mode" },
+  { icon: "✅", label: "Zrobiłem dzisiejszą misję z Body" },
+  { icon: "🧭", label: "Otwórz statystyki" },
 ];
 
 export default function AssistantPanel() {
@@ -252,6 +290,13 @@ export default function AssistantPanel() {
     sendMessage,
     stop,
     clearConversation,
+    applyActions,
+    dismissActions,
+    autoContext,
+    autoScopes,
+    routing,
+    lastModel,
+    budgetExceeded,
   } = useAssistant();
   const [input, setInput] = useState("");
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -262,6 +307,66 @@ export default function AssistantPanel() {
   const lastChunkRef = useRef("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const isWatch = useIsWatch();
+
+  // Hands-free conversation: the reply is read out; proposed actions are
+  // confirmed with a spoken yes/no; "koniec" / "bye" ends it.
+  const awaitingConfirmRef = useRef<string | null>(null);
+  const sendRef = useRef(sendMessage);
+  const applyRef = useRef(applyActions);
+  const dismissRef = useRef(dismissActions);
+  useEffect(() => {
+    sendRef.current = sendMessage;
+    applyRef.current = applyActions;
+    dismissRef.current = dismissActions;
+  }, [sendMessage, applyActions, dismissActions]);
+  const voiceLangRef = useRef<VoiceLang>("pl-PL");
+  const onUtterance = useCallback(async (text: string) => {
+    const prompts = VOICE_PROMPTS[voiceLangRef.current];
+    const pendingId = awaitingConfirmRef.current;
+    if (pendingId) {
+      const yn = parseYesNo(text);
+      if (yn === "yes") {
+        awaitingConfirmRef.current = null;
+        const result = await applyRef.current(pendingId);
+        return result ? prompts.applied : prompts.error;
+      }
+      if (yn === "no") {
+        awaitingConfirmRef.current = null;
+        dismissRef.current(pendingId);
+        return prompts.dismissed;
+      }
+      return prompts.unclear;
+    }
+    if (isStopPhrase(text)) return { text: prompts.bye, end: true };
+    const reply = await sendRef.current(text, { voice: true });
+    if (!reply) return prompts.error;
+    if (reply.error) return reply.content;
+    if (reply.actions && reply.actions.length > 0) {
+      awaitingConfirmRef.current = reply.id;
+      return `${reply.content} ${prompts.confirm}`;
+    }
+    return reply.content;
+  }, []);
+  const voice = useVoiceMode({
+    onUtterance,
+    onEnd: (reason) => {
+      awaitingConfirmRef.current = null;
+      if (reason === "silence") toast(VOICE_PROMPTS[voiceLangRef.current].nothing);
+      if (reason === "error") toast.error("Voice mode is not available here. Use Chrome, Edge or Safari and allow the microphone.");
+    },
+  });
+  useEffect(() => { voiceLangRef.current = voice.lang; }, [voice.lang]);
+  const toggleVoiceMode = () => {
+    if (voice.active) {
+      voice.stop();
+      return;
+    }
+    if (!voice.supported) {
+      toast.error("This browser has no speech recognition. Use Chrome, Edge or Safari.");
+      return;
+    }
+    voice.start();
+  };
 
   useEffect(() => {
     if (listRef.current) {
@@ -432,12 +537,30 @@ export default function AssistantPanel() {
                     <div className="min-w-0">
                       <p className="font-bold text-sm text-foreground leading-tight truncate">Assistant</p>
                       <p className="text-[10px] text-muted-foreground leading-tight truncate">
-                        Answers from your data
+                        {voice.active
+                          ? voice.phase === "listening"
+                            ? "Listening…"
+                            : voice.phase === "speaking"
+                              ? "Speaking…"
+                              : "Thinking…"
+                          : lastModel
+                            ? prettyModelName(lastModel)
+                            : "Answers from your data"}
                       </p>
                     </div>
                   )}
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button
+                    onClick={toggleVoiceMode}
+                    className={`rounded-lg transition-colors ${isWatch ? "p-1" : "p-2"} ${
+                      voice.active ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    }`}
+                    title={voice.active ? "End voice conversation" : "Voice conversation (hands-free)"}
+                    aria-pressed={voice.active}
+                  >
+                    {voice.active ? <PhoneOff className={isWatch ? "w-3 h-3" : "w-4 h-4"} /> : <Headphones className={isWatch ? "w-3 h-3" : "w-4 h-4"} />}
+                  </button>
                   {messages.length > 0 && (
                     <button
                       onClick={clearConversation}
@@ -482,6 +605,22 @@ export default function AssistantPanel() {
                     </span>
                   ))}
                 {!isWatch &&
+                  autoContext &&
+                  autoScopes
+                    .filter((s) => !selectedScopes.includes(s))
+                    .map((s: ScopeId) => (
+                      <span
+                        key={`auto-${s}`}
+                        title="Picked automatically for the last question"
+                        className="text-[10px] px-2 py-1 rounded-lg border border-dashed border-primary/40 text-foreground/70 flex items-center gap-1"
+                      >
+                        {SCOPE_MAP[s].icon} {SCOPE_MAP[s].label}
+                      </span>
+                    ))}
+                {!isWatch && routing && (
+                  <span className="text-[10px] text-primary animate-pulse">Choosing context…</span>
+                )}
+                {!isWatch &&
                   archiveItems.map((it) => (
                     <span
                       key={it.id}
@@ -495,9 +634,11 @@ export default function AssistantPanel() {
                     {activeScopeCount} selected
                   </span>
                 )}
-                {activeScopeCount === 0 && !isWatch && (
+                {activeScopeCount === 0 && autoScopes.length === 0 && !routing && !isWatch && (
                   <span className="text-[10px] text-muted-foreground">
-                    No context selected. I'll use {currentScope ? SCOPE_MAP[currentScope]?.label : "the dashboard"}.
+                    {autoContext
+                      ? "Auto: I'll pick the sections your question needs."
+                      : `No context selected. I'll use ${currentScope ? SCOPE_MAP[currentScope]?.label : "the dashboard"}.`}
                   </span>
                 )}
                 {activeScopeCount === 0 && isWatch && (
@@ -506,6 +647,46 @@ export default function AssistantPanel() {
                   </span>
                 )}
               </div>
+
+              {/* Voice conversation status */}
+              {voice.active && (
+                <div className={`border-b border-white/10 flex items-center gap-2 ${isWatch ? "px-2 py-1" : "px-3 py-2"}`}>
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 animate-pulse ${
+                      voice.phase === "listening" ? "bg-red-400" : voice.phase === "speaking" ? "bg-primary" : "bg-amber-400"
+                    }`}
+                  />
+                  <span className="flex-1 min-w-0 text-[11px] text-muted-foreground truncate">
+                    {voice.interim ||
+                      (voice.phase === "listening"
+                        ? voice.lang === "pl-PL" ? "Słucham…" : "Listening…"
+                        : voice.phase === "speaking"
+                          ? voice.lang === "pl-PL" ? "Mówię…" : "Speaking…"
+                          : voice.lang === "pl-PL" ? "Myślę…" : "Thinking…")}
+                  </span>
+                  {voice.phase === "speaking" && (
+                    <button
+                      onClick={voice.interrupt}
+                      className="text-[10px] px-2 py-1 rounded-lg bg-muted/50 border border-white/10 text-muted-foreground hover:text-foreground"
+                    >
+                      {voice.lang === "pl-PL" ? "Przerwij" : "Interrupt"}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => voice.setLang(voice.lang === "pl-PL" ? "en-US" : "pl-PL")}
+                    className="text-[10px] px-2 py-1 rounded-lg bg-muted/50 border border-white/10 text-muted-foreground hover:text-foreground"
+                    title="Speech recognition language"
+                  >
+                    {voice.lang === "pl-PL" ? "PL" : "EN"}
+                  </button>
+                  <button
+                    onClick={voice.stop}
+                    className="text-[10px] px-2 py-1 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 hover:text-red-200"
+                  >
+                    Stop
+                  </button>
+                </div>
+              )}
 
               {/* Messages */}
               <div ref={listRef} className={`flex-1 overflow-y-auto space-y-3 ${isWatch ? "px-2 py-2" : "px-4 py-4 space-y-4"}`}>
@@ -517,7 +698,8 @@ export default function AssistantPanel() {
                     <p className={`font-semibold text-foreground mb-1 ${isWatch ? "text-[11px]" : "text-sm"}`}>Ask about your quest</p>
                     {!isWatch && (
                       <p className="text-xs text-muted-foreground mb-4 leading-relaxed px-2">
-                        I answer using only the data you allow via the Context menu above.
+                        I read the sections your question needs (auto-context) and can operate the app: open sections,
+                        tick missions, load presets, add missions and notes. The headphones start a hands-free conversation.
                       </p>
                     )}
                     <div className="grid grid-cols-1 gap-1.5">
@@ -621,6 +803,13 @@ export default function AssistantPanel() {
                     </button>
                   )}
                 </div>
+                {!isWatch && (lastModel || budgetExceeded) && (
+                  <p className="mt-1.5 px-1 text-[10px] text-muted-foreground/70 truncate">
+                    {budgetExceeded
+                      ? "Monthly AI budget reached · using the cheaper model until next month"
+                      : `Model: ${prettyModelName(lastModel || "")}${autoContext ? " · auto-context" : ""}`}
+                  </p>
+                )}
               </div>
             </motion.aside>
           </>

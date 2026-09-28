@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useUserContext, ContextShelves } from "@/hooks/useUserContext";
+import { fetchAssistantStatus, prettyModelName, type AssistantStatus } from "@/lib/assistant-api";
 
 interface Shelf {
   key: keyof ContextShelves;
@@ -115,6 +116,74 @@ export default function ContextTab() {
           </button>
         </div>
       </div>
+
+      <AssistantStatusCard />
+    </div>
+  );
+}
+
+/** Which models the assistant runs on and what this month has cost so far. */
+function AssistantStatusCard() {
+  const [status, setStatus] = useState<AssistantStatus | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAssistantStatus()
+      .then((s) => { if (!cancelled) setStatus(s); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const pct = status && status.budgetUsd > 0 ? Math.min(100, Math.round((status.monthCostUsd / status.budgetUsd) * 100)) : 0;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-background/40 px-4 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <h4 className="text-xs font-bold text-foreground">Assistant model &amp; budget</h4>
+        {status && (
+          <span className="text-[10px] text-muted-foreground">
+            {status.monthRequests} request{status.monthRequests === 1 ? "" : "s"} this month
+          </span>
+        )}
+      </div>
+      {failed && <p className="text-[11px] text-muted-foreground">Could not reach the assistant function.</p>}
+      {!status && !failed && <p className="text-[11px] text-muted-foreground animate-pulse">Loading…</p>}
+      {status && (
+        <>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+            <span className="text-muted-foreground">Chat</span>
+            <span className="text-foreground font-medium">
+              {prettyModelName(status.smartModel)}
+              {status.overBudget && <span className="ml-1 text-amber-300">(budget reached, using {prettyModelName(status.cheapModel)})</span>}
+            </span>
+            <span className="text-muted-foreground">After the cap</span>
+            <span className="text-foreground/80">{prettyModelName(status.cheapModel)}</span>
+            <span className="text-muted-foreground">Context router</span>
+            <span className="text-foreground/80">{prettyModelName(status.routerModel)}</span>
+          </div>
+          <div>
+            <div className="flex justify-between text-[11px] mb-1">
+              <span className="text-muted-foreground">This month</span>
+              <span className="text-foreground font-medium">
+                ${status.monthCostUsd.toFixed(2)} / ${status.budgetUsd.toFixed(0)}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className={`h-full rounded-full ${pct >= 100 ? "bg-amber-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+            </div>
+            {!status.usageTableReady && (
+              <p className="mt-1 text-[10px] text-amber-300/90">
+                Spend tracking needs the migration <code className="font-mono">20260928200000_ai_usage_log.sql</code>; until then the cap is not enforced.
+              </p>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Change models or the cap with the Supabase secrets <code className="font-mono">ASSISTANT_MODEL</code>,{" "}
+            <code className="font-mono">ASSISTANT_FALLBACK_MODEL</code>, <code className="font-mono">ASSISTANT_BUDGET_USD</code> (OpenRouter slugs), then redeploy <code className="font-mono">ai-assistant-chat</code>.
+          </p>
+        </>
+      )}
     </div>
   );
 }

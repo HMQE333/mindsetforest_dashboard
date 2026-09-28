@@ -12,6 +12,8 @@ import {
   type UsageSession,
 } from "@/lib/app-usage-classify";
 import { DAILY_COLUMNS, dailyRowToSession, rowToClass, rowToRule } from "@/lib/app-usage-rows";
+import { formatMissionList, listTodayMissions } from "@/lib/mission-match";
+import { parseMissionMap } from "@/lib/mission-presets";
 
 export type ScopeId =
   | "dashboard"
@@ -32,22 +34,24 @@ export interface ScopeDef {
   id: ScopeId;
   label: string;
   icon: string;
+  /** One line for the router model: what this section contains. */
+  description: string;
 }
 
 export const SCOPES: ScopeDef[] = [
-  { id: "dashboard", label: "Dashboard", icon: "🎮" },
-  { id: "tracker", label: "Tracker stats", icon: "📊" },
-  { id: "computer", label: "Komputer", icon: "💻" },
-  { id: "paths", label: "Paths", icon: "🪜" },
-  { id: "planning", label: "Planning", icon: "🧠" },
-  { id: "health", label: "Health", icon: "❤️" },
-  { id: "finance", label: "Finance", icon: "💰" },
-  { id: "oracle", label: "Oracle", icon: "🔮" },
-  { id: "archive", label: "Archive", icon: "📦" },
-  { id: "breathing", label: "Breathing", icon: "🫁" },
-  { id: "cooking", label: "Cooking", icon: "🍳" },
-  { id: "calendar", label: "Calendar", icon: "📅" },
-  { id: "library", label: "Library", icon: "📚" },
+  { id: "dashboard", label: "Dashboard", icon: "🎮", description: "Home: XP, level, streak, today's missions per pillar with done/not-done, saved mission presets. Needed to tick missions, load presets, add missions." },
+  { id: "tracker", label: "Tracker stats", icon: "📊", description: "Daily tracked metrics for the last 30 days (sleep, steps, reading minutes, custom numbers), totals and active days." },
+  { id: "computer", label: "Komputer", icon: "💻", description: "Screen time from the desktop tracker: apps and window titles by day, work vs waste vs learning classes, folders and rules." },
+  { id: "paths", label: "Paths", icon: "🪜", description: "Long-term goals as paths with ordered steps, the active step, reps logged per day, diagnoses of the binding constraint. Needed for revise_path." },
+  { id: "planning", label: "Planning", icon: "🧠", description: "Planning board: tasks with deadlines, mindmap trees of goals/phases/tasks, what is overdue. Needed for add_task and mindmap actions." },
+  { id: "health", label: "Health", icon: "❤️", description: "Health log: weight, workouts, watch data (HRV, resting HR, sleep), lab results, recovery." },
+  { id: "finance", label: "Finance", icon: "💰", description: "Money: income, expenses by category, subscriptions, monthly totals and budgets." },
+  { id: "oracle", label: "Oracle", icon: "🔮", description: "Oracle: XP sacrifices, rewards and boons the user bought with XP, reward history." },
+  { id: "archive", label: "Archive", icon: "📦", description: "Archive of notes and ideas with tags and pillars; a semantic search over the notes for the question. Needed for add_note and questions about what the user wrote down." },
+  { id: "breathing", label: "Breathing", icon: "🫁", description: "Breathing exercise sessions: patterns practised, minutes, frequency." },
+  { id: "cooking", label: "Cooking", icon: "🍳", description: "Recipes, meal plans, ingredients and cooking history." },
+  { id: "calendar", label: "Calendar", icon: "📅", description: "Calendar events for the coming days: appointments, blocks, deadlines with times." },
+  { id: "library", label: "Library", icon: "📚", description: "Books and courses: reading list, progress, finished titles, notes per book." },
 ];
 
 export const SCOPE_MAP: Record<ScopeId, ScopeDef> = Object.fromEntries(
@@ -73,7 +77,7 @@ function daysAgoISO(days: number): string {
 }
 
 async function gatherDashboard(userId: string): Promise<string> {
-  const [{ data }, { data: presets }] = await Promise.all([
+  const [{ data }, { data: presets }, { data: projects }] = await Promise.all([
     supabase.from("dashboard_state").select("*").eq("user_id", userId).maybeSingle(),
     supabase
       .from("mission_presets")
@@ -81,6 +85,7 @@ async function gatherDashboard(userId: string): Promise<string> {
       .eq("user_id", userId)
       .order("sort_order", { ascending: true })
       .limit(30),
+    supabase.from("user_projects").select("id,name").eq("user_id", userId),
   ]);
   const presetLine =
     presets && presets.length > 0
@@ -89,6 +94,15 @@ async function gatherDashboard(userId: string): Promise<string> {
       : "Saved mission presets: none";
   if (!data) return ["No dashboard activity recorded yet.", presetLine].join("\n");
   const cats = (data.categories_engaged || []).map(catName).join(", ") || "none";
+  // Completions belong to the day the row was last written; after the 04:00
+  // rollover (done on the client) they are stale, so show them as not done.
+  const sameDay = !data.day_key || data.day_key === todayKey();
+  const projectNames: Record<string, string> = {};
+  for (const p of projects || []) projectNames[`project-${p.id}`] = p.name;
+  const missions = listTodayMissions(parseMissionMap(data.custom_missions), sameDay ? data.completed_missions || [] : [], projectNames);
+  const missionBlock = missions.length > 0
+    ? "Today's missions ([x] done, [ ] not yet; use complete_mission with the exact title to tick one):\n" + formatMissionList(missions)
+    : "Today's missions: none";
   return [
     `Total XP: ${data.current_xp}`,
     `Level: ${data.current_level}`,
@@ -96,6 +110,7 @@ async function gatherDashboard(userId: string): Promise<string> {
     `Missions completed today: ${data.missions_completed}`,
     `Categories engaged today: ${cats}`,
     `Last completion date: ${data.last_completion_date || "none"}`,
+    missionBlock,
     presetLine,
   ].join("\n");
 }

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { revisePathPlan, findPathByName } from "@/lib/path-writes";
 import { notifyPathsChanged } from "@/hooks/usePaths";
@@ -23,9 +24,12 @@ import {
 } from "@/lib/assistant-context";
 import {
   buildActionInstructions,
+  isAutoApply,
   parseActions,
   type AssistantAction,
 } from "@/lib/assistant-actions";
+import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
+import { findMission, listTodayMissions } from "@/lib/mission-match";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap } from "@/lib/mission-presets";
 
@@ -46,9 +50,10 @@ export interface AssistantMessage {
 const OPEN_KEY = "assistant_panel_open";
 const MSG_KEY = "assistant_messages";
 const SCOPE_KEY = "assistant_scopes";
+const AUTO_KEY = "assistant_auto_context";
+/** Cross-page navigation event handled by pages/Index.tsx. */
+export const NAVIGATE_EVENT = "lov:navigate-module";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 function loadMessages(): AssistantMessage[] {
   try {
@@ -57,6 +62,14 @@ function loadMessages(): AssistantMessage[] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function loadAutoContext(): boolean {
+  try {
+    return localStorage.getItem(AUTO_KEY) !== "0";
+  } catch {
+    return true;
   }
 }
 
@@ -72,7 +85,9 @@ function loadScopes(): ScopeId[] {
 
 function useAssistantValue() {
   const { user } = useAuth();
-  const { addMission, applyMissionPreset } = useDashboardState();
+  const { addMission, applyMissionPreset, completeMission, state: dashboardState } = useDashboardState();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpenState] = useState<boolean>(() => {
     try {
       return localStorage.getItem(OPEN_KEY) === "1";
@@ -82,6 +97,13 @@ function useAssistantValue() {
   });
   const [messages, setMessages] = useState<AssistantMessage[]>(loadMessages);
   const [selectedScopes, setSelectedScopes] = useState<ScopeId[]>(loadScopes);
+  // Auto-context: the router model picks sections per message; `selectedScopes`
+  // are the ones the user pinned by hand and always ride along.
+  const [autoContext, setAutoContextState] = useState<boolean>(loadAutoContext);
+  const [autoScopes, setAutoScopes] = useState<ScopeId[]>([]);
+  const [routing, setRouting] = useState(false);
+  const [lastModel, setLastModel] = useState<string | null>(null);
+  const [budgetExceeded, setBudgetExceeded] = useState(false);
   const [archiveItems, setArchiveItems] = useState<ArchiveItemRef[]>([]);
   const [currentScope, setCurrentScope] = useState<ScopeId | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -114,6 +136,16 @@ function useAssistantValue() {
     }
   }, [selectedScopes]);
 
+  const setAutoContext = useCallback((v: boolean) => {
+    setAutoContextState(v);
+    if (!v) setAutoScopes([]);
+    try {
+      localStorage.setItem(AUTO_KEY, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const toggleScope = useCallback((scope: ScopeId) => {
     setSelectedScopes((prev) =>
       prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
@@ -135,8 +167,9 @@ function useAssistantValue() {
   // When the panel is opened with no scopes chosen yet, pre-select the page
   // the user is currently on (falling back to the dashboard) as a convenience.
   const ensureDefaultScope = useCallback(() => {
+    if (autoContext) return;
     setSelectedScopes((prev) => (prev.length > 0 ? prev : [currentScope || "dashboard"]));
-  }, [currentScope]);
+  }, [currentScope, autoContext]);
 
   const openPanel = useCallback(() => {
     ensureDefaultScope();
@@ -144,11 +177,12 @@ function useAssistantValue() {
   }, [ensureDefaultScope, setOpen]);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { voice?: boolean }): Promise<AssistantMessage | null> => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming || !user) return;
+      if (!trimmed || isStreaming || !user) return null;
 
-      const scopesForSend = selectedScopes.length > 0 ? selectedScopes : [currentScope || "dashboard"];
+      const pinned = selectedScopes;
+      let scopesForSend: ScopeId[] = pinned.length > 0 ? pinned : [currentScope || "dashboard"];
       const historyForSend = messages
         .filter((m) => !m.error)
         .map((m) => ({ role: m.role, content: m.content }));
@@ -169,7 +203,32 @@ function useAssistantValue() {
       const patchAssistant = (updater: (m: AssistantMessage) => AssistantMessage) =>
         setMessages((prev) => prev.map((m) => (m.id === assistantId ? updater(m) : m)));
 
+      let final: AssistantMessage | null = null;
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
+        // Let the router model pick the sections for this message. Pinned
+        // sections always stay; a router failure just falls back to them.
+        if (autoContext) {
+          setRouting(true);
+          try {
+            const routed = await routeScopes(
+              { message: trimmed, history: historyForSend, current: currentScope, pinned },
+              controller.signal,
+            );
+            const extra = routed.scopes.filter((sc) => !pinned.includes(sc));
+            setAutoScopes(extra);
+            scopesForSend = [...pinned, ...extra];
+            if (scopesForSend.length === 0) scopesForSend = [currentScope || "dashboard"];
+          } catch (e) {
+            if (e instanceof Error && e.name === "AbortError") throw e;
+            setAutoScopes([]);
+          } finally {
+            setRouting(false);
+          }
+        }
+
         const { text: context, citations } = await gatherContext(
           user.id,
           scopesForSend,
@@ -177,32 +236,22 @@ function useAssistantValue() {
           trimmed,
         );
 
-        // Inject action-protocol instructions for whatever writable scopes the
-        // user granted. This rides on the existing edge function (which embeds
-        // `context` in the system prompt) so it works without a redeploy.
+        // The action protocol rides inside `context` (the function embeds it in
+        // the system prompt), gated by the sections in play.
         const actionInstructions = buildActionInstructions(scopesForSend);
         const contextWithActions = actionInstructions
           ? `${context}\n\n${actionInstructions}`
           : context;
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token || SUPABASE_KEY;
-
-        const controller = new AbortController();
-        abortRef.current = controller;
-
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-assistant-chat`, {
+        const res = await fetch(ASSISTANT_FN_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${token}`,
-          },
+          headers: await assistantAuthHeaders(),
           body: JSON.stringify({
             message: trimmed,
             history: historyForSend,
             context: contextWithActions,
             scopes: scopesForSend,
+            voice: !!opts?.voice,
           }),
           signal: controller.signal,
         });
@@ -213,10 +262,15 @@ function useAssistantValue() {
               "The assistant isn't available yet. The 'ai-assistant-chat' function needs to be deployed to Supabase before it can answer.",
             );
           }
+          if (res.status === 401) throw new Error("Please sign in again to use the assistant.");
           if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
           if (res.status === 402) throw new Error("AI credits are exhausted. Please add credits in Supabase.");
           throw new Error("The assistant could not be reached. Please try again.");
         }
+
+        const modelHeader = res.headers.get("X-Assistant-Model");
+        if (modelHeader) setLastModel(modelHeader);
+        setBudgetExceeded(res.headers.get("X-Assistant-Budget") === "exceeded");
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -249,21 +303,28 @@ function useAssistantValue() {
         }
 
         if (!acc.trim()) {
-          patchAssistant((m) => ({
-            ...m,
+          final = {
+            id: assistantId,
+            role: "assistant",
             content: "I couldn't produce an answer this time. Please try rephrasing.",
-          }));
+          };
         } else {
           // Pull any proposed write actions out of the reply and gate them by the
-          // scopes the user actually granted for this message.
+          // sections in play. Navigation runs right away; the rest wait for a click
+          // (or a spoken yes in voice mode).
           const { text: display, actions } = parseActions(acc, scopesForSend);
-          patchAssistant((m) => ({
-            ...m,
+          const pending = actions.filter((a) => !isAutoApply(a));
+          for (const a of actions.filter(isAutoApply)) void runActionRef.current(a);
+          final = {
+            id: assistantId,
+            role: "assistant",
             content: display || acc,
             citations,
-            actions: actions.length > 0 ? actions : undefined,
-          }));
+            actions: pending.length > 0 ? pending : undefined,
+          };
         }
+        const done = final;
+        patchAssistant((m) => ({ ...m, ...done }));
       } catch (e) {
         const msg =
           e instanceof Error && e.name === "AbortError"
@@ -271,32 +332,59 @@ function useAssistantValue() {
             : e instanceof Error
               ? e.message
               : "Something went wrong.";
+        final = { id: assistantId, role: "assistant", content: msg, error: true };
         patchAssistant((m) => ({ ...m, content: msg, error: true }));
       } finally {
         setIsStreaming(false);
+        setRouting(false);
         abortRef.current = null;
       }
+      return final;
     },
-    [isStreaming, user, selectedScopes, currentScope, messages, archiveItems],
+    [isStreaming, user, selectedScopes, currentScope, messages, archiveItems, autoContext],
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  // Execute the confirmed write actions via the existing state hooks / tables.
-  // Runs in order and reports how many succeeded so partial failures are visible.
-  const applyActions = useCallback(
-    async (messageId: string) => {
-      if (!user) return;
-      const msg = messages.find((m) => m.id === messageId);
-      if (!msg?.actions || msg.actions.length === 0 || msg.actionsResolved) return;
-
+  // Execute one action via the existing state hooks / tables. Returns whether
+  // it succeeded; the confirm flow and the auto-apply path both go through here.
+  const runAction = useCallback(
+    async (action: AssistantAction): Promise<boolean> => {
+      if (!user) return false;
       let ok = 0;
       let failed = 0;
-      for (const action of msg.actions) {
+      {
         try {
-          if (action.type === "add_mission") {
+          if (action.type === "navigate") {
+            const module = action.module;
+            const announce = () => window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: { module } }));
+            if (module === "tracker") {
+              navigate("/tracker");
+            } else if (location.pathname !== "/") {
+              // Index.tsx owns the tabs; mount it first, then tell it where to go.
+              navigate("/");
+              setTimeout(announce, 150);
+            } else {
+              announce();
+            }
+            ok++;
+          } else if (action.type === "complete_mission") {
+            const entries = listTodayMissions(dashboardState.customMissions, dashboardState.completedMissions);
+            const match = findMission(entries, action.title, action.categoryId);
+            if (!match) {
+              failed++;
+              toast.error(`Nie znaleziono misji „${action.title}”`);
+            } else if (match.done) {
+              ok++;
+              toast(`„${match.title}” jest już odhaczone`);
+            } else {
+              completeMission(match.categoryId, match.index, match.xp);
+              ok++;
+              toast.success(`Odhaczono „${match.title}” (+${match.xp} XP)`);
+            }
+          } else if (action.type === "add_mission") {
             addMission(action.categoryId, {
               title: action.title,
               description: action.description || "",
@@ -534,6 +622,27 @@ function useAssistantValue() {
           failed++;
         }
       }
+      return failed === 0 && ok > 0;
+    },
+    [user, addMission, applyMissionPreset, completeMission, dashboardState.customMissions, dashboardState.completedMissions, navigate, location.pathname],
+  );
+  const runActionRef = useRef(runAction);
+  useEffect(() => { runActionRef.current = runAction; }, [runAction]);
+
+  // Apply the confirmed actions of one reply, in order. Returns the summary
+  // line (also stored on the message) so voice mode can read it out.
+  const applyActions = useCallback(
+    async (messageId: string): Promise<string | null> => {
+      if (!user) return null;
+      const msg = messages.find((m) => m.id === messageId);
+      if (!msg?.actions || msg.actions.length === 0 || msg.actionsResolved) return null;
+
+      let ok = 0;
+      let failed = 0;
+      for (const action of msg.actions) {
+        if (await runActionRef.current(action)) ok++;
+        else failed++;
+      }
 
       const result =
         failed === 0
@@ -545,8 +654,9 @@ function useAssistantValue() {
           m.id === messageId ? { ...m, actionsResolved: "applied", actionResult: result } : m,
         ),
       );
+      return result;
     },
-    [user, messages, addMission, applyMissionPreset],
+    [user, messages],
   );
 
   const dismissActions = useCallback((messageId: string) => {
@@ -565,6 +675,12 @@ function useAssistantValue() {
     selectedScopes,
     toggleScope,
     setSelectedScopes,
+    autoContext,
+    setAutoContext,
+    autoScopes,
+    routing,
+    lastModel,
+    budgetExceeded,
     archiveItems,
     addArchiveItem,
     removeArchiveItem,

@@ -28,3 +28,26 @@ describe("assistant apply_preset action", () => {
     expect(buildActionInstructions(["planning"])).not.toContain("apply_preset");
   });
 });
+
+describe("assistant navigate and complete_mission actions", () => {
+  it("navigate is allowed under any scope and rejects unknown modules", () => {
+    expect(parseActions(block([{ type: "navigate", module: "Finance" }]), []).actions).toEqual([{ type: "navigate", module: "finance" }]);
+    expect(parseActions(block([{ type: "navigate", module: "mars" }]), ["dashboard"]).actions).toEqual([]);
+    expect(ACTION_SCOPE.navigate).toBeNull();
+    expect(describeAction({ type: "navigate", module: "tracker" })).toBe("Open Stats");
+  });
+
+  it("complete_mission needs the dashboard scope and a title", () => {
+    const parsed = parseActions(block([{ type: "complete_mission", title: " 50 pushups ", categoryId: "body" }]), ["dashboard"]);
+    expect(parsed.actions).toEqual([{ type: "complete_mission", title: "50 pushups", categoryId: "body" }]);
+    expect(parseActions(block([{ type: "complete_mission", title: "x" }]), ["archive"]).actions).toEqual([]);
+    expect(parseActions(block([{ type: "complete_mission" }]), ["dashboard"]).actions).toEqual([]);
+    expect(describeAction({ type: "complete_mission", title: "Read" })).toContain('"Read"');
+  });
+
+  it("always advertises navigate and only advertises complete_mission with the dashboard", () => {
+    expect(buildActionInstructions([])).toContain("navigate");
+    expect(buildActionInstructions(["archive"])).not.toContain("complete_mission");
+    expect(buildActionInstructions(["dashboard"])).toContain("complete_mission");
+  });
+});

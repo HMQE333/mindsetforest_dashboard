@@ -8,6 +8,17 @@ These are the AI backend functions the app invokes via `supabase.functions.invok
 | --- | --- | --- | --- |
 | **Archive vector embeddings** (semantic search, Forest search) | `ai-embed-block`, `forest-publish-seed` | **OpenAI** (`text-embedding-3-small`) | `OPENAI_API_KEY` |
 | Every other AI feature (missions, paths, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) | the `ai-*` LLM functions | **OpenRouter** | `OPENROUTER_API_KEY` (+ optional `OPENROUTER_MODEL`) |
+| **Assistant chat** (`ai-assistant-chat`): smart model until a monthly cap, cheap model after; a small router model picks context sections | `ai-assistant-chat` | **OpenRouter** | `ASSISTANT_MODEL` (default `anthropic/claude-sonnet-5.5`), `ASSISTANT_FALLBACK_MODEL` (default `OPENROUTER_MODEL` or `google/gemini-2.5-flash`), `ASSISTANT_ROUTER_MODEL` (default `google/gemini-2.5-flash`), `ASSISTANT_BUDGET_USD` (default `10`) |
+
+### Assistant budget
+
+`ai-assistant-chat` logs every answered request to `ai_usage_log` (migration
+`20260928200000_ai_usage_log.sql`) with OpenRouter's cost accounting and reads the
+month-to-date total through `ai_usage_month()`. Once a user passes
+`ASSISTANT_BUDGET_USD` in a calendar month the function answers from
+`ASSISTANT_FALLBACK_MODEL` until the month rolls over. Without the migration the
+function still works, but spend is not tracked and the cap is not enforced.
+Settings -> AI Context shows the models and this month's spend.
 
 ### Shared planner
 

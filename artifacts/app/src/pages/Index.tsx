@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings, LogOut } from "lucide-react";
+import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -75,13 +76,30 @@ const Index = () => {
   const { badgeCount } = useFriends();
   useAssistantCurrentScope(TAB_TO_SCOPE[activeTab] ?? null);
 
-  // Cross-module navigation: Planning mentions and the Home strip jump to Paths.
+  // Cross-module navigation: Planning mentions and the Home strip jump to Paths,
+  // and the assistant's `navigate` action opens any section or the settings.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.module !== "paths") return;
-      setActiveTab("paths");
-      if (detail.pathId) {
+      const module = typeof detail?.module === "string" ? detail.module : "";
+      if (!module) return;
+      if (module === "settings") {
+        setSettingsOpen(true);
+        return;
+      }
+      if (module === "tracker") {
+        navigate(user ? "/tracker" : "/auth");
+        return;
+      }
+      if (!(DEFAULT_TAB_ORDER as string[]).includes(module)) return;
+      if (module !== "dashboard" && !preferences.enabledModules.includes(module)) {
+        toast(`Moduł ${ALL_TAB_LABELS[module as Tab]} jest wyłączony w ustawieniach`);
+        return;
+      }
+      setActiveTab(module as Tab);
+      setMenuOpen(false);
+      setMoreOpen(false);
+      if (module === "paths" && detail.pathId) {
         // Forward to PathsView once it mounts.
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("lov:focus-path", { detail: { pathId: detail.pathId } }));
@@ -90,7 +108,7 @@ const Index = () => {
     };
     window.addEventListener("lov:navigate-module", handler as EventListener);
     return () => window.removeEventListener("lov:navigate-module", handler as EventListener);
-  }, []);
+  }, [navigate, user, preferences.enabledModules]);
 
   // Respect saved module order
   const moduleOrder = preferences.moduleOrder;
