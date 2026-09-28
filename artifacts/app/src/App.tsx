@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DashboardStateProvider } from "@/hooks/useDashboardState";
 import { AssistantProvider } from "@/hooks/useAssistant";
@@ -15,6 +15,13 @@ import NotFound from "./pages/NotFound";
 import SharedLibrary from "./pages/SharedLibrary";
 
 const queryClient = new QueryClient();
+
+// Preview builds (pnpm preview:build) are served from a static host under an
+// arbitrary path, so they use hash routing (#/tracker) instead of clean URLs.
+// Production keeps BrowserRouter with the deployment's base path.
+const useHashRouter = import.meta.env.VITE_HASH_ROUTER === "1";
+const AppRouter = ({ children }: { children: React.ReactNode }) =>
+  useHashRouter ? <HashRouter>{children}</HashRouter> : <BrowserRouter basename={import.meta.env.BASE_URL}>{children}</BrowserRouter>;
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,7 +36,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <AppRouter>
           <AuthProvider>
             <DashboardStateProvider>
               <AssistantProvider>
@@ -44,7 +51,7 @@ const App = () => (
               </AssistantProvider>
             </DashboardStateProvider>
           </AuthProvider>
-        </BrowserRouter>
+        </AppRouter>
       </TooltipProvider>
     </QueryClientProvider>
   </ErrorBoundary>

@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "pack:tracker": "node scripts/pack-tracker.mjs",
-    "prebuild": "node scripts/pack-tracker.mjs"
+    "prebuild": "node scripts/pack-tracker.mjs",
+    "preview:build": "node scripts/pack-tracker.mjs && node scripts/preview-build.mjs"
   },
   "devDependencies": {
     "@radix-ui/react-accordion": "^1.2.4",

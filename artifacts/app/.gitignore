@@ -3,3 +3,5 @@
 
 # keep the template
 !.env.example
+
+dist-preview/
