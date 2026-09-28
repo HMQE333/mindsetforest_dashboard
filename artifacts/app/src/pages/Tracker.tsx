@@ -16,6 +16,7 @@ import TrackerActivityPulse from "@/components/TrackerActivityPulse";
 import TrackerWatchView from "@/components/TrackerWatchView";
 import TrackerAchievements from "@/components/TrackerAchievements";
 import TrackerMilestoneModal from "@/components/TrackerMilestoneModal";
+import ComputerTime from "@/components/tracker/ComputerTime";
 import { useTrackerXp } from "@/hooks/useTrackerXp";
 import { useAssistantCurrentScope } from "@/hooks/useAssistant";
 import { Sparkles } from "lucide-react";
@@ -31,6 +32,8 @@ export default function Tracker() {
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
   const [milestone, setMilestone] = useState<{ id: string; title: string; icon: string; xp: number } | null>(null);
+  // TODO: useAssistantCurrentScope takes one scope; when it accepts several,
+  // add "computer" here so the assistant sees screen time alongside tracker stats.
   useAssistantCurrentScope("tracker");
 
   const streak = getStreakDays(entries);
@@ -168,6 +171,9 @@ export default function Tracker() {
 
         {/* 12-Month Activity Pulse */}
         <TrackerActivityPulse entries={entries} />
+
+        {/* Computer time (Minute Tracker agent) */}
+        <ComputerTime />
 
         {/* Achievements */}
         <TrackerAchievements entries={entries} onMilestone={setMilestone} />

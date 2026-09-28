@@ -34,6 +34,7 @@ type Tab = "dashboard" | "tracker" | "paths" | "oracle" | "archive" | "library" 
 
 const TAB_TO_SCOPE: Partial<Record<Tab, ScopeId>> = {
   dashboard: "dashboard",
+  // TODO: the Stats tab also has a "computer" scope (screen time); one scope per tab for now.
   tracker: "tracker",
   paths: "paths",
   oracle: "oracle",

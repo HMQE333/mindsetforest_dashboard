@@ -2,10 +2,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
 import { addDays, todayKey } from "@/lib/today";
+import {
+  aggregateUsage,
+  classifyAll,
+  formatHm,
+  APP_KINDS,
+  type AppKind,
+  type UsageAggregate,
+  type UsageSession,
+} from "@/lib/app-usage-classify";
+import { DAILY_COLUMNS, dailyRowToSession, rowToClass, rowToRule } from "@/lib/app-usage-rows";
 
 export type ScopeId =
   | "dashboard"
   | "tracker"
+  | "computer"
   | "paths"
   | "planning"
   | "health"
@@ -26,6 +37,7 @@ export interface ScopeDef {
 export const SCOPES: ScopeDef[] = [
   { id: "dashboard", label: "Dashboard", icon: "🎮" },
   { id: "tracker", label: "Tracker stats", icon: "📊" },
+  { id: "computer", label: "Komputer", icon: "💻" },
   { id: "paths", label: "Paths", icon: "🪜" },
   { id: "planning", label: "Planning", icon: "🧠" },
   { id: "health", label: "Health", icon: "❤️" },
@@ -102,6 +114,132 @@ async function gatherTracker(userId: string): Promise<string> {
     `Tracker summary for the last 30 days (${allDays.size} active days):`,
     ...lines,
   ].join("\n");
+}
+
+const KIND_NAMES: Record<AppKind, string> = {
+  work: "work",
+  learning: "learning",
+  communication: "communication",
+  watching: "watching",
+  waste: "waste",
+  neutral: "neutral",
+};
+
+function kindLine(agg: UsageAggregate): string {
+  const parts = APP_KINDS.filter((k) => agg.byKind[k] > 0).map((k) => `${KIND_NAMES[k]} ${formatHm(agg.byKind[k])}`);
+  if (agg.unclassifiedSeconds > 0) parts.push(`unassigned ${formatHm(agg.unclassifiedSeconds)}`);
+  return parts.length > 0 ? parts.join(", ") : "nothing counted";
+}
+
+function focusText(ratio: number | null): string {
+  return ratio === null ? "n/a" : `${Math.round(ratio * 100)}%`;
+}
+
+/**
+ * Screen time from the desktop agent, summarised from the daily rollup view
+ * (no window titles, so title rules do not apply here; the Stats page has the
+ * exact numbers). Same classifier and aggregation as the Stats section.
+ */
+async function gatherComputer(userId: string): Promise<string> {
+  const today = todayKey();
+  const from30 = daysAgoISO(29);
+  const from7 = daysAgoISO(6);
+
+  const [classRes, ruleRes, projRes, syncRes] = await Promise.all([
+    supabase.from("app_classes").select("*").eq("user_id", userId).order("sort_order"),
+    supabase.from("app_rules").select("*").eq("user_id", userId),
+    supabase.from("user_projects").select("id,name").eq("user_id", userId),
+    supabase
+      .from("app_usage_sessions")
+      .select("ended_at,device_id")
+      .eq("user_id", userId)
+      .order("ended_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (classRes.error || syncRes.error) return "Computer time is not set up yet (usage tables missing).";
+  if (!syncRes.data) return "No computer sessions yet: the desktop agent has not synced anything.";
+
+  const rows: UsageSession[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; offset < 10_000; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("app_usage_daily")
+      .select(DAILY_COLUMNS)
+      .eq("user_id", userId)
+      .gte("local_date", from30)
+      .lte("local_date", today)
+      .order("local_date", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error || !data) break;
+    for (const r of data) {
+      const s = dailyRowToSession(r);
+      if (s) rows.push(s);
+    }
+    if (data.length < PAGE) break;
+  }
+  if (rows.length === 0) return `No computer sessions in the last 30 days. Last sync: ${syncRes.data.ended_at}.`;
+
+  const classes = (classRes.data || []).map(rowToClass);
+  const rules = (ruleRes.data || []).map(rowToRule);
+  const projects = (projRes.data || []).map((p) => ({ id: p.id, name: p.name }));
+  const ctx = { classes, rules, projects };
+  const classifications = classifyAll(rows, ctx);
+  const agg30 = aggregateUsage(rows, classes, classifications);
+
+  const idx7 = rows.map((s, i) => (s.local_date >= from7 ? i : -1)).filter((i) => i >= 0);
+  const agg7 = aggregateUsage(idx7.map((i) => rows[i]), classes, idx7.map((i) => classifications[i]));
+  const idxToday = rows.map((s, i) => (s.local_date === today ? i : -1)).filter((i) => i >= 0);
+  const aggToday = aggregateUsage(idxToday.map((i) => rows[i]), classes, idxToday.map((i) => classifications[i]));
+
+  const classById = new Map(classes.map((c) => [c.id, c]));
+  const classLines = (agg: UsageAggregate) =>
+    Object.entries(agg.byClass)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, secs]) => {
+        const c = classById.get(id);
+        return `${c ? c.name : id} ${formatHm(secs)}${c ? ` (${KIND_NAMES[c.kind]})` : ""}`;
+      })
+      .join(", ") || "none";
+
+  const topPerKind = (agg: UsageAggregate) =>
+    APP_KINDS.map((k) => {
+      const apps = agg.topAppKeys.filter((t) => t.kind === k).slice(0, 5);
+      return apps.length > 0 ? `  ${KIND_NAMES[k]}: ${apps.map((t) => `${t.appKey} ${formatHm(t.seconds)}`).join(", ")}` : "";
+    })
+      .concat(
+        agg.topAppKeys.filter((t) => t.kind === null).length > 0
+          ? [`  unassigned: ${agg.topAppKeys.filter((t) => t.kind === null).slice(0, 5).map((t) => `${t.appKey} ${formatHm(t.seconds)}`).join(", ")}`]
+          : [],
+      )
+      .filter(Boolean);
+
+  const scoredDays = agg30.byDay.filter((d) => d.focusRatio !== null && d.total >= 1800);
+  const byFocus = [...scoredDays].sort((a, b) => (b.focusRatio ?? 0) - (a.focusRatio ?? 0));
+  const best = byFocus[0];
+  const worst = byFocus[byFocus.length - 1];
+
+  const lines = [
+    `Screen time from the desktop agent. Last sync: ${syncRes.data.ended_at} (device ${syncRes.data.device_id.slice(0, 8)}).`,
+    `Today so far: ${formatHm(aggToday.totalSeconds)}, focus ${focusText(aggToday.focusRatio)} (${kindLine(aggToday)}).`,
+    `Last 7 days: ${formatHm(agg7.totalSeconds)} total, focus ratio ${focusText(agg7.focusRatio)} (work+learning over all active non-neutral time).`,
+    `  Per kind: ${kindLine(agg7)}`,
+    `  Per class: ${classLines(agg7)}`,
+    "  Top apps per kind:",
+    ...topPerKind(agg7),
+    `Last 30 days: ${formatHm(agg30.totalSeconds)} total, focus ratio ${focusText(agg30.focusRatio)}, unassigned ${formatHm(agg30.unclassifiedSeconds)}.`,
+    `  Per kind: ${kindLine(agg30)}`,
+    `  Per class: ${classLines(agg30)}`,
+  ];
+  if (best && worst && best.date !== worst.date) {
+    lines.push(
+      `Best day by focus: ${best.date} (${focusText(best.focusRatio)}, ${formatHm(best.total)}). Worst: ${worst.date} (${focusText(worst.focusRatio)}, ${formatHm(worst.total)}).`,
+    );
+  }
+  if (agg30.unclassifiedSeconds > 0) {
+    lines.push(`Unassigned time is not in any class yet; the user assigns classes on the Stats page (Komputer > Foldery).`);
+  }
+  return lines.join("\n");
 }
 
 async function gatherPaths(userId: string): Promise<string> {
@@ -417,6 +555,7 @@ async function gatherLibrary(userId: string): Promise<string> {
 const GATHERERS: Record<ScopeId, (userId: string, question?: string) => Promise<string>> = {
   dashboard: gatherDashboard,
   tracker: gatherTracker,
+  computer: gatherComputer,
   paths: gatherPaths,
   planning: gatherPlanning,
   health: gatherHealth,
