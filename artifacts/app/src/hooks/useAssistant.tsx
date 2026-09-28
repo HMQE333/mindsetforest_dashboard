@@ -27,6 +27,7 @@ import {
   type AssistantAction,
 } from "@/lib/assistant-actions";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
+import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap } from "@/lib/mission-presets";
 
 export interface AssistantMessage {
   id: string;
@@ -71,7 +72,7 @@ function loadScopes(): ScopeId[] {
 
 function useAssistantValue() {
   const { user } = useAuth();
-  const { addMission } = useDashboardState();
+  const { addMission, applyMissionPreset } = useDashboardState();
   const [open, setOpenState] = useState<boolean>(() => {
     try {
       return localStorage.getItem(OPEN_KEY) === "1";
@@ -303,6 +304,33 @@ function useAssistantValue() {
               xp: action.xp ?? 20,
             });
             ok++;
+          } else if (action.type === "apply_preset") {
+            // Same write as the "Załaduj" chip on Home: replace every mission
+            // list with the saved snapshot. Exact name first, then a unique
+            // substring match so "monk" finds "Monk mode".
+            const { data: rows } = await supabase
+              .from("mission_presets")
+              .select("id,name,missions")
+              .eq("user_id", user.id);
+            const wanted = action.presetName.trim().toLowerCase();
+            const list = rows || [];
+            const exact = list.filter((r) => r.name.toLowerCase() === wanted);
+            const partial = list.filter((r) => r.name.toLowerCase().includes(wanted) || wanted.includes(r.name.toLowerCase()));
+            const match = exact[0] ?? (partial.length === 1 ? partial[0] : undefined);
+            if (!match) {
+              failed++;
+              toast.error(`Nie znaleziono presetu „${action.presetName}”`);
+            } else {
+              applyMissionPreset(missionsForApply(parseMissionMap(match.missions)));
+              ok++;
+              toast.success(`Załadowano preset „${match.name}”`);
+              await supabase
+                .from("mission_presets")
+                .update({ last_applied_at: new Date().toISOString() })
+                .eq("id", match.id)
+                .eq("user_id", user.id);
+              window.dispatchEvent(new CustomEvent(MISSION_PRESETS_CHANGED_EVENT));
+            }
           } else if (action.type === "add_task") {
             const { error } = await (supabase.from("planning_tasks" as never) as never as {
               insert: (rows: unknown[]) => Promise<{ error: unknown }>;
@@ -518,7 +546,7 @@ function useAssistantValue() {
         ),
       );
     },
-    [user, messages, addMission],
+    [user, messages, addMission, applyMissionPreset],
   );
 
   const dismissActions = useCallback((messageId: string) => {

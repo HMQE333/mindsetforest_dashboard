@@ -21,6 +21,8 @@ export interface MissionPreset {
 
 export const PRESET_NAME_MAX = 40;
 export const DEFAULT_PRESET_EMOJI = "⚡";
+/** Fired on window when a preset is changed outside useMissionPresets (e.g. by the assistant). */
+export const MISSION_PRESETS_CHANGED_EVENT = "mission-presets-changed";
 
 /** Drop runtime-only fields so a preset never carries `__originalIndex`. */
 export function cleanMission(m: Mission): Mission {

@@ -73,12 +73,21 @@ function daysAgoISO(days: number): string {
 }
 
 async function gatherDashboard(userId: string): Promise<string> {
-  const { data } = await supabase
-    .from("dashboard_state")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!data) return "No dashboard activity recorded yet.";
+  const [{ data }, { data: presets }] = await Promise.all([
+    supabase.from("dashboard_state").select("*").eq("user_id", userId).maybeSingle(),
+    supabase
+      .from("mission_presets")
+      .select("name,emoji,description")
+      .eq("user_id", userId)
+      .order("sort_order", { ascending: true })
+      .limit(30),
+  ]);
+  const presetLine =
+    presets && presets.length > 0
+      ? "Saved mission presets (loadable with apply_preset): " +
+        presets.map((p) => `"${p.name}"${p.description ? ` - ${p.description}` : ""}`).join("; ")
+      : "Saved mission presets: none";
+  if (!data) return ["No dashboard activity recorded yet.", presetLine].join("\n");
   const cats = (data.categories_engaged || []).map(catName).join(", ") || "none";
   return [
     `Total XP: ${data.current_xp}`,
@@ -87,6 +96,7 @@ async function gatherDashboard(userId: string): Promise<string> {
     `Missions completed today: ${data.missions_completed}`,
     `Categories engaged today: ${cats}`,
     `Last completion date: ${data.last_completion_date || "none"}`,
+    presetLine,
   ].join("\n");
 }
 

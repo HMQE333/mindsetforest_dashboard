@@ -24,6 +24,15 @@ export type AssistantAction =
       xp?: number;
     }
   | {
+      /**
+       * Load one of the user's saved mission presets onto Home. Replaces every
+       * mission list, so it is confirmed like the others and never invented:
+       * the name must match a preset listed in the dashboard context.
+       */
+      type: "apply_preset";
+      presetName: string;
+    }
+  | {
       type: "add_note";
       title: string;
       content: string;
@@ -67,6 +76,7 @@ export type ActionType = AssistantAction["type"];
 export const ACTION_SCOPE: Record<ActionType, ScopeId> = {
   add_task: "planning",
   add_mission: "dashboard",
+  apply_preset: "dashboard",
   add_note: "archive",
   add_mindmap_nodes: "planning",
   extend_mindmap: "planning",
@@ -160,6 +170,12 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         `categoryId (one of ${cats}), title (string, required), ` +
         'description (string, optional), duration (e.g. "20 min", optional), ' +
         "xp (number, default 20).",
+    );
+    specs.push(
+      "- apply_preset: load one of the user's SAVED mission presets onto Home (replaces every mission list there). " +
+        'Use when the user asks to switch to / turn on / load a preset by name ("włącz monk mode", "load lock in"). ' +
+        "Field: presetName (string - must be one of the names under \"Saved mission presets\" in the context; " +
+        "never invent a preset and never use this to add single missions - that is add_mission).",
     );
   }
 
@@ -258,6 +274,12 @@ function coerceAction(raw: unknown): AssistantAction | null {
     const xpNum = Number(o.xp);
     const xp = Number.isFinite(xpNum) && xpNum > 0 ? Math.min(500, Math.round(xpNum)) : 20;
     return { type: "add_mission", categoryId, title: title.slice(0, 200), description, duration, xp };
+  }
+
+  if (type === "apply_preset") {
+    const presetName = typeof o.presetName === "string" ? o.presetName.trim() : "";
+    if (!presetName) return null;
+    return { type: "apply_preset", presetName: presetName.slice(0, 60) };
   }
 
   if (type === "revise_path") {
@@ -383,6 +405,9 @@ export function describeAction(action: AssistantAction): string {
   if (action.type === "add_mission") {
     const cat = CATEGORIES.find((c) => c.id === action.categoryId)?.name || action.categoryId;
     return `Add mission to ${cat}: "${action.title}" (+${action.xp ?? 20} XP)`;
+  }
+  if (action.type === "apply_preset") {
+    return `Load mission preset "${action.presetName}" (replaces every mission list on Home)`;
   }
   if (action.type === "add_mindmap_nodes") {
     const breakdown = nodesLevelBreakdown(action.nodes);

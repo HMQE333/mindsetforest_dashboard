@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   DEFAULT_PRESET_EMOJI,
+  MISSION_PRESETS_CHANGED_EVENT,
   normalizePresetName,
   parseMissionMap,
   type MissionMap,
@@ -29,7 +30,8 @@ const MISSING_TABLE = /PGRST205|42P01/;
 
 /**
  * Named snapshots of the Home mission lists. Page-scoped like the other data
- * hooks; the only writer is this hook, so no cross-hook event is needed.
+ * hooks; the assistant (apply_preset) is the one other writer and announces
+ * itself with MISSION_PRESETS_CHANGED_EVENT.
  */
 export function useMissionPresets() {
   const { user } = useAuth();
@@ -60,6 +62,11 @@ export function useMissionPresets() {
   }, [user]);
 
   useEffect(() => { void refetch(); }, [refetch]);
+  useEffect(() => {
+    const handler = () => { void refetch(); };
+    window.addEventListener(MISSION_PRESETS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(MISSION_PRESETS_CHANGED_EVENT, handler);
+  }, [refetch]);
 
   const createPreset = useCallback(async (input: { name: string; emoji?: string; description?: string; missions: MissionMap }) => {
     if (!user) return null;
