@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_suggestion_log: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          decided_at: string | null
+          detail: Json
+          id: string
+          scope: string
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          detail?: Json
+          id?: string
+          scope: string
+          status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          detail?: Json
+          id?: string
+          scope?: string
+          status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       archive_blocks: {
         Row: {
           content: string
@@ -1502,6 +1538,30 @@ export type Database = {
           total_pages?: number
           updated_at?: string
           url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_context: {
+        Row: {
+          lenses: string
+          notes: string
+          season: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          lenses?: string
+          notes?: string
+          season?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          lenses?: string
+          notes?: string
+          season?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
