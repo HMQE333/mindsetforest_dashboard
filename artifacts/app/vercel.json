@@ -1,6 +1,0 @@
-{
-  "outputDirectory": ".",
-  "installCommand": "",
-  "buildCommand": "",
-  "framework": "vite"
-}
