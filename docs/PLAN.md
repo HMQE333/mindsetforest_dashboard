@@ -148,6 +148,8 @@ Wykonane na gałęzi `claude/gracious-clarke-bun1qo` (baza: `server-current`):
 - Produkcja: wykonane migracje kontekstu użytkownika, silnika Paths i tabel czasu przy komputerze. Wdrożone aktualne `ai-mission-suggest` i `ai-path-suggest` z plannerem.
 - Etap 2: granica dnia o 4:00 (`lib/today.ts`), rollover dnia na Home, streak z dwoma zamrożeniami tygodniowo liczony z historii, cofanie kroków Paths z XP, zakładka XP w ustawieniach, wykres roczny bez losowych danych, zakresy asystenta (breathing, calendar, cooking, library), kropki po myślnikach, kolor Spirit, wylogowanie w nagłówku, skróty pod modalami, potwierdzenie resetu dnia.
 - Etap 3: agent `tracker/` (Python, 104 testy) i sekcja "Komputer" w Stats z klasyfikacją, folderami, regułami i uczeniem (po recenzji i poprawkach).
+- Presety misji: tabela `mission_presets` (migracja wykonana na produkcji), pasek presetów nad Home (zapisz obecne, załaduj, aktualizuj, zmień nazwę, kolejność, usuń) i akcja asystenta `apply_preset` ("włącz monk mode" na czacie, z potwierdzeniem). Załadowanie nadpisuje wszystkie listy misji i czyści dzisiejsze odhaczenia; XP zostaje.
+- Podgląd testowy: `pnpm preview:build` buduje wersję z hash-routingiem do `artifacts/app/dist-preview`; gałąź `preview-build` trzyma gotowy build dla GitHub Pages (adres `https://hmqe333.github.io/mindsetforest_dashboard/`, wymaga włączenia Pages w ustawieniach repo: branch `preview-build`, folder root).
 
 Do zrobienia (kolejność wg rozdziału 4):
 
@@ -157,6 +159,6 @@ Do zrobienia (kolejność wg rozdziału 4):
 
 Po stronie właściciela:
 
-1. Scalić gałąź do `main` i zbudować aplikację (`pnpm install && pnpm build`, wynik w `artifacts/app/dist`) na hostingu.
+1. `main` jest aktualny. Do hostingu produkcyjnego: `pnpm install && pnpm build` (wynik w `artifacts/app/dist`). Do testów: włączyć GitHub Pages z gałęzi `preview-build`.
 2. Na komputerze z Windows: `tracker/README.md`, szybki start po polsku. Pierwsze uruchomienie przez `run-dev.bat` z konsolą, potem `install-autostart.bat`.
 3. W Stats, sekcja "Komputer", zakładka "Foldery": przypisać pierwsze aplikacje do klas; propozycje reguł pojawią się po każdej korekcie.
