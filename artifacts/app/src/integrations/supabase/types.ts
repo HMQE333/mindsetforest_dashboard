@@ -50,6 +50,170 @@ export type Database = {
         }
         Relationships: []
       }
+      app_classes: {
+        Row: {
+          color: string | null
+          count_idle: boolean
+          created_at: string
+          id: string
+          is_default: boolean
+          keywords: string[]
+          kind: string
+          name: string
+          pillar_id: string | null
+          project_id: string | null
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          count_idle?: boolean
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          keywords?: string[]
+          kind: string
+          name: string
+          pillar_id?: string | null
+          project_id?: string | null
+          sort_order?: number
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          count_idle?: boolean
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          keywords?: string[]
+          kind?: string
+          name?: string
+          pillar_id?: string | null
+          project_id?: string | null
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_classes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "user_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_rules: {
+        Row: {
+          class_id: string
+          confidence: number
+          created_at: string
+          enabled: boolean
+          field: string
+          hits: number
+          id: string
+          last_hit_at: string | null
+          match_kind: string
+          pattern: string
+          priority: number
+          project_id: string | null
+          source: string
+          user_id: string
+        }
+        Insert: {
+          class_id: string
+          confidence?: number
+          created_at?: string
+          enabled?: boolean
+          field?: string
+          hits?: number
+          id?: string
+          last_hit_at?: string | null
+          match_kind: string
+          pattern: string
+          priority?: number
+          project_id?: string | null
+          source?: string
+          user_id: string
+        }
+        Update: {
+          class_id?: string
+          confidence?: number
+          created_at?: string
+          enabled?: boolean
+          field?: string
+          hits?: number
+          id?: string
+          last_hit_at?: string | null
+          match_kind?: string
+          pattern?: string
+          priority?: number
+          project_id?: string | null
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_rules_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "app_classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_rules_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "user_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_usage_sessions: {
+        Row: {
+          app: string
+          app_key: string
+          created_at: string
+          device_id: string
+          ended_at: string
+          id: string
+          idle: boolean
+          local_date: string
+          seconds: number
+          started_at: string
+          user_id: string
+          window_title: string
+        }
+        Insert: {
+          app: string
+          app_key: string
+          created_at?: string
+          device_id: string
+          ended_at: string
+          id?: string
+          idle?: boolean
+          local_date: string
+          seconds: number
+          started_at: string
+          user_id: string
+          window_title?: string
+        }
+        Update: {
+          app?: string
+          app_key?: string
+          created_at?: string
+          device_id?: string
+          ended_at?: string
+          id?: string
+          idle?: boolean
+          local_date?: string
+          seconds?: number
+          started_at?: string
+          user_id?: string
+          window_title?: string
+        }
+        Relationships: []
+      }
       archive_blocks: {
         Row: {
           content: string
@@ -1910,7 +2074,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      app_usage_daily: {
+        Row: {
+          app: string | null
+          app_key: string | null
+          device_id: string | null
+          idle: boolean | null
+          last_seen_at: string | null
+          local_date: string | null
+          seconds: number | null
+          session_count: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       accept_friend_request: { Args: { request_id: string }; Returns: Json }
