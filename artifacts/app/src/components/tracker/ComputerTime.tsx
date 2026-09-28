@@ -12,6 +12,7 @@ import ComputerTimeWeek from "./ComputerTimeWeek";
 import ComputerTimeAllTime from "./ComputerTimeAllTime";
 import ComputerTimeFolders from "./ComputerTimeFolders";
 import ComputerTimeApps from "./ComputerTimeApps";
+import TrackerDownload from "./TrackerDownload";
 import { deviceLabel, pillActive, pillBase, pillIdle, relativeTime } from "./computer-time-shared";
 
 /**
@@ -55,6 +56,7 @@ export default function ComputerTime() {
   const categories = useMemo(() => getCategories(), [getCategories]);
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
+
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "1";
     } catch {
@@ -63,6 +65,7 @@ export default function ComputerTime() {
   });
   // Loads start on the first expand and stay loaded afterwards.
   const [everExpanded, setEverExpanded] = useState(!collapsed);
+  const [showInstall, setShowInstall] = useState(false);
   const [preset, setPreset] = useState<Preset>("today");
   const [custom, setCustom] = useState<UsageRange>(() => ({ from: addDays(todayKey(), -13), to: todayKey() }));
   const [device, setDevice] = useState<string>(ALL_DEVICES);
@@ -244,26 +247,24 @@ export default function ComputerTime() {
               ) : usage.loading && usage.sessions.length === 0 ? (
                 <div className="py-10 text-center text-sm text-muted-foreground animate-pulse" role="status">Wczytywanie sesji…</div>
               ) : noDataAtAll ? (
-                <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-4 text-xs text-foreground/80 space-y-2">
-                  <div className="font-semibold text-sm">Brak danych z komputera</div>
-                  <p className="text-muted-foreground">
-                    Czas przy komputerze zbiera agent na Windows. Nie ma okna, tylko ikonka w zasobniku; loguje się tym samym
-                    e-mailem i hasłem co tutaj i co minutę wysyła sesje do Twojej bazy.
-                  </p>
-                  <ol className="list-decimal list-inside text-muted-foreground space-y-0.5">
-                    <li>
-                      Otwórz w repozytorium katalog <code className="font-mono text-foreground/80">tracker/</code> i przejdź kroki z{" "}
-                      <code className="font-mono text-foreground/80">tracker/README.md</code>.
-                    </li>
-                    <li>
-                      Wpisz adres i klucz anon projektu Supabase do <code className="font-mono text-foreground/80">config.json</code>.
-                    </li>
-                    <li>Zaloguj się z menu ikonki i włącz autostart. Pierwszy sync wyśle ostatnie 30 dni.</li>
-                  </ol>
-                  <p className="text-muted-foreground">Ta sekcja odświeży się sama, gdy pojawią się pierwsze sesje.</p>
-                </div>
+                <TrackerDownload />
               ) : (
                 <>
+                  <div className="flex justify-end -mt-1 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowInstall((v) => !v)}
+                      aria-expanded={showInstall}
+                      className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                    >
+                      {showInstall ? "Ukryj instalację agenta" : "Zainstaluj agenta na innym komputerze"}
+                    </button>
+                  </div>
+                  {showInstall && (
+                    <div className="mb-5 rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-xs text-foreground/80">
+                      <TrackerDownload compact />
+                    </div>
+                  )}
                   {/* Tabs */}
                   <div className="flex flex-wrap gap-2 mb-5" role="tablist" aria-label="Widok">
                     {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
