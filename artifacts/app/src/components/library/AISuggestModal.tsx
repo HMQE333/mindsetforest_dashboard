@@ -8,7 +8,8 @@ interface AISuggestModalProps {
   open: boolean;
   onClose: () => void;
   books: Book[];
-  onAdd: (book: Partial<Book>) => void | Promise<void>;
+  /** Resolves true once the book is on the shelf. */
+  onAdd: (book: Partial<Book>) => Promise<boolean>;
 }
 
 interface Suggestion {
@@ -56,8 +57,9 @@ export default function AISuggestModal({ open, onClose, books, onAdd }: AISugges
   const onShelf = (s: Suggestion) => books.some(b => b.title.trim().toLowerCase() === s.title.trim().toLowerCase());
 
   const add = async (s: Suggestion) => {
-    await onAdd({ title: s.title, author: s.author, status: "to-read", notes: s.reason });
-    setAdded(prev => new Set(prev).add(s.title));
+    if (await onAdd({ title: s.title, author: s.author, status: "to-read", notes: s.reason })) {
+      setAdded(prev => new Set(prev).add(s.title));
+    }
   };
 
   return (
@@ -79,10 +81,10 @@ export default function AISuggestModal({ open, onClose, books, onAdd }: AISugges
 
           {!loading && error && <p className="text-sm text-muted-foreground text-center py-4">{error}</p>}
 
-          {!loading && suggestions.map((s) => {
+          {!loading && suggestions.map((s, i) => {
             const done = added.has(s.title) || onShelf(s);
             return (
-              <div key={s.title} className="glass-card rounded-xl p-3 border border-white/5 flex gap-3">
+              <div key={`${i}-${s.title}`} className="glass-card rounded-xl p-3 border border-white/5 flex gap-3">
                 <div className="min-w-0 flex-1">
                   <h4 className="font-bold text-sm text-foreground">{s.title}</h4>
                   {s.author && <p className="text-xs text-muted-foreground">{s.author}</p>}

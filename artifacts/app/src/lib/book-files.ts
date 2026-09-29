@@ -135,7 +135,9 @@ export async function uploadBookFile(
     const path = `${userId}/${bookId}/${stamp}.pdf`;
 
     onStage?.({ stage: "uploading" });
-    const up = await supabase.storage.from(LIBRARY_BUCKET).upload(path, file, { contentType: "application/pdf", upsert: false });
+    // storage-js takes a File's own type, which some pickers leave empty or generic; the bucket only accepts PDFs.
+    const body = new Blob([file], { type: "application/pdf" });
+    const up = await supabase.storage.from(LIBRARY_BUCKET).upload(path, body, { contentType: "application/pdf", upsert: false });
     if (up.error) throw storageError(up.error);
 
     let text = "";

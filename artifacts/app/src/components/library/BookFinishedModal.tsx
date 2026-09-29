@@ -51,7 +51,9 @@ export default function BookFinishedModal({
 
   const added = book.created_at;
   const finishedAt = book.finished_at || null;
-  const days = finishedAt ? Math.max(1, Math.round((Date.parse(finishedAt) - Date.parse(added)) / 86_400_000)) : null;
+  // Counted from the first sitting in the reader when there is one (a book can wait years on the shelf).
+  const startedAt = reading?.firstAt || added;
+  const days = finishedAt ? Math.max(1, Math.round((Date.parse(finishedAt) - Date.parse(startedAt)) / 86_400_000)) : null;
   const pages = book.total_pages || book.file?.pages || 0;
   const facts = [
     { label: "Added", value: day(added) },

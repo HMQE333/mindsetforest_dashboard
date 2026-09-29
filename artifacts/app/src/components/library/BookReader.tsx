@@ -12,7 +12,7 @@ interface BookReaderProps {
   /** reachedEnd: the last page was in view during this sitting. */
   onClose: (info: { reachedEnd: boolean }) => void;
   /** Called (debounced) with the page in view, and once more on close. */
-  onPosition: (bookId: string, page: number) => void;
+  onPosition: (bookId: string, page: number, filePath: string) => void;
   /** The sitting's page times so far; called as it grows and on close (same id each time). */
   onSession: (draft: ReadingSessionDraft) => void;
   /** Stores facts learned about the file (words per page for an older upload). */
@@ -20,6 +20,7 @@ interface BookReaderProps {
 }
 
 const MAX_BASE_WIDTH = 900;
+const MAX_CANVAS_PIXELS = 16_000_000;
 const ZOOMS = [0.6, 0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5];
 const DIM_KEY = "library-reader-dim";
 
@@ -47,7 +48,7 @@ export default function BookReader({ book, onClose, onPosition, onSession, onFil
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const pageEls = useRef<(HTMLDivElement | null)[]>([]);
-  const rendered = useRef(new Map<number, { width: number; task: RenderTask | null }>());
+  const rendered = useRef(new Map<number, { width: number; task: RenderTask | null; page: { cleanup: () => unknown } | null }>());
   const near = useRef(new Set<number>());
   const anchor = useRef<{ page: number; frac: number } | null>(null);
   const resumed = useRef(false);
@@ -90,6 +91,8 @@ export default function BookReader({ book, onClose, onPosition, onSession, onFil
       clock.current = new PageClock((p) => words.current?.[p - 1]);
       session.current = { id: newSessionId(), startedAt: new Date().toISOString(), flushed: 0 };
       maxPage.current = 0;
+      firstPage.current = null;
+      turned.current = false;
       if (!file.pageWords && file.textPath && book) {
         const bookId = book.id;
         void loadPageWords(file).then((w) => {
@@ -140,16 +143,21 @@ export default function BookReader({ book, onClose, onPosition, onSession, onFil
     const prev = rendered.current.get(n);
     if (prev && prev.width === pageWidth) return;
     prev?.task?.cancel();
-    const entry = { width: pageWidth, task: null as RenderTask | null };
+    const entry = { width: pageWidth, task: null as RenderTask | null, page: null as { cleanup: () => unknown } | null };
     rendered.current.set(n, entry);
     try {
       const page = await doc.getPage(n);
+      entry.page = page;
       if (rendered.current.get(n) !== entry) return;
       const base = page.getViewport({ scale: 1 });
       const ratio = base.height / base.width;
       setRatios(r => (Math.abs((r[n - 1] ?? 0) - ratio) > 0.001 ? r.map((x, i) => (i === n - 1 ? ratio : x)) : r));
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const viewport = page.getViewport({ scale: (pageWidth / base.width) * dpr });
+      let scale = (pageWidth / base.width) * dpr;
+      // Safari refuses canvases over ~16.7M pixels (the page would stay blank at high zoom on iPad).
+      const area = base.width * base.height * scale * scale;
+      if (area > MAX_CANVAS_PIXELS) scale *= Math.sqrt(MAX_CANVAS_PIXELS / area);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
@@ -170,6 +178,8 @@ export default function BookReader({ book, onClose, onPosition, onSession, onFil
   const dropPage = useCallback((n: number) => {
     const r = rendered.current.get(n);
     r?.task?.cancel();
+    // Without this pdf.js keeps every page's decoded images for the life of the document.
+    r?.page?.cleanup();
     rendered.current.delete(n);
     const c = pageEls.current[n - 1]?.querySelector("canvas");
     if (c) { c.width = 0; c.height = 0; c.remove(); }
@@ -230,26 +240,48 @@ export default function BookReader({ book, onClose, onPosition, onSession, onFil
     if (found !== currentRef.current) { setCurrent(found); setPageInput(String(found)); }
   }, []);
 
+  // Saving reads these through refs: a saved position replaces the book
+  // object, and the periodic save must not restart every time it does.
+  const bookRef = useRef(book);
+  bookRef.current = book;
+  const onSessionRef = useRef(onSession);
+  onSessionRef.current = onSession;
+  const onPositionRef = useRef(onPosition);
+  onPositionRef.current = onPosition;
+
   const flush = useCallback(() => {
     const c = clock.current;
-    if (!book || !c || c.samples.length === session.current.flushed) return;
+    const b = bookRef.current;
+    if (!b || !c || c.samples.length === session.current.flushed) return;
     session.current.flushed = c.samples.length;
-    onSession({
+    onSessionRef.current({
       id: session.current.id,
-      bookId: book.id,
+      bookId: b.id,
       startedAt: session.current.startedAt,
       endedAt: new Date().toISOString(),
       totals: totalsOf(c.samples),
       samples: [...c.samples],
     });
-  }, [book, onSession]);
+  }, []);
 
-  // Time each page as it comes into view.
+  // Time each page as it comes into view. `turned` is whether the reader has
+  // moved at all this sitting: reopening on the last page is not finishing it.
+  const firstPage = useRef<number | null>(null);
+  const turned = useRef(false);
   useEffect(() => {
     if (!doc || !clock.current) return;
+    if (firstPage.current === null) firstPage.current = current;
+    else if (current !== firstPage.current) turned.current = true;
     clock.current.turn(current, Date.now());
     maxPage.current = Math.max(maxPage.current, current);
   }, [doc, current]);
+
+  // Leaving without the close button (another module, signing out) still saves the sitting.
+  useEffect(() => () => {
+    const b = bookRef.current;
+    flush();
+    if (b?.file && firstPage.current !== null) onPositionRef.current(b.id, currentRef.current, b.file.path);
+  }, [flush]);
 
   // Hidden tab: the clock stops and what was read so far is saved.
   useEffect(() => {
@@ -272,14 +304,16 @@ export default function BookReader({ book, onClose, onPosition, onSession, onFil
   // Save the position a moment after the page settles.
   useEffect(() => {
     if (!book || !doc) return;
-    const t = setTimeout(() => onPosition(book.id, current), 1200);
+    const path = book.file?.path;
+    if (!path) return;
+    const t = setTimeout(() => onPositionRef.current(book.id, current, path), 1200);
     return () => clearTimeout(t);
-  }, [book, doc, current, onPosition]);
+  }, [book?.id, book?.file?.path, doc, current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = useCallback(() => {
-    const reachedEnd = !!doc && maxPage.current >= doc.numPages;
-    if (book && doc) {
-      onPosition(book.id, currentRef.current);
+    const reachedEnd = !!doc && turned.current && maxPage.current >= doc.numPages;
+    if (book && doc && book.file) {
+      onPosition(book.id, currentRef.current, book.file.path);
       flush();
       const samples = clock.current?.samples ?? [];
       // The finish screen has its own summary; otherwise a one-line recap of the sitting.

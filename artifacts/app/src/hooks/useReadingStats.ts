@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "./useAuth";
 import { EMPTY_TOTALS, addTotals, type ReadingTotals } from "@/lib/reading-speed";
 import { loadReadingByBook, saveReadingSession, type BookReading, type ReadingSessionDraft } from "@/lib/reading-sessions";
@@ -9,6 +10,7 @@ export function useReadingStats() {
   const [byBook, setByBook] = useState<Record<string, BookReading>>({});
   // Saves run one after another; `settled` lets a caller wait for the last one.
   const pending = useRef<Promise<unknown>>(Promise.resolve());
+  const warned = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -19,7 +21,16 @@ export function useReadingStats() {
 
   const save = useCallback((draft: ReadingSessionDraft) => {
     if (!user) return;
-    const next = pending.current.then(() => saveReadingSession(user.id, draft)).then(() => refresh());
+    // A failed save is retried by the next flush of the same sitting (same id, all its pages).
+    const next = pending.current
+      .then(() => saveReadingSession(user.id, draft))
+      .then((ok) => {
+        if (!ok && !warned.current) {
+          warned.current = true;
+          toast.warning("Reading time isn't saving right now", { description: "It will be saved with the next pages you read." });
+        }
+        return refresh();
+      });
     pending.current = next.catch(() => undefined);
   }, [user, refresh]);
 

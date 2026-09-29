@@ -14,6 +14,27 @@ export function useLibraryState() {
   const booksRef = useRef<Book[]>([]);
   booksRef.current = books;
   const inFlight = useRef(new Set<string>());
+  // Writes that replace a book's `file` object run one at a time per book,
+  // each starting from the latest state, so a position save can never write
+  // back a file that an upload has just replaced.
+  const fileQueue = useRef(new Map<string, Promise<unknown>>());
+  const queueFileWrite = useCallback(<T,>(bookId: string, write: () => Promise<T>): Promise<T> => {
+    const next = (fileQueue.current.get(bookId) || Promise.resolve()).then(write, write);
+    fileQueue.current.set(bookId, next.catch(() => undefined));
+    return next;
+  }, []);
+  /** Local change that later queued writes see immediately (booksRef otherwise updates on render). */
+  const applyLocal = useCallback((bookId: string, patch: Partial<Book>) => {
+    booksRef.current = booksRef.current.map(b => (b.id === bookId ? { ...b, ...patch } : b));
+    setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...patch } : b)));
+  }, []);
+  // One warning per session is enough when reading progress stops saving (usually offline).
+  const warnedSave = useRef(false);
+  const warnSaveFailed = () => {
+    if (warnedSave.current) return;
+    warnedSave.current = true;
+    toast.warning("Reading progress isn't saving right now", { description: "Check your connection; it will be saved again once it works." });
+  };
 
   const fetchBooks = useCallback(async () => {
     if (!user) return;
@@ -34,18 +55,23 @@ export function useLibraryState() {
   // Books added elsewhere (the assistant) show up without a reload.
   useEffect(() => onAppEvent(LIBRARY_CHANGED_EVENT, () => { void fetchBooks(); }), [fetchBooks]);
 
-  const addBook = useCallback(async (book: Partial<Book>) => {
-    if (!user) return;
+  const addBook = useCallback(async (book: Partial<Book>): Promise<boolean> => {
+    if (!user) return false;
+    // A book added as already read gets its finish date like one marked finished later.
+    const row: Partial<Book> = book.status === "finished"
+      ? { finished_at: new Date().toISOString(), pages_read: book.total_pages || 0, ...book }
+      : book;
     const { error } = await supabase
       .from("user_books" as any)
-      .insert([{ ...book, user_id: user.id }] as any);
-    if (error) { toast.error("Failed to add book"); return; }
+      .insert([{ ...row, user_id: user.id }] as any);
+    if (error) { toast.error("Failed to add book"); return false; }
     toast.success("Book added!");
     fetchBooks();
+    return true;
   }, [user, fetchBooks]);
 
-  const updateBook = useCallback(async (id: string, updates: Partial<Book>) => {
-    if (!user) return;
+  const updateBook = useCallback(async (id: string, updates: Partial<Book>): Promise<boolean> => {
+    if (!user) return false;
     // The finish date follows the status: stamped when it turns to finished, cleared if it turns back.
     const before = booksRef.current.find(b => b.id === id);
     const stamped: Partial<Book> = { ...updates };
@@ -56,8 +82,9 @@ export function useLibraryState() {
       .update({ ...stamped, updated_at: new Date().toISOString() } as any)
       .eq("id", id)
       .eq("user_id", user.id);
-    if (error) { toast.error("Failed to update book"); return; }
+    if (error) { toast.error("Failed to update book"); return false; }
     await fetchBooks();
+    return true;
   }, [user, fetchBooks]);
 
   const deleteBook = useCallback(async (id: string) => {
@@ -91,22 +118,27 @@ export function useLibraryState() {
     });
     try {
       const stored = await uploadBookFile(user.id, bookId, file, setStage);
-      // A book without a page count takes the PDF's.
-      const updates: Partial<Book> = { file: stored };
-      if (!book.total_pages) updates.total_pages = stored.pages;
-      const { error } = await supabase
-        .from("user_books" as any)
-        .update({ ...updates, updated_at: new Date().toISOString() } as any)
-        .eq("id", bookId)
-        .eq("user_id", user.id);
-      if (error) {
+      const saved = await queueFileWrite(bookId, async () => {
+        // The file the book pointed at until now, read at write time in case it changed meanwhile.
+        const current = booksRef.current.find(b => b.id === bookId);
+        const updates: Partial<Book> = { file: stored };
+        // A book without a page count takes the PDF's.
+        if (!current?.total_pages) updates.total_pages = stored.pages;
+        const { error } = await supabase
+          .from("user_books" as any)
+          .update({ ...updates, updated_at: new Date().toISOString() } as any)
+          .eq("id", bookId)
+          .eq("user_id", user.id);
+        if (error) return { error: error.message };
+        applyLocal(bookId, updates);
+        return { previous: current?.file ?? null };
+      });
+      if (saved.error) {
         void removeBookFiles(stored);
-        toast.error(error.message.includes("'file'") ? "Book files are not set up yet (run the library_files migration)" : "Could not save the PDF on the book");
+        toast.error(saved.error.includes("'file'") ? "Book files are not set up yet (run the library_files migration)" : "Could not save the PDF on the book");
         return false;
       }
-      // The file the book pointed at until now, read after the upload in case it changed meanwhile.
-      const previous = booksRef.current.find(b => b.id === bookId)?.file;
-      if (previous && previous.path !== stored.path) void removeBookFiles(previous);
+      if (saved.previous && saved.previous.path !== stored.path) void removeBookFiles(saved.previous);
       toast.success(`PDF attached to "${book.title}"`, {
         description: isScan(stored)
           ? `${stored.pages} pages · a scan, no text layer`
@@ -121,59 +153,69 @@ export function useLibraryState() {
       inFlight.current.delete(bookId);
       setStage(null);
     }
-  }, [user, fetchBooks]);
+  }, [user, fetchBooks, queueFileWrite, applyLocal]);
 
   const detachFile = useCallback(async (bookId: string) => {
     if (!user) return;
-    const file = booksRef.current.find(b => b.id === bookId)?.file;
-    if (!file) return;
-    const { error } = await supabase
-      .from("user_books" as any)
-      .update({ file: null, updated_at: new Date().toISOString() } as any)
-      .eq("id", bookId)
-      .eq("user_id", user.id);
-    if (error) { toast.error("Could not remove the PDF"); return; }
-    void removeBookFiles(file);
-    toast.success("PDF removed");
+    await queueFileWrite(bookId, async () => {
+      const file = booksRef.current.find(b => b.id === bookId)?.file;
+      if (!file) return;
+      const { error } = await supabase
+        .from("user_books" as any)
+        .update({ file: null, updated_at: new Date().toISOString() } as any)
+        .eq("id", bookId)
+        .eq("user_id", user.id);
+      if (error) { toast.error("Could not remove the PDF"); return; }
+      applyLocal(bookId, { file: null });
+      void removeBookFiles(file);
+      toast.success("PDF removed");
+    });
     fetchBooks();
-  }, [user, fetchBooks]);
+  }, [user, fetchBooks, queueFileWrite, applyLocal]);
 
   /**
    * Remembers where the reader is. Progress only moves forward (flicking back
    * to re-read a page does not undo it), and opening a to-read book past its
    * first page marks it as being read.
    */
-  const saveReadingPosition = useCallback(async (bookId: string, page: number) => {
+  const saveReadingPosition = useCallback(async (bookId: string, page: number, filePath?: string) => {
     if (!user) return;
-    const book = booksRef.current.find(b => b.id === bookId);
-    if (!book?.file || book.file.lastPage === page) return;
-    const file = { ...book.file, lastPage: page };
-    const updates: Partial<Book> = {
-      file,
-      pages_read: Math.max(book.pages_read || 0, pagesReadFor(page, file.pages, book.total_pages)),
-    };
-    if (book.status === "to-read" && page > 1) updates.status = "reading";
-    setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...updates } : b)));
-    await supabase
-      .from("user_books" as any)
-      .update({ ...updates, updated_at: new Date().toISOString() } as any)
-      .eq("id", bookId)
-      .eq("user_id", user.id);
-  }, [user]);
+    await queueFileWrite(bookId, async () => {
+      const book = booksRef.current.find(b => b.id === bookId);
+      // A position in a PDF that has since been replaced belongs to nothing.
+      if (!book?.file || (filePath && book.file.path !== filePath) || book.file.lastPage === page) return;
+      const file = { ...book.file, lastPage: page };
+      const updates: Partial<Book> = {
+        file,
+        pages_read: Math.max(book.pages_read || 0, pagesReadFor(page, file.pages, book.total_pages)),
+      };
+      if (book.status === "to-read" && page > 1) updates.status = "reading";
+      applyLocal(bookId, updates);
+      const { error } = await supabase
+        .from("user_books" as any)
+        .update({ ...updates, updated_at: new Date().toISOString() } as any)
+        .eq("id", bookId)
+        .eq("user_id", user.id);
+      if (error) warnSaveFailed();
+    });
+  }, [user, queueFileWrite, applyLocal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Merges facts about a book's file (words per page) without touching anything else. */
   const patchFile = useCallback(async (bookId: string, patch: Partial<BookFile>) => {
     if (!user) return;
-    const book = booksRef.current.find(b => b.id === bookId);
-    if (!book?.file) return;
-    const file = { ...book.file, ...patch };
-    setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, file } : b)));
-    await supabase
-      .from("user_books" as any)
-      .update({ file } as any)
-      .eq("id", bookId)
-      .eq("user_id", user.id);
-  }, [user]);
+    await queueFileWrite(bookId, async () => {
+      const book = booksRef.current.find(b => b.id === bookId);
+      if (!book?.file) return;
+      const file = { ...book.file, ...patch };
+      applyLocal(bookId, { file });
+      // Only derived facts (word counts): if this fails they are worked out again next time.
+      await supabase
+        .from("user_books" as any)
+        .update({ file } as any)
+        .eq("id", bookId)
+        .eq("user_id", user.id);
+    });
+  }, [user, queueFileWrite, applyLocal]);
 
   return {
     books, loading, addBook, updateBook, deleteBook, refetch: fetchBooks,

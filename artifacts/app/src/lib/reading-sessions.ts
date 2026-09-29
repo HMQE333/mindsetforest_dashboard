@@ -61,12 +61,21 @@ interface TotalsRow {
 
 /** Reading per book, from every sitting (totals only; samples are loaded per book). */
 export async function loadReadingByBook(userId: string): Promise<Record<string, BookReading>> {
-  const { data, error } = await sessions()
-    .select("book_id,seconds,pages,words,word_seconds,started_at,ended_at")
-    .eq("user_id", userId);
-  if (error || !data) return {};
+  // Paged: the API returns at most 1000 rows per request.
+  const rows: TotalsRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sessions()
+      .select("book_id,seconds,pages,words,word_seconds,started_at,ended_at")
+      .eq("user_id", userId)
+      .order("started_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + 999);
+    if (error || !data) break;
+    rows.push(...(data as unknown as TotalsRow[]));
+    if (data.length < 1000) break;
+  }
   const out: Record<string, BookReading> = {};
-  for (const r of data as unknown as TotalsRow[]) {
+  for (const r of rows) {
     const cur = out[r.book_id] || { ...EMPTY_BOOK_READING };
     const t = addTotals(cur, { pages: r.pages, seconds: r.seconds, words: r.words, wordSeconds: r.word_seconds });
     out[r.book_id] = {

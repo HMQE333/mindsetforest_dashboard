@@ -137,10 +137,13 @@ export default function LibraryView() {
   /** Saving a book as finished (it was not before) ends on the celebration. */
   const handleUpdate = async (id: string, updates: Partial<Book>) => {
     const wasFinished = books.find(b => b.id === id)?.status === "finished";
-    await updateBook(id, updates);
+    // A failed save has already shown its error; nothing to celebrate then.
+    if (!(await updateBook(id, updates))) return;
     if (updates.status === "finished" && !wasFinished) {
       setSelectedBookId(null);
       setCelebrate({ id, mode: "done" });
+    } else {
+      toast.success("Book updated");
     }
   };
 
@@ -153,10 +156,15 @@ export default function LibraryView() {
   const confirmFinished = async () => {
     const book = celebrateBook;
     if (!book) return;
-    await updateBook(book.id, { status: "finished", pages_read: book.total_pages || book.pages_read });
+    if (!(await updateBook(book.id, { status: "finished", pages_read: book.total_pages || book.pages_read }))) return;
     setCelebrate({ id: book.id, mode: "done" });
   };
-  const openReader = (id: string) => { setSelectedBookId(null); setReadingId(id); };
+  const openReader = (id: string) => {
+    // The PDF is being replaced: opening the old one now would race the new one's save.
+    if (uploads[id]) { toast.info("The PDF is still uploading"); return; }
+    setSelectedBookId(null);
+    setReadingId(id);
+  };
 
   /**
    * A file dropped off any card. A PDF only ever attaches to the book it was

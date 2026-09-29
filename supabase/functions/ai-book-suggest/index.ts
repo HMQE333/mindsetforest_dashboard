@@ -20,8 +20,9 @@ interface ShelfBook {
   tags: string[] | null;
 }
 
+// Letters of any script count (a Cyrillic or Japanese title must not reduce to "").
 const norm = (s: string) =>
-  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 /** "Deep Work: Rules for..." and "Deep Work" are the same book. */
 const mainTitle = (s: string) => norm(s.split(/[:(]/)[0]);
@@ -54,7 +55,8 @@ serve(async (req) => {
       auth.client.from("user_context").select("notes,lenses,season").eq("user_id", auth.userId).maybeSingle(),
     ]);
     const shelf = (books as ShelfBook[] | null) || [];
-    const exclude: string[] = Array.isArray(body.exclude) ? body.exclude.slice(0, 60).map((t: unknown) => String(t).slice(0, 200)) : [];
+    // The most recent 60: after many "More" presses the latest suggestions are the ones not to repeat.
+    const exclude: string[] = Array.isArray(body.exclude) ? body.exclude.slice(-60).map((t: unknown) => String(t).slice(0, 200)) : [];
 
     const line = (b: ShelfBook) =>
       `- ${b.title}${b.author ? ` (${b.author})` : ""}${b.rating ? `, rated ${b.rating}/5` : ""}${b.tags?.length ? ` [${b.tags.slice(0, 3).join(", ")}]` : ""}`;
@@ -104,10 +106,10 @@ Rules:
     });
 
     // The model is told not to repeat the shelf; this makes sure of it.
-    const taken = new Set([...shelf.map((b) => mainTitle(b.title)), ...exclude.map(mainTitle)]);
+    const taken = new Set([...shelf.map((b) => mainTitle(b.title)), ...exclude.map(mainTitle)].filter(Boolean));
     const raw = Array.isArray(out.suggestions) ? out.suggestions as { title?: string; author?: string; reason?: string }[] : [];
     const suggestions = raw
-      .filter((s) => s.title && !taken.has(mainTitle(s.title)))
+      .filter((s) => s.title && mainTitle(s.title) && !taken.has(mainTitle(s.title)))
       .map((s) => ({ title: String(s.title).trim(), author: String(s.author || "").trim(), reason: String(s.reason || "").trim() }))
       .slice(0, 5);
 
