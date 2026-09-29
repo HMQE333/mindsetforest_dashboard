@@ -30,6 +30,7 @@ import {
 } from "@/lib/assistant-actions";
 import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
 import { findMission, listTodayMissions } from "@/lib/mission-match";
+import { annotateHistory, keywordScopes } from "@/lib/scope-hints";
 import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap } from "@/lib/mission-presets";
@@ -183,10 +184,13 @@ function useAssistantValue() {
       if (!trimmed || isStreaming || !user) return null;
 
       const pinned = selectedScopes;
-      let scopesForSend: ScopeId[] = pinned.length > 0 ? pinned : [currentScope || "dashboard"];
-      const historyForSend = messages
-        .filter((m) => !m.error)
-        .map((m) => ({ role: m.role, content: m.content }));
+      // Sections the message names outright always ride along, so a "save a
+      // note" or "tick the mission" is never left without its action.
+      const named = keywordScopes(trimmed).filter((sc) => !pinned.includes(sc));
+      let scopesForSend: ScopeId[] = [...pinned, ...named];
+      if (scopesForSend.length === 0) scopesForSend = [currentScope || "dashboard"];
+      // History carries what happened to earlier actions, not just the prose.
+      const historyForSend = annotateHistory(messages);
 
       const userMsg: AssistantMessage = {
         id: `u-${Date.now()}`,
@@ -218,13 +222,13 @@ function useAssistantValue() {
               { message: trimmed, history: historyForSend, current: currentScope, pinned },
               controller.signal,
             );
-            const extra = routed.scopes.filter((sc) => !pinned.includes(sc));
+            const extra = Array.from(new Set([...named, ...routed.scopes])).filter((sc) => !pinned.includes(sc));
             setAutoScopes(extra);
             scopesForSend = [...pinned, ...extra];
             if (scopesForSend.length === 0) scopesForSend = [currentScope || "dashboard"];
           } catch (e) {
             if (e instanceof Error && e.name === "AbortError") throw e;
-            setAutoScopes([]);
+            setAutoScopes(named);
           } finally {
             setRouting(false);
           }
