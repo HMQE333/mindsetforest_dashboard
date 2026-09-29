@@ -209,15 +209,16 @@ const LEVEL_ICONS: Record<string, string> = {
 /** Parse flat nodes array (with parentIndex) into a formatted tree string. */
 function nodesToTreePreview(nodes: { title: string; level: string; parentIndex?: number }[]): string {
   const lines: string[] = [];
+  // Each node has one parent, so walking down from the roots visits it at most
+  // once; nodes caught in a parent loop (only possible in replies restored from
+  // before parents had to come first) are simply not reached.
   function walk(parentIdx: number | null, depth: number) {
-    const children = nodes.filter((n) => {
-      if (parentIdx === null) return n.parentIndex === undefined || n.parentIndex == null;
-      return n.parentIndex === parentIdx;
-    });
-    for (const n of children) {
+    nodes.forEach((n, i) => {
+      if ((n.parentIndex ?? null) !== parentIdx) return;
       const icon = LEVEL_ICONS[n.level] || "";
       lines.push("  ".repeat(depth) + icon + " " + n.title);
-    }
+      walk(i, depth + 1);
+    });
   }
   walk(null, 0);
   return lines.join("\n");
@@ -412,10 +413,17 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
 }
 
 
-/** Shared node array coercion for both mindmap action types. */
+/**
+ * Shared node array coercion for both mindmap action types. parentIndex is
+ * the model's index into its own array; it is remapped to the kept nodes and
+ * only honoured when it points at an earlier node, so the tree has no cycles
+ * and a dropped parent turns its child into a root rather than a dangling ref.
+ */
 function coerceNodes(raw: unknown): { title: string; level: "goal" | "phase" | "task" | "action"; parentIndex?: number }[] {
   const nodesRaw = Array.isArray(raw) ? raw : [];
   const nodes: { title: string; level: "goal" | "phase" | "task" | "action"; parentIndex?: number }[] = [];
+  // raw index -> index in `nodes`, for the entries that were kept
+  const kept = new Map<number, number>();
   for (let i = 0; i < nodesRaw.length && nodes.length < 15; i++) {
     const n = nodesRaw[i];
     if (!n || typeof n !== "object") continue;
@@ -425,12 +433,12 @@ function coerceNodes(raw: unknown): { title: string; level: "goal" | "phase" | "
       typeof (n as any).level === "string" && VALID_LEVELS.has((n as any).level)
         ? (n as any).level as "goal" | "phase" | "task" | "action"
         : "task";
-    const parentIndex = typeof (n as any).parentIndex === "number"
-      && Number.isFinite((n as any).parentIndex)
-      && (n as any).parentIndex >= 0
-      && (n as any).parentIndex < nodesRaw.length
-        ? Math.floor((n as any).parentIndex)
-        : undefined;
+    const rawParent = typeof (n as any).parentIndex === "number" && Number.isFinite((n as any).parentIndex)
+      ? Math.floor((n as any).parentIndex)
+      : -1;
+    // Only an earlier node can be a parent; kept.get() is undefined when it was dropped.
+    const parentIndex = rawParent >= 0 && rawParent < i ? kept.get(rawParent) : undefined;
+    kept.set(i, nodes.length);
     nodes.push({ title, level, parentIndex });
   }
   return nodes;
@@ -725,14 +733,39 @@ function coerceAction(raw: unknown): AssistantAction | null {
   return null;
 }
 
+// "```action" or "```actions", but not "```actionscript".
+const FENCE_OPEN = /```\s*actions?\b/i;
+const FENCED_BLOCK = /```\s*actions?\b([\s\S]*?)```/gi;
+
+/**
+ * Split a reply into prose and the bodies of its action blocks. Every closed
+ * block is taken out wherever it sits; an opening fence with no close (a reply
+ * cut off mid-block) takes everything after it.
+ */
+function splitActionBlocks(raw: string): { text: string; bodies: string[]; unclosed: string | null } {
+  const bodies: string[] = [];
+  let text = raw.replace(FENCED_BLOCK, (_m, body: string) => {
+    bodies.push(body);
+    return "";
+  });
+  let unclosed: string | null = null;
+  const open = text.search(FENCE_OPEN);
+  if (open >= 0) {
+    unclosed = text.slice(open).replace(FENCE_OPEN, "");
+    text = text.slice(0, open);
+  }
+  // Blocks removed back to back leave a run of blank lines behind.
+  if (bodies.length > 1) text = text.replace(/\n{3,}/g, "\n\n");
+  return { text, bodies, unclosed };
+}
+
 /**
  * The reply as the user should see it while it is still streaming: prose only.
- * Everything from the start of an action block on is hidden (it becomes the
- * confirm card when the reply is complete), including a half-typed fence.
+ * Action blocks are hidden (they become the confirm card when the reply is
+ * complete), including one still open and a half-typed fence.
  */
 export function visibleReplyText(raw: string): string {
-  const start = raw.search(/```\s*action/i);
-  let text = start >= 0 ? raw.slice(0, start) : raw;
+  let { text } = splitActionBlocks(raw);
   // A fence still being typed at the very end ("`", "``", "```", "```act").
   text = text.replace(/`{1,3}[a-z]*$/i, "");
   return text.trimEnd();
@@ -741,30 +774,36 @@ export function visibleReplyText(raw: string): string {
 export interface ParseResult {
   text: string;
   actions: AssistantAction[];
+  /**
+   * Valid actions left out because their section is not in play for this
+   * message. Returned so the caller can say so instead of doing nothing silently.
+   */
+  dropped: AssistantAction[];
   /** An action block was started but could not be read (cut off or malformed). */
   broken?: boolean;
 }
 
 export function parseActions(text: string, allowedScopes: ScopeId[]): ParseResult {
-  const start = text.search(/```\s*action/i);
-  if (start < 0) return { text, actions: [] };
-  const rest = text.slice(start).replace(/^```\s*action\s*/i, "");
-  const close = rest.indexOf("```");
-  const body = close >= 0 ? rest.slice(0, close) : rest;
-  const after = close >= 0 ? rest.slice(close + 3) : "";
-  const cleaned = (text.slice(0, start) + after).trim();
-  let parsed: unknown;
-  try { parsed = JSON.parse(body.trim()); } catch { return { text: cleaned, actions: [], broken: true }; }
-  const list = Array.isArray(parsed) ? parsed : [parsed];
+  const split = splitActionBlocks(text);
+  const bodies = split.unclosed !== null ? [...split.bodies, split.unclosed] : split.bodies;
+  if (bodies.length === 0) return { text, actions: [], dropped: [] };
   const allowed = new Set(allowedScopes);
   const actions: AssistantAction[] = [];
-  for (const item of list) {
-    const action = coerceAction(item);
-    if (!action) continue;
-    const scope = ACTION_SCOPE[action.type];
-    if (scope === null || allowed.has(scope)) actions.push(action);
+  const dropped: AssistantAction[] = [];
+  let broken = false;
+  for (const body of bodies) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(body.trim()); } catch { broken = true; continue; }
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of list) {
+      const action = coerceAction(item);
+      if (!action) continue;
+      const scope = ACTION_SCOPE[action.type];
+      if (scope === null || allowed.has(scope)) actions.push(action);
+      else dropped.push(action);
+    }
   }
-  return { text: cleaned, actions };
+  return { text: split.text.trim(), actions, dropped, ...(broken ? { broken } : {}) };
 }
 
 /** Returns a multi-line tree preview string for mindmap actions, or null. */

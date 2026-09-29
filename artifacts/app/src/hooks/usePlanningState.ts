@@ -116,7 +116,10 @@ export function usePlanningState(projectId?: string, board?: BoardScope) {
     if (!user) return;
     // Cascade handled by DB, but remove descendants from local state
     const toDelete = new Set<string>();
+    // toDelete doubles as the visited set: a parent_id loop in the data would
+    // otherwise recurse until the stack overflows.
     const findDesc = (parentId: string) => {
+      if (toDelete.has(parentId)) return;
       toDelete.add(parentId);
       tasks.filter(t => t.parent_id === parentId).forEach(t => findDesc(t.id));
     };

@@ -331,7 +331,7 @@ export default function AssistantPanel() {
     }
     const pendingId = awaitingConfirmRef.current;
     if (pendingId) {
-      const yn = parseYesNo(text);
+      const yn = parseYesNo(text, voiceLangRef.current);
       if (yn === "yes") {
         awaitingConfirmRef.current = null;
         const result = await applyRef.current(pendingId);
@@ -366,6 +366,15 @@ export default function AssistantPanel() {
   });
   useEffect(() => { voiceLangRef.current = voice.lang; }, [voice.lang]);
   useEffect(() => { voiceActiveRef.current = voice.active; }, [voice.active]);
+  // The spoken confirm waits on one reply. Once that reply's actions are
+  // settled some other way (Apply or Dismiss clicked, chat cleared), a later
+  // "tak" must go to the conversation, not to a card that is gone.
+  useEffect(() => {
+    const pendingId = awaitingConfirmRef.current;
+    if (!pendingId) return;
+    const pending = messages.find((m) => m.id === pendingId);
+    if (!pending || pending.actionsResolved) awaitingConfirmRef.current = null;
+  }, [messages]);
   const toggleVoiceMode = () => {
     if (voice.active) {
       voice.stop();
@@ -471,8 +480,14 @@ export default function AssistantPanel() {
       return;
     }
     // Start recording.
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast.error("Microphone access denied");
+      return;
+    }
+    try {
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : "audio/webm";
@@ -497,7 +512,11 @@ export default function AssistantPanel() {
       rec.start();
       setListening(true);
     } catch {
-      toast.error("Microphone access denied");
+      // Access was granted, so the recorder itself failed (e.g. no webm
+      // support). Release the microphone, or it stays on with nothing recording.
+      stream.getTracks().forEach((t) => t.stop());
+      mediaRecorderRef.current = null;
+      toast.error("Could not start recording in this browser");
     }
   }, [listening, transcribeAndAppend]);
 

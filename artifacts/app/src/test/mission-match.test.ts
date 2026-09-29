@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { CATEGORIES } from "../lib/dashboard-data";
 import { findMission, formatMissionList, listTodayMissions } from "../lib/mission-match";
 
@@ -54,5 +54,19 @@ describe("mission matching edge cases", () => {
     const entries = listTodayMissions({ mind: [m("Morning pages"), m("Morning walk")] }, []);
     expect(findMission(entries, "morning thing")).toBeNull();
     expect(findMission(entries, "morning pages")?.title).toBe("Morning pages");
+  });
+});
+
+describe("mission weekday and the 04:00 boundary", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("uses the logical day's weekday by default, so 01:00 Tuesday still shows Monday's missions", () => {
+    const missions = { mind: [m("Monday only", { daysOfWeek: [1] }), m("Tuesday only", { daysOfWeek: [2] })] };
+    const titles = () => listTodayMissions(missions, []).filter((e) => e.categoryId === "mind").map((e) => e.title);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 29, 1, 0)); // Tuesday 01:00 local
+    expect(titles()).toEqual(["Monday only"]);
+    vi.setSystemTime(new Date(2026, 8, 29, 5, 0)); // Tuesday 05:00 local
+    expect(titles()).toEqual(["Tuesday only"]);
   });
 });

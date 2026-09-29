@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
-import { todayKey, computeStreak } from "@/lib/today";
+import { todayKey, computeStreak, logicalDate } from "@/lib/today";
 import { activeDayKeys } from "./useDailyCompletions";
 
 export interface DashboardState {
@@ -40,7 +40,7 @@ export function rollVariant(variants: MissionVariant[]): number {
   return 0;
 }
 
-export function isVisibleToday(mission: Mission, today: number = new Date().getDay()): boolean {
+export function isVisibleToday(mission: Mission, today: number = logicalDate().getDay()): boolean {
   if (!mission.daysOfWeek || mission.daysOfWeek.length === 0 || mission.daysOfWeek.length === 7) return true;
   return mission.daysOfWeek.includes(today);
 }

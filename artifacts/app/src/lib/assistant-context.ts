@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { TRACKER_METRICS } from "@/lib/tracker-data";
-import { addDays, todayKey } from "@/lib/today";
+import { addDays, logicalDate, todayKey } from "@/lib/today";
 import {
   aggregateUsage,
   classifyAll,
@@ -701,8 +701,9 @@ export async function gatherContext(
   }
 
   const now = new Date();
+  // Weekday of the logical date, so "2026-09-28 (Monday)" still holds at 01:00 Tuesday.
   const header =
-    `Now: ${todayKey()} (${now.toLocaleDateString("en-US", { weekday: "long" })}), local time ` +
+    `Now: ${todayKey()} (${logicalDate(now).toLocaleDateString("en-US", { weekday: "long" })}), local time ` +
     `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}. ` +
     "The app's day starts at 04:00, so before 04:00 \"today\" is still the previous date.";
   return { text: [header, ...sections].join("\n\n"), citations };

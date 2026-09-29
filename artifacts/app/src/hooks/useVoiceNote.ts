@@ -43,8 +43,14 @@ export function useVoiceNote(onText: (text: string) => void, language = "pl") {
       recRef.current.stop();
       return;
     }
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast.error("Brak dostępu do mikrofonu");
+      return;
+    }
+    try {
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
       const rec = new MediaRecorder(stream, { mimeType });
       const chunks: BlobPart[] = [];
@@ -65,7 +71,11 @@ export function useVoiceNote(onText: (text: string) => void, language = "pl") {
       rec.start();
       setRecording(true);
     } catch {
-      toast.error("Brak dostępu do mikrofonu");
+      // Access was granted, so the recorder itself failed. Release the
+      // microphone, or it stays on with nothing recording.
+      stream.getTracks().forEach((t) => t.stop());
+      recRef.current = null;
+      toast.error("Nie udało się rozpocząć nagrywania w tej przeglądarce");
     }
   }, [transcribe]);
 
