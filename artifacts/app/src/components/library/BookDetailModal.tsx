@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat } from "@/lib/library-data";
+import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat, formatFileSize, isScan } from "@/lib/library-data";
+import { uploadLabel, type UploadStage } from "@/lib/book-files";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
-import { Star, Trash2, Sparkles, Loader2, X } from "lucide-react";
+import { Star, Trash2, Sparkles, Loader2, X, FileText, Upload, BookOpen } from "lucide-react";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -17,9 +18,13 @@ interface BookDetailModalProps {
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Book>) => void;
   onDelete: (id: string) => void;
+  uploading?: UploadStage;
+  onAttachFile: (file: File) => void;
+  onRemoveFile: () => void;
+  onRead: () => void;
 }
 
-export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete }: BookDetailModalProps) {
+export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete, uploading, onAttachFile, onRemoveFile, onRead }: BookDetailModalProps) {
   const allPillars = usePillars();
   const [notes, setNotes] = useState("");
   const [pagesRead, setPagesRead] = useState("");
@@ -33,6 +38,8 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   const [question, setQuestion] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [dropOver, setDropOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (book) {
@@ -46,7 +53,8 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
       setUrl(book.url || "");
       setAiAnswer(""); setQuestion(""); setCustomTag("");
     }
-  }, [book]);
+    // Only when a different book opens: a PDF finishing in the background must not wipe unsaved edits.
+  }, [book?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!book) return null;
 
@@ -71,6 +79,14 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
       setAiAnswer(data?.answer || "No answer received.");
     } catch { toast.error("AI request failed"); } finally { setAiLoading(false); }
   };
+
+  const pickFile = (f: File | undefined) => { if (f) onAttachFile(f); };
+  const dropHandlers = {
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; if (!dropOver) setDropOver(true); },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropOver(false); },
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDropOver(false); pickFile(e.dataTransfer.files[0]); },
+  };
+  const file = book.file;
 
   const progress = book.total_pages > 0 ? Math.round(((parseInt(pagesRead) || 0) / book.total_pages) * 100) : 0;
 
@@ -107,6 +123,44 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* PDF */}
+          <div {...dropHandlers}>
+            <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="hidden" onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ""; }} />
+            {uploading ? (
+              <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-3 text-xs text-primary font-medium">
+                <Loader2 className="w-4 h-4 animate-spin" /> {uploadLabel(uploading)}
+                {uploading.stage === "text" && (
+                  <div className="flex-1 h-1.5 rounded-full bg-muted/50 overflow-hidden ml-1">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.round((uploading.done / Math.max(1, uploading.total)) * 100)}%` }} />
+                  </div>
+                )}
+              </div>
+            ) : file ? (
+              <div className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${dropOver ? "border-primary ring-2 ring-primary/40 bg-primary/5" : "border-white/10 bg-muted/20"}`}>
+                <FileText className="w-5 h-5 text-primary shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-foreground truncate" title={file.name}>{file.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {file.pages} pages · {formatFileSize(file.size)} · {isScan(file) ? "scan, no text" : "text ✓"}
+                    {file.lastPage > 1 && <> · stopped at p. {file.lastPage}</>}
+                  </p>
+                </div>
+                <button onClick={onRead} className="flex items-center gap-1 px-3 py-1.5 rounded-lg gradient-purple text-primary-foreground text-xs font-bold shrink-0 hover:opacity-90">
+                  <BookOpen className="w-3.5 h-3.5" /> {file.lastPage > 1 ? "Continue" : "Read"}
+                </button>
+                <button onClick={() => fileInput.current?.click()} title="Replace the PDF" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 shrink-0"><Upload className="w-3.5 h-3.5" /></button>
+                <button onClick={onRemoveFile} title="Remove the PDF" className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            ) : (
+              <button
+                onClick={() => fileInput.current?.click()}
+                className={`w-full flex items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-3 text-xs transition-all ${dropOver ? "border-primary bg-primary/10 text-primary" : "border-white/15 text-muted-foreground hover:text-foreground hover:border-white/30"}`}
+              >
+                <FileText className="w-4 h-4" /> Drop the book's PDF here, or click to choose
+              </button>
+            )}
           </div>
 
           {/* URL */}

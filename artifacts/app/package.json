@@ -70,14 +70,15 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
     "vite": "catalog:",
-    "zod": "catalog:",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "zod": "catalog:"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.208.0",
     "@supabase/supabase-js": "^2.110.0",
     "@xyflow/react": "^12.11.1",
     "fflate": "^0.8.3",
+    "pdfjs-dist": "^6.3.289",
     "react-router-dom": "^7.18.1"
   }
 }

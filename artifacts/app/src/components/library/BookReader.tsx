@@ -1,0 +1,328 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { ChevronLeft, ChevronRight, ExternalLink, Loader2, Moon, Sun, X, ZoomIn, ZoomOut } from "lucide-react";
+import type { Book } from "@/lib/library-data";
+import { closePdf, openPdf, signedFileUrl, type PdfDocument } from "@/lib/book-files";
+
+interface BookReaderProps {
+  book: Book | null;
+  onClose: () => void;
+  /** Called (debounced) with the page in view, and once more on close. */
+  onPosition: (bookId: string, page: number) => void;
+}
+
+const MAX_BASE_WIDTH = 900;
+const ZOOMS = [0.6, 0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5];
+const DIM_KEY = "library-reader-dim";
+
+type RenderTask = { cancel: () => void; promise: Promise<unknown> };
+
+/**
+ * Reads a book's PDF inside the app. Pages render with pdf.js only when near
+ * the viewport (and are dropped again when far away), so a 600-page book opens
+ * as fast as a short one. The page in view is reported back so the book
+ * remembers where you stopped and its progress moves with you.
+ */
+export default function BookReader({ book, onClose, onPosition }: BookReaderProps) {
+  const file = book?.file ?? null;
+  const [doc, setDoc] = useState<PdfDocument | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ratios, setRatios] = useState<number[]>([]);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [current, setCurrent] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+  const [dim, setDim] = useState(() => {
+    try { return localStorage.getItem(DIM_KEY) === "1"; } catch { return false; }
+  });
+
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const pageEls = useRef<(HTMLDivElement | null)[]>([]);
+  const rendered = useRef(new Map<number, { width: number; task: RenderTask | null }>());
+  const near = useRef(new Set<number>());
+  const anchor = useRef<{ page: number; frac: number } | null>(null);
+  const resumed = useRef(false);
+  const currentRef = useRef(1);
+  currentRef.current = current;
+
+  const pageWidth = Math.max(200, Math.floor(Math.min(containerWidth - 24, MAX_BASE_WIDTH) * zoom));
+  const numPages = doc?.numPages ?? 0;
+
+  // Open the document.
+  useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    let opened: PdfDocument | null = null;
+    setDoc(null); setError(null); setRatios([]); setZoom(1);
+    resumed.current = false;
+    rendered.current.clear();
+    near.current.clear();
+    pageEls.current = [];
+    const start = Math.min(Math.max(1, file.lastPage || 1), file.pages || 1);
+    setCurrent(start); setPageInput(String(start));
+    (async () => {
+      const signed = await signedFileUrl(file.path);
+      if (!signed) throw new Error("no-url");
+      if (cancelled) return;
+      setUrl(signed);
+      opened = await openPdf({ url: signed });
+      if (cancelled) { closePdf(opened); return; }
+      const first = await opened.getPage(1);
+      const vp = first.getViewport({ scale: 1 });
+      setRatios(new Array(opened.numPages).fill(vp.height / vp.width));
+      setDoc(opened);
+    })().catch(() => { if (!cancelled) setError("Could not open this PDF."); });
+    return () => {
+      cancelled = true;
+      for (const r of rendered.current.values()) r.task?.cancel();
+      rendered.current.clear();
+      if (opened) closePdf(opened);
+    };
+  }, [file?.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track the reading column's width.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setContainerWidth(el.clientWidth));
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, [doc]);
+
+  const renderPage = useCallback(async (n: number) => {
+    const holder = pageEls.current[n - 1];
+    if (!doc || !holder) return;
+    const prev = rendered.current.get(n);
+    if (prev && prev.width === pageWidth) return;
+    prev?.task?.cancel();
+    const entry = { width: pageWidth, task: null as RenderTask | null };
+    rendered.current.set(n, entry);
+    try {
+      const page = await doc.getPage(n);
+      if (rendered.current.get(n) !== entry) return;
+      const base = page.getViewport({ scale: 1 });
+      const ratio = base.height / base.width;
+      setRatios(r => (Math.abs((r[n - 1] ?? 0) - ratio) > 0.001 ? r.map((x, i) => (i === n - 1 ? ratio : x)) : r));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const viewport = page.getViewport({ scale: (pageWidth / base.width) * dpr });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      canvas.className = "absolute inset-0 w-full h-full";
+      const task = page.render({ canvas, viewport }) as unknown as RenderTask;
+      entry.task = task;
+      await task.promise;
+      if (rendered.current.get(n) !== entry) return;
+      entry.task = null;
+      // Swap in the new bitmap only when it is ready, so zooming never flashes blank.
+      holder.querySelector("canvas")?.remove();
+      holder.appendChild(canvas);
+    } catch {
+      if (rendered.current.get(n) === entry) rendered.current.delete(n);
+    }
+  }, [doc, pageWidth]);
+
+  const dropPage = useCallback((n: number) => {
+    const r = rendered.current.get(n);
+    r?.task?.cancel();
+    rendered.current.delete(n);
+    const c = pageEls.current[n - 1]?.querySelector("canvas");
+    if (c) { c.width = 0; c.height = 0; c.remove(); }
+  }, []);
+
+  // Render what is near the viewport; free what has scrolled far away.
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!doc || !root || pageWidth <= 0) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const n = Number((e.target as HTMLElement).dataset.page);
+        if (e.isIntersecting) { near.current.add(n); void renderPage(n); }
+        else { near.current.delete(n); dropPage(n); }
+      }
+    }, { root, rootMargin: "150% 0px" });
+    pageEls.current.forEach((el) => el && io.observe(el));
+    // A zoom or resize re-renders the pages already on screen at the new size.
+    near.current.forEach((n) => void renderPage(n));
+    return () => io.disconnect();
+  }, [doc, pageWidth, renderPage, dropPage]);
+
+  const scrollToPage = useCallback((n: number, frac = 0) => {
+    const el = pageEls.current[n - 1];
+    const root = scrollerRef.current;
+    if (!el || !root) return;
+    root.scrollTop = el.offsetTop - 12 + frac * el.offsetHeight;
+  }, []);
+
+  // Open where the reader stopped last time.
+  useLayoutEffect(() => {
+    if (!doc || resumed.current || containerWidth <= 0) return;
+    resumed.current = true;
+    scrollToPage(currentRef.current);
+  }, [doc, containerWidth, scrollToPage]);
+
+  // Keep the same spot in view across zoom changes.
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    if (!a) return;
+    anchor.current = null;
+    scrollToPage(a.page, a.frac);
+  }, [pageWidth, scrollToPage]);
+
+  const onScroll = useCallback(() => {
+    const root = scrollerRef.current;
+    if (!root) return;
+    const mark = root.scrollTop + root.clientHeight * 0.35;
+    const els = pageEls.current;
+    let lo = 0, hi = els.length - 1, found = 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const top = els[mid]?.offsetTop ?? 0;
+      if (top <= mark) { found = mid + 1; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (found !== currentRef.current) { setCurrent(found); setPageInput(String(found)); }
+  }, []);
+
+  // Save the position a moment after the page settles.
+  useEffect(() => {
+    if (!book || !doc) return;
+    const t = setTimeout(() => onPosition(book.id, current), 1200);
+    return () => clearTimeout(t);
+  }, [book, doc, current, onPosition]);
+
+  const close = useCallback(() => {
+    if (book && doc) onPosition(book.id, currentRef.current);
+    onClose();
+  }, [book, doc, onPosition, onClose]);
+
+  const changeZoom = useCallback((dir: 1 | -1) => {
+    const el = pageEls.current[currentRef.current - 1];
+    const root = scrollerRef.current;
+    if (el && root) {
+      const frac = (root.scrollTop + 12 - el.offsetTop) / Math.max(1, el.offsetHeight);
+      anchor.current = { page: currentRef.current, frac: Math.min(1, Math.max(0, frac)) };
+    }
+    setZoom(z => {
+      const i = ZOOMS.findIndex(x => Math.abs(x - z) < 0.001);
+      return ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, (i < 0 ? 3 : i) + dir))];
+    });
+  }, []);
+
+  const go = useCallback((n: number) => {
+    if (!numPages) return;
+    const p = Math.min(numPages, Math.max(1, Math.round(n)));
+    scrollToPage(p);
+  }, [numPages, scrollToPage]);
+
+  useEffect(() => {
+    if (!doc) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); go(currentRef.current + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); go(currentRef.current - 1); }
+      else if (e.key === "+" || e.key === "=") { e.preventDefault(); changeZoom(1); }
+      else if (e.key === "-") { e.preventDefault(); changeZoom(-1); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [doc, go, changeZoom]);
+
+  const toggleDim = () => setDim(d => {
+    try { localStorage.setItem(DIM_KEY, d ? "0" : "1"); } catch { /* per-device nicety only */ }
+    return !d;
+  });
+
+  if (!book || !file) return null;
+  const pct = numPages ? Math.round((current / numPages) * 100) : 0;
+  const btn = "p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30";
+
+  return (
+    <DialogPrimitive.Root open onOpenChange={(v) => { if (!v) close(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/90" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className="fixed inset-0 z-50 flex flex-col bg-background outline-none"
+        >
+          <header className="relative shrink-0 flex items-center gap-1 sm:gap-2 px-2 sm:px-3 h-12 border-b border-border bg-background">
+            <div className="w-2 h-7 rounded-full shrink-0" style={{ backgroundColor: book.cover_color }} />
+            <div className="min-w-0 flex-1 pl-1">
+              <DialogPrimitive.Title className="text-sm font-semibold text-foreground truncate">{book.title}</DialogPrimitive.Title>
+              {book.author && <p className="text-[11px] text-muted-foreground truncate leading-tight">{book.author}</p>}
+            </div>
+
+            {numPages > 0 && (
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button className={btn} onClick={() => go(current - 1)} disabled={current <= 1} title="Previous page (←)"><ChevronLeft className="w-4 h-4" /></button>
+                <input
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => { if (e.key === "Enter") go(Number(pageInput) || current); }}
+                  onBlur={() => setPageInput(String(current))}
+                  inputMode="numeric"
+                  aria-label="Page"
+                  className="w-10 text-center text-xs py-1 rounded-md bg-muted/40 border border-border text-foreground tabular-nums focus:outline-none focus:border-primary/50"
+                />
+                <span className="text-xs text-muted-foreground tabular-nums px-1">/ {numPages}</span>
+                <button className={btn} onClick={() => go(current + 1)} disabled={current >= numPages} title="Next page (→)"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            )}
+
+            <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+              <button className={btn} onClick={() => changeZoom(-1)} disabled={zoom <= ZOOMS[0]} title="Zoom out (−)"><ZoomOut className="w-4 h-4" /></button>
+              <span className="text-[11px] text-muted-foreground tabular-nums w-9 text-center">{Math.round(zoom * 100)}%</span>
+              <button className={btn} onClick={() => changeZoom(1)} disabled={zoom >= ZOOMS[ZOOMS.length - 1]} title="Zoom in (+)"><ZoomIn className="w-4 h-4" /></button>
+            </div>
+            <button className={btn} onClick={toggleDim} title={dim ? "Normal pages" : "Dim pages for night reading"}>
+              {dim ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            {url && (
+              <a className={`${btn} hidden sm:inline-flex`} href={`${url}#page=${current}`} target="_blank" rel="noopener noreferrer" title="Open in the browser's PDF viewer (search, select text)">
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+            <button className={btn} onClick={close} title="Close (Esc)"><X className="w-5 h-5" /></button>
+
+            <div className="absolute left-0 bottom-0 h-0.5 bg-muted/40 w-full">
+              <div className="h-full transition-[width] duration-300" style={{ width: `${pct}%`, backgroundColor: book.cover_color }} />
+            </div>
+          </header>
+
+          <div ref={scrollerRef} onScroll={onScroll} className="flex-1 overflow-y-auto overscroll-contain bg-muted/30">
+            {error ? (
+              <div className="h-full flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+                <p>{error}</p>
+                {url && <a href={url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Open it in a new tab instead</a>}
+              </div>
+            ) : !doc ? (
+              <div className="h-full flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Opening…
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-3">
+                {ratios.map((ratio, i) => (
+                  <div
+                    key={i}
+                    data-page={i + 1}
+                    ref={(el) => { pageEls.current[i] = el; }}
+                    className="relative bg-white shadow-md shrink-0"
+                    style={{
+                      width: pageWidth,
+                      height: Math.round(pageWidth * ratio),
+                      filter: dim ? "invert(0.88) hue-rotate(180deg)" : undefined,
+                    }}
+                  >
+                    <span className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400 select-none">{i + 1}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}

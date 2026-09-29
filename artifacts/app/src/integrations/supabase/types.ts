@@ -1763,6 +1763,7 @@ export type Database = {
           cover_color: string
           created_at: string
           directions: string[]
+          file: Json | null
           format: string
           id: string
           notes: string
@@ -1782,6 +1783,7 @@ export type Database = {
           cover_color?: string
           created_at?: string
           directions?: string[]
+          file?: Json | null
           format?: string
           id?: string
           notes?: string
@@ -1801,6 +1803,7 @@ export type Database = {
           cover_color?: string
           created_at?: string
           directions?: string[]
+          file?: Json | null
           format?: string
           id?: string
           notes?: string

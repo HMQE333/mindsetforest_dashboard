@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Book, STATUS_LABELS, FORMAT_LABELS } from "@/lib/library-data";
+import { uploadLabel, type UploadStage } from "@/lib/book-files";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
-import { Star, Link2 } from "lucide-react";
+import { Star, Link2, FileText, Loader2 } from "lucide-react";
 import { EMPTY } from "@/lib/utils";
 
 interface BookCardProps {
@@ -10,15 +12,54 @@ interface BookCardProps {
   index: number;
   onClick: () => void;
   view: "block" | "list";
+  /** A file dropped straight onto this card. */
+  onDropFile?: (file: File) => void;
+  onRead?: () => void;
+  uploading?: UploadStage;
 }
 
-export default function BookCard({ book, index, onClick, view }: BookCardProps) {
+const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+
+export default function BookCard({ book, index, onClick, view, onDropFile, onRead, uploading }: BookCardProps) {
+  const [dropOver, setDropOver] = useState(false);
   const allPillars = usePillars();
   const progress = book.total_pages > 0 ? Math.round((book.pages_read / book.total_pages) * 100) : 0;
   const bookPillars = allPillars.filter(p => (book.pillars || []).includes(p.id));
   const formatLabel = FORMAT_LABELS[book.format || "owned"];
   const hasUrl = !!book.url?.trim();
   const handleLinkClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); window.open(book.url, "_blank", "noopener,noreferrer"); };
+  const handleReadClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); onRead?.(); };
+  const dropProps = onDropFile ? {
+    onDragOver: (e: React.DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+      if (!dropOver) setDropOver(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDropOver(false);
+      const f = e.dataTransfer.files[0];
+      if (f) onDropFile(f);
+    },
+  } : {};
+  const dropRing = dropOver ? "ring-2 ring-primary border-primary/50 bg-primary/5" : "";
+  const pdfChip = book.file && (
+    <span onClick={handleReadClick} role="button" title={`Read the PDF (${book.file.pages} pages)`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-semibold hover:bg-primary/20 transition-all cursor-pointer shrink-0">
+      <FileText className="w-3 h-3" /> PDF
+    </span>
+  );
+  const uploadBar = uploading && (
+    <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 px-3 py-1 bg-background/85 backdrop-blur text-[10px] text-primary font-medium">
+      <Loader2 className="w-3 h-3 animate-spin" /> {uploadLabel(uploading)}
+    </div>
+  );
 
   if (view === "list") {
     return (
@@ -28,13 +69,15 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
         transition={{ delay: index * 0.02 }}
         onClick={onClick}
         className="w-full text-left"
+        {...dropProps}
       >
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl glass-card border border-white/5 hover:border-white/15 transition-all">
+        <div className={`relative flex items-center gap-3 px-4 py-3 rounded-xl glass-card border border-white/5 hover:border-white/15 transition-all overflow-hidden ${dropRing}`}>
           <div className="w-1.5 h-10 rounded-full shrink-0" style={{ backgroundColor: book.cover_color }} />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm text-foreground truncate">{book.title}</h3>
             <p className="text-xs text-muted-foreground truncate">{book.author || EMPTY}</p>
           </div>
+          {pdfChip}
           {hasUrl && (
             <span onClick={handleLinkClick} role="button" title={book.url} className="shrink-0 p-1 rounded-md bg-muted/30 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all cursor-pointer">
               <Link2 className="w-3.5 h-3.5" />
@@ -68,6 +111,7 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
               ))}
             </div>
           )}
+          {uploadBar}
         </div>
       </motion.button>
     );
@@ -81,8 +125,9 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
       transition={{ delay: index * 0.04 }}
       onClick={onClick}
       className="w-full text-left group"
+      {...dropProps}
     >
-      <div className="relative glass-card rounded-2xl overflow-hidden border border-white/5 hover:border-white/15 transition-all hover:-translate-y-1 hover:shadow-lg">
+      <div className={`relative glass-card rounded-2xl overflow-hidden border border-white/5 hover:border-white/15 transition-all hover:-translate-y-1 hover:shadow-lg ${dropRing}`}>
         {hasUrl && (
           <span onClick={handleLinkClick} role="button" title={book.url} className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-background/60 backdrop-blur text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all cursor-pointer">
             <Link2 className="w-3.5 h-3.5" />
@@ -108,6 +153,7 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
                 </div>
               )}
               <span className="text-[10px] text-muted-foreground">{formatLabel}</span>
+              {pdfChip}
             </div>
 
             {book.tags && book.tags.length > 0 && (
@@ -142,6 +188,7 @@ export default function BookCard({ book, index, onClick, view }: BookCardProps) 
             </div>
           )}
         </div>
+        {uploadBar}
       </div>
     </motion.button>
   );

@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, lazy, Suspense } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List, Link2 } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
 import { useCoursesState } from "@/hooks/useCoursesState";
-import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS } from "@/lib/library-data";
+import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS, matchFilesToBooks } from "@/lib/library-data";
 import { CourseStatus, COURSE_STATUS_LABELS } from "@/lib/course-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
@@ -15,20 +15,35 @@ import CourseCard from "./CourseCard";
 import AddCourseModal from "./AddCourseModal";
 import CourseDetailModal from "./CourseDetailModal";
 import ShareLibraryModal from "./ShareLibraryModal";
-import type { Book } from "@/lib/library-data";
 import type { Course } from "@/lib/course-data";
+import { toast } from "sonner";
+
+// pdf.js only loads once a book is opened for reading.
+const BookReader = lazy(() => import("./BookReader"));
+
+const isPdf = (f: File) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
 type LibraryTab = "books" | "courses";
 
 export default function LibraryView() {
-  const { books, loading: booksLoading, addBook, updateBook, deleteBook } = useLibraryState();
+  const {
+    books, loading: booksLoading, addBook, updateBook, deleteBook,
+    uploads, attachFile, attachFiles, detachFile, saveReadingPosition,
+  } = useLibraryState();
   const { courses, loading: coursesLoading, addCourse, updateCourse, deleteCourse } = useCoursesState();
   const allPillars = usePillars();
 
   const [tab, setTab] = useState<LibraryTab>("books");
   const [addBookOpen, setAddBookOpen] = useState(false);
   const [addCourseOpen, setAddCourseOpen] = useState(false);
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  // Held by id so the open book picks up changes (a PDF finishing, a saved position).
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [readingId, setReadingId] = useState<string | null>(null);
+  const selectedBook = useMemo(() => books.find(b => b.id === selectedBookId) ?? null, [books, selectedBookId]);
+  const readingBook = useMemo(() => books.find(b => b.id === readingId) ?? null, [books, readingId]);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -93,12 +108,66 @@ export default function LibraryView() {
 
   const loading = tab === "books" ? booksLoading : coursesLoading;
 
+  // A drop anywhere (a card stops its own drop from bubbling) ends the drag hint.
+  useEffect(() => {
+    const reset = () => { dragDepth.current = 0; setDragging(false); };
+    window.addEventListener("drop", reset, true);
+    window.addEventListener("dragend", reset, true);
+    return () => {
+      window.removeEventListener("drop", reset, true);
+      window.removeEventListener("dragend", reset, true);
+    };
+  }, []);
+
+  const otherDialogOpen = addBookOpen || addCourseOpen || suggestOpen || shareOpen || !!selectedCourse;
+  const openReader = (id: string) => { setSelectedBookId(null); setReadingId(id); };
+
+  /** PDFs dropped off any card: onto the open book, or matched to books by file name. */
+  const handleDrop = async (list: FileList) => {
+    const files = Array.from(list);
+    const pdfs = files.filter(isPdf);
+    if (pdfs.length < files.length) toast.error("Only PDF files can be attached to books");
+    if (pdfs.length === 0 || readingId) return;
+    if (selectedBook) { void attachFile(selectedBook.id, pdfs[0]); return; }
+    // Dropped on some other open dialog (Add Book, Share...): not meant for matching.
+    if (otherDialogOpen) return;
+    const { matched, unmatched } = matchFilesToBooks(pdfs, books);
+    if (unmatched.length > 0) {
+      toast.warning(
+        unmatched.length === 1 ? `No book matches "${unmatched[0].name}"` : `No book matches ${unmatched.length} of the files`,
+        { description: `Drop ${unmatched.length === 1 ? "it" : "them"} straight onto the book's card. ${unmatched.length > 1 ? unmatched.map(f => f.name).slice(0, 5).join(", ") : ""}`.trim(), duration: 8000 },
+      );
+    }
+    if (matched.length > 0) await attachFiles(matched.map(m => ({ bookId: m.book.id, file: m.file })));
+  };
+
+  const dropZoneProps = tab === "books" ? {
+    onDragEnter: (e: React.DragEvent) => { if (!hasFiles(e)) return; dragDepth.current++; setDragging(true); },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!hasFiles(e) || dragDepth.current === 0) return;
+      dragDepth.current--;
+      if (dragDepth.current === 0) setDragging(false);
+    },
+    // Accepting the drop everywhere also stops the browser from navigating away to the file.
+    onDragOver: (e: React.DragEvent) => { if (hasFiles(e)) e.preventDefault(); },
+    onDrop: (e: React.DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      void handleDrop(e.dataTransfer.files);
+    },
+  } : {};
+
   if (loading) {
     return <div className="text-center py-20 text-muted-foreground">Loading library...</div>;
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 min-h-[60vh]" {...dropZoneProps}>
+      {dragging && !selectedBook && !readingBook && !otherDialogOpen && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-32px)] px-4 py-2.5 rounded-2xl glass-card border border-primary/40 text-sm text-foreground shadow-lg pointer-events-none text-center">
+          📄 Drop on a book to attach its PDF, or anywhere to match books by file name
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
@@ -244,13 +313,13 @@ export default function LibraryView() {
           ) : viewMode === "block" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredBooks.map((book, i) => (
-                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBook(book)} view="block" />
+                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBookId(book.id)} view="block" onDropFile={f => void attachFile(book.id, f)} onRead={() => openReader(book.id)} uploading={uploads[book.id]} />
               ))}
             </div>
           ) : (
             <div className="space-y-2">
               {filteredBooks.map((book, i) => (
-                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBook(book)} view="list" />
+                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBookId(book.id)} view="list" onDropFile={f => void attachFile(book.id, f)} onRead={() => openReader(book.id)} uploading={uploads[book.id]} />
               ))}
             </div>
           )}
@@ -282,7 +351,22 @@ export default function LibraryView() {
 
       {/* Modals */}
       <AddBookModal open={addBookOpen} onClose={() => setAddBookOpen(false)} onAdd={addBook} />
-      <BookDetailModal book={selectedBook} open={!!selectedBook} onClose={() => setSelectedBook(null)} onUpdate={updateBook} onDelete={deleteBook} />
+      <BookDetailModal
+        book={selectedBook}
+        open={!!selectedBook}
+        onClose={() => setSelectedBookId(null)}
+        onUpdate={updateBook}
+        onDelete={deleteBook}
+        uploading={selectedBook ? uploads[selectedBook.id] : undefined}
+        onAttachFile={f => selectedBook && void attachFile(selectedBook.id, f)}
+        onRemoveFile={() => selectedBook && void detachFile(selectedBook.id)}
+        onRead={() => selectedBook && openReader(selectedBook.id)}
+      />
+      {readingBook?.file && (
+        <Suspense fallback={null}>
+          <BookReader book={readingBook} onClose={() => setReadingId(null)} onPosition={saveReadingPosition} />
+        </Suspense>
+      )}
       <AISuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} books={books} />
       <AddCourseModal open={addCourseOpen} onClose={() => setAddCourseOpen(false)} onAdd={addCourse} />
       <CourseDetailModal course={selectedCourse} open={!!selectedCourse} onClose={() => setSelectedCourse(null)} onUpdate={updateCourse} onDelete={deleteCourse} />
