@@ -2,7 +2,7 @@
 
 import { DEFAULT_STEP_XP, StepMode } from "@/lib/path-data";
 
-const normTitle = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+const normTitle = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 
 /**
  * Pairs each planned step with the live step it edits: by id when the caller
