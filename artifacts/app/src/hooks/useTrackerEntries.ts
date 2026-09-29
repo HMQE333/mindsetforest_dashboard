@@ -41,8 +41,9 @@ export function useTrackerEntries() {
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  const addEntry = useCallback(async (metricId: string, value: number) => {
-    if (!user) return;
+  /** Returns whether the entry was saved, so callers only reward what exists. */
+  const addEntry = useCallback(async (metricId: string, value: number): Promise<boolean> => {
+    if (!user) return false;
     const date = todayKey();
 
     const { data, error } = await supabase
@@ -51,18 +52,18 @@ export function useTrackerEntries() {
       .select()
       .single();
 
-    if (!error && data) {
-      setEntries((prev) => [
-        {
-          id: data.id,
-          metricId: data.metric_id,
-          value: data.value,
-          date: data.date,
-          createdAt: data.created_at,
-        },
-        ...prev,
-      ]);
-    }
+    if (error || !data) return false;
+    setEntries((prev) => [
+      {
+        id: data.id,
+        metricId: data.metric_id,
+        value: data.value,
+        date: data.date,
+        createdAt: data.created_at,
+      },
+      ...prev,
+    ]);
+    return true;
   }, [user]);
 
   useEffect(() => onAppEvent(TRACKER_ENTRIES_CHANGED_EVENT, () => { void fetchEntries(); }), [fetchEntries]);

@@ -28,7 +28,14 @@ export default function PathDiagnosis({ path, finished, editSignal, onSetDiagnos
   const [scoring, setScoring] = useState(false);
   const [actual, setActual] = useState("");
 
-  useEffect(() => { if (editSignal) setEditing(true); }, [editSignal]);
+  // Every edit starts from the saved line. A draft kept from an earlier edit
+  // may predate a revert or an assistant rewrite, and saving it would undo them.
+  const startEditing = () => {
+    setDraft(path.diagnosis || "");
+    setEditing(true);
+  };
+
+  useEffect(() => { if (editSignal) startEditing(); }, [editSignal]);
 
   const submit = () => {
     const text = draft.trim();
@@ -141,7 +148,7 @@ export default function PathDiagnosis({ path, finished, editSignal, onSetDiagnos
           key="view"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          onClick={() => setEditing(true)}
+          onClick={startEditing}
           className="mt-2.5 w-full text-left px-3 py-2 rounded-xl border border-dashed border-white/12 hover:border-primary/30 hover:bg-primary/[0.04] transition-colors group"
         >
           <span className="flex items-start gap-2">

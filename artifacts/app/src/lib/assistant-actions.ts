@@ -290,7 +290,8 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         "Fields: pathName (string, must match one of the active paths listed in the context), " +
         "reason (string, required - one short line saying what the user objected to, in their words where possible), " +
         "steps (array, max 20, IN ORDER - the complete new list, not a diff. Each: title (short handle, not an instruction), " +
-        "optional stage, optional days (number of separate days to repeat it; omit or 1 for a one-off), optional xp), " +
+        "optional stage, optional days (number of separate days to repeat it; 1 for a one-off; omit it to keep an existing step's " +
+        "setting, a new step without it is a one-off), optional xp (omit it to keep an existing step's)), " +
         "diagnosis (string, optional - the one binding constraint, in one line; include it when the path has none yet, " +
         "or when the conversation established that the named obstacle was the wrong one). " +
         "Steps the user has already worked on are preserved automatically, and the whole revision is one click to undo, " +
@@ -668,11 +669,15 @@ function coerceAction(raw: unknown): AssistantAction | null {
         return {
           title: title.slice(0, 200),
           stage: typeof r.stage === "string" && r.stage.trim() ? r.stage.trim().slice(0, 60) : null,
-          days: Number.isFinite(daysNum) && daysNum > 1 ? Math.min(365, Math.round(daysNum)) : 1,
+          // Left out stays left out: on a step that already exists it means
+          // "keep it as it is", not "make it a one-off".
+          days: r.days === undefined || r.days === null
+            ? undefined
+            : Number.isFinite(daysNum) && daysNum > 1 ? Math.min(365, Math.round(daysNum)) : 1,
           xp: Number.isFinite(xpNum) && xpNum > 0 ? Math.min(500, Math.round(xpNum)) : undefined,
         };
       })
-      .filter(Boolean) as { title: string; stage: string | null; days: number; xp?: number }[];
+      .filter(Boolean) as { title: string; stage: string | null; days?: number; xp?: number }[];
     if (steps.length === 0) return null;
     const diagnosis = typeof o.diagnosis === "string" && o.diagnosis.trim()
       ? o.diagnosis.trim().slice(0, 400)

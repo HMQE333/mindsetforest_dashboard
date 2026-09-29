@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { revisePathPlan, PlanStep } from "@/lib/path-writes";
+import { moveStepOrder, nextSortOrder } from "@/lib/path-plan";
 import { dayKey } from "@/lib/today";
 import {
   Path,
@@ -60,6 +61,18 @@ const PATH_ENGINE_FIELDS = {
 const STEP_ENGINE_FIELDS = { snoozed_until: null };
 
 const LOG_WINDOW_DAYS = 60;
+
+/**
+ * Logged days of one step, counted in the table rather than in this tab's
+ * copy: the local logs only reach back LOG_WINDOW_DAYS and another tab may
+ * have written since. Null when the count could not be read.
+ */
+async function countStepLogs(stepId: string): Promise<number | null> {
+  const { count, error } = await (supabase.from("path_step_logs" as any) as any)
+    .select("id", { count: "exact", head: true })
+    .eq("step_id", stepId);
+  return error ? null : (count ?? 0);
+}
 
 export function usePaths() {
   const { user } = useAuth();
@@ -186,13 +199,24 @@ export function usePaths() {
     const snapshot = snapshotOf(path, steps.filter(s => s.path_id === pathId));
     const last = lastUserRevRef.current.get(pathId);
     if (source === "user" && last && Date.now() - last.at < COALESCE_MS) {
-      const prev = revisions.find(r => r.id === last.id);
-      const merged = prev?.reason && reason && !prev.reason.includes(reason)
-        ? `${prev.reason}; ${reason}`
-        : (prev?.reason || reason || null);
-      setRevisions(list => list.map(r => (r.id === last.id ? { ...r, reason: merged } : r)));
-      await (supabase.from("path_revisions" as any) as any).update({ reason: merged }).eq("id", last.id);
-      return snapshot;
+      // Fold only into a row that is still the newest for this path. If anything
+      // wrote one since (the assistant, another tab), this edit comes after it
+      // and gets its own row.
+      const { data: newest } = await (supabase.from("path_revisions" as any) as any)
+        .select("id")
+        .eq("path_id", pathId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (newest?.id === last.id) {
+        const prev = revisions.find(r => r.id === last.id);
+        const merged = prev?.reason && reason && !prev.reason.includes(reason)
+          ? `${prev.reason}; ${reason}`
+          : (prev?.reason || reason || null);
+        setRevisions(list => list.map(r => (r.id === last.id ? { ...r, reason: merged } : r)));
+        await (supabase.from("path_revisions" as any) as any).update({ reason: merged }).eq("id", last.id);
+        return snapshot;
+      }
     }
     const { data } = await (supabase.from("path_revisions" as any) as any)
       .insert({ user_id: user.id, path_id: pathId, snapshot, reason: reason || null, source })
@@ -260,7 +284,9 @@ export function usePaths() {
       mode,
       reps_target: mode === "reps" ? Math.max(1, opts.repsTarget || 7) : 1,
       xp: opts.xp ?? DEFAULT_STEP_XP,
-      sort_order: siblings.length,
+      // After the last step, not at the count: a delete leaves a gap, and the
+      // count would then land on a sort_order another step already has.
+      sort_order: nextSortOrder(siblings),
     };
     await recordRevision(pathId, `added step "${title}"`);
     const { data, error } = await (supabase.from("path_steps" as any) as any).insert(row).select().single();
@@ -288,30 +314,43 @@ export function usePaths() {
     notifyPathsChanged();
   }, [steps, recordRevision]);
 
-  const deleteStep = useCallback(async (id: string) => {
+  /**
+   * Removes a step from the plan - unless it has logged days. The same rule as
+   * a revert or a re-plan: the map changes, never the record. Deleting the step
+   * would cascade to its logs, and the XP and streaks hang off those.
+   * Returns false when the step was kept (or its logs could not be counted).
+   */
+  const deleteStep = useCallback(async (id: string): Promise<boolean> => {
     const before = steps.find(s => s.id === id);
-    if (before) await recordRevision(before.path_id, `removed step "${before.title}"`);
+    if (!before) return true;
+    if (before.reps_done > 0 || before.done || logs.some(l => l.step_id === id)) return false;
+    const logged = await countStepLogs(id);
+    if (logged === null || logged > 0) return false;
+    await recordRevision(before.path_id, `removed step "${before.title}"`);
     setSteps(prev => prev.filter(s => s.id !== id));
     await (supabase.from("path_steps" as any) as any).delete().eq("id", id);
     notifyPathsChanged();
-  }, [steps, recordRevision]);
+    return true;
+  }, [steps, logs, recordRevision]);
 
-  /** Swap sort_order with the neighbour. Reordering is how you re-plan a path. */
+  /**
+   * Move one place up or down. Reordering is how you re-plan a path. The whole
+   * path is renumbered rather than two values swapped, so steps that share a
+   * sort_order still move.
+   */
   const moveStep = useCallback(async (id: string, direction: -1 | 1) => {
     const step = steps.find(s => s.id === id);
     if (!step) return;
-    const ordered = stepsByPath(step.path_id);
-    const idx = ordered.findIndex(s => s.id === id);
-    const target = ordered[idx + direction];
-    if (!target) return;
+    const changes = moveStepOrder(stepsByPath(step.path_id), id, direction);
+    if (!changes) return;
     await recordRevision(step.path_id, `moved "${step.title}" ${direction < 0 ? "up" : "down"}`);
-    const a = { id: step.id, sort_order: target.sort_order };
-    const b = { id: target.id, sort_order: step.sort_order };
-    setSteps(prev => prev.map(s => (s.id === a.id ? { ...s, sort_order: a.sort_order } : s.id === b.id ? { ...s, sort_order: b.sort_order } : s)));
-    await Promise.all([
-      (supabase.from("path_steps" as any) as any).update({ sort_order: a.sort_order }).eq("id", a.id),
-      (supabase.from("path_steps" as any) as any).update({ sort_order: b.sort_order }).eq("id", b.id),
-    ]);
+    const orderOf = new Map(changes.map(c => [c.id, c.sort_order]));
+    setSteps(prev => prev.map(s => {
+      const order = orderOf.get(s.id);
+      return order === undefined ? s : { ...s, sort_order: order };
+    }));
+    await Promise.all(changes.map(c =>
+      (supabase.from("path_steps" as any) as any).update({ sort_order: c.sort_order }).eq("id", c.id)));
     notifyPathsChanged();
   }, [steps, stepsByPath, recordRevision]);
 
@@ -343,7 +382,9 @@ export function usePaths() {
     const writes: Promise<unknown>[] = [];
     let nextSteps = [...steps];
 
-    for (const snap of snapshot.steps) {
+    // Snapshots are stored in plan order. Numbering them 0..n-1, as
+    // revisePathPlan does, leaves room after them for the steps kept below.
+    snapshot.steps.forEach((snap, index) => {
       const live = current.find(s => s.id === snap.id);
       const plan = {
         title: snap.title,
@@ -351,7 +392,7 @@ export function usePaths() {
         mode: snap.mode,
         reps_target: snap.reps_target,
         xp: snap.xp,
-        sort_order: snap.sort_order,
+        sort_order: index,
       };
       if (live) {
         restored++;
@@ -363,11 +404,15 @@ export function usePaths() {
         nextSteps.push({ ...row, done_at: null, snoozed_until: null } as unknown as PathStep);
         writes.push((supabase.from("path_steps" as any) as any).insert(row));
       }
-    }
+    });
 
     for (const live of current) {
       if (snapIds.has(live.id)) continue;
       if (loggedStepIds.has(live.id) || live.reps_done > 0 || live.done) {
+        // Kept, and moved after the restored plan so the order is the snapshot's.
+        const sortOrder = snapshot.steps.length + kept;
+        nextSteps = nextSteps.map(s => (s.id === live.id ? { ...s, sort_order: sortOrder } : s));
+        writes.push((supabase.from("path_steps" as any) as any).update({ sort_order: sortOrder }).eq("id", live.id));
         kept++;
         continue;
       }
@@ -474,7 +519,9 @@ export function usePaths() {
     // Unique violation = another tab already logged today. Not worth surfacing.
     if (error) return 0;
 
-    const repsDone = step.reps_done + 1;
+    // Counted, not this tab's copy + 1: a stale tab would otherwise write back
+    // a reps_done that has drifted from the logs it summarises.
+    const repsDone = (await countStepLogs(stepId)) ?? step.reps_done + 1;
     const target = step.mode === "reps" ? Math.max(1, step.reps_target) : 1;
     const done = repsDone >= target;
     const patch = { reps_done: repsDone, done, done_at: done ? new Date().toISOString() : null };
@@ -507,7 +554,8 @@ export function usePaths() {
       return 0;
     }
     const undoneXP = deleted.reduce((s, l) => s + (l.xp ?? step.xp), 0);
-    const repsDone = Math.max(0, step.reps_done - 1);
+    // Counted for the same reason as in logStep.
+    const repsDone = (await countStepLogs(stepId)) ?? Math.max(0, step.reps_done - 1);
     const patch = { reps_done: repsDone, done: false, done_at: null };
     setLogs(prev => prev.filter(l => !(l.step_id === stepId && l.date === date)));
     setSteps(prev => prev.map(s => (s.id === stepId ? { ...s, ...patch } : s)));

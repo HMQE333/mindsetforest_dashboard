@@ -62,6 +62,11 @@ export default function PathsView() {
     if (xp > 0) undoExternal(pathCategoryId, xp);
   };
 
+  const handleDeleteStep = async (stepId: string) => {
+    const deleted = await deleteStep(stepId);
+    if (!deleted) toast("This step has logged days, so it stays - those days are the record. Rename it instead.");
+  };
+
   const handleRevert = async (revisionId: string) => {
     const result = await revertTo(revisionId);
     if (!result) return;
@@ -170,7 +175,7 @@ export default function PathsView() {
                   onUndo={(stepId) => handleUndo(path.category_id, stepId)}
                   onAddStep={(title, reps) => addStep(path.id, title, reps > 1 ? { mode: "reps", repsTarget: reps } : {})}
                   onUpdateStep={updateStep}
-                  onDeleteStep={deleteStep}
+                  onDeleteStep={handleDeleteStep}
                   onMoveStep={moveStep}
                   onUpdatePath={(patch) => updatePath(path.id, patch)}
                   onDeletePath={() => deletePath(path.id)}

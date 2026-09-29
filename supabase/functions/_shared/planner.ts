@@ -102,7 +102,7 @@ export async function buildPlannerContext(
   const [ctx, dash, history, paths, steps, planning, events, watch, suggestions, scored, reviews] = await Promise.all([
     safe(client.from("user_context").select("notes,lenses,season").eq("user_id", userId).maybeSingle()),
     safe(client.from("dashboard_state")
-      .select("current_xp,current_level,streak_days,missions_completed,categories_engaged,custom_missions,last_completion_date")
+      .select("current_xp,current_level,streak_days,missions_completed,categories_engaged,custom_missions,last_completion_date,day_key")
       .eq("user_id", userId).maybeSingle()),
     safe(client.from("daily_completions")
       .select("date,missions_completed,xp_earned,categories_engaged,completed_mission_titles")
@@ -159,7 +159,10 @@ export async function buildPlannerContext(
   }
 
   const d = dash as Record<string, unknown> | null;
-  if (d) {
+  // The client resets the daily counters on its first write of the day, so
+  // until then the row still carries yesterday's. Only a row keyed to today
+  // describes today.
+  if (d && d.day_key === today) {
     lines.push(
       `Today so far: ${d.missions_completed ?? 0} task(s) done, level ${d.current_level ?? 1}, ${d.current_xp ?? 0} XP, ${d.streak_days ?? 0}-day streak.`,
     );

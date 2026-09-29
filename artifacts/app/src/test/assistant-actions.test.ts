@@ -97,6 +97,11 @@ describe("assistant control actions", () => {
     expect(describeAction(a)).toContain("2 steps");
   });
 
+  it("keeps an omitted days on revise_path undefined, so a matched step keeps its own", () => {
+    const [a] = one({ type: "revise_path", pathName: "Run", reason: "r", steps: [{ title: "Run" }, { title: "Race", days: 1 }, { title: "Base", days: 9 }] });
+    expect(a.type === "revise_path" && a.steps.map((s) => s.days)).toEqual([undefined, 1, 9]);
+  });
+
   it("only offers each action with its section", () => {
     expect(buildActionInstructions(["tracker"])).toContain("log_metric");
     expect(buildActionInstructions(["tracker"])).not.toContain("add_transaction");
