@@ -52,3 +52,11 @@ describe("voice mode helpers", () => {
     expect(prettyModelName("google/gemini-2.5-flash:nitro")).toBe("Gemini 2.5 Flash");
   });
 });
+
+describe("voice confirm precedence", () => {
+  it("stop phrases are not read as a yes or no", () => {
+    expect(isStopPhrase("koniec")).toBe(true);
+    expect(parseYesNo("koniec")).toBeNull();
+    expect(isStopPhrase("stop")).toBe(true);
+  });
+});

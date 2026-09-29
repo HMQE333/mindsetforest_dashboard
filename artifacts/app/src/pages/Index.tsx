@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings, LogOut } from "lucide-react";
 import { toast } from "sonner";
@@ -64,6 +64,7 @@ const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "paths", "oracle", "ar
 const Index = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
   const quickCapture = useQuickCapture();
@@ -109,6 +110,16 @@ const Index = () => {
     window.addEventListener("lov:navigate-module", handler as EventListener);
     return () => window.removeEventListener("lov:navigate-module", handler as EventListener);
   }, [navigate, user, preferences.enabledModules]);
+
+  // Arriving from another route with a target module (assistant `navigate`
+  // from /tracker): hand it to the listener above, then clear the state so a
+  // reload does not replay it.
+  useEffect(() => {
+    const module = (location.state as { module?: string } | null)?.module;
+    if (!module) return;
+    window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module } }));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   // Respect saved module order
   const moduleOrder = preferences.moduleOrder;

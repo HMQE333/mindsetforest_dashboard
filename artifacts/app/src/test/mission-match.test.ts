@@ -48,3 +48,11 @@ describe("mission matching", () => {
     expect(text).toBe("- Mind (mind): [ ] Read (+10 XP); [x] Write (+10 XP)");
   });
 });
+
+describe("mission matching edge cases", () => {
+  it("returns null when two missions tie on a single shared word", () => {
+    const entries = listTodayMissions({ mind: [m("Morning pages"), m("Morning walk")] }, []);
+    expect(findMission(entries, "morning thing")).toBeNull();
+    expect(findMission(entries, "morning pages")?.title).toBe("Morning pages");
+  });
+});

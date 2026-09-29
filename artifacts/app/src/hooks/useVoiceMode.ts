@@ -71,6 +71,9 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   const langRef = useRef(lang);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const silentRef = useRef(0);
+  // Bumped on every start/interrupt so a continuation from an older cycle
+  // (e.g. the cancelled utterance's onend) never starts a second listener.
+  const generationRef = useRef(0);
   const onUtteranceRef = useRef(onUtterance);
   const onEndRef = useRef(onEnd);
   useEffect(() => { onUtteranceRef.current = onUtterance; }, [onUtterance]);
@@ -121,13 +124,19 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
       if (voice) utter.voice = voice as SpeechSynthesisVoice;
       utter.rate = 1.02;
       let settled = false;
-      const done = () => { if (!settled) { settled = true; resolve(); } };
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
       utter.onend = done;
       utter.onerror = done;
       setPhase("speaking");
       window.speechSynthesis.speak(utter);
       // Safari sometimes never fires onend for cancelled utterances.
-      setTimeout(done, Math.min(60000, 4000 + clean.length * 90));
+      timer = setTimeout(done, Math.min(60000, 4000 + clean.length * 90));
     });
   }, [cancelSpeech]);
 
@@ -171,6 +180,7 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
         return;
       }
       silentRef.current = 0;
+      const generation = generationRef.current;
       setPhase("thinking");
       let reply: UtteranceReply = null;
       try {
@@ -178,11 +188,12 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
       } catch {
         reply = null;
       }
-      if (!activeRef.current) return;
+      if (!activeRef.current || generation !== generationRef.current) return;
       const replyText = typeof reply === "string" ? reply : reply?.text ?? null;
       const endAfter = typeof reply === "object" && reply !== null && reply.end === true;
       if (replyText) await speak(replyText);
-      if (!activeRef.current) return;
+      // An interrupt (or stop/start) while speaking already started its own listener.
+      if (!activeRef.current || generation !== generationRef.current) return;
       if (endAfter) { finish("manual"); return; }
       listen();
     };
@@ -199,6 +210,7 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     if (!supported || activeRef.current) return;
     activeRef.current = true;
     silentRef.current = 0;
+    generationRef.current += 1;
     setActive(true);
     // Warm the voice list (Chrome loads it lazily).
     try { window.speechSynthesis.getVoices(); } catch { /* ignore */ }
@@ -210,6 +222,7 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   /** Interrupt the synthesizer and go straight back to listening. */
   const interrupt = useCallback(() => {
     if (!activeRef.current) return;
+    generationRef.current += 1;
     cancelSpeech();
     listen();
   }, [cancelSpeech, listen]);

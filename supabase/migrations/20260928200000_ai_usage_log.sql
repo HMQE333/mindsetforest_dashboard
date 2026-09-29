@@ -42,4 +42,5 @@ AS $$
     AND l.created_at >= date_trunc('month', now());
 $$;
 
+REVOKE EXECUTE ON FUNCTION public.ai_usage_month(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ai_usage_month(UUID) TO authenticated, service_role;

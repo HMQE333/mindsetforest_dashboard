@@ -320,8 +320,13 @@ export default function AssistantPanel() {
     dismissRef.current = dismissActions;
   }, [sendMessage, applyActions, dismissActions]);
   const voiceLangRef = useRef<VoiceLang>("pl-PL");
+  const voiceActiveRef = useRef(false);
   const onUtterance = useCallback(async (text: string) => {
     const prompts = VOICE_PROMPTS[voiceLangRef.current];
+    if (isStopPhrase(text)) {
+      awaitingConfirmRef.current = null;
+      return { text: prompts.bye, end: true };
+    }
     const pendingId = awaitingConfirmRef.current;
     if (pendingId) {
       const yn = parseYesNo(text);
@@ -337,8 +342,10 @@ export default function AssistantPanel() {
       }
       return prompts.unclear;
     }
-    if (isStopPhrase(text)) return { text: prompts.bye, end: true };
     const reply = await sendRef.current(text, { voice: true });
+    // The user may have ended voice mode while the request was in flight;
+    // never arm a spoken confirm for a session that is over.
+    if (!voiceActiveRef.current) return null;
     if (!reply) return prompts.error;
     if (reply.error) return reply.content;
     if (reply.actions && reply.actions.length > 0) {
@@ -356,6 +363,7 @@ export default function AssistantPanel() {
     },
   });
   useEffect(() => { voiceLangRef.current = voice.lang; }, [voice.lang]);
+  useEffect(() => { voiceActiveRef.current = voice.active; }, [voice.active]);
   const toggleVoiceMode = () => {
     if (voice.active) {
       voice.stop();
@@ -365,6 +373,8 @@ export default function AssistantPanel() {
       toast.error("This browser has no speech recognition. Use Chrome, Edge or Safari.");
       return;
     }
+    awaitingConfirmRef.current = null;
+    voiceActiveRef.current = true;
     voice.start();
   };
 

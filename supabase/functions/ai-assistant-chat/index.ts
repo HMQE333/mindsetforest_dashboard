@@ -120,7 +120,7 @@ async function routeScopes(userId: string, body: Record<string, unknown>): Promi
   const specs: ScopeSpec[] = Array.isArray(body.scopes)
     ? body.scopes
         .filter((s: unknown) => s && typeof s === "object" && typeof (s as ScopeSpec).id === "string")
-        .map((s: ScopeSpec) => ({ id: s.id, label: String(s.label || s.id), description: String(s.description || "") }))
+        .map((s: ScopeSpec) => ({ id: s.id.slice(0, 40), label: String(s.label || s.id).slice(0, 60), description: String(s.description || "").slice(0, 300) }))
         .slice(0, 30)
     : [];
   const ids = new Set(specs.map((s) => s.id));
@@ -182,7 +182,7 @@ async function routeScopes(userId: string, body: Record<string, unknown>): Promi
     picked = [];
   }
   const scopes = Array.from(new Set([...pinned, ...picked])).slice(0, 6);
-  logUsage(userId, "assistant-route", ROUTER_MODEL, data?.usage ?? null);
+  await logUsage(userId, "assistant-route", ROUTER_MODEL, data?.usage ?? null);
   return jsonResponse({ scopes: scopes.length ? scopes : fallback, reason, model: ROUTER_MODEL });
 }
 
@@ -198,7 +198,7 @@ async function chat(userId: string, body: Record<string, unknown>): Promise<Resp
   const model = overBudget ? CHEAP_MODEL : SMART_MODEL;
 
   const scopeList = Array.isArray(scopes) && scopes.length > 0 ? scopes.join(", ") : "none";
-  const ctx = String(context || "");
+  const ctx = String(context || "").slice(0, 120_000);
 
   const voiceBlock = voice
     ? [
@@ -240,24 +240,39 @@ FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, 
   // appends to the final chunk so the request can be logged when the stream ends.
   let usage: Usage | null = null;
   let tail = "";
+  let logged = false;
   const decoder = new TextDecoder();
+  const scan = (line: string) => {
+    const t = line.trim();
+    if (!t.startsWith("data:") || !t.includes('"usage"')) return;
+    try {
+      const json = JSON.parse(t.slice(5).trim());
+      if (json && json.usage) usage = json.usage as Usage;
+    } catch { /* partial or non-JSON line */ }
+  };
+  // Awaited (not fire-and-forget) so the isolate is not torn down before the
+  // row lands; the budget guard depends on it. Runs once, on end or on cancel.
+  const logOnce = () => {
+    if (logged) return Promise.resolve();
+    logged = true;
+    if (tail) { scan(tail); tail = ""; }
+    return logUsage(userId, "assistant-chat", model, usage);
+  };
   const tap = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       controller.enqueue(chunk);
       tail += decoder.decode(chunk, { stream: true });
       const lines = tail.split("\n");
       tail = lines.pop() || "";
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t.startsWith("data:") || !t.includes('"usage"')) continue;
-        try {
-          const json = JSON.parse(t.slice(5).trim());
-          if (json && json.usage) usage = json.usage as Usage;
-        } catch { /* partial or non-JSON line */ }
-      }
+      for (const line of lines) scan(line);
     },
     flush() {
-      logUsage(userId, "assistant-chat", model, usage);
+      return logOnce();
+    },
+    // The client pressed Stop: OpenRouter still bills what was generated, so
+    // log whatever usage arrived (usually none, then the row records the model only).
+    cancel() {
+      return logOnce();
     },
   });
 

@@ -10,7 +10,8 @@ export const ASSISTANT_FN_URL = `${SUPABASE_URL}/functions/v1/ai-assistant-chat`
 
 export async function assistantAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token || SUPABASE_KEY;
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Please sign in to use the assistant.");
   return { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${token}` };
 }
 

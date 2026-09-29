@@ -30,6 +30,7 @@ import {
 } from "@/lib/assistant-actions";
 import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
 import { findMission, listTodayMissions } from "@/lib/mission-match";
+import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap } from "@/lib/mission-presets";
 
@@ -363,15 +364,17 @@ function useAssistantValue() {
             if (module === "tracker") {
               navigate("/tracker");
             } else if (location.pathname !== "/") {
-              // Index.tsx owns the tabs; mount it first, then tell it where to go.
-              navigate("/");
-              setTimeout(announce, 150);
+              // Index.tsx owns the tabs; it reads the module from the router state on mount.
+              navigate("/", { state: { module } });
             } else {
               announce();
             }
             ok++;
           } else if (action.type === "complete_mission") {
-            const entries = listTodayMissions(dashboardState.customMissions, dashboardState.completedMissions);
+            // Ticks belong to the day the state was last written; after the 04:00
+            // rollover (applied lazily by completeMission) they are yesterday's.
+            const completed = dashboardState.dayKey === todayKey() ? dashboardState.completedMissions : [];
+            const entries = listTodayMissions(dashboardState.customMissions, completed);
             const match = findMission(entries, action.title, action.categoryId);
             if (!match) {
               failed++;
@@ -624,7 +627,7 @@ function useAssistantValue() {
       }
       return failed === 0 && ok > 0;
     },
-    [user, addMission, applyMissionPreset, completeMission, dashboardState.customMissions, dashboardState.completedMissions, navigate, location.pathname],
+    [user, addMission, applyMissionPreset, completeMission, dashboardState.customMissions, dashboardState.completedMissions, dashboardState.dayKey, navigate, location.pathname],
   );
   const runActionRef = useRef(runAction);
   useEffect(() => { runActionRef.current = runAction; }, [runAction]);
