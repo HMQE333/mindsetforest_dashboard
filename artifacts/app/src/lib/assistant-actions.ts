@@ -1,5 +1,6 @@
 import { CATEGORIES } from "@/lib/dashboard-data";
 import type { ScopeId } from "@/lib/assistant-context";
+import { replaceDashesDeep } from "@/lib/text-style";
 
 /** Sections of the app the assistant can open with `navigate`. */
 export const APP_MODULES = [
@@ -288,7 +289,8 @@ function coerceNodes(raw: unknown): { title: string; level: "goal" | "phase" | "
 
 function coerceAction(raw: unknown): AssistantAction | null {
   if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
+  // House style applies to what gets written, not only to what gets shown.
+  const o = replaceDashesDeep(raw as Record<string, unknown>);
   const type = o.type;
 
   if (type === "add_task") {

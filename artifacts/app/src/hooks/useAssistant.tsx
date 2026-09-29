@@ -31,6 +31,7 @@ import {
 import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
 import { findMission, listTodayMissions } from "@/lib/mission-match";
 import { annotateHistory, keywordScopes } from "@/lib/scope-hints";
+import { replaceDashes } from "@/lib/text-style";
 import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap } from "@/lib/mission-presets";
@@ -299,7 +300,8 @@ function useAssistantValue() {
               const delta = json.choices?.[0]?.delta?.content;
               if (delta) {
                 acc += delta;
-                patchAssistant((m) => ({ ...m, content: acc }));
+                const shown = replaceDashes(acc);
+                patchAssistant((m) => ({ ...m, content: shown }));
               }
             } catch {
               /* ignore malformed chunk */
@@ -317,7 +319,7 @@ function useAssistantValue() {
           // Pull any proposed write actions out of the reply and gate them by the
           // sections in play. Navigation runs right away; the rest wait for a click
           // (or a spoken yes in voice mode).
-          const { text: display, actions } = parseActions(acc, scopesForSend);
+          const { text: display, actions } = parseActions(replaceDashes(acc), scopesForSend);
           const pending = actions.filter((a) => !isAutoApply(a));
           for (const a of actions.filter(isAutoApply)) void runActionRef.current(a);
           final = {

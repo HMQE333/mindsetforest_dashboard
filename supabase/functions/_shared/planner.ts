@@ -264,6 +264,7 @@ export const PLANNER_RULES = [
   "XP scales with effort: 10-15 for 5-10 minutes, 15-25 for 15-30 minutes, 25-40 for an hour or more. Above 60 only for genuinely demanding multi-hour work.",
   "Every suggestion must be doable without buying anything or waiting on another person, unless the user's context says otherwise.",
   "Write plain text. No markdown symbols, no bold, no headings.",
+  "Never use em dashes (—) or en dashes as punctuation. Use a comma, a full stop, or an arrow (→) instead.",
   "Give each suggestion a one-line reason tied to something concrete in the situation you were given.",
   "Where the user has named the obstacle blocking a path, aim at that obstacle. If the plan you are writing does not attack it, say so plainly rather than quietly planning around it.",
 ].join("\n");
@@ -312,9 +313,34 @@ export async function callPlanner({ systemPrompt, userPrompt, toolName, toolDesc
   const args = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) return {};
   try {
-    return JSON.parse(args);
+    return replaceDashesDeep(JSON.parse(args)) as Record<string, unknown>;
   } catch {
     console.error("Failed to parse tool call arguments");
     return {};
   }
+}
+
+/**
+ * House style: no em dashes in anything the AI writes. The rules above forbid
+ * them; this catches whatever slips through, turning "a — b" into "a → b"
+ * while leaving ranges like "20–30 min" alone.
+ */
+export function replaceDashes(text: string): string {
+  return text
+    .replace(/\s*[\u2014\u2015]+\s*/g, " → ")
+    .replace(/\s+\u2013\s+/g, " → ")
+    .replace(/ {2,}/g, " ")
+    .replace(/^ → /, "→ ")
+    .replace(/ → $/, " →");
+}
+
+export function replaceDashesDeep(value: unknown): unknown {
+  if (typeof value === "string") return replaceDashes(value);
+  if (Array.isArray(value)) return value.map(replaceDashesDeep);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = replaceDashesDeep(v);
+    return out;
+  }
+  return value;
 }

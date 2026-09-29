@@ -225,7 +225,7 @@ ${ctx || "No data was shared for this question."}
 === END USER DATA ===
 ${voiceBlock}
 
-FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text. (The one exception is the \`\`\`action block described above, when applicable.)`;
+FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and plain hyphens (-) for structure. Never use em dashes (—) or en dashes as punctuation. Use a comma, a full stop, or an arrow (→) instead. Keep it clean and readable as raw text. (The one exception is the \`\`\`action block described above, when applicable.)`;
 
   const messages: Msg[] = [{ role: "system", content: systemPrompt }, ...cleanHistory(history, 12)];
   messages.push({ role: "user", content: String(message ?? "").slice(0, 8000) });
