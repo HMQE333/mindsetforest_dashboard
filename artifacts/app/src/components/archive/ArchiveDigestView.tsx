@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { useDigestState, type DigestBlock } from "@/hooks/useDigestState";
+import { safeUrl } from "@/lib/safe-url";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -176,7 +177,7 @@ const ArchiveDigestView = ({ blocks }: Props) => {
                   </p>
                   {card.source_url && (
                     <a
-                      href={card.source_url}
+                      href={safeUrl(card.source_url) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}

@@ -4,6 +4,7 @@ import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, ExternalLink, Link2 } from "lucide-react";
 import { EMPTY } from "@/lib/utils";
+import { safeUrl } from "@/lib/safe-url";
 
 interface CourseCardProps {
   course: Course;
@@ -16,7 +17,7 @@ export default function CourseCard({ course, index, onClick, view }: CourseCardP
   const allPillars = usePillars();
   const coursePillars = allPillars.filter(p => (course.pillars || []).includes(p.id));
   const hasUrl = !!course.url?.trim();
-  const handleLinkClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); window.open(course.url, "_blank", "noopener,noreferrer"); };
+  const handleLinkClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); const u = safeUrl(course.url); if (u) window.open(u, "_blank", "noopener,noreferrer"); };
 
   if (view === "list") {
     return (

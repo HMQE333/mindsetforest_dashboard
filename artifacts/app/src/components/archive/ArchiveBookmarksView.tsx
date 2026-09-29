@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Plus, Pencil, Trash2, ExternalLink, Link as LinkIcon, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useBookmarks, normalizedUrl, type Bookmark } from "@/hooks/useBookmarks";
+import { safeUrl } from "@/lib/safe-url";
 
 function getFavicon(url: string) {
   try {
@@ -147,7 +148,7 @@ const ArchiveBookmarksView = () => {
             return (
               <div key={b.id} className="group relative">
                 <a
-                  href={b.url}
+                  href={safeUrl(b.url) ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   title={b.url}

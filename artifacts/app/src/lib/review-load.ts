@@ -86,7 +86,8 @@ export async function loadReviewSnapshot(userId: string, kind: ReviewKind, perio
     snap.sleep = {
       avgMinutes: avg(nights.map((n) => {
         const t = (n.sleep_deep_min || 0) + (n.sleep_light_min || 0) + (n.sleep_rem_min || 0);
-        return t > 0 ? t : null;
+        // intervals.icu gives only the night's total, no phases.
+        return t > 0 ? t : n.sleep_total_min || null;
       })),
       avgScore: avg(nights.map((n) => n.sleep_score)),
       avgHrv: avg(nights.map((n) => n.hrv_ms)),

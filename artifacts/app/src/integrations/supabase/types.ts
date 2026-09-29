@@ -2162,6 +2162,7 @@ export type Database = {
           sleep_light_min: number | null
           sleep_rem_min: number | null
           sleep_score: number | null
+          sleep_total_min: number | null
           source: string
           steps: number | null
           stress_level: number | null
@@ -2196,6 +2197,7 @@ export type Database = {
           sleep_light_min?: number | null
           sleep_rem_min?: number | null
           sleep_score?: number | null
+          sleep_total_min?: number | null
           source?: string
           steps?: number | null
           stress_level?: number | null
@@ -2230,6 +2232,7 @@ export type Database = {
           sleep_light_min?: number | null
           sleep_rem_min?: number | null
           sleep_score?: number | null
+          sleep_total_min?: number | null
           source?: string
           steps?: number | null
           stress_level?: number | null

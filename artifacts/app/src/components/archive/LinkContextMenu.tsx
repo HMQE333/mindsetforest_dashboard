@@ -6,6 +6,7 @@ import { DIRECTIONS } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import { safeUrl } from "@/lib/safe-url";
 
 interface ContextMenuState {
   x: number;
@@ -66,7 +67,8 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
   };
 
   const handleOpenLink = () => {
-    window.open(url, "_blank", "noopener,noreferrer");
+    const safe = safeUrl(url);
+    if (safe) window.open(safe, "_blank", "noopener,noreferrer");
     onClose();
   };
 

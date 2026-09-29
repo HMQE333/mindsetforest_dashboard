@@ -6,6 +6,7 @@ import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Link2, FileText, Loader2 } from "lucide-react";
 import { EMPTY } from "@/lib/utils";
+import { safeUrl } from "@/lib/safe-url";
 
 interface BookCardProps {
   book: Book;
@@ -27,7 +28,7 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
   const bookPillars = allPillars.filter(p => (book.pillars || []).includes(p.id));
   const formatLabel = FORMAT_LABELS[book.format || "owned"];
   const hasUrl = !!book.url?.trim();
-  const handleLinkClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); window.open(book.url, "_blank", "noopener,noreferrer"); };
+  const handleLinkClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); const u = safeUrl(book.url); if (u) window.open(u, "_blank", "noopener,noreferrer"); };
   const handleReadClick = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); onRead?.(); };
   const dropProps = onDropFile ? {
     onDragOver: (e: React.DragEvent) => {

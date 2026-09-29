@@ -9,6 +9,7 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Trash2, ExternalLink, X } from "lucide-react";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 import { toast } from "sonner";
+import { safeUrl } from "@/lib/safe-url";
 
 interface CourseDetailModalProps {
   course: Course | null;
@@ -72,7 +73,7 @@ export default function CourseDetailModal({ course, open, onClose, onUpdate, onD
               </div>
             </div>
             {course.url && (
-              <a href={course.url} target="_blank" rel="noopener noreferrer" className="shrink-0 p-1.5 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground transition-all">
+              <a href={safeUrl(course.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="shrink-0 p-1.5 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground transition-all">
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}

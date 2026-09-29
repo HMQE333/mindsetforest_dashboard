@@ -5,6 +5,7 @@ import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronR
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
+import { safeUrl } from "@/lib/safe-url";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -101,7 +102,7 @@ function ListItem({ link, onContextMenu }: { link: ExtractedLink; onContextMenu:
 
   return (
     <a
-      href={link.url}
+      href={safeUrl(link.url) ?? undefined}
       target="_blank"
       rel="noopener noreferrer"
       onContextMenu={onContextMenu}
@@ -146,7 +147,7 @@ function GridCard({ link, onContextMenu }: { link: ExtractedLink; onContextMenu:
 
   return (
     <a
-      href={link.url}
+      href={safeUrl(link.url) ?? undefined}
       target="_blank"
       rel="noopener noreferrer"
       onContextMenu={onContextMenu}
@@ -188,7 +189,7 @@ function CompactRow({ link, onContextMenu }: { link: ExtractedLink; onContextMen
 
   return (
     <a
-      href={link.url}
+      href={safeUrl(link.url) ?? undefined}
       target="_blank"
       rel="noopener noreferrer"
       onContextMenu={onContextMenu}

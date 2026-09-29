@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveAIPreviewModal from "./ArchiveAIPreviewModal";
 import { EMPTY } from "@/lib/utils";
+import { safeUrl } from "@/lib/safe-url";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
@@ -289,7 +290,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
                   {block.content.replace(IMAGE_TAG_REGEX, "").trim() || EMPTY}
                 </p>
                 {block.source_url && (
-                  <a href={block.source_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">
+                  <a href={safeUrl(block.source_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">
                     🔗 {block.source_url}
                   </a>
                 )}
