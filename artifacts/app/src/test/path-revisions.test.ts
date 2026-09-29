@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { matchPlanToCurrent } from "../lib/path-plan";
-import { describeRevision, type PathSnapshot } from "../lib/path-data";
+import { matchPlanToCurrent, moveStepOrder, nextSortOrder, planStepFields } from "../lib/path-plan";
+import { describeRevision, DEFAULT_STEP_XP, type PathSnapshot } from "../lib/path-data";
 
 describe("matchPlanToCurrent", () => {
   const current = [
@@ -22,6 +22,52 @@ describe("matchPlanToCurrent", () => {
 
   it("ignores ids that no longer exist", () => {
     expect(matchPlanToCurrent([{ id: "zzz", title: "Ship it" }], current)).toEqual(["c"]);
+  });
+});
+
+describe("planStepFields", () => {
+  const habit = { mode: "reps" as const, reps_target: 30, xp: 45 };
+
+  it("keeps a matched step's mode, target and XP when the plan leaves them out", () => {
+    expect(planStepFields({ title: "Run" }, habit, 2)).toEqual({
+      title: "Run", stage: null, mode: "reps", reps_target: 30, xp: 45, sort_order: 2,
+    });
+  });
+
+  it("lets the plan override what it does state", () => {
+    expect(planStepFields({ title: "Run", mode: "once", xp: 10 }, habit, 0))
+      .toMatchObject({ mode: "once", reps_target: 1, xp: 10 });
+    expect(planStepFields({ title: "Run", mode: "reps", repsTarget: 12 }, habit, 0))
+      .toMatchObject({ mode: "reps", reps_target: 12, xp: 45 });
+  });
+
+  it("falls back to the defaults for a new step", () => {
+    expect(planStepFields({ title: "New" }, null, 0)).toMatchObject({ mode: "once", reps_target: 1, xp: DEFAULT_STEP_XP });
+    expect(planStepFields({ title: "New", mode: "reps" }, undefined, 0)).toMatchObject({ mode: "reps", reps_target: 7 });
+    // A one-off turned into a habit has no target of its own to keep.
+    expect(planStepFields({ title: "Run", mode: "reps" }, { mode: "once", reps_target: 1, xp: 20 }, 0))
+      .toMatchObject({ reps_target: 7 });
+  });
+});
+
+describe("sort order", () => {
+  it("appends after the highest sort_order, not at the count", () => {
+    expect(nextSortOrder([])).toBe(0);
+    expect(nextSortOrder([{ sort_order: 0 }, { sort_order: 2 }])).toBe(3);
+  });
+
+  it("moves a step even when its neighbour shares its sort_order", () => {
+    const ordered = [{ id: "a", sort_order: 0 }, { id: "b", sort_order: 1 }, { id: "c", sort_order: 1 }];
+    // Swapping b and c would write 1 over 1; renumbered, b goes to 2 and c stays ahead of it.
+    expect(moveStepOrder(ordered, "c", -1)).toEqual([{ id: "b", sort_order: 2 }]);
+    expect(moveStepOrder(ordered, "a", 1)).toEqual([{ id: "b", sort_order: 0 }, { id: "a", sort_order: 1 }, { id: "c", sort_order: 2 }]);
+  });
+
+  it("returns null when the step is at the edge or missing", () => {
+    const ordered = [{ id: "a", sort_order: 0 }, { id: "b", sort_order: 1 }];
+    expect(moveStepOrder(ordered, "a", -1)).toBeNull();
+    expect(moveStepOrder(ordered, "b", 1)).toBeNull();
+    expect(moveStepOrder(ordered, "zzz", 1)).toBeNull();
   });
 });
 

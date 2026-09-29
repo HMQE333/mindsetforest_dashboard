@@ -43,8 +43,10 @@ export default function Tracker() {
   }, []);
 
   const handleSubmit = useCallback(async (metricId: string, value: number) => {
-    await addEntry(metricId, value);
+    const saved = await addEntry(metricId, value);
     setActiveMetricId(null);
+    // No XP for an entry that never reached the database.
+    if (!saved) return;
     const xp = await awardEntryXp(metricId, value);
     if (xp <= 0) return;
     setFloatingXP({ id: Date.now(), value: xp, x: window.innerWidth / 2, y: window.innerHeight / 2 });

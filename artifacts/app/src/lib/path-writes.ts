@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
-import { DEFAULT_STEP_XP, PathSnapshot, RevisionSource, StepMode, snapshotOf } from "@/lib/path-data";
+import { PathSnapshot, RevisionSource, StepMode, snapshotOf } from "@/lib/path-data";
 import type { Path, PathStep } from "@/lib/path-data";
-import { matchPlanToCurrent } from "@/lib/path-plan";
+import { matchPlanToCurrent, planStepFields } from "@/lib/path-plan";
 
 export { matchPlanToCurrent } from "@/lib/path-plan";
 
@@ -19,6 +19,7 @@ export interface PlanStep {
   id?: string;
   title: string;
   stage?: string | null;
+  /** Mode, target and XP left out keep the matched live step's values (defaults for a new step). */
   mode?: StepMode;
   repsTarget?: number;
   xp?: number;
@@ -73,16 +74,8 @@ export async function revisePathPlan(req: RevisionRequest): Promise<{ ok: boolea
   const writes: Promise<unknown>[] = [];
 
   nextPlan.forEach((p, index) => {
-    const mode: StepMode = p.mode || "once";
-    const plan = {
-      title: p.title,
-      stage: p.stage ?? null,
-      mode,
-      reps_target: mode === "reps" ? Math.max(1, p.repsTarget || 7) : 1,
-      xp: p.xp ?? DEFAULT_STEP_XP,
-      sort_order: index,
-    };
     const liveId = matched[index];
+    const plan = planStepFields(p, current.find(s => s.id === liveId), index);
     if (liveId) {
       writes.push((supabase.from("path_steps" as any) as any).update(plan).eq("id", liveId));
     } else {

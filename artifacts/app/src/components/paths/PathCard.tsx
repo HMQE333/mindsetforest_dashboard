@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Archive, History } from "lucide-react";
+import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Archive, ArchiveRestore, History } from "lucide-react";
 import {
   Path, PathStep, PathRevision, DiagnosisVerdict,
   activeStep, nextStep, pathProgress, snapshotOf, sortSteps, todayKey,
@@ -150,23 +150,23 @@ export default function PathCard({
             </span>
           )}
 
-          {isActive && (
-            loggedToday ? (
-              <button
-                onClick={() => onUndo(step.id)}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-green-500/30 bg-green-500/10 text-green-300 flex-shrink-0"
-                title="Logged today - click to undo"
-              >
-                <Check className="h-3 w-3 inline" /> today
-              </button>
-            ) : (
-              <button
-                onClick={() => onLog(step.id)}
-                className="px-3 py-1 rounded-lg text-[11px] font-bold gradient-purple text-primary-foreground glow-sm hover:-translate-y-0.5 transition-all flex-shrink-0"
-              >
-                {step.mode === "reps" ? "+1 day" : "Done"}
-              </button>
-            )
+          {/* Undo follows today's log, not the active step: the rep that
+              finishes a step moves "active" on, and must stay undoable. */}
+          {loggedToday ? (
+            <button
+              onClick={() => onUndo(step.id)}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-green-500/30 bg-green-500/10 text-green-300 flex-shrink-0"
+              title="Logged today - click to undo"
+            >
+              <Check className="h-3 w-3 inline" /> today
+            </button>
+          ) : isActive && (
+            <button
+              onClick={() => onLog(step.id)}
+              className="px-3 py-1 rounded-lg text-[11px] font-bold gradient-purple text-primary-foreground glow-sm hover:-translate-y-0.5 transition-all flex-shrink-0"
+            >
+              {step.mode === "reps" ? "+1 day" : "Done"}
+            </button>
           )}
 
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -398,13 +398,20 @@ export default function PathCard({
               </button>
               )}
               <button
-                onClick={() => onUpdatePath({ archived: true })}
+                onClick={() => onUpdatePath({ archived: !path.archived })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-white/5 text-muted-foreground hover:text-foreground transition-all ml-auto"
               >
-                <Archive className="h-3 w-3" /> Archive
+                {path.archived
+                  ? <><ArchiveRestore className="h-3 w-3" /> Unarchive</>
+                  : <><Archive className="h-3 w-3" /> Archive</>}
               </button>
+              {/* Deleting a path takes its steps and every logged day with it;
+                  archiving is the way to put one away. */}
               <button
-                onClick={onDeletePath}
+                onClick={() => {
+                  const hint = path.archived ? "" : " Archive puts it away and keeps them.";
+                  if (confirm(`Delete path "${path.name}" with all its steps and logged days? This cannot be undone.${hint}`)) onDeletePath();
+                }}
                 className="px-3 py-1.5 rounded-lg text-xs border border-destructive/25 text-destructive/80 hover:bg-destructive/10 transition-all"
               >
                 Delete

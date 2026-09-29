@@ -649,11 +649,13 @@ function useAssistantValue() {
                 reason: action.reason,
                 source: "assistant",
                 diagnosis: action.diagnosis ?? null,
+                // No days given: mode and target stay undefined, so a step the
+                // plan matches keeps its own (a new one becomes a one-off).
                 nextPlan: action.steps.map((step) => ({
                   title: step.title,
                   stage: step.stage ?? null,
-                  mode: (step.days || 1) > 1 ? ("reps" as const) : ("once" as const),
-                  repsTarget: step.days || 1,
+                  mode: step.days === undefined ? undefined : step.days > 1 ? ("reps" as const) : ("once" as const),
+                  repsTarget: step.days,
                   xp: step.xp,
                 })),
               });
