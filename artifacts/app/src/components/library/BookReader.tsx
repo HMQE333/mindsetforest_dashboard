@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, ExternalLink, Loader2, Moon, Sun, X, ZoomIn, ZoomOut } from "lucide-react";
-import type { Book } from "@/lib/library-data";
-import { closePdf, openPdf, signedFileUrl, type PdfDocument } from "@/lib/book-files";
+import type { Book, BookFile } from "@/lib/library-data";
+import { closePdf, loadPageWords, openPdf, signedFileUrl, type PdfDocument } from "@/lib/book-files";
+import { PageClock, formatSpan, speedOf, totalsOf } from "@/lib/reading-speed";
+import { newSessionId, type ReadingSessionDraft } from "@/lib/reading-sessions";
+import { toast } from "sonner";
 
 interface BookReaderProps {
   book: Book | null;
-  onClose: () => void;
+  /** reachedEnd: the last page was in view during this sitting. */
+  onClose: (info: { reachedEnd: boolean }) => void;
   /** Called (debounced) with the page in view, and once more on close. */
   onPosition: (bookId: string, page: number) => void;
+  /** The sitting's page times so far; called as it grows and on close (same id each time). */
+  onSession: (draft: ReadingSessionDraft) => void;
+  /** Stores facts learned about the file (words per page for an older upload). */
+  onFileMeta: (bookId: string, patch: Partial<BookFile>) => void;
 }
 
 const MAX_BASE_WIDTH = 900;
@@ -23,7 +31,7 @@ type RenderTask = { cancel: () => void; promise: Promise<unknown> };
  * as fast as a short one. The page in view is reported back so the book
  * remembers where you stopped and its progress moves with you.
  */
-export default function BookReader({ book, onClose, onPosition }: BookReaderProps) {
+export default function BookReader({ book, onClose, onPosition, onSession, onFileMeta }: BookReaderProps) {
   const file = book?.file ?? null;
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -45,6 +53,12 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
   const resumed = useRef(false);
   const currentRef = useRef(1);
   currentRef.current = current;
+
+  // Reading speed: one clock per sitting, flushed as it grows.
+  const clock = useRef<PageClock | null>(null);
+  const words = useRef<number[] | null>(null);
+  const session = useRef({ id: "", startedAt: "", flushed: 0 });
+  const maxPage = useRef(0);
 
   const pageWidth = Math.max(200, Math.floor(Math.min(containerWidth - 24, MAX_BASE_WIDTH) * zoom));
   const numPages = doc?.numPages ?? 0;
@@ -72,6 +86,18 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
       const vp = first.getViewport({ scale: 1 });
       setRatios(new Array(opened.numPages).fill(vp.height / vp.width));
       setDoc(opened);
+      words.current = file.pageWords ?? null;
+      clock.current = new PageClock((p) => words.current?.[p - 1]);
+      session.current = { id: newSessionId(), startedAt: new Date().toISOString(), flushed: 0 };
+      maxPage.current = 0;
+      if (!file.pageWords && file.textPath && book) {
+        const bookId = book.id;
+        void loadPageWords(file).then((w) => {
+          if (!w || cancelled) return;
+          words.current = w;
+          onFileMeta(bookId, { pageWords: w });
+        });
+      }
     })().catch(() => { if (!cancelled) setError("Could not open this PDF."); });
     return () => {
       cancelled = true;
@@ -199,8 +225,49 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
       const top = els[mid]?.offsetTop ?? 0;
       if (top <= mark) { found = mid + 1; lo = mid + 1; } else hi = mid - 1;
     }
+    // A last page shorter than the screen can never scroll up to the mark: the bottom is the last page.
+    if (els.length > 0 && root.scrollTop + root.clientHeight >= root.scrollHeight - 2) found = els.length;
     if (found !== currentRef.current) { setCurrent(found); setPageInput(String(found)); }
   }, []);
+
+  const flush = useCallback(() => {
+    const c = clock.current;
+    if (!book || !c || c.samples.length === session.current.flushed) return;
+    session.current.flushed = c.samples.length;
+    onSession({
+      id: session.current.id,
+      bookId: book.id,
+      startedAt: session.current.startedAt,
+      endedAt: new Date().toISOString(),
+      totals: totalsOf(c.samples),
+      samples: [...c.samples],
+    });
+  }, [book, onSession]);
+
+  // Time each page as it comes into view.
+  useEffect(() => {
+    if (!doc || !clock.current) return;
+    clock.current.turn(current, Date.now());
+    maxPage.current = Math.max(maxPage.current, current);
+  }, [doc, current]);
+
+  // Hidden tab: the clock stops and what was read so far is saved.
+  useEffect(() => {
+    if (!doc) return;
+    const onVisibility = () => {
+      if (document.hidden) { clock.current?.hide(Date.now()); flush(); }
+      else clock.current?.show(Date.now());
+    };
+    const onHide = () => flush();
+    const every = setInterval(flush, 60_000);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      clearInterval(every);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onHide);
+    };
+  }, [doc, flush]);
 
   // Save the position a moment after the page settles.
   useEffect(() => {
@@ -210,9 +277,25 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
   }, [book, doc, current, onPosition]);
 
   const close = useCallback(() => {
-    if (book && doc) onPosition(book.id, currentRef.current);
-    onClose();
-  }, [book, doc, onPosition, onClose]);
+    const reachedEnd = !!doc && maxPage.current >= doc.numPages;
+    if (book && doc) {
+      onPosition(book.id, currentRef.current);
+      flush();
+      const samples = clock.current?.samples ?? [];
+      // The finish screen has its own summary; otherwise a one-line recap of the sitting.
+      if (!reachedEnd && samples.length >= 2) {
+        const t = totalsOf(samples);
+        const sp = speedOf(t);
+        toast.success(`Read ${t.pages} pages in ${formatSpan(t.seconds)}`, {
+          description: [
+            sp.pagesPerHour ? `${Math.round(sp.pagesPerHour)} pages/h` : null,
+            sp.wordsPerMinute ? `${Math.round(sp.wordsPerMinute)} words/min` : null,
+          ].filter(Boolean).join(" · ") || undefined,
+        });
+      }
+    }
+    onClose({ reachedEnd });
+  }, [book, doc, onPosition, onClose, flush]);
 
   const changeZoom = useCallback((dir: 1 | -1) => {
     captureAnchor();
@@ -311,7 +394,7 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
             </div>
           </header>
 
-          <div ref={scrollerRef} onScroll={onScroll} className="flex-1 overflow-y-auto overscroll-contain bg-muted/30">
+          <div ref={scrollerRef} onScroll={onScroll} className="relative flex-1 overflow-y-auto overscroll-contain bg-muted/30">
             {error ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
                 <p>{error}</p>

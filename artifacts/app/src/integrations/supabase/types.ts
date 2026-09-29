@@ -1661,6 +1661,56 @@ export type Database = {
         }
         Relationships: []
       }
+      reading_sessions: {
+        Row: {
+          book_id: string
+          created_at: string
+          ended_at: string
+          id: string
+          pages: number
+          samples: Json
+          seconds: number
+          started_at: string
+          user_id: string
+          word_seconds: number
+          words: number
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          ended_at: string
+          id?: string
+          pages?: number
+          samples?: Json
+          seconds?: number
+          started_at: string
+          user_id: string
+          word_seconds?: number
+          words?: number
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          ended_at?: string
+          id?: string
+          pages?: number
+          samples?: Json
+          seconds?: number
+          started_at?: string
+          user_id?: string
+          word_seconds?: number
+          words?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_sessions_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "user_books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reviews: {
         Row: {
           created_at: string
@@ -1764,6 +1814,7 @@ export type Database = {
           created_at: string
           directions: string[]
           file: Json | null
+          finished_at: string | null
           format: string
           id: string
           notes: string
@@ -1784,6 +1835,7 @@ export type Database = {
           created_at?: string
           directions?: string[]
           file?: Json | null
+          finished_at?: string | null
           format?: string
           id?: string
           notes?: string
@@ -1804,6 +1856,7 @@ export type Database = {
           created_at?: string
           directions?: string[]
           file?: Json | null
+          finished_at?: string | null
           format?: string
           id?: string
           notes?: string

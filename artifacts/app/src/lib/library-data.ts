@@ -16,6 +16,8 @@ export interface Book {
   url: string;
   /** The book's own PDF, when one was dropped on it. */
   file?: BookFile | null;
+  /** Set when the status turns to finished. */
+  finished_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +35,8 @@ export interface BookFile {
   /** Storage path of the extracted text; null when there was none to store (a scan). */
   textPath: string | null;
   textChars: number;
+  /** Words on each page (index 0 = page 1), for reading speed in words per minute. */
+  pageWords?: number[];
   /** Last page open in the reader (1-based). */
   lastPage: number;
   uploadedAt: string;

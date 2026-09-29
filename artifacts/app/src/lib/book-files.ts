@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { BookFile } from "@/lib/library-data";
+import { wordsPerPage } from "@/lib/reading-speed";
 
 /**
  * Book PDFs: upload, text extraction, signed links. Files live in the private
@@ -138,6 +139,7 @@ export async function uploadBookFile(
     if (up.error) throw storageError(up.error);
 
     let text = "";
+    let pageWords: number[] | undefined;
     try {
       const parts: string[] = [];
       for (let i = 1; i <= pages; i++) {
@@ -147,6 +149,7 @@ export async function uploadBookFile(
         if (i % 5 === 0 || i === pages) onStage?.({ stage: "text", done: i, total: pages });
       }
       text = parts.join("\f");
+      pageWords = wordsPerPage(text);
     } catch {
       // A page pdf.js cannot parse costs the text, not the attachment.
     }
@@ -160,7 +163,11 @@ export async function uploadBookFile(
       if (!t.error) textPath = tp;
     }
 
-    return { path, name: file.name, size: file.size, pages, textPath, textChars, lastPage: 1, uploadedAt: new Date().toISOString() };
+    return {
+      path, name: file.name, size: file.size, pages, textPath, textChars,
+      ...(textChars > 0 && pageWords ? { pageWords } : {}),
+      lastPage: 1, uploadedAt: new Date().toISOString(),
+    };
   } finally {
     closePdf(doc);
   }
@@ -177,4 +184,12 @@ export async function removeBookFiles(file: Pick<BookFile, "path" | "textPath"> 
 export async function signedFileUrl(path: string, seconds = 60 * 60 * 6): Promise<string | null> {
   const { data, error } = await supabase.storage.from(LIBRARY_BUCKET).createSignedUrl(path, seconds);
   return error || !data ? null : data.signedUrl;
+}
+
+/** Words on each page, read from the stored text (for PDFs attached before this was recorded). */
+export async function loadPageWords(file: Pick<BookFile, "textPath">): Promise<number[] | null> {
+  if (!file.textPath) return null;
+  const { data, error } = await supabase.storage.from(LIBRARY_BUCKET).download(file.textPath);
+  if (error || !data) return null;
+  return wordsPerPage(await data.text());
 }

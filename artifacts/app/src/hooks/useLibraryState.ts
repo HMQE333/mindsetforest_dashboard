@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { Book, isScan, pagesReadFor } from "@/lib/library-data";
+import { Book, BookFile, isScan, pagesReadFor } from "@/lib/library-data";
 import { bookFileErrorMessage, removeBookFiles, uploadBookFile, type UploadStage } from "@/lib/book-files";
 import { toast } from "sonner";
 
@@ -40,13 +40,18 @@ export function useLibraryState() {
 
   const updateBook = useCallback(async (id: string, updates: Partial<Book>) => {
     if (!user) return;
+    // The finish date follows the status: stamped when it turns to finished, cleared if it turns back.
+    const before = booksRef.current.find(b => b.id === id);
+    const stamped: Partial<Book> = { ...updates };
+    if (updates.status === "finished" && before?.status !== "finished") stamped.finished_at = new Date().toISOString();
+    else if (updates.status && updates.status !== "finished" && before?.status === "finished") stamped.finished_at = null;
     const { error } = await supabase
       .from("user_books" as any)
-      .update({ ...updates, updated_at: new Date().toISOString() } as any)
+      .update({ ...stamped, updated_at: new Date().toISOString() } as any)
       .eq("id", id)
       .eq("user_id", user.id);
     if (error) { toast.error("Failed to update book"); return; }
-    fetchBooks();
+    await fetchBooks();
   }, [user, fetchBooks]);
 
   const deleteBook = useCallback(async (id: string) => {
@@ -150,8 +155,22 @@ export function useLibraryState() {
       .eq("user_id", user.id);
   }, [user]);
 
+  /** Merges facts about a book's file (words per page) without touching anything else. */
+  const patchFile = useCallback(async (bookId: string, patch: Partial<BookFile>) => {
+    if (!user) return;
+    const book = booksRef.current.find(b => b.id === bookId);
+    if (!book?.file) return;
+    const file = { ...book.file, ...patch };
+    setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, file } : b)));
+    await supabase
+      .from("user_books" as any)
+      .update({ file } as any)
+      .eq("id", bookId)
+      .eq("user_id", user.id);
+  }, [user]);
+
   return {
     books, loading, addBook, updateBook, deleteBook, refetch: fetchBooks,
-    uploads, attachFile, detachFile, saveReadingPosition,
+    uploads, attachFile, detachFile, saveReadingPosition, patchFile,
   };
 }

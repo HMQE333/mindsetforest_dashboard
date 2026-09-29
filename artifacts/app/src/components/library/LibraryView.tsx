@@ -15,6 +15,10 @@ import CourseCard from "./CourseCard";
 import AddCourseModal from "./AddCourseModal";
 import CourseDetailModal from "./CourseDetailModal";
 import ShareLibraryModal from "./ShareLibraryModal";
+import BookFinishedModal from "./BookFinishedModal";
+import { useReadingStats } from "@/hooks/useReadingStats";
+import { speedOf } from "@/lib/reading-speed";
+import type { Book } from "@/lib/library-data";
 import type { Course } from "@/lib/course-data";
 import { toast } from "sonner";
 
@@ -29,8 +33,10 @@ type LibraryTab = "books" | "courses";
 export default function LibraryView() {
   const {
     books, loading: booksLoading, addBook, updateBook, deleteBook,
-    uploads, attachFile, detachFile, saveReadingPosition,
+    uploads, attachFile, detachFile, saveReadingPosition, patchFile,
   } = useLibraryState();
+  const reading = useReadingStats();
+  const usualSpeed = useMemo(() => speedOf(reading.overall), [reading.overall]);
   const { courses, loading: coursesLoading, addCourse, updateCourse, deleteCourse } = useCoursesState();
   const allPillars = usePillars();
 
@@ -42,6 +48,10 @@ export default function LibraryView() {
   const [readingId, setReadingId] = useState<string | null>(null);
   const selectedBook = useMemo(() => books.find(b => b.id === selectedBookId) ?? null, [books, selectedBookId]);
   const readingBook = useMemo(() => books.find(b => b.id === readingId) ?? null, [books, readingId]);
+  // The end-of-book screen: "ask" after the reader's last page, "done" to celebrate.
+  const [celebrate, setCelebrate] = useState<{ id: string; mode: "ask" | "done" } | null>(null);
+  const celebrateBook = useMemo(() => books.find(b => b.id === celebrate?.id) ?? null, [books, celebrate]);
+  const finishedCount = useMemo(() => books.filter(b => b.status === "finished").length, [books]);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
@@ -119,7 +129,30 @@ export default function LibraryView() {
     };
   }, []);
 
-  const otherDialogOpen = addBookOpen || addCourseOpen || suggestOpen || shareOpen || !!selectedCourse;
+  const otherDialogOpen = addBookOpen || addCourseOpen || suggestOpen || shareOpen || !!selectedCourse || !!celebrate;
+
+  /** Saving a book as finished (it was not before) ends on the celebration. */
+  const handleUpdate = async (id: string, updates: Partial<Book>) => {
+    const wasFinished = books.find(b => b.id === id)?.status === "finished";
+    await updateBook(id, updates);
+    if (updates.status === "finished" && !wasFinished) {
+      setSelectedBookId(null);
+      setCelebrate({ id, mode: "done" });
+    }
+  };
+
+  const closeReader = (id: string, reachedEnd: boolean) => {
+    setReadingId(null);
+    const book = books.find(b => b.id === id);
+    if (reachedEnd && book && book.status !== "finished") setCelebrate({ id, mode: "ask" });
+  };
+
+  const confirmFinished = async () => {
+    const book = celebrateBook;
+    if (!book) return;
+    await updateBook(book.id, { status: "finished", pages_read: book.total_pages || book.pages_read });
+    setCelebrate({ id: book.id, mode: "done" });
+  };
   const openReader = (id: string) => { setSelectedBookId(null); setReadingId(id); };
 
   /**
@@ -165,6 +198,15 @@ export default function LibraryView() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
           <h2 className="text-2xl font-bold text-foreground">📚 Library</h2>
+          {tab === "books" && usualSpeed.pagesPerHour && (
+            <span
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-muted/30 text-xs text-muted-foreground"
+              title={`Average reading speed, measured in the reader over ${reading.overall.pages} pages`}
+            >
+              ⏱ {Math.round(usualSpeed.pagesPerHour)} pages/h
+              {usualSpeed.wordsPerMinute ? ` · ${Math.round(usualSpeed.wordsPerMinute)} wpm` : ""}
+            </span>
+          )}
           {/* Tab switcher */}
           <div className="flex rounded-xl overflow-hidden border border-white/10">
             <button
@@ -348,8 +390,10 @@ export default function LibraryView() {
         book={selectedBook}
         open={!!selectedBook}
         onClose={() => setSelectedBookId(null)}
-        onUpdate={updateBook}
+        onUpdate={(id, updates) => void handleUpdate(id, updates)}
         onDelete={deleteBook}
+        reading={selectedBook ? reading.byBook[selectedBook.id] : undefined}
+        usualSpeed={usualSpeed}
         uploading={selectedBook ? uploads[selectedBook.id] : undefined}
         onAttachFile={f => selectedBook && void attachFile(selectedBook.id, f)}
         onRemoveFile={() => selectedBook && void detachFile(selectedBook.id)}
@@ -357,8 +401,26 @@ export default function LibraryView() {
       />
       {readingBook?.file && (
         <Suspense fallback={null}>
-          <BookReader book={readingBook} onClose={() => setReadingId(null)} onPosition={saveReadingPosition} />
+          <BookReader
+            book={readingBook}
+            onClose={({ reachedEnd }) => closeReader(readingBook.id, reachedEnd)}
+            onPosition={saveReadingPosition}
+            onSession={reading.save}
+            onFileMeta={(id, patch) => void patchFile(id, patch)}
+          />
         </Suspense>
+      )}
+      {celebrate && celebrateBook && (
+        <BookFinishedModal
+          book={celebrateBook}
+          mode={celebrate.mode}
+          reading={reading.byBook[celebrateBook.id]}
+          usualSpeed={usualSpeed}
+          finishedCount={finishedCount}
+          onConfirm={() => void confirmFinished()}
+          onRate={(rating) => void updateBook(celebrateBook.id, { rating })}
+          onClose={() => setCelebrate(null)}
+        />
       )}
       <AISuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} books={books} />
       <AddCourseModal open={addCourseOpen} onClose={() => setAddCourseOpen(false)} onAdd={addCourse} />

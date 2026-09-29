@@ -4,6 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat, formatFileSize, isScan } from "@/lib/library-data";
 import { uploadLabel, type UploadStage } from "@/lib/book-files";
+import type { BookReading } from "@/lib/reading-sessions";
+import type { ReadingSpeed } from "@/lib/reading-speed";
+import ReadingStatsPanel from "./ReadingStatsPanel";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Trash2, Sparkles, Loader2, X, FileText, Upload, BookOpen } from "lucide-react";
@@ -22,9 +25,14 @@ interface BookDetailModalProps {
   onAttachFile: (file: File) => void;
   onRemoveFile: () => void;
   onRead: () => void;
+  /** What the reader measured for this book, if anything. */
+  reading?: BookReading;
+  usualSpeed?: ReadingSpeed;
 }
 
-export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete, uploading, onAttachFile, onRemoveFile, onRead }: BookDetailModalProps) {
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete, uploading, onAttachFile, onRemoveFile, onRead, reading, usualSpeed }: BookDetailModalProps) {
   const allPillars = usePillars();
   const [notes, setNotes] = useState("");
   const [pagesRead, setPagesRead] = useState("");
@@ -99,6 +107,10 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
             <div className="min-w-0">
               <DialogTitle className="text-foreground text-lg leading-tight">{book.title}</DialogTitle>
               {book.author && <p className="text-sm text-muted-foreground mt-0.5">{book.author}</p>}
+              <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+                Added {shortDate(book.created_at)}
+                {book.finished_at && <> · Finished {shortDate(book.finished_at)}</>}
+              </p>
             </div>
           </div>
         </DialogHeader>
@@ -162,6 +174,13 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
               </button>
             )}
           </div>
+
+          {reading && reading.pages > 0 && (
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Reading</label>
+              <ReadingStatsPanel book={book} reading={reading} usualSpeed={usualSpeed} finished={book.status === "finished"} />
+            </div>
+          )}
 
           {/* URL */}
           <div>
