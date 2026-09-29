@@ -50,6 +50,39 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage_log: {
+        Row: {
+          completion_tokens: number
+          cost_usd: number
+          created_at: string
+          feature: string
+          id: number
+          model: string
+          prompt_tokens: number
+          user_id: string
+        }
+        Insert: {
+          completion_tokens?: number
+          cost_usd?: number
+          created_at?: string
+          feature: string
+          id?: number
+          model: string
+          prompt_tokens?: number
+          user_id: string
+        }
+        Update: {
+          completion_tokens?: number
+          cost_usd?: number
+          created_at?: string
+          feature?: string
+          id?: number
+          model?: string
+          prompt_tokens?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_classes: {
         Row: {
           color: string | null
@@ -2131,6 +2164,15 @@ export type Database = {
     Functions: {
       accept_friend_request: { Args: { request_id: string }; Returns: Json }
       add_friend_by_handle: { Args: { handle: string }; Returns: Json }
+      ai_usage_month: {
+        Args: { p_user?: string }
+        Returns: {
+          completion_tokens: number
+          cost_usd: number
+          prompt_tokens: number
+          requests: number
+        }[]
+      }
       are_friends: { Args: { _a: string; _b: string }; Returns: boolean }
       can_view_seed: { Args: { _seed_id: string }; Returns: boolean }
       decline_friend_request: { Args: { request_id: string }; Returns: Json }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion, type Variants } from "framer-motion";
-import { ChevronDown, MoreHorizontal, Plus } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,11 +273,9 @@ export default function MissionPresets({ customMissions, onApply }: Props) {
         aria-expanded={pickerOpen}
         aria-label={triggerLabel}
         title={triggerLabel}
-        className="glass-card inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
+        className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
       >
-        <span aria-hidden="true" className="text-base leading-none">{lastApplied ? lastApplied.emoji : DEFAULT_PRESET_EMOJI}</span>
-        <span className="hidden max-w-[9rem] truncate sm:inline">{lastApplied ? lastApplied.name : "Presety"}</span>
-        <ChevronDown className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+        <span aria-hidden="true">⚡</span>
       </button>
 
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>

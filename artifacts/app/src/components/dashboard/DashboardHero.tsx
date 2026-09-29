@@ -19,10 +19,10 @@ const stats = (state: DashboardState) => [
 function ActionButtons({ onResetDay, onShowShortcuts, extraActions }: { onResetDay: () => void; onShowShortcuts: () => void; extraActions?: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-3">
-      {extraActions}
       <button onClick={onResetDay} className="glass-card px-6 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Click to reset today's progress">
         🔄 Reset Day
       </button>
+      {extraActions}
       <button onClick={onShowShortcuts} className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Keyboard shortcuts (?)">
         ⌨️
       </button>
