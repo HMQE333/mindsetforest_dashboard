@@ -1661,6 +1661,45 @@ export type Database = {
         }
         Relationships: []
       }
+      reviews: {
+        Row: {
+          created_at: string
+          headline: string
+          id: string
+          kind: string
+          period: string
+          qa: Json
+          snapshot: Json
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          headline?: string
+          id?: string
+          kind: string
+          period: string
+          qa?: Json
+          snapshot?: Json
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          headline?: string
+          id?: string
+          kind?: string
+          period?: string
+          qa?: Json
+          snapshot?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracker_entries: {
         Row: {
           created_at: string

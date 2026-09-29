@@ -1,0 +1,75 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Tap to record, tap again to stop: the audio goes to the ai-transcribe
+ * function (Whisper) and the text comes back through `onText`. Same pipeline
+ * as the assistant's microphone, packaged for any text field.
+ */
+export function useVoiceNote(onText: (text: string) => void, language = "pl") {
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const onTextRef = useRef(onText);
+  useEffect(() => { onTextRef.current = onText; }, [onText]);
+
+  const transcribe = useCallback(async (blob: Blob) => {
+    setTranscribing(true);
+    try {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      const { data, error } = await supabase.functions.invoke("ai-transcribe", {
+        body: { audio: btoa(binary), format: "webm", language },
+      });
+      if (error) throw new Error(error.message || "Transcription failed");
+      const text = String(data?.text || "").trim();
+      if (!text) {
+        toast.error("Nic nie usłyszałem, spróbuj jeszcze raz");
+        return;
+      }
+      onTextRef.current(text);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Nie udało się przepisać nagrania");
+    } finally {
+      setTranscribing(false);
+    }
+  }, [language]);
+
+  const toggle = useCallback(async () => {
+    if (recRef.current) {
+      recRef.current.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+      const rec = new MediaRecorder(stream, { mimeType });
+      const chunks: BlobPart[] = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recRef.current = null;
+        setRecording(false);
+        if (chunks.length > 0) void transcribe(new Blob(chunks, { type: mimeType }));
+      };
+      rec.onerror = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recRef.current = null;
+        setRecording(false);
+        toast.error("Nagrywanie nie działa");
+      };
+      recRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch {
+      toast.error("Brak dostępu do mikrofonu");
+    }
+  }, [transcribe]);
+
+  useEffect(() => () => { recRef.current?.stop(); }, []);
+
+  return { recording, transcribing, toggle };
+}

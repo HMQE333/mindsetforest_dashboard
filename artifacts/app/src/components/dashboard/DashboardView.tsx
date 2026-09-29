@@ -8,6 +8,8 @@ import { useDailyCompletions } from "@/hooks/useDailyCompletions";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { pathProgress, TodayStep } from "@/lib/path-data";
 import PathsTodayStrip from "./PathsTodayStrip";
+import ReviewModal from "@/components/review/ReviewModal";
+import { useReview } from "@/hooks/useReview";
 import MissionPresets from "./MissionPresets";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
@@ -30,6 +32,7 @@ export default function DashboardView() {
   const categories = getCategories();
   const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
   const showMonthlyFocus = !preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus");
+  const review = useReview();
   // Hiding Paths in Settings -> Modules hides its steps on Home too.
   const showPaths = !preferences.enabledModules.length || preferences.enabledModules.includes("paths");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -194,11 +197,26 @@ export default function DashboardView() {
           <>
             {showMonthlyFocus && <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} />}
             <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />
+            {review.tableReady && (
+              <button
+                type="button"
+                onClick={review.openLatest}
+                title={review.due.length > 0 ? "Podsumowanie czeka" : "Podsumowanie wczorajszego dnia"}
+                aria-label="Podsumowanie dnia"
+                className="relative glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+              >
+                <span aria-hidden="true">📋</span>
+                {review.due.length > 0 && <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />}
+              </button>
+            )}
           </>
         }
       />
 
       {/* Weekly Progress - moved to bottom */}
+
+      {/* Morning / monthly review */}
+      <ReviewModal review={review} />
 
       {/* Shortcuts Panel */}
       <AnimatePresence>

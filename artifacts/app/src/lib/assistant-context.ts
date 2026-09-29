@@ -78,7 +78,7 @@ function daysAgoISO(days: number): string {
 }
 
 async function gatherDashboard(userId: string): Promise<string> {
-  const [{ data }, { data: presets }, { data: projects }] = await Promise.all([
+  const [{ data }, { data: presets }, { data: projects }, { data: reviews }] = await Promise.all([
     supabase.from("dashboard_state").select("*").eq("user_id", userId).maybeSingle(),
     supabase
       .from("mission_presets")
@@ -87,7 +87,15 @@ async function gatherDashboard(userId: string): Promise<string> {
       .order("sort_order", { ascending: true })
       .limit(30),
     supabase.from("user_projects").select("id,name").eq("user_id", userId),
+    supabase.from("reviews").select("kind,period,qa").eq("user_id", userId).eq("status", "done").order("created_at", { ascending: false }).limit(2),
   ]);
+  // The user's own account of recent days, from the morning review.
+  const reviewLine = (reviews || []).length > 0
+    ? "Recent reviews (the user's own words):\n" + (reviews || [])
+        .map((r) => `- ${r.kind} ${r.period}: ` + ((r.qa as { question: string; answer: string }[] | null) || [])
+          .map((x) => `${x.question} -> ${x.answer}`).join(" | "))
+        .join("\n")
+    : "";
   const presetLine =
     presets && presets.length > 0
       ? "Saved mission presets (loadable with apply_preset): " +
@@ -113,7 +121,8 @@ async function gatherDashboard(userId: string): Promise<string> {
     `Last completion date: ${data.last_completion_date || "none"}`,
     missionBlock,
     presetLine,
-  ].join("\n");
+    reviewLine,
+  ].filter(Boolean).join("\n");
 }
 
 async function gatherTracker(userId: string): Promise<string> {

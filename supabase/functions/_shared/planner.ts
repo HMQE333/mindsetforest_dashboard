@@ -99,7 +99,7 @@ export async function buildPlannerContext(
 ): Promise<{ profile: string; situation: string }> {
   const today = localToday(moment);
 
-  const [ctx, dash, history, paths, steps, planning, events, watch, suggestions, scored] = await Promise.all([
+  const [ctx, dash, history, paths, steps, planning, events, watch, suggestions, scored, reviews] = await Promise.all([
     safe(client.from("user_context").select("notes,lenses,season").eq("user_id", userId).maybeSingle()),
     safe(client.from("dashboard_state")
       .select("current_xp,current_level,streak_days,missions_completed,categories_engaged,custom_missions,last_completion_date")
@@ -119,6 +119,11 @@ export async function buildPlannerContext(
     safe(client.from("paths").select("name,diagnosis,diagnosis_verdict,diagnosis_actual")
       .eq("user_id", userId).not("diagnosis_verdict", "is", null)
       .order("scored_at", { ascending: false }).limit(20)),
+    // What the user said in their morning / monthly reviews: their own account
+    // of where time went and what matters today. Missing table = nothing.
+    safe(client.from("reviews").select("kind,period,qa")
+      .eq("user_id", userId).eq("status", "done")
+      .order("created_at", { ascending: false }).limit(4)),
   ]);
 
   // ---- profile (stable; belongs in the system prompt) ----
@@ -252,6 +257,15 @@ export async function buildPlannerContext(
         `thought "${g.diagnosis}"${g.diagnosis_actual ? `, was actually "${g.diagnosis_actual}"` : ""}`);
       lines.push(`Where they misread the obstacle before: ${misses.join("; ")}. Watch for the same mistake.`);
     }
+  }
+
+  // ---- their own account, from the morning / monthly reviews ----
+  const reviewRows = (reviews || []) as { kind: string; period: string; qa: { question: string; answer: string }[] }[];
+  if (reviewRows.length > 0) {
+    const said = reviewRows
+      .map((r) => `${r.kind} ${r.period}: ` + (r.qa || []).map((x) => `"${x.question}" -> "${x.answer}"`).join(" | "))
+      .join("\n");
+    lines.push(`What the user said in recent reviews (their words; weigh these above the raw numbers):\n${said}`);
   }
 
   return { profile, situation: lines.join("\n") };
