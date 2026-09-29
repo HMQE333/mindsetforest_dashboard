@@ -111,13 +111,26 @@ export async function fetchSpeech(text: string, lang: string, voiceId?: string |
   }
 }
 
-let voicesCache: { at: number; voices: TtsVoice[]; defaultVoice: string | null } | null = null;
+/**
+ * ok: the list is usable. not_configured: no ELEVENLABS_API_KEY (browser voice
+ * is used). failed: the key works for speech but cannot list voices (an
+ * ElevenLabs key restricted to text-to-speech lacks the voices_read
+ * permission) or the request failed; a voice can still be chosen by id.
+ */
+export type VoicesStatus = "ok" | "not_configured" | "failed";
+export interface VoicesResult { status: VoicesStatus; voices: TtsVoice[]; defaultVoice: string | null }
 
-/** Voices on the ElevenLabs account; empty when the key is not configured. */
-export async function fetchVoices(): Promise<{ voices: TtsVoice[]; defaultVoice: string | null }> {
+let voicesCache: (VoicesResult & { at: number }) | null = null;
+
+/** Voices on the ElevenLabs account. `force` ignores the cache and the backoff. */
+export async function fetchVoices(force = false): Promise<VoicesResult> {
+  if (force) {
+    voicesCache = null;
+    ttsUnavailableUntil = 0;
+  }
   if (voicesCache && Date.now() - voicesCache.at < 5 * 60 * 1000) return voicesCache;
-  const empty = { voices: [] as TtsVoice[], defaultVoice: null };
-  if (Date.now() < ttsUnavailableUntil) return empty;
+  const failed: VoicesResult = { status: "failed", voices: [], defaultVoice: null };
+  if (Date.now() < ttsUnavailableUntil) return { status: "not_configured", voices: [], defaultVoice: null };
   try {
     const res = await fetch(TTS_FN_URL, {
       method: "POST",
@@ -126,16 +139,16 @@ export async function fetchVoices(): Promise<{ voices: TtsVoice[]; defaultVoice:
     });
     if (res.status === 501 || res.status === 404) {
       ttsUnavailableUntil = Date.now() + TTS_RETRY_MS;
-      return empty;
+      return { status: "not_configured", voices: [], defaultVoice: null };
     }
-    if (!res.ok) return empty;
+    if (!res.ok) return failed;
     const d = await res.json();
     const voices: TtsVoice[] = (Array.isArray(d?.voices) ? d.voices : []).filter(
       (v: unknown): v is TtsVoice => !!v && typeof v === "object" && typeof (v as TtsVoice).id === "string" && typeof (v as TtsVoice).name === "string",
     );
-    voicesCache = { at: Date.now(), voices, defaultVoice: typeof d?.defaultVoice === "string" ? d.defaultVoice : null };
+    voicesCache = { at: Date.now(), status: "ok", voices, defaultVoice: typeof d?.defaultVoice === "string" ? d.defaultVoice : null };
     return voicesCache;
   } catch {
-    return empty;
+    return failed;
   }
 }

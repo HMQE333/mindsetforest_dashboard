@@ -14,14 +14,14 @@ import { corsHeaders, jsonResponse, getUserClient } from "../_shared/planner.ts"
  * - status: model names, budget and this month's spend for the Settings tab.
  *
  * Models are OpenRouter slugs. Override with secrets:
- *   ASSISTANT_MODEL           smart chat model   (default anthropic/claude-sonnet-5.5)
+ *   ASSISTANT_MODEL           smart chat model   (default anthropic/claude-haiku-4.5; anthropic/claude-sonnet-5.5 for the best quality)
  *   ASSISTANT_FALLBACK_MODEL  over-budget model  (default OPENROUTER_MODEL or google/gemini-2.5-flash)
  *   ASSISTANT_ROUTER_MODEL    scope router       (default google/gemini-2.5-flash)
  *   ASSISTANT_BUDGET_USD      monthly cap per user, USD (default 10)
  */
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const SMART_MODEL = Deno.env.get("ASSISTANT_MODEL") || "anthropic/claude-sonnet-5.5";
+const SMART_MODEL = Deno.env.get("ASSISTANT_MODEL") || "anthropic/claude-haiku-4.5";
 const CHEAP_MODEL = Deno.env.get("ASSISTANT_FALLBACK_MODEL") || Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";
 const ROUTER_MODEL = Deno.env.get("ASSISTANT_ROUTER_MODEL") || "google/gemini-2.5-flash";
 const BUDGET_USD = (() => {

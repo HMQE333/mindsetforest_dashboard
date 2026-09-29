@@ -102,6 +102,8 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     const { voices: list } = await fetchVoices();
     setVoices(list);
   }, []);
+  // Load once on mount too, so the picker is filled the moment voice mode starts.
+  useEffect(() => { void refreshVoices(); }, [refreshVoices]);
 
   const setLang = useCallback((next: VoiceLang) => {
     setLangState(next);
