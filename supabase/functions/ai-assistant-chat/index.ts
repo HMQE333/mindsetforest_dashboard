@@ -99,6 +99,25 @@ function gatewayError(response: Response, text: string): Response {
   return jsonResponse({ error: "AI gateway error" }, 502);
 }
 
+const CONTEXT_MAX_CHARS = 120_000;
+/** Same marker as ACTIONS_SENTINEL in the app's lib/assistant-actions.ts. */
+const ACTIONS_SENTINEL = "[[ACTIONS_ENABLED]]";
+
+/**
+ * Cap the context without losing the action protocol. The app appends the
+ * action instructions after the data, starting at ACTIONS_SENTINEL, so a
+ * plain head slice would cut them off first; the data is cut instead.
+ */
+function capContext(raw: string): string {
+  if (raw.length <= CONTEXT_MAX_CHARS) return raw;
+  const at = raw.lastIndexOf(ACTIONS_SENTINEL);
+  if (at < 0) return raw.slice(0, CONTEXT_MAX_CHARS);
+  const tail = raw.slice(at, at + CONTEXT_MAX_CHARS);
+  const note = "\n\n(Data cut here to fit the request size.)\n\n";
+  const room = Math.max(0, CONTEXT_MAX_CHARS - tail.length - note.length);
+  return raw.slice(0, Math.min(at, room)) + note + tail;
+}
+
 function cleanHistory(history: unknown, limit: number): Msg[] {
   if (!Array.isArray(history)) return [];
   const out: Msg[] = [];
@@ -197,8 +216,12 @@ async function chat(userId: string, body: Record<string, unknown>): Promise<Resp
   const overBudget = spend.ready && spend.cost >= BUDGET_USD;
   const model = overBudget ? CHEAP_MODEL : SMART_MODEL;
 
-  const scopeList = Array.isArray(scopes) && scopes.length > 0 ? scopes.join(", ") : "none";
-  const ctx = String(context || "").slice(0, 120_000);
+  // Scope ids are short; anything else in the list is dropped, not echoed into the prompt.
+  const scopeIds = Array.isArray(scopes)
+    ? scopes.filter((s): s is string => typeof s === "string" && s.trim().length > 0).slice(0, 30).map((s) => s.trim().slice(0, 40))
+    : [];
+  const scopeList = scopeIds.length > 0 ? scopeIds.join(", ") : "none";
+  const ctx = capContext(String(context || ""));
 
   const voiceBlock = voice
     ? [
@@ -214,7 +237,7 @@ async function chat(userId: string, body: Record<string, unknown>): Promise<Resp
 
 Answer the user's question using ONLY the user data provided below. If the data does not contain the answer, say so plainly and name which section would have it (sections are picked automatically per message; the user can also pin them in the Context menu). Never invent numbers or facts that are not in the data. Be concise, warm, and specific: quote concrete numbers from the data when relevant.
 
-The data sections and the available actions are chosen fresh for EVERY message, so earlier turns in this conversation were answered from sections and actions you may not see right now. That is normal. Never retract, doubt or "correct" something you said earlier only because its data or its action is not in front of you now; the earlier answer stands. Actions marked in the history as "[Applied by the user, these happened: ...]" really happened (the note was saved, the mission ticked, the preset loaded), so refer to them as done. If the user asks about something outside the current sections, say which section holds it rather than claiming it does not exist or was not saved.
+The data sections and the available actions are chosen fresh for EVERY message, so earlier turns in this conversation were answered from sections and actions you may not see right now. That is normal. Never retract, doubt or "correct" something you said earlier only because its data or its action is not in front of you now; the earlier answer stands. Actions marked in the history as "[Applied by the user, these happened: ...]" really happened (the note was saved, the mission ticked, the preset loaded), so refer to them as done. Actions marked "[The user confirmed these but they FAILED and did not happen: ...]" did not happen; never describe them as done. If the user asks about something outside the current sections, say which section holds it rather than claiming it does not exist or was not saved.
 
 Reply in the language the user writes or speaks in (Polish or English). Keep mission, preset and section names exactly as they appear in the data.
 

@@ -80,8 +80,22 @@ export function cleanForSpeech(text: string): string {
     .trim();
 }
 
-/** Yes/no in Polish or English for the spoken confirm step. */
-export function parseYesNo(text: string): "yes" | "no" | null {
+/**
+ * Agreements that contain a refusal word (in Polish "no" is a filler, and
+ * "nie" is part of the idiom). Checked as whole phrases before any single word.
+ */
+const YES_PHRASES = [
+  "no dobra", "no dobrze", "no tak", "no jasne", "no pewnie", "no ok", "no okej", "no to dawaj",
+  "nie ma sprawy", "nie ma problemu", "czemu nie", "dlaczego nie",
+  "no problem", "why not",
+];
+
+/**
+ * Yes/no in Polish or English for the spoken confirm step. In Polish "no" on
+ * its own is a filler ("no..."), not a refusal, so it only counts as "no"
+ * when the conversation is not in Polish.
+ */
+export function parseYesNo(text: string, lang?: VoiceLang): "yes" | "no" | null {
   const t = text
     .toLowerCase()
     .normalize("NFD")
@@ -90,7 +104,10 @@ export function parseYesNo(text: string): "yes" | "no" | null {
     .trim();
   if (!t) return null;
   const words = t.split(/\s+/);
-  const NO = new Set(["nie", "no", "nope", "anuluj", "cancel", "stop", "odrzuc", "nah"]);
+  const padded = ` ${words.join(" ")} `;
+  if (YES_PHRASES.some((p) => padded.includes(` ${p} `))) return "yes";
+  const NO = new Set(["nie", "nope", "anuluj", "cancel", "stop", "odrzuc", "nah"]);
+  if (lang !== "pl-PL") NO.add("no");
   const YES = new Set(["tak", "yes", "yeah", "yep", "ok", "okay", "okej", "zrob", "dawaj", "zastosuj", "potwierdzam", "jasne", "pewnie", "sure", "apply", "confirm", "go"]);
   if (words.some((w) => NO.has(w))) return "no";
   if (words.some((w) => YES.has(w))) return "yes";

@@ -13,20 +13,32 @@ import { describeAction, type AssistantAction } from "@/lib/assistant-actions";
  *    it in the history stops the model from "correcting" a note it did save.
  */
 
+/**
+ * A whole-word, case-insensitive match. `\b` and `\w` only know ASCII, so
+ * "ścieżka" never starts a word for them and "kroków" breaks mid-word; the
+ * word edges here are Unicode letters and digits instead, and `\w` in a
+ * pattern means any letter. No lookbehind, so older Safari still parses it.
+ */
+const LETTER = String.raw`[\p{L}\p{N}_]`;
+function hint(alternatives: string): RegExp {
+  const body = alternatives.replace(/\\w/g, LETTER);
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}_])(?:${body})(?!${LETTER})`, "iu");
+}
+
 const HINTS: { scope: ScopeId; pattern: RegExp }[] = [
-  { scope: "archive", pattern: /\b(notatk\w*|note[sd]?|zapisz|zanotuj|zapamietaj|zapamiętaj|archiw\w*|archive|jot|remember this)\b/i },
-  { scope: "dashboard", pattern: /\b(misj\w*|mission\w*|preset\w*|odhacz\w*|zrobi[lł]\w*|done with|completed|tick|xp|streak|home|monk mode|lock in)\b/i },
-  { scope: "paths", pattern: /\b(path\w*|[sś]cie[zż]k\w*|krok\w*|step\w*|plan\w* [sś]cie[zż]k\w*)\b/i },
-  { scope: "planning", pattern: /\b(task\w*|zadani\w*|mindmap\w*|mapa my[sś]li|planning|planowani\w*|deadline\w*|termin\w*)\b/i },
-  { scope: "calendar", pattern: /\b(calendar|kalendarz\w*|spotkani\w*|meeting\w*|wydarzeni\w*|event\w*)\b/i },
-  { scope: "finance", pattern: /\b(finans\w*|finance\w*|pieni[aą]dz\w*|money|wydatk\w*|expense\w*|bud[zż]et\w*|budget\w*|subskrypcj\w*|subscription\w*)\b/i },
-  { scope: "health", pattern: /\b(zdrowi\w*|health|waga|weight|sen|sleep|hrv|t[eę]tno|heart rate|trening\w*|workout\w*)\b/i },
-  { scope: "computer", pattern: /\b(komputer\w*|computer|screen time|czas przy komputerze|aplikacj\w*|apps?)\b/i },
-  { scope: "tracker", pattern: /\b(tracker|statystyk\w*|stats|metryk\w*|metric\w*|zaloguj\w*|wpisz\w*|pompk\w*|push-?ups?|przeczyta\w*|stron\w*|pages|godzin\w* pracy|deep work|kroków|wypi\w*)\b/i },
-  { scope: "library", pattern: /\b(ksi[aą][zż]k\w*|book\w*|library|bibliotek\w*|czyta[lł]\w*|reading)\b/i },
-  { scope: "cooking", pattern: /\b(przepis\w*|recipe\w*|gotowani\w*|cooking|posi[lł]\w*|meal\w*)\b/i },
-  { scope: "breathing", pattern: /\b(oddech\w*|breath\w*|breathing)\b/i },
-  { scope: "oracle", pattern: /\b(oracle|wyroczni\w*|nagrod\w*|reward\w*)\b/i },
+  { scope: "archive", pattern: hint(String.raw`notatk\w*|note[sd]?|zapisz|zanotuj|zapamietaj|zapamiętaj|archiw\w*|archive|jot|remember this`) },
+  { scope: "dashboard", pattern: hint(String.raw`misj\w*|mission\w*|preset\w*|odhacz\w*|zrobi[lł]\w*|done with|completed|tick|xp|streak|home|monk mode|lock in`) },
+  { scope: "paths", pattern: hint(String.raw`path\w*|[sś]cie[zż]k\w*|krok\w*|step\w*|plan\w* [sś]cie[zż]k\w*`) },
+  { scope: "planning", pattern: hint(String.raw`task\w*|zadani\w*|mindmap\w*|mapa my[sś]li|planning|planowani\w*|deadline\w*|termin\w*`) },
+  { scope: "calendar", pattern: hint(String.raw`calendar|kalendarz\w*|spotkani\w*|meeting\w*|wydarzeni\w*|event\w*`) },
+  { scope: "finance", pattern: hint(String.raw`finans\w*|finance\w*|pieni[aą]dz\w*|money|wydatk\w*|expense\w*|bud[zż]et\w*|budget\w*|subskrypcj\w*|subscription\w*`) },
+  { scope: "health", pattern: hint(String.raw`zdrowi\w*|health|waga|weight|sen|sleep|hrv|t[eę]tno|heart rate|trening\w*|workout\w*`) },
+  { scope: "computer", pattern: hint(String.raw`komputer\w*|computer|screen time|czas przy komputerze|aplikacj\w*|apps?`) },
+  { scope: "tracker", pattern: hint(String.raw`tracker|statystyk\w*|stats|metryk\w*|metric\w*|zaloguj\w*|wpisz\w*|pompk\w*|push-?ups?|przeczyta\w*|stron\w*|pages|godzin\w* pracy|deep work|kroków|wypi\w*`) },
+  { scope: "library", pattern: hint(String.raw`ksi[aą][zż]k\w*|book\w*|library|bibliotek\w*|czyta[lł]\w*|reading`) },
+  { scope: "cooking", pattern: hint(String.raw`przepis\w*|recipe\w*|gotowani\w*|cooking|posi[lł]\w*|meal\w*`) },
+  { scope: "breathing", pattern: hint(String.raw`oddech\w*|breath\w*|breathing`) },
+  { scope: "oracle", pattern: hint(String.raw`oracle|wyroczni\w*|nagrod\w*|reward\w*`) },
 ];
 
 /** Sections a message names outright. Empty when it names none. */
@@ -43,6 +55,8 @@ export interface HistoryMessage {
   error?: boolean;
   actions?: AssistantAction[];
   actionsResolved?: "applied" | "dismissed";
+  /** Per action, whether it actually went through when the user applied them. */
+  actionResults?: boolean[];
 }
 
 /** The conversation as the model should remember it: replies plus what happened to their actions. */
@@ -52,12 +66,23 @@ export function annotateHistory(messages: HistoryMessage[]): { role: "user" | "a
     .map((m) => {
       if (m.role !== "assistant" || !m.actions || m.actions.length === 0) return { role: m.role, content: m.content };
       const list = m.actions.map(describeAction).join("; ");
-      const marker =
-        m.actionsResolved === "applied"
-          ? `[Applied by the user, these happened: ${list}]`
-          : m.actionsResolved === "dismissed"
-            ? `[The user declined these proposed actions: ${list}]`
-            : `[Proposed, not yet confirmed: ${list}]`;
+      let marker: string;
+      if (m.actionsResolved === "applied") {
+        // Confirming is not the same as succeeding: only the actions that went
+        // through are recorded as done, or the model later claims a failed one
+        // happened. Replies saved before results were kept count as all done.
+        const results = m.actionResults && m.actionResults.length === m.actions.length ? m.actionResults : null;
+        const done = m.actions.filter((_, i) => !results || results[i]).map(describeAction);
+        const failed = results ? m.actions.filter((_, i) => !results[i]).map(describeAction) : [];
+        marker = [
+          done.length > 0 ? `[Applied by the user, these happened: ${done.join("; ")}]` : "",
+          failed.length > 0 ? `[The user confirmed these but they FAILED and did not happen: ${failed.join("; ")}]` : "",
+        ].filter(Boolean).join("\n");
+      } else if (m.actionsResolved === "dismissed") {
+        marker = `[The user declined these proposed actions: ${list}]`;
+      } else {
+        marker = `[Proposed, not yet confirmed: ${list}]`;
+      }
       return { role: m.role, content: `${m.content}\n${marker}` };
     });
 }

@@ -125,16 +125,26 @@ export async function logPathStepToday(
   const { error } = await supabase
     .from("path_step_logs")
     .insert({ user_id: userId, step_id: step.id, path_id: target.id, date, xp: step.xp });
-  // Unique (step_id, date): already logged today.
-  if (error) return { ok: false, error: `„${step.title}” jest już zalogowane na dziś` };
+  if (error) {
+    // Unique (step_id, date): already logged today. Anything else is a real failure.
+    if (error.code === "23505") return { ok: false, error: `„${step.title}” jest już zalogowane na dziś` };
+    return { ok: false, error: `Nie udało się zalogować „${step.title}”: ${error.message}` };
+  }
 
   const repsDone = step.reps_done + 1;
   const targetReps = step.mode === "reps" ? Math.max(1, step.reps_target) : 1;
   const finished = repsDone >= targetReps;
-  await supabase
+  const { error: stepError } = await supabase
     .from("path_steps")
     .update({ reps_done: repsDone, done: finished, done_at: finished ? new Date().toISOString() : null })
     .eq("id", step.id);
+  if (stepError) {
+    // Take the day back out so the log and the step's count stay in step and
+    // a retry is not refused as "already logged". No XP has been given yet.
+    await supabase.from("path_step_logs").delete().eq("user_id", userId).eq("step_id", step.id).eq("date", date);
+    notifyPathsChanged();
+    return { ok: false, error: `Nie udało się zapisać postępu „${step.title}”: ${stepError.message}` };
+  }
   notifyPathsChanged();
   return {
     ok: true,
@@ -184,7 +194,13 @@ export async function createPath(
         sort_order: i,
       };
     });
-    await supabase.from("path_steps").insert(rows);
+    const { error: stepsError } = await supabase.from("path_steps").insert(rows);
+    if (stepsError) {
+      // A path without its steps is not what was confirmed, and leaving it
+      // would make a retry create a second one with the same name.
+      await supabase.from("paths").delete().eq("id", data.id).eq("user_id", userId);
+      return { ok: false, error: `Nie udało się zapisać kroków ścieżki „${input.name}”: ${stepsError.message}` };
+    }
   }
   notifyPathsChanged();
   return { ok: true, id: data.id };
@@ -193,6 +209,24 @@ export async function createPath(
 // ---------------------------------------------------------------------------
 // Planning
 // ---------------------------------------------------------------------------
+
+/**
+ * The board new assistant-made planning rows go on. Every Planning view
+ * loads the rows of one board (or of the projects linked to it), so a row
+ * with neither a board nor a project is saved but never shown. The app does
+ * not remember which board was open last (PlanningView keeps it in component
+ * state only), so this is the user's first board by creation date: stable,
+ * and the one a single-board user has. Null when there is no board yet.
+ */
+export async function defaultPlanningBoard(userId: string): Promise<{ id: string; name: string } | null> {
+  const { data } = await supabase
+    .from("planning_boards")
+    .select("id,name")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  return data?.[0] ?? null;
+}
 
 export async function completePlanningTask(userId: string, title: string): Promise<WriteResult<{ title: string }>> {
   const { data } = await supabase

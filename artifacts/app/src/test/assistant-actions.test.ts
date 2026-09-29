@@ -134,6 +134,51 @@ describe("action blocks in replies", () => {
     expect(r.broken).toBeUndefined();
   });
 
+  it("leaves no text at all for a reply that is only an action block", async () => {
+    const { visibleReplyText } = await import("../lib/assistant-actions");
+    const raw = '```action\n[{"type":"navigate","module":"paths"}]\n```';
+    expect(visibleReplyText(raw)).toBe("");
+    const r = parseActions(raw, []);
+    expect(r.text).toBe("");
+    expect(r.actions).toEqual([{ type: "navigate", module: "paths" }]);
+  });
+
+  it("strips every action block, accepts ```actions and merges the actions", async () => {
+    const { visibleReplyText } = await import("../lib/assistant-actions");
+    const raw =
+      'Najpierw to.\n```action\n[{"type":"navigate","module":"paths"}]\n```\nPotem to.\n' +
+      '```actions\n[{"type":"open_settings","tab":"theme"}]\n```\nKoniec.';
+    const r = parseActions(raw, []);
+    expect(r.actions).toEqual([{ type: "navigate", module: "paths" }, { type: "open_settings", tab: "theme" }]);
+    expect(r.text).toBe("Najpierw to.\n\nPotem to.\n\nKoniec.");
+    expect(r.text).not.toContain("[{");
+    expect(r.broken).toBeUndefined();
+    expect(visibleReplyText(raw)).toBe("Najpierw to.\n\nPotem to.\n\nKoniec.");
+    // Still streaming the second block: its start is hidden, the first is gone.
+    expect(visibleReplyText(raw.slice(0, raw.indexOf("```actions") + 14))).toBe("Najpierw to.\n\nPotem to.");
+  });
+
+  it("flags a broken block but keeps the actions of a good one", () => {
+    const r = parseActions('A\n```action\n[{"type":"navigate","module":"paths"}]\n```\nB\n```action\n[{"type":', []);
+    expect(r.actions).toEqual([{ type: "navigate", module: "paths" }]);
+    expect(r.broken).toBe(true);
+    expect(r.text).toBe("A\n\nB");
+  });
+
+  it("does not mistake another fenced language for an action block", () => {
+    const raw = "Kod:\n```actionscript\ntrace(1)\n```";
+    expect(parseActions(raw, []).actions).toEqual([]);
+    expect(parseActions(raw, []).text).toBe(raw);
+  });
+
+  it("returns actions left out for a section that is not in play", () => {
+    const r = parseActions(block([{ type: "add_task", title: "Pitch deck" }, { type: "navigate", module: "planning" }]), ["dashboard"]);
+    expect(r.actions).toEqual([{ type: "navigate", module: "planning" }]);
+    expect(r.dropped).toEqual([{ type: "add_task", title: "Pitch deck", level: "task", deadline: null, notes: "" }]);
+    expect(parseActions(block([{ type: "add_task", title: "x" }]), ["planning"]).dropped).toEqual([]);
+    expect(parseActions("no block here", []).dropped).toEqual([]);
+  });
+
   it("parses create_preset, drops unknown categories and previews it per pillar", async () => {
     const { mindmapPreview } = await import("../lib/assistant-actions");
     const [a] = parseActions(block([{
@@ -181,5 +226,68 @@ describe("assistant add_book action", () => {
 
   it("drops an add_book with no usable title", () => {
     expect(parseActions(block([{ type: "add_book", books: [{ author: "Nobody" }] }]), []).actions).toEqual([]);
+  });
+});
+
+describe("mindmap node trees", () => {
+  const nodesOf = (raw: unknown[]) => {
+    const [a] = parseActions(block([{ type: "add_mindmap_nodes", nodes: raw }]), ["planning"]).actions;
+    return a?.type === "add_mindmap_nodes" ? a.nodes : [];
+  };
+
+  it("only accepts a parent that comes earlier, so there are no self or forward links", () => {
+    const nodes = nodesOf([
+      { title: "Root", level: "goal", parentIndex: 0 },
+      { title: "Child", level: "phase", parentIndex: 2 },
+      { title: "Leaf", level: "task", parentIndex: 1 },
+    ]);
+    expect(nodes.map((n) => n.parentIndex)).toEqual([undefined, undefined, 1]);
+  });
+
+  it("remaps parent indices after dropping invalid entries, and orphans children of dropped ones", () => {
+    const nodes = nodesOf([
+      { title: "Launch", level: "goal" },
+      { title: "" },
+      "junk",
+      { title: "Research", level: "phase", parentIndex: 0 },
+      { title: "Interview 5 users", level: "task", parentIndex: 3 },
+      { title: "Orphan", level: "task", parentIndex: 1 },
+    ]);
+    expect(nodes.map((n) => [n.title, n.parentIndex])).toEqual([
+      ["Launch", undefined],
+      ["Research", 0],
+      ["Interview 5 users", 1],
+      ["Orphan", undefined],
+    ]);
+  });
+
+  it("previews the whole tree, not just the roots", async () => {
+    const { mindmapPreview } = await import("../lib/assistant-actions");
+    const [a] = parseActions(block([{
+      type: "add_mindmap_nodes",
+      nodes: [
+        { title: "Launch", level: "goal" },
+        { title: "Research", level: "phase", parentIndex: 0 },
+        { title: "Interview users", level: "task", parentIndex: 1 },
+        { title: "Build", level: "phase", parentIndex: 0 },
+      ],
+    }]), ["planning"]).actions;
+    const lines = mindmapPreview(a)!.split("\n");
+    expect(lines).toEqual(["New map", "🎯 Launch", "  🚩 Research", "    ✅ Interview users", "  🚩 Build"]);
+  });
+
+  it("does not loop on a cyclic tree restored from an older session", async () => {
+    const { mindmapPreview } = await import("../lib/assistant-actions");
+    const preview = mindmapPreview({
+      type: "extend_mindmap",
+      attachTo: "X",
+      nodes: [
+        { title: "A", level: "task" },
+        { title: "B", level: "task", parentIndex: 2 },
+        { title: "C", level: "task", parentIndex: 1 },
+        { title: "D", level: "task", parentIndex: 3 },
+      ],
+    });
+    expect(preview).toBe('+ Attach to "X"\n✅ A');
   });
 });

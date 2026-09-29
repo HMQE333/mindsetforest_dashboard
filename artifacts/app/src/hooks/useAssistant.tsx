@@ -5,9 +5,11 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useLayoutEffect,
   createElement,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,12 +20,15 @@ import { useDashboardState } from "@/hooks/useDashboardState";
 import { PLANNING_TASKS_CHANGED_EVENT } from "@/hooks/usePlanningState";
 import {
   gatherContext,
+  SCOPE_MAP,
   type ScopeId,
   type ArchiveItemRef,
   type Citation,
 } from "@/lib/assistant-context";
 import {
+  ACTION_SCOPE,
   buildActionInstructions,
+  describeAction,
   isAutoApply,
   parseActions,
   visibleReplyText,
@@ -39,6 +44,7 @@ import {
   completePlanningTask,
   createPath,
   createPresetFromMissions,
+  defaultPlanningBoard,
   logMetricEntry,
   logPathStepToday,
   patchPreferences,
@@ -63,12 +69,21 @@ export interface AssistantMessage {
   actionsResolved?: "applied" | "dismissed";
   /** Short summary shown after the actions were applied. */
   actionResult?: string;
+  /** Per action (same order as `actions`), whether it went through when applied. */
+  actionResults?: boolean[];
 }
 
 const OPEN_KEY = "assistant_panel_open";
 const MSG_KEY = "assistant_messages";
 const SCOPE_KEY = "assistant_scopes";
 const AUTO_KEY = "assistant_auto_context";
+/**
+ * What ai-assistant-chat keeps of `context`. The action instructions ride at
+ * the end of it, so the data part is cut here to leave room for them; a cut
+ * at the server would take the instructions first.
+ */
+const CONTEXT_MAX_CHARS = 120_000;
+const CONTEXT_CUT_NOTE = "\n\n(Data cut here to fit the request size.)";
 /** Cross-page navigation event handled by pages/Index.tsx. */
 export const NAVIGATE_EVENT = "lov:navigate-module";
 
@@ -101,6 +116,20 @@ function loadScopes(): ScopeId[] {
   }
 }
 
+/** Toast line saying where assistant-made planning rows landed. */
+function planningPlacement(board: { name: string } | null): string {
+  return board
+    ? `Tablica „${board.name}” w Planning`
+    : "Zapisano bez tablicy: nie masz jeszcze żadnej tablicy w Planning, więc nie będzie tam widoczne.";
+}
+
+/** "1 węzeł", "3 węzły", "5 węzłów". */
+function nodesLabel(n: number): string {
+  if (n === 1) return "1 węzeł";
+  const few = n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14);
+  return `${n} ${few ? "węzły" : "węzłów"}`;
+}
+
 function useAssistantValue() {
   const { user } = useAuth();
   const {
@@ -114,6 +143,15 @@ function useAssistantValue() {
     addXP,
     state: dashboardState,
   } = useDashboardState();
+  // Missions are addressed by their position in a list, so each action in a
+  // batch ("remove X, remove Y", "add X, then edit it") has to see what the
+  // previous one did. runAction reads this ref instead of the render-time
+  // state, and flushes its own mission writes (flushSync) so the ref is
+  // current again before the next action runs.
+  const dashboardRef = useRef(dashboardState);
+  useLayoutEffect(() => {
+    dashboardRef.current = dashboardState;
+  }, [dashboardState]);
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpenState] = useState<boolean>(() => {
@@ -136,6 +174,10 @@ function useAssistantValue() {
   const [currentScope, setCurrentScope] = useState<ScopeId | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // Replies whose actions an apply or a dismiss has already taken. Checked
+  // synchronously, so a click and a spoken "tak" landing together (or a
+  // double click) cannot run the same actions twice.
+  const claimedRef = useRef<Set<string>>(new Set());
 
   // Persist panel open/closed across reloads.
   const setOpen = useCallback((v: boolean) => {
@@ -270,9 +312,13 @@ function useAssistantValue() {
         // The action protocol rides inside `context` (the function embeds it in
         // the system prompt), gated by the sections in play.
         const actionInstructions = buildActionInstructions(scopesForSend);
-        const contextWithActions = actionInstructions
-          ? `${context}\n\n${actionInstructions}`
+        const room = CONTEXT_MAX_CHARS - (actionInstructions ? actionInstructions.length + 2 : 0);
+        const data = context.length > room
+          ? context.slice(0, Math.max(0, room - CONTEXT_CUT_NOTE.length)) + CONTEXT_CUT_NOTE
           : context;
+        const contextWithActions = actionInstructions
+          ? `${data}\n\n${actionInstructions}`
+          : data;
 
         const res = await fetch(ASSISTANT_FN_URL, {
           method: "POST",
@@ -344,17 +390,29 @@ function useAssistantValue() {
           // Pull any proposed write actions out of the reply and gate them by the
           // sections in play. Navigation runs right away; the rest wait for a click
           // (or a spoken yes in voice mode).
-          const { text: parsedText, actions, broken } = parseActions(replaceDashes(acc), scopesForSend);
+          const { text: parsedText, actions, dropped, broken } = parseActions(replaceDashes(acc), scopesForSend);
           // A block that was cut off or malformed is never shown as raw JSON.
           const display = broken
             ? `${parsedText}\n\n(Nie udało się odczytać proponowanych akcji. Poproś jeszcze raz, krócej.)`.trim()
             : parsedText;
           const pending = actions.filter((a) => !isAutoApply(a));
           for (const a of actions.filter(isAutoApply)) void runActionRef.current(a);
+          // Valid actions for a section that is not in play were left out; say
+          // so once instead of letting the request vanish.
+          if (dropped.length > 0) {
+            const sections = Array.from(new Set(dropped.map((a) => ACTION_SCOPE[a.type]).filter((s): s is ScopeId => !!s)));
+            toast.warning(
+              `Pominięto ${dropped.length === 1 ? "akcję" : `akcje (${dropped.length})`} spoza sekcji tej rozmowy: ${sections.map((s) => SCOPE_MAP[s]?.label ?? s).join(", ")}`,
+              { description: `${dropped.map(describeAction).join("\n")}\nPrzypnij ${sections.length === 1 ? "tę sekcję" : "te sekcje"} w Context i poproś jeszcze raz.` },
+            );
+          }
+          // A reply that was only an action block still gets a line of text,
+          // never the raw block.
+          const fallback = pending.length > 0 ? "Proponuję te zmiany." : actions.length > 0 ? "Gotowe." : "Nic nie zostało zmienione.";
           final = {
             id: assistantId,
             role: "assistant",
-            content: display || acc,
+            content: display || fallback,
             citations,
             actions: pending.length > 0 ? pending : undefined,
           };
@@ -408,8 +466,9 @@ function useAssistantValue() {
           } else if (action.type === "complete_mission") {
             // Ticks belong to the day the state was last written; after the 04:00
             // rollover (applied lazily by completeMission) they are yesterday's.
-            const completed = dashboardState.dayKey === todayKey() ? dashboardState.completedMissions : [];
-            const entries = listTodayMissions(dashboardState.customMissions, completed);
+            const dash = dashboardRef.current;
+            const completed = dash.dayKey === todayKey() ? dash.completedMissions : [];
+            const entries = listTodayMissions(dash.customMissions, completed);
             const match = findMission(entries, action.title, action.categoryId);
             if (!match) {
               failed++;
@@ -418,7 +477,7 @@ function useAssistantValue() {
               ok++;
               toast(`„${match.title}” jest już odhaczone`);
             } else {
-              completeMission(match.categoryId, match.index, match.xp);
+              flushSync(() => completeMission(match.categoryId, match.index, match.xp));
               ok++;
               toast.success(`Odhaczono „${match.title}” (+${match.xp} XP)`);
             }
@@ -443,8 +502,9 @@ function useAssistantValue() {
             action.type === "edit_mission" ||
             action.type === "remove_mission"
           ) {
-            const completed = dashboardState.dayKey === todayKey() ? dashboardState.completedMissions : [];
-            const entries = listTodayMissions(dashboardState.customMissions, completed);
+            const dash = dashboardRef.current;
+            const completed = dash.dayKey === todayKey() ? dash.completedMissions : [];
+            const entries = listTodayMissions(dash.customMissions, completed);
             const pool = action.type === "uncomplete_mission" ? entries.filter((e) => e.done) : entries;
             const match = findMission(pool, action.title, action.categoryId) ?? findMission(entries, action.title, action.categoryId);
             if (!match) {
@@ -452,18 +512,18 @@ function useAssistantValue() {
               toast.error(`Nie znaleziono misji „${action.title}”`);
             } else if (action.type === "uncomplete_mission") {
               if (match.done) {
-                uncompleteMission(match.categoryId, match.index, match.xp);
+                flushSync(() => uncompleteMission(match.categoryId, match.index, match.xp));
                 toast.success(`Odznaczono „${match.title}” (−${match.xp} XP)`);
               } else {
                 toast(`„${match.title}” nie była odhaczona`);
               }
               ok++;
             } else if (action.type === "remove_mission") {
-              removeMission(match.categoryId, match.index);
+              flushSync(() => removeMission(match.categoryId, match.index));
               toast.success(`Usunięto misję „${match.title}”`);
               ok++;
             } else {
-              const custom = dashboardState.customMissions[match.categoryId];
+              const custom = dash.customMissions[match.categoryId];
               const list = custom && custom.length > 0
                 ? custom
                 : CATEGORIES.find((c) => c.id === match.categoryId)?.missions || [];
@@ -479,7 +539,7 @@ function useAssistantValue() {
                   ...(action.xp !== undefined ? { xp: action.xp } : {}),
                 };
                 const { __originalIndex: _drop, ...clean } = updated as typeof updated & { __originalIndex?: number };
-                saveCustomMissions(match.categoryId, list.map((m, i) => (i === match.index ? clean : m)));
+                flushSync(() => saveCustomMissions(match.categoryId, list.map((m, i) => (i === match.index ? clean : m))));
                 toast.success(`Zmieniono misję „${action.newTitle || match.title}”`);
                 ok++;
               }
@@ -494,12 +554,12 @@ function useAssistantValue() {
             );
             if (!r.ok) { failed++; toast.error(r.error); }
             else {
-              if (action.apply) applyMissionPreset(missionsForApply(parseMissionMap(map)));
+              if (action.apply) flushSync(() => applyMissionPreset(missionsForApply(parseMissionMap(map))));
               ok++;
               toast.success(`${r.updated ? "Zaktualizowano" : "Utworzono"} preset „${r.name}”${action.apply ? " i załadowano na Home" : ""}`);
             }
           } else if (action.type === "save_preset") {
-            const r = await saveCurrentAsPreset(user.id, { name: action.name, emoji: action.emoji }, dashboardState.customMissions);
+            const r = await saveCurrentAsPreset(user.id, { name: action.name, emoji: action.emoji }, dashboardRef.current.customMissions);
             if (r.ok) { ok++; toast.success(r.updated ? `Zaktualizowano preset „${r.name}”` : `Zapisano preset „${r.name}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "log_metric") {
@@ -543,12 +603,14 @@ function useAssistantValue() {
             if (r.ok) { ok++; toast.success(`${action.kind === "income" ? "Przychód" : "Wydatek"}: ${action.amount} · ${action.title}`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_mission") {
-            addMission(action.categoryId, {
-              title: action.title,
-              description: action.description || "",
-              duration: action.duration || "",
-              xp: action.xp ?? 20,
-            });
+            flushSync(() =>
+              addMission(action.categoryId, {
+                title: action.title,
+                description: action.description || "",
+                duration: action.duration || "",
+                xp: action.xp ?? 20,
+              }),
+            );
             ok++;
           } else if (action.type === "apply_preset") {
             // Same write as the "Załaduj" chip on Home: replace every mission
@@ -567,7 +629,7 @@ function useAssistantValue() {
               failed++;
               toast.error(`Nie znaleziono presetu „${action.presetName}”`);
             } else {
-              applyMissionPreset(missionsForApply(parseMissionMap(match.missions)));
+              flushSync(() => applyMissionPreset(missionsForApply(parseMissionMap(match.missions))));
               ok++;
               toast.success(`Załadowano preset „${match.name}”`);
               await supabase
@@ -578,13 +640,17 @@ function useAssistantValue() {
               window.dispatchEvent(new CustomEvent(MISSION_PRESETS_CHANGED_EVENT));
             }
           } else if (action.type === "add_task") {
+            // Planning only lists rows of a board, so the task goes on the
+            // default board (see defaultPlanningBoard); with no board at all
+            // it is still saved, and the toast says where it went.
+            const board = await defaultPlanningBoard(user.id);
             const { error } = await (supabase.from("planning_tasks" as never) as never as {
               insert: (rows: unknown[]) => Promise<{ error: unknown }>;
             }).insert([
               {
                 user_id: user.id,
                 project_id: null,
-                board_id: null,
+                board_id: board?.id ?? null,
                 parent_id: null,
                 level: action.level || "task",
                 title: action.title,
@@ -606,6 +672,7 @@ function useAssistantValue() {
               failed++;
             } else {
               ok++;
+              toast.success(`Dodano zadanie „${action.title}”`, { description: planningPlacement(board) });
               // Page-scoped planning hooks don't share state with this
               // provider, so nudge them to refetch immediately.
               window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
@@ -674,6 +741,8 @@ function useAssistantValue() {
             // Each node is inserted with standalone=false so it's part of a tree.
             const nodes = action.nodes;
             const realIds: (string | null)[] = new Array(nodes.length).fill(null);
+            // A new tree goes on the default board, like add_task.
+            const board = await defaultPlanningBoard(user.id);
 
             // Phase 1: insert all nodes
             for (let i = 0; i < nodes.length; i++) {
@@ -681,7 +750,7 @@ function useAssistantValue() {
               const { data: inserted, error } = await supabase.from("planning_tasks").insert([{
                 user_id: user.id,
                 project_id: null,
-                board_id: null,
+                board_id: board?.id ?? null,
                 parent_id: null,
                 level: n.level,
                 title: n.title,
@@ -719,14 +788,25 @@ function useAssistantValue() {
             }
 
             // Count successful top-level inserts (those without write errors in phase 1)
-            ok += realIds.filter(id => id !== null).length;
+            const created = realIds.filter(id => id !== null).length;
+            ok += created;
+            if (created > 0) {
+              toast.success(`Utworzono mapę „${nodes[0].title}” (${nodesLabel(created)})`, { description: planningPlacement(board) });
+            }
             window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
           } else if (action.type === "extend_mindmap") {
             // Find an existing node whose title partially matches attachTo (case-insensitive)
             const search = action.attachTo.toLowerCase();
-            const { data: existing } = await supabase.from("planning_tasks").select("id,title").eq("user_id", user.id).ilike("title", `%${search}%`).limit(5);
+            const { data: existing } = await supabase.from("planning_tasks").select("id,title,project_id,board_id").eq("user_id", user.id).ilike("title", `%${search}%`).limit(5);
             const match = (existing || []).find((t: any) => t.title?.toLowerCase().includes(search));
             const parentId = match?.id || null;
+            // New nodes live where the node they hang from lives (its board or
+            // its project), like a child added by hand; with no match they
+            // become new roots on the default board.
+            const board = match ? null : await defaultPlanningBoard(user.id);
+            const container = match
+              ? { project_id: match.project_id ?? null, board_id: match.board_id ?? null }
+              : { project_id: null, board_id: board?.id ?? null };
 
             const nodes = action.nodes;
             const realIds: (string | null)[] = new Array(nodes.length).fill(null);
@@ -737,8 +817,7 @@ function useAssistantValue() {
               const nodeParentId = n.parentIndex == null ? parentId : null; // only root-of-batch gets the target parent
               const { data: inserted, error } = await supabase.from("planning_tasks").insert([{
                 user_id: user.id,
-                project_id: null,
-                board_id: null,
+                ...container,
                 parent_id: nodeParentId,
                 level: n.level,
                 title: n.title,
@@ -775,7 +854,14 @@ function useAssistantValue() {
               }
             }
 
-            ok += realIds.filter(id => id !== null).length;
+            const created = realIds.filter(id => id !== null).length;
+            ok += created;
+            if (created > 0) {
+              toast.success(
+                match ? `Dopięto ${nodesLabel(created)} pod „${match.title}”` : `Nie znaleziono „${action.attachTo}”, dodano ${nodesLabel(created)} jako nową mapę`,
+                match ? undefined : { description: planningPlacement(board) },
+              );
+            }
             window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
           }
         } catch {
@@ -784,7 +870,7 @@ function useAssistantValue() {
       }
       return failed === 0 && ok > 0;
     },
-    [user, addMission, applyMissionPreset, completeMission, uncompleteMission, removeMission, saveCustomMissions, completeExternal, addXP, dashboardState.customMissions, dashboardState.completedMissions, dashboardState.dayKey, navigate, location.pathname],
+    [user, addMission, applyMissionPreset, completeMission, uncompleteMission, removeMission, saveCustomMissions, completeExternal, addXP, navigate, location.pathname],
   );
   const runActionRef = useRef(runAction);
   useEffect(() => { runActionRef.current = runAction; }, [runAction]);
@@ -796,13 +882,16 @@ function useAssistantValue() {
       if (!user) return null;
       const msg = messages.find((m) => m.id === messageId);
       if (!msg?.actions || msg.actions.length === 0 || msg.actionsResolved) return null;
+      if (claimedRef.current.has(messageId)) return null;
+      claimedRef.current.add(messageId);
 
-      let ok = 0;
-      let failed = 0;
+      // Kept per action so the history records only what really happened.
+      const results: boolean[] = [];
       for (const action of msg.actions) {
-        if (await runActionRef.current(action)) ok++;
-        else failed++;
+        results.push(await runActionRef.current(action));
       }
+      const ok = results.filter(Boolean).length;
+      const failed = results.length - ok;
 
       const result =
         failed === 0
@@ -811,7 +900,7 @@ function useAssistantValue() {
 
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === messageId ? { ...m, actionsResolved: "applied", actionResult: result } : m,
+          m.id === messageId ? { ...m, actionsResolved: "applied", actionResult: result, actionResults: results } : m,
         ),
       );
       return result;
@@ -820,9 +909,12 @@ function useAssistantValue() {
   );
 
   const dismissActions = useCallback((messageId: string) => {
+    // No-op once the actions were applied, dismissed or are being applied.
+    if (claimedRef.current.has(messageId)) return;
+    claimedRef.current.add(messageId);
     setMessages((prev) =>
       prev.map((m) =>
-        m.id === messageId ? { ...m, actionsResolved: "dismissed" } : m,
+        m.id === messageId && !m.actionsResolved ? { ...m, actionsResolved: "dismissed" } : m,
       ),
     );
   }, []);

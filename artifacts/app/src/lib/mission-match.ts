@@ -1,4 +1,5 @@
 import { CATEGORIES, type Mission } from "@/lib/dashboard-data";
+import { logicalDate } from "@/lib/today";
 
 /**
  * Today's mission list as one flat table, shared by the assistant context
@@ -15,7 +16,9 @@ export interface MissionEntry {
   done: boolean;
 }
 
-export function isMissionVisibleToday(mission: Mission, today: number = new Date().getDay()): boolean {
+// The weekday of the app's day (04:00 boundary), so at 01:00 on Tuesday the
+// missions shown are still Monday's, like the date they are recorded under.
+export function isMissionVisibleToday(mission: Mission, today: number = logicalDate().getDay()): boolean {
   if (!mission.daysOfWeek || mission.daysOfWeek.length === 0 || mission.daysOfWeek.length === 7) return true;
   return mission.daysOfWeek.includes(today);
 }
@@ -24,7 +27,7 @@ export function listTodayMissions(
   customMissions: Record<string, Mission[]>,
   completed: Iterable<string>,
   projectNames: Record<string, string> = {},
-  today: number = new Date().getDay(),
+  today: number = logicalDate().getDay(),
 ): MissionEntry[] {
   const done = new Set(completed);
   const out: MissionEntry[] = [];

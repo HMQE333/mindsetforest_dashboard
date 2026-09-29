@@ -53,6 +53,25 @@ describe("voice mode helpers", () => {
   });
 });
 
+describe("Polish agreements that contain no / nie", () => {
+  it("reads whole-phrase agreements as yes, whatever the language setting", () => {
+    for (const lang of [undefined, "pl-PL", "en-US"] as const) {
+      expect(parseYesNo("No dobra", lang)).toBe("yes");
+      expect(parseYesNo("no tak, zrób to", lang)).toBe("yes");
+      expect(parseYesNo("Nie ma sprawy!", lang)).toBe("yes");
+      expect(parseYesNo("czemu nie", lang)).toBe("yes");
+    }
+  });
+
+  it("does not treat a bare Polish 'no' as a refusal, but keeps 'nie' and English 'no'", () => {
+    expect(parseYesNo("no", "pl-PL")).toBeNull();
+    expect(parseYesNo("no, nie", "pl-PL")).toBe("no");
+    expect(parseYesNo("nie", "pl-PL")).toBe("no");
+    expect(parseYesNo("no", "en-US")).toBe("no");
+    expect(parseYesNo("no thanks")).toBe("no");
+  });
+});
+
 describe("voice confirm precedence", () => {
   it("stop phrases are not read as a yes or no", () => {
     expect(isStopPhrase("koniec")).toBe(true);
