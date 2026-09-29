@@ -145,3 +145,36 @@ describe("action blocks in replies", () => {
     expect(parseActions(block([{ type: "create_preset", name: "Empty", missions: {} }]), ["dashboard"]).actions).toEqual([]);
   });
 });
+
+describe("assistant add_book action", () => {
+  it("adds books with no scope granted, cleaning each entry", () => {
+    const { actions } = parseActions(block([{
+      type: "add_book",
+      books: [
+        { title: " Storyworthy ", author: "Matthew Dicks", status: "reading", totalPages: "304", tags: ["Story", " "] },
+        { title: "" },
+        { title: "Deep Work", status: "someday" },
+      ],
+    }]), []);
+    expect(actions).toEqual([{
+      type: "add_book",
+      books: [
+        { title: "Storyworthy", author: "Matthew Dicks", status: "reading", totalPages: 304, tags: ["story"], notes: undefined },
+        { title: "Deep Work", author: undefined, status: "to-read", totalPages: undefined, tags: undefined, notes: undefined },
+      ],
+    }]);
+  });
+
+  it("accepts a single book at the top level and says what it will add", () => {
+    const { actions } = parseActions(block([{ type: "add_book", title: "Traction", author: "Gabriel Weinberg" }]), []);
+    expect(describeAction(actions[0])).toBe('Add book "Traction" (Gabriel Weinberg)');
+    const many = parseActions(block([{ type: "add_book", books: ["A", "B", "C", "D"].map((title) => ({ title })) }]), []).actions[0];
+    expect(describeAction(many)).toBe('Add 4 books: "A", "B", "C" +1 more');
+    expect(ACTION_SCOPE.add_book).toBeNull();
+    expect(buildActionInstructions([])).toContain("- add_book:");
+  });
+
+  it("drops an add_book with no usable title", () => {
+    expect(parseActions(block([{ type: "add_book", books: [{ author: "Nobody" }] }]), []).actions).toEqual([]);
+  });
+});

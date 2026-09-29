@@ -10,8 +10,10 @@ import {
   FINANCE_CHANGED_EVENT,
   TRACKER_ENTRIES_CHANGED_EVENT,
   USER_SETTINGS_CHANGED_EVENT,
+  LIBRARY_CHANGED_EVENT,
   emitAppEvent,
 } from "@/lib/app-events";
+import type { BookDraft } from "@/lib/assistant-actions";
 import { MISSION_PRESETS_CHANGED_EVENT, normalizePresetName, parseMissionMap, snapshotMissions, type MissionMap } from "@/lib/mission-presets";
 import { todayKey } from "@/lib/today";
 
@@ -205,6 +207,56 @@ export async function completePlanningTask(userId: string, title: string): Promi
   if (error) return { ok: false, error: "Nie udało się oznaczyć zadania" };
   emitAppEvent(PLANNING_TASKS_CHANGED_EVENT);
   return { ok: true, title: task.title };
+}
+
+// ---------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------
+
+/** "Deep Work: Rules for..." and "deep work" are the same book on the shelf. */
+const shelfKey = (title: string) => norm(title.split(/[:(]/)[0]);
+
+/**
+ * Puts books on the shelf in the order given (first on top), skipping any
+ * already there. A book added as finished is stamped finished today.
+ */
+export async function addBooks(
+  userId: string,
+  books: BookDraft[],
+): Promise<WriteResult<{ added: string[]; skipped: string[] }>> {
+  const { data, error: readError } = await supabase.from("user_books").select("title").eq("user_id", userId);
+  if (readError) return { ok: false, error: "Nie udało się odczytać biblioteki" };
+  const have = new Set((data || []).map((b) => shelfKey(b.title)));
+  const added: string[] = [];
+  const skipped: string[] = [];
+  const now = Date.now();
+  const rows = [];
+  for (const b of books) {
+    const key = shelfKey(b.title);
+    if (!key || have.has(key)) { skipped.push(b.title); continue; }
+    have.add(key);
+    const finished = b.status === "finished";
+    rows.push({
+      user_id: userId,
+      title: b.title,
+      author: b.author || "",
+      status: b.status || "to-read",
+      total_pages: b.totalPages || 0,
+      pages_read: finished ? b.totalPages || 0 : 0,
+      tags: b.tags || [],
+      notes: b.notes || "",
+      finished_at: finished ? new Date(now).toISOString() : null,
+      // Distinct times keep the list in the order given.
+      created_at: new Date(now - added.length).toISOString(),
+    });
+    added.push(b.title);
+  }
+  if (rows.length > 0) {
+    const { error } = await supabase.from("user_books").insert(rows);
+    if (error) return { ok: false, error: "Nie udało się dodać książek" };
+    emitAppEvent(LIBRARY_CHANGED_EVENT);
+  }
+  return { ok: true, added, skipped };
 }
 
 // ---------------------------------------------------------------------------

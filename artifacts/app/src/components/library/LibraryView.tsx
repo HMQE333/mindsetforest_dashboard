@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, lazy, Suspense } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List, Link2 } from "lucide-react";
+import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List, Link2, FileText } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
 import { useCoursesState } from "@/hooks/useCoursesState";
 import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS } from "@/lib/library-data";
@@ -64,6 +64,7 @@ export default function LibraryView() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [formatFilter, setFormatFilter] = useState<BookFormat | null>(null);
   const [pillarFilter, setPillarFilter] = useState<string | null>(null);
+  const [pdfOnly, setPdfOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"block" | "list">("block");
 
   const allTags = useMemo(() => {
@@ -80,13 +81,15 @@ export default function LibraryView() {
       if (tagFilter && !(b.tags || []).includes(tagFilter)) return false;
       if (formatFilter && (b.format || "owned") !== formatFilter) return false;
       if (pillarFilter && !(b.pillars || []).includes(pillarFilter)) return false;
+      if (pdfOnly && !b.file) return false;
       if (search) {
         const q = search.toLowerCase();
         if (!b.title.toLowerCase().includes(q) && !b.author.toLowerCase().includes(q)) return false;
       }
       return true;
     });
-  }, [books, statusFilter, ratingFilter, tagFilter, formatFilter, pillarFilter, search]);
+  }, [books, statusFilter, ratingFilter, tagFilter, formatFilter, pillarFilter, pdfOnly, search]);
+  const pdfCount = useMemo(() => books.filter(b => b.file).length, [books]);
 
   const filteredCourses = useMemo(() => {
     return courses.filter(c => {
@@ -311,6 +314,17 @@ export default function LibraryView() {
           <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[8px]">▼</div>
         </div>
 
+        {/* Books with their PDF attached */}
+        {tab === "books" && (
+          <button
+            onClick={() => setPdfOnly(v => !v)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${pdfOnly ? "bg-primary/20 text-primary ring-1 ring-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground"}`}
+            title="Only books with a PDF attached"
+          >
+            <FileText className="w-3 h-3" /> PDF ({pdfCount})
+          </button>
+        )}
+
         {/* Format filter (books only) */}
         {tab === "books" && (
           <div className="flex gap-1">
@@ -422,7 +436,7 @@ export default function LibraryView() {
           onClose={() => setCelebrate(null)}
         />
       )}
-      <AISuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} books={books} />
+      <AISuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} books={books} onAdd={addBook} />
       <AddCourseModal open={addCourseOpen} onClose={() => setAddCourseOpen(false)} onAdd={addCourse} />
       <CourseDetailModal course={selectedCourse} open={!!selectedCourse} onClose={() => setSelectedCourse(null)} onUpdate={updateCourse} onDelete={deleteCourse} />
       <ShareLibraryModal

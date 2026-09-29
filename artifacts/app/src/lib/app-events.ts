@@ -8,6 +8,7 @@ export const CALENDAR_EVENTS_CHANGED_EVENT = "calendar-events-changed";
 export const FINANCE_CHANGED_EVENT = "finance-changed";
 export const USER_SETTINGS_CHANGED_EVENT = "user-settings-changed";
 export const WATCH_ENTRIES_CHANGED_EVENT = "watch-entries-changed";
+export const LIBRARY_CHANGED_EVENT = "library-changed";
 
 export function emitAppEvent(name: string): void {
   window.dispatchEvent(new CustomEvent(name));

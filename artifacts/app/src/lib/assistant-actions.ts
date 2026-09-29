@@ -103,6 +103,7 @@ export type AssistantAction =
     }
   | { type: "complete_task"; title: string }
   | { type: "add_event"; title: string; date: string; time?: string; notes?: string }
+  | { type: "add_book"; books: BookDraft[] }
   | { type: "add_transaction"; kind: "expense" | "income"; amount: number; title: string; category?: string; date?: string }
   | {
       /** Tick one of today's missions on Home. Matched by title against the list in the context. */
@@ -149,6 +150,16 @@ export type AssistantAction =
       }[];
     };
 
+/** A book the assistant puts on the Library shelf. */
+export interface BookDraft {
+  title: string;
+  author?: string;
+  status?: "to-read" | "reading" | "finished";
+  totalPages?: number;
+  tags?: string[];
+  notes?: string;
+}
+
 export type ActionType = AssistantAction["type"];
 
 /** Which granted scope an action needs; null means always allowed (navigation). */
@@ -168,6 +179,8 @@ export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
   complete_task: "planning",
   add_event: "calendar",
   add_transaction: "finance",
+  // Adding a book needs no Library context: duplicates are skipped when it runs.
+  add_book: null,
   complete_mission: "dashboard",
   add_task: "planning",
   add_mission: "dashboard",
@@ -235,6 +248,12 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
   specs.push(
     `- set_theme: change the look. Fields: theme (optional, one of ${THEMES.map((t) => `"${t}"`).join(", ")}), ` +
       `accent (optional, one of ${ACCENTS.map((a) => `"${a}"`).join(", ")}). Runs immediately; use when the user asks for a darker/lighter look or a colour.`,
+  );
+  specs.push(
+    '- add_book: put one or more books on the Library shelf. Field: books (array, max 20) of { title (required, the real title), ' +
+      'author (the actual author; fill it in when you know it), status (optional "to-read" | "reading" | "finished", default "to-read"), ' +
+      "totalPages (optional, only if the user gave it), tags (optional, short lowercase), notes (optional, e.g. why the user wants it) }. " +
+      "Books already on the shelf are skipped automatically.",
   );
   specs.push(
     `- toggle_module: show or hide a module in the navigation. Fields: module (one of ${TOGGLEABLE_MODULES.map((m) => `"${m}"`).join(", ")}), enabled (boolean).`,
@@ -586,6 +605,29 @@ function coerceAction(raw: unknown): AssistantAction | null {
     return { type: "add_event", title, date, time, notes };
   }
 
+  if (type === "add_book") {
+    // Accept a single book at the top level as well as a books array.
+    const list = Array.isArray(o.books) ? o.books : typeof o.title === "string" ? [o] : [];
+    const books: BookDraft[] = [];
+    for (const raw of list.slice(0, 20)) {
+      if (!raw || typeof raw !== "object") continue;
+      const x = raw as Record<string, unknown>;
+      const title = typeof x.title === "string" ? x.title.trim().slice(0, 300) : "";
+      if (!title) continue;
+      const status = x.status === "reading" || x.status === "finished" ? x.status : "to-read";
+      const pages = Number(x.totalPages ?? x.total_pages);
+      books.push({
+        title,
+        author: typeof x.author === "string" && x.author.trim() ? x.author.trim().slice(0, 200) : undefined,
+        status,
+        totalPages: Number.isFinite(pages) && pages > 0 ? Math.min(20000, Math.round(pages)) : undefined,
+        tags: Array.isArray(x.tags) ? x.tags.filter((t): t is string => typeof t === "string" && !!t.trim()).map((t) => t.trim().toLowerCase().slice(0, 40)).slice(0, 8) : undefined,
+        notes: typeof x.notes === "string" && x.notes.trim() ? x.notes.trim().slice(0, 1000) : undefined,
+      });
+    }
+    return books.length > 0 ? { type: "add_book", books } : null;
+  }
+
   if (type === "add_transaction") {
     const kind = o.kind === "income" ? "income" : o.kind === "expense" ? "expense" : null;
     const amount = Number(o.amount);
@@ -800,6 +842,15 @@ export function describeAction(action: AssistantAction): string {
   if (action.type === "log_path_step") return `Log today on path "${action.pathName}" (active step)`;
   if (action.type === "create_path") return `Create path "${action.name}" (${action.steps.length} steps)`;
   if (action.type === "complete_task") return `Mark task done: "${action.title}"`;
+  if (action.type === "add_book") {
+    const one = (b: BookDraft) => `"${b.title}"${b.author ? ` (${b.author})` : ""}`;
+    if (action.books.length === 1) {
+      const b = action.books[0];
+      return `Add book ${one(b)}${b.status && b.status !== "to-read" ? `, ${b.status}` : ""}`;
+    }
+    const names = action.books.slice(0, 3).map(one).join(", ");
+    return `Add ${action.books.length} books: ${names}${action.books.length > 3 ? ` +${action.books.length - 3} more` : ""}`;
+  }
   if (action.type === "add_event") return `Add event ${action.date}${action.time ? ` ${action.time}` : ""}: "${action.title}"`;
   if (action.type === "add_transaction") {
     return `Add ${action.kind}: ${action.amount} · "${action.title}"${action.category ? ` (${action.category})` : ""}${action.date ? ` on ${action.date}` : ""}`;

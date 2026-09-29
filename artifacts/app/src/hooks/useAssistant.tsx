@@ -34,6 +34,7 @@ import { findMission, listTodayMissions } from "@/lib/mission-match";
 import { annotateHistory, keywordScopes } from "@/lib/scope-hints";
 import {
   addCalendarEvent,
+  addBooks,
   addFinanceTransaction,
   completePlanningTask,
   createPath,
@@ -527,6 +528,14 @@ function useAssistantValue() {
             const r = await addCalendarEvent(user.id, { title: action.title, date: action.date, time: action.time, notes: action.notes });
             if (r.ok) { ok++; toast.success(`Dodano do kalendarza: ${action.date} ${action.title}`); }
             else { failed++; toast.error(r.error); }
+          } else if (action.type === "add_book") {
+            const r = await addBooks(user.id, action.books);
+            if (r.ok) {
+              ok++;
+              const skippedNote = r.skipped.length ? `Już na półce: ${r.skipped.join(", ")}` : undefined;
+              if (r.added.length === 0) toast.info("Te książki już są w Library", { description: skippedNote });
+              else toast.success(r.added.length === 1 ? `Dodano do Library: „${r.added[0]}”` : `Dodano ${r.added.length} książek do Library`, { description: skippedNote });
+            } else { failed++; toast.error(r.error); }
           } else if (action.type === "add_transaction") {
             const r = await addFinanceTransaction(user.id, {
               type: action.kind, amount: action.amount, title: action.title, category: action.category, date: action.date,

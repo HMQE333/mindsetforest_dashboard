@@ -4,6 +4,7 @@ import { useAuth } from "./useAuth";
 import { Book, BookFile, isScan, pagesReadFor } from "@/lib/library-data";
 import { bookFileErrorMessage, removeBookFiles, uploadBookFile, type UploadStage } from "@/lib/book-files";
 import { toast } from "sonner";
+import { LIBRARY_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 
 export function useLibraryState() {
   const { user } = useAuth();
@@ -20,13 +21,18 @@ export function useLibraryState() {
       .from("user_books" as any)
       .select("*")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      // Books added in one go share a timestamp; without a tiebreak their order
+      // shifts whenever one of them is saved.
+      .order("id", { ascending: true });
     if (error) { toast.error("Failed to load books"); return; }
     setBooks((data || []) as unknown as Book[]);
     setLoading(false);
   }, [user]);
 
   useEffect(() => { fetchBooks(); }, [fetchBooks]);
+  // Books added elsewhere (the assistant) show up without a reload.
+  useEffect(() => onAppEvent(LIBRARY_CHANGED_EVENT, () => { void fetchBooks(); }), [fetchBooks]);
 
   const addBook = useCallback(async (book: Partial<Book>) => {
     if (!user) return;
