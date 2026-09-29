@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { SCOPES, type ScopeId } from "@/lib/assistant-context";
+import type { TtsVoice } from "@/lib/voice-mode";
 
 /** Thin client for the ai-assistant-chat edge function's non-streaming modes. */
 
@@ -88,13 +89,13 @@ const TTS_RETRY_MS = 10 * 60 * 1000;
 let ttsUnavailableUntil = 0;
 
 /** MP3 for a short reply, or null when the key is not configured / the call failed. */
-export async function fetchSpeech(text: string, lang: string, signal?: AbortSignal): Promise<Blob | null> {
+export async function fetchSpeech(text: string, lang: string, voiceId?: string | null, signal?: AbortSignal): Promise<Blob | null> {
   if (!text.trim() || Date.now() < ttsUnavailableUntil) return null;
   try {
     const res = await fetch(TTS_FN_URL, {
       method: "POST",
       headers: await assistantAuthHeaders(),
-      body: JSON.stringify({ text: text.slice(0, 1500), lang }),
+      body: JSON.stringify({ text: text.slice(0, 1500), lang, ...(voiceId ? { voice: voiceId } : {}) }),
       signal,
     });
     if (res.status === 501 || res.status === 404) {
@@ -107,5 +108,34 @@ export async function fetchSpeech(text: string, lang: string, signal?: AbortSign
     return blob.size > 0 ? blob : null;
   } catch {
     return null;
+  }
+}
+
+let voicesCache: { at: number; voices: TtsVoice[]; defaultVoice: string | null } | null = null;
+
+/** Voices on the ElevenLabs account; empty when the key is not configured. */
+export async function fetchVoices(): Promise<{ voices: TtsVoice[]; defaultVoice: string | null }> {
+  if (voicesCache && Date.now() - voicesCache.at < 5 * 60 * 1000) return voicesCache;
+  const empty = { voices: [] as TtsVoice[], defaultVoice: null };
+  if (Date.now() < ttsUnavailableUntil) return empty;
+  try {
+    const res = await fetch(TTS_FN_URL, {
+      method: "POST",
+      headers: await assistantAuthHeaders(),
+      body: JSON.stringify({ mode: "voices" }),
+    });
+    if (res.status === 501 || res.status === 404) {
+      ttsUnavailableUntil = Date.now() + TTS_RETRY_MS;
+      return empty;
+    }
+    if (!res.ok) return empty;
+    const d = await res.json();
+    const voices: TtsVoice[] = (Array.isArray(d?.voices) ? d.voices : []).filter(
+      (v: unknown): v is TtsVoice => !!v && typeof v === "object" && typeof (v as TtsVoice).id === "string" && typeof (v as TtsVoice).name === "string",
+    );
+    voicesCache = { at: Date.now(), voices, defaultVoice: typeof d?.defaultVoice === "string" ? d.defaultVoice : null };
+    return voicesCache;
+  } catch {
+    return empty;
   }
 }

@@ -8,7 +8,7 @@ These are the AI backend functions the app invokes via `supabase.functions.invok
 | --- | --- | --- | --- |
 | **Archive vector embeddings** (semantic search, Forest search) | `ai-embed-block`, `forest-publish-seed` | **OpenAI** (`text-embedding-3-small`) | `OPENAI_API_KEY` |
 | Every other AI feature (missions, paths, recipes, archive clean/expand/process/multi, assistant chat, book suggest, health extract, task split) | the `ai-*` LLM functions | **OpenRouter** | `OPENROUTER_API_KEY` (+ optional `OPENROUTER_MODEL`) |
-| **Assistant voice** (`ai-tts`): reads replies aloud in voice mode; without the key the browser voice is used | `ai-tts` | **ElevenLabs** | `ELEVENLABS_API_KEY`, optional `ELEVENLABS_VOICE_ID` (default `EXAVITQu4vr4xnSDxMaL`, Sarah), `ELEVENLABS_MODEL` (default `eleven_flash_v2_5`; `eleven_multilingual_v2` for top quality at 2x credits) |
+| **Assistant voice** (`ai-tts`): reads replies aloud in voice mode; without the key the browser voice is used | `ai-tts` | **ElevenLabs** | `ELEVENLABS_API_KEY`, optional `ELEVENLABS_VOICE_ID` (default: the first male voice on the account; users pick any account voice in Settings -> AI Context or in the voice strip), `ELEVENLABS_MODEL` (default `eleven_flash_v2_5`; `eleven_multilingual_v2` for top quality at 2x credits) |
 | **Assistant chat** (`ai-assistant-chat`): smart model until a monthly cap, cheap model after; a small router model picks context sections | `ai-assistant-chat` | **OpenRouter** | `ASSISTANT_MODEL` (default `anthropic/claude-sonnet-5.5`), `ASSISTANT_FALLBACK_MODEL` (default `OPENROUTER_MODEL` or `google/gemini-2.5-flash`), `ASSISTANT_ROUTER_MODEL` (default `google/gemini-2.5-flash`), `ASSISTANT_BUDGET_USD` (default `10`) |
 
 ### Assistant budget

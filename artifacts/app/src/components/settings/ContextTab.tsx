@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useUserContext, ContextShelves } from "@/hooks/useUserContext";
-import { fetchAssistantStatus, prettyModelName, type AssistantStatus } from "@/lib/assistant-api";
+import { fetchAssistantStatus, fetchSpeech, fetchVoices, prettyModelName, type AssistantStatus } from "@/lib/assistant-api";
+import { defaultVoiceLang, loadVoiceId, sampleSentence, saveVoiceId, voiceLabel, type TtsVoice } from "@/lib/voice-mode";
 
 interface Shelf {
   key: keyof ContextShelves;
@@ -118,6 +119,77 @@ export default function ContextTab() {
       </div>
 
       <AssistantStatusCard />
+      <VoicePicker />
+    </div>
+  );
+}
+
+/** Which ElevenLabs voice reads the assistant's replies; hidden when no key is configured. */
+function VoicePicker() {
+  const [voices, setVoices] = useState<TtsVoice[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [voiceId, setVoiceId] = useState<string | null>(loadVoiceId);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchVoices().then(({ voices: list }) => { if (!cancelled) { setVoices(list); setLoaded(true); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  const choose = (id: string | null) => { setVoiceId(id); saveVoiceId(id); };
+
+  const preview = async () => {
+    if (playing) return;
+    setPlaying(true);
+    try {
+      const lang = defaultVoiceLang();
+      const blob = await fetchSpeech(sampleSentence(lang), lang, voiceId);
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      await new Promise<void>((resolve) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => resolve();
+        audio.play().catch(() => resolve());
+      });
+      URL.revokeObjectURL(url);
+    } finally {
+      setPlaying(false);
+    }
+  };
+
+  if (!loaded || voices.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-background/40 px-4 py-3 space-y-2">
+      <h4 className="text-xs font-bold text-foreground">Assistant voice</h4>
+      <p className="text-[11px] text-muted-foreground">
+        The voice that reads replies in a voice conversation (ElevenLabs, voices from your account).
+      </p>
+      <div className="flex items-center gap-2">
+        <select
+          value={voiceId ?? ""}
+          onChange={(e) => choose(e.target.value || null)}
+          className="flex-1 min-w-0 bg-background/60 border border-white/10 rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+          aria-label="Assistant voice"
+        >
+          <option value="">Default (first male voice on the account)</option>
+          {voices.map((v) => (
+            <option key={v.id} value={v.id}>
+              {voiceLabel(v)}{v.description ? ` · ${v.description}` : ""}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void preview()}
+          disabled={playing}
+          className="px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-xs text-muted-foreground hover:text-foreground transition-all disabled:opacity-50"
+        >
+          {playing ? "Playing…" : "▶ Preview"}
+        </button>
+      </div>
     </div>
   );
 }

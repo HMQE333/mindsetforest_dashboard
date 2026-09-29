@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSpeech } from "@/lib/assistant-api";
+import { fetchSpeech, fetchVoices } from "@/lib/assistant-api";
 import {
   VOICE_LANG_KEY,
   cleanForSpeech,
   defaultVoiceLang,
   detectLang,
+  loadVoiceId,
   pickVoice,
+  sampleSentence,
+  saveVoiceId,
+  type TtsVoice,
   type VoiceLang,
 } from "@/lib/voice-mode";
 
@@ -69,6 +73,8 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   const [interim, setInterim] = useState("");
   const [lang, setLangState] = useState<VoiceLang>(loadLang);
   const [provider, setProvider] = useState<VoiceProvider>(null);
+  const [voices, setVoices] = useState<TtsVoice[]>([]);
+  const [voiceId, setVoiceIdState] = useState<string | null>(loadVoiceId);
   const supported = voiceModeSupported();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioDoneRef = useRef<(() => void) | null>(null);
@@ -85,6 +91,17 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   useEffect(() => { onUtteranceRef.current = onUtterance; }, [onUtterance]);
   useEffect(() => { onEndRef.current = onEnd; }, [onEnd]);
   useEffect(() => { langRef.current = lang; }, [lang]);
+
+  const setVoiceId = useCallback((next: string | null) => {
+    setVoiceIdState(next);
+    saveVoiceId(next);
+  }, []);
+
+  /** Load the account's voices once (no-op when ElevenLabs is not configured). */
+  const refreshVoices = useCallback(async () => {
+    const { voices: list } = await fetchVoices();
+    setVoices(list);
+  }, []);
 
   const setLang = useCallback((next: VoiceLang) => {
     setLangState(next);
@@ -180,7 +197,8 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     cancelSpeech();
     setPhase("speaking");
     const generation = generationRef.current;
-    const blob = await fetchSpeech(clean, chosenLang);
+    // Read the choice fresh so a pick made in Settings applies to the next reply.
+    const blob = await fetchSpeech(clean, chosenLang, loadVoiceId());
     // Stopped or interrupted while the audio was being generated.
     if (generation !== generationRef.current) return;
     if (blob) {
@@ -264,12 +282,21 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     silentRef.current = 0;
     generationRef.current += 1;
     setActive(true);
-    // Warm the voice list (Chrome loads it lazily).
+    // Warm the voice lists (Chrome loads the browser one lazily).
     try { window.speechSynthesis.getVoices(); } catch { /* ignore */ }
+    void refreshVoices();
     listen();
-  }, [supported, listen]);
+  }, [supported, listen, refreshVoices]);
 
   const stop = useCallback(() => finish("manual"), [finish]);
+
+  /** Say a sample line in the chosen voice, pausing the microphone meanwhile. */
+  const preview = useCallback(async () => {
+    generationRef.current += 1;
+    stopRecognition();
+    await speak(sampleSentence(langRef.current), langRef.current);
+    if (activeRef.current) listen();
+  }, [stopRecognition, speak, listen]);
 
   /** Interrupt the synthesizer and go straight back to listening. */
   const interrupt = useCallback(() => {
@@ -285,5 +312,5 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     cancelSpeech();
   }, [stopRecognition, cancelSpeech]);
 
-  return { supported, active, phase, interim, lang, setLang, provider, start, stop, interrupt, speak };
+  return { supported, active, phase, interim, lang, setLang, provider, voices, voiceId, setVoiceId, refreshVoices, preview, start, stop, interrupt, speak };
 }

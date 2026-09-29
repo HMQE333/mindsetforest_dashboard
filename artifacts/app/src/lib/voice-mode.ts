@@ -7,6 +7,47 @@
 export type VoiceLang = "pl-PL" | "en-US";
 
 export const VOICE_LANG_KEY = "mf-assistant-voice-lang";
+export const VOICE_ID_KEY = "mf-assistant-voice-id";
+
+/** One ElevenLabs voice as the ai-tts function lists it. */
+export interface TtsVoice {
+  id: string;
+  name: string;
+  gender: string | null;
+  accent: string | null;
+  description: string | null;
+  category: string | null;
+  preview: string | null;
+}
+
+export function loadVoiceId(): string | null {
+  try {
+    return localStorage.getItem(VOICE_ID_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveVoiceId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(VOICE_ID_KEY, id);
+    else localStorage.removeItem(VOICE_ID_KEY);
+  } catch { /* ignore */ }
+}
+
+/** "♂ George · British" for a select option. */
+export function voiceLabel(v: TtsVoice): string {
+  const mark = v.gender === "male" ? "♂" : v.gender === "female" ? "♀" : "•";
+  const bits = [v.name, v.accent ? v.accent.replace(/^\w/, (c) => c.toUpperCase()) : null].filter(Boolean);
+  return `${mark} ${bits.join(" · ")}`;
+}
+
+/** Short line spoken when previewing a voice. */
+export function sampleSentence(lang: VoiceLang): string {
+  return lang === "pl-PL"
+    ? "Cześć, tu Twój asystent MindsetForest. Tak będę brzmieć w rozmowie."
+    : "Hi, I'm your MindsetForest assistant. This is how I sound.";
+}
 
 export function defaultVoiceLang(navigatorLang: string | undefined = typeof navigator !== "undefined" ? navigator.language : undefined): VoiceLang {
   return (navigatorLang || "").toLowerCase().startsWith("pl") ? "pl-PL" : "en-US";

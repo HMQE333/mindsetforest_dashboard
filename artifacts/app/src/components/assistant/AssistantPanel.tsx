@@ -16,7 +16,7 @@ import {
 import { describeAction, mindmapPreview } from "@/lib/assistant-actions";
 import { processVoiceTranscript } from "@/lib/voice-format";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
-import { VOICE_PROMPTS, isStopPhrase, parseYesNo, type VoiceLang } from "@/lib/voice-mode";
+import { VOICE_PROMPTS, isStopPhrase, parseYesNo, voiceLabel, type VoiceLang } from "@/lib/voice-mode";
 import { prettyModelName } from "@/lib/assistant-api";
 import { supabase } from "@/integrations/supabase/client";
 import type { AssistantMessage } from "@/hooks/useAssistant";
@@ -682,6 +682,29 @@ export default function AssistantPanel() {
                     >
                       {voice.lang === "pl-PL" ? "Przerwij" : "Interrupt"}
                     </button>
+                  )}
+                  {voice.voices.length > 0 && (
+                    <>
+                      <select
+                        value={voice.voiceId ?? ""}
+                        onChange={(e) => voice.setVoiceId(e.target.value || null)}
+                        className="text-[10px] max-w-[7.5rem] px-1.5 py-1 rounded-lg bg-muted/50 border border-white/10 text-muted-foreground"
+                        title="Voice"
+                        aria-label="Voice"
+                      >
+                        <option value="">{voice.lang === "pl-PL" ? "Głos domyślny" : "Default voice"}</option>
+                        {voice.voices.map((v) => (
+                          <option key={v.id} value={v.id}>{voiceLabel(v)}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => void voice.preview()}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-muted/50 border border-white/10 text-muted-foreground hover:text-foreground"
+                        title={voice.lang === "pl-PL" ? "Posłuchaj tego głosu" : "Preview this voice"}
+                      >
+                        ▶
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => voice.setLang(voice.lang === "pl-PL" ? "en-US" : "pl-PL")}
