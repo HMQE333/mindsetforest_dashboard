@@ -1,6 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_STEP_XP, PathSnapshot, RevisionSource, StepMode, snapshotOf } from "@/lib/path-data";
 import type { Path, PathStep } from "@/lib/path-data";
+import { matchPlanToCurrent } from "@/lib/path-plan";
+
+export { matchPlanToCurrent } from "@/lib/path-plan";
 
 /**
  * Re-planning a path from outside the Paths screen.
@@ -65,7 +68,8 @@ export async function revisePathPlan(req: RevisionRequest): Promise<{ ok: boolea
     source,
   });
 
-  const keepIds = new Set(nextPlan.map(p => p.id).filter(Boolean) as string[]);
+  const matched = matchPlanToCurrent(nextPlan, current);
+  const keepIds = new Set(matched.filter(Boolean) as string[]);
   const writes: Promise<unknown>[] = [];
 
   nextPlan.forEach((p, index) => {
@@ -78,18 +82,25 @@ export async function revisePathPlan(req: RevisionRequest): Promise<{ ok: boolea
       xp: p.xp ?? DEFAULT_STEP_XP,
       sort_order: index,
     };
-    if (p.id && current.some(s => s.id === p.id)) {
-      writes.push((supabase.from("path_steps" as any) as any).update(plan).eq("id", p.id));
+    const liveId = matched[index];
+    if (liveId) {
+      writes.push((supabase.from("path_steps" as any) as any).update(plan).eq("id", liveId));
     } else {
       writes.push((supabase.from("path_steps" as any) as any)
         .insert({ ...plan, user_id: userId, path_id: pathId }));
     }
   });
 
+  // Steps with work logged against them survive whatever the new plan says;
+  // they move to the end so the new order is the plan's, not an interleaving.
   let kept = 0;
   for (const live of current) {
     if (keepIds.has(live.id)) continue;
-    if (loggedStepIds.has(live.id) || live.reps_done > 0 || live.done) { kept++; continue; }
+    if (loggedStepIds.has(live.id) || live.reps_done > 0 || live.done) {
+      writes.push((supabase.from("path_steps" as any) as any).update({ sort_order: nextPlan.length + kept }).eq("id", live.id));
+      kept++;
+      continue;
+    }
     writes.push((supabase.from("path_steps" as any) as any).delete().eq("id", live.id));
   }
 

@@ -79,3 +79,33 @@ export async function fetchAssistantStatus(): Promise<AssistantStatus> {
 }
 
 export { prettyModelName } from "@/lib/model-names";
+
+// ---------------------------------------------------------------------------
+// Text-to-speech (ElevenLabs via the ai-tts function). null = use the browser voice.
+// ---------------------------------------------------------------------------
+const TTS_FN_URL = `${SUPABASE_URL}/functions/v1/ai-tts`;
+const TTS_RETRY_MS = 10 * 60 * 1000;
+let ttsUnavailableUntil = 0;
+
+/** MP3 for a short reply, or null when the key is not configured / the call failed. */
+export async function fetchSpeech(text: string, lang: string, signal?: AbortSignal): Promise<Blob | null> {
+  if (!text.trim() || Date.now() < ttsUnavailableUntil) return null;
+  try {
+    const res = await fetch(TTS_FN_URL, {
+      method: "POST",
+      headers: await assistantAuthHeaders(),
+      body: JSON.stringify({ text: text.slice(0, 1500), lang }),
+      signal,
+    });
+    if (res.status === 501 || res.status === 404) {
+      // Not configured / not deployed: stop asking for a while.
+      ttsUnavailableUntil = Date.now() + TTS_RETRY_MS;
+      return null;
+    }
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return blob.size > 0 ? blob : null;
+  } catch {
+    return null;
+  }
+}

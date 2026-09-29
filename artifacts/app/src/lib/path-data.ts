@@ -106,12 +106,21 @@ export function describeRevision(snapshot: PathSnapshot, current: PathSnapshot):
     const now = current.steps.find(c => c.id === s.id);
     return now && now.title !== s.title;
   }).length;
+  const edited = snapshot.steps.filter(s => {
+    const now = current.steps.find(c => c.id === s.id);
+    return now && now.title === s.title && (now.mode !== s.mode || now.reps_target !== s.reps_target || (now.stage ?? null) !== (s.stage ?? null));
+  }).length;
+  const sameOrder = snapshot.steps.length === current.steps.length
+    && snapshot.steps.every((s, i) => current.steps[i]?.id === s.id);
   const bits: string[] = [];
   if (after > before) bits.push(`+${after - before} step${after - before > 1 ? "s" : ""}`);
   if (after < before) bits.push(`-${before - after} step${before - after > 1 ? "s" : ""}`);
   if (renamed) bits.push(`${renamed} reworded`);
+  if (edited) bits.push(`${edited} edited`);
+  if (snapshot.name !== current.name) bits.push("path renamed");
   if (snapshot.diagnosis !== current.diagnosis) bits.push("diagnosis changed");
-  return bits.length ? bits.join(", ") : "reordered";
+  if (bits.length) return bits.join(", ");
+  return sameOrder ? "same as now" : "reordered";
 }
 
 export interface StepLog {

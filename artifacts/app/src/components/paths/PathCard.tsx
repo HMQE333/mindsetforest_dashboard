@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Sparkles, Archive, History } from "lucide-react";
 import {
@@ -51,6 +51,7 @@ export default function PathCard({
   const [newTitle, setNewTitle] = useState("");
   const [newReps, setNewReps] = useState(1);
   const [editingStep, setEditingStep] = useState<string | null>(null);
+  const cancelEditRef = useRef(false);
   const [editingStage, setEditingStage] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   // Bumped when the stall check decides the diagnosis, not the plan, is wrong.
@@ -115,13 +116,16 @@ export default function PathCard({
               defaultValue={step.title}
               autoFocus
               onBlur={e => {
+                // Escape unmounts the input, which also blurs it: do not save then.
+                const cancelled = cancelEditRef.current;
+                cancelEditRef.current = false;
                 const title = e.target.value.trim();
-                if (title && title !== step.title) onUpdateStep(step.id, { title });
+                if (!cancelled && title && title !== step.title) onUpdateStep(step.id, { title });
                 setEditingStep(null);
               }}
               onKeyDown={e => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                if (e.key === "Escape") setEditingStep(null);
+                if (e.key === "Escape") { cancelEditRef.current = true; setEditingStep(null); }
               }}
               className="flex-1 min-w-0 bg-background/60 border border-primary/40 rounded-lg px-2 py-1 text-sm text-foreground outline-none"
             />

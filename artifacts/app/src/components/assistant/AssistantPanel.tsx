@@ -662,6 +662,7 @@ export default function AssistantPanel() {
               {voice.active && (
                 <div className={`border-b border-white/10 flex items-center gap-2 ${isWatch ? "px-2 py-1" : "px-3 py-2"}`}>
                   <span
+                    title={voice.provider === "elevenlabs" ? "Voice: ElevenLabs" : voice.provider === "browser" ? "Voice: browser" : undefined}
                     className={`w-2 h-2 rounded-full flex-shrink-0 animate-pulse ${
                       voice.phase === "listening" ? "bg-red-400" : voice.phase === "speaking" ? "bg-primary" : "bg-amber-400"
                     }`}

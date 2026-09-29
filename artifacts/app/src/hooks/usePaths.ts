@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { revisePathPlan, PlanStep } from "@/lib/path-writes";
@@ -160,6 +160,52 @@ export function usePaths() {
     return out;
   }, [paths, steps, logs]);
 
+  // ---- the plan as a versioned object ----
+
+  /** Manual edits closer together than this are one editing session in the history. */
+  const COALESCE_MS = 10 * 60 * 1000;
+  const lastUserRevRef = useRef<Map<string, { id: string; at: number }>>(new Map());
+
+  /**
+   * Writes the plan as it stands right now into the history, then returns the
+   * snapshot. Call this BEFORE mutating, so the row describes what you are
+   * about to leave behind.
+   *
+   * Quick successive manual edits (rename three steps, add one, reorder) are
+   * one revision: its snapshot is the plan before the session and its reason
+   * accumulates what changed, so the history reads as decisions, not keystrokes.
+   */
+  const recordRevision = useCallback(async (
+    pathId: string,
+    reason: string,
+    source: RevisionSource = "user",
+  ): Promise<PathSnapshot | null> => {
+    if (!user) return null;
+    const path = paths.find(p => p.id === pathId);
+    if (!path) return null;
+    const snapshot = snapshotOf(path, steps.filter(s => s.path_id === pathId));
+    const last = lastUserRevRef.current.get(pathId);
+    if (source === "user" && last && Date.now() - last.at < COALESCE_MS) {
+      const prev = revisions.find(r => r.id === last.id);
+      const merged = prev?.reason && reason && !prev.reason.includes(reason)
+        ? `${prev.reason}; ${reason}`
+        : (prev?.reason || reason || null);
+      setRevisions(list => list.map(r => (r.id === last.id ? { ...r, reason: merged } : r)));
+      await (supabase.from("path_revisions" as any) as any).update({ reason: merged }).eq("id", last.id);
+      return snapshot;
+    }
+    const { data } = await (supabase.from("path_revisions" as any) as any)
+      .insert({ user_id: user.id, path_id: pathId, snapshot, reason: reason || null, source })
+      .select()
+      .single();
+    if (data) {
+      setRevisions(prev => [data as PathRevision, ...prev]);
+      if (source === "user") lastUserRevRef.current.set(pathId, { id: (data as PathRevision).id, at: Date.now() });
+      else lastUserRevRef.current.delete(pathId);
+    }
+    return snapshot;
+  }, [user, paths, steps, revisions]);
+
   // ---- paths ----
 
   const createPath = useCallback(async (name: string, categoryId?: string | null) => {
@@ -180,10 +226,14 @@ export function usePaths() {
   }, [user, paths.length]);
 
   const updatePath = useCallback(async (id: string, patch: Partial<Pick<Path, "name" | "category_id" | "archived" | "diagnosis">>) => {
+    const before = paths.find(p => p.id === id);
+    if (before && patch.name !== undefined && patch.name !== before.name) {
+      await recordRevision(id, `renamed path "${before.name}" to "${patch.name}"`);
+    }
     setPaths(prev => prev.map(p => (p.id === id ? { ...p, ...patch } : p)));
     await (supabase.from("paths" as any) as any).update(patch).eq("id", id);
     notifyPathsChanged();
-  }, []);
+  }, [paths, recordRevision]);
 
   const deletePath = useCallback(async (id: string) => {
     setPaths(prev => prev.filter(p => p.id !== id));
@@ -212,24 +262,39 @@ export function usePaths() {
       xp: opts.xp ?? DEFAULT_STEP_XP,
       sort_order: siblings.length,
     };
+    await recordRevision(pathId, `added step "${title}"`);
     const { data, error } = await (supabase.from("path_steps" as any) as any).insert(row).select().single();
     if (error || !data) return null;
     setSteps(prev => [...prev, data as PathStep]);
     notifyPathsChanged();
     return data as PathStep;
-  }, [user, steps]);
+  }, [user, steps, recordRevision]);
 
   const updateStep = useCallback(async (id: string, patch: Partial<PathStep>) => {
+    const before = steps.find(s => s.id === id);
+    // The map (title, stage, mode, target) is versioned; the record (reps,
+    // done, snooze) is not - it is what happened, not what was planned.
+    if (before) {
+      const why: string[] = [];
+      if (patch.title !== undefined && patch.title !== before.title) why.push(`renamed "${before.title}" to "${patch.title}"`);
+      if (patch.stage !== undefined && (patch.stage ?? null) !== (before.stage ?? null)) why.push(`stage of "${before.title}" set to "${patch.stage || "none"}"`);
+      if (patch.mode !== undefined && patch.mode !== before.mode) why.push(`"${before.title}" is now ${patch.mode === "reps" ? "repeated" : "one-off"}`);
+      if (patch.reps_target !== undefined && patch.reps_target !== before.reps_target) why.push(`"${before.title}" target set to ${patch.reps_target} days`);
+      if (patch.xp !== undefined && patch.xp !== before.xp) why.push(`"${before.title}" worth ${patch.xp} XP`);
+      if (why.length > 0) await recordRevision(before.path_id, why.join("; "));
+    }
     setSteps(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
     await (supabase.from("path_steps" as any) as any).update(patch).eq("id", id);
     notifyPathsChanged();
-  }, []);
+  }, [steps, recordRevision]);
 
   const deleteStep = useCallback(async (id: string) => {
+    const before = steps.find(s => s.id === id);
+    if (before) await recordRevision(before.path_id, `removed step "${before.title}"`);
     setSteps(prev => prev.filter(s => s.id !== id));
     await (supabase.from("path_steps" as any) as any).delete().eq("id", id);
     notifyPathsChanged();
-  }, []);
+  }, [steps, recordRevision]);
 
   /** Swap sort_order with the neighbour. Reordering is how you re-plan a path. */
   const moveStep = useCallback(async (id: string, direction: -1 | 1) => {
@@ -239,6 +304,7 @@ export function usePaths() {
     const idx = ordered.findIndex(s => s.id === id);
     const target = ordered[idx + direction];
     if (!target) return;
+    await recordRevision(step.path_id, `moved "${step.title}" ${direction < 0 ? "up" : "down"}`);
     const a = { id: step.id, sort_order: target.sort_order };
     const b = { id: target.id, sort_order: step.sort_order };
     setSteps(prev => prev.map(s => (s.id === a.id ? { ...s, sort_order: a.sort_order } : s.id === b.id ? { ...s, sort_order: b.sort_order } : s)));
@@ -247,31 +313,7 @@ export function usePaths() {
       (supabase.from("path_steps" as any) as any).update({ sort_order: b.sort_order }).eq("id", b.id),
     ]);
     notifyPathsChanged();
-  }, [steps, stepsByPath]);
-
-  // ---- the plan as a versioned object ----
-
-  /**
-   * Writes the plan as it stands right now into the history, then returns the
-   * snapshot. Call this BEFORE mutating, so the row describes what you are
-   * about to leave behind.
-   */
-  const recordRevision = useCallback(async (
-    pathId: string,
-    reason: string,
-    source: RevisionSource = "user",
-  ): Promise<PathSnapshot | null> => {
-    if (!user) return null;
-    const path = paths.find(p => p.id === pathId);
-    if (!path) return null;
-    const snapshot = snapshotOf(path, steps.filter(s => s.path_id === pathId));
-    const { data } = await (supabase.from("path_revisions" as any) as any)
-      .insert({ user_id: user.id, path_id: pathId, snapshot, reason: reason || null, source })
-      .select()
-      .single();
-    if (data) setRevisions(prev => [data as PathRevision, ...prev]);
-    return snapshot;
-  }, [user, paths, steps]);
+  }, [steps, stepsByPath, recordRevision]);
 
   /**
    * Restores a past plan.
@@ -294,6 +336,7 @@ export function usePaths() {
     const loggedStepIds = new Set(logs.map(l => l.step_id));
 
     await recordRevision(pathId, "before revert", "revert");
+    lastUserRevRef.current.delete(pathId);
 
     const snapIds = new Set(snapshot.steps.map(s => s.id));
     let restored = 0, recreated = 0, removed = 0, kept = 0;
@@ -402,6 +445,7 @@ export function usePaths() {
   ) => {
     if (!user) return;
     await revisePathPlan({ userId: user.id, pathId, reason, source, nextPlan });
+    lastUserRevRef.current.delete(pathId);
     await fetchAll();
     notifyPathsChanged();
   }, [user, fetchAll]);

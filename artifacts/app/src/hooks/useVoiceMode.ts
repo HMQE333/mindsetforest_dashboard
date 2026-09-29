@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchSpeech } from "@/lib/assistant-api";
 import {
   VOICE_LANG_KEY,
   cleanForSpeech,
@@ -15,6 +16,8 @@ import {
  * microphone never stays open unattended.
  */
 export type VoicePhase = "idle" | "listening" | "thinking" | "speaking";
+/** Which synthesizer produced the last reply. */
+export type VoiceProvider = "elevenlabs" | "browser" | null;
 
 type RecognitionCtor = new () => SpeechRecognitionLike;
 interface SpeechRecognitionLike {
@@ -65,7 +68,10 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const [interim, setInterim] = useState("");
   const [lang, setLangState] = useState<VoiceLang>(loadLang);
+  const [provider, setProvider] = useState<VoiceProvider>(null);
   const supported = voiceModeSupported();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioDoneRef = useRef<(() => void) | null>(null);
 
   const activeRef = useRef(false);
   const langRef = useRef(lang);
@@ -87,7 +93,33 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
 
   const cancelSpeech = useCallback(() => {
     try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    const audio = audioRef.current;
+    if (audio) {
+      try { audio.pause(); audio.removeAttribute("src"); audio.load(); } catch { /* ignore */ }
+    }
+    audioDoneRef.current?.();
   }, []);
+
+  /** Play an MP3 blob; resolves true when it finished, false when it could not play. */
+  const playBlob = useCallback((blob: Blob): Promise<boolean> => new Promise<boolean>((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (audioRef.current === audio) audioRef.current = null;
+      if (audioDoneRef.current === done) audioDoneRef.current = null;
+      URL.revokeObjectURL(url);
+      resolve(ok);
+    };
+    const done = () => finish(true);
+    audioDoneRef.current = done;
+    audio.onended = done;
+    audio.onerror = () => finish(false);
+    audio.play().catch(() => finish(false));
+  }), []);
 
   const stopRecognition = useCallback(() => {
     const rec = recRef.current;
@@ -103,6 +135,7 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   const finish = useCallback((reason: "silence" | "error" | "manual") => {
     if (!activeRef.current) return;
     activeRef.current = false;
+    generationRef.current += 1;
     stopRecognition();
     cancelSpeech();
     setActive(false);
@@ -111,14 +144,11 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     onEndRef.current?.(reason);
   }, [stopRecognition, cancelSpeech]);
 
-  /** Speak text and resolve when done (or immediately when synthesis is unavailable). */
-  const speak = useCallback((text: string, langHint?: VoiceLang): Promise<void> => {
-    const clean = cleanForSpeech(text);
-    if (!clean || typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
+  /** The browser's own synthesizer; resolves when done (or at once when unavailable). */
+  const speakBrowser = useCallback((clean: string, chosenLang: VoiceLang): Promise<void> => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
     return new Promise<void>((resolve) => {
-      cancelSpeech();
       const utter = new SpeechSynthesisUtterance(clean);
-      const chosenLang = langHint || detectLang(clean, langRef.current);
       utter.lang = chosenLang;
       const voice = pickVoice(window.speechSynthesis.getVoices(), chosenLang);
       if (voice) utter.voice = voice as SpeechSynthesisVoice;
@@ -133,12 +163,34 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
       };
       utter.onend = done;
       utter.onerror = done;
-      setPhase("speaking");
       window.speechSynthesis.speak(utter);
       // Safari sometimes never fires onend for cancelled utterances.
       timer = setTimeout(done, Math.min(60000, 4000 + clean.length * 90));
     });
-  }, [cancelSpeech]);
+  }, []);
+
+  /**
+   * Speak text and resolve when done. ElevenLabs (via ai-tts) when the key is
+   * configured, otherwise the browser voice, so voice mode works either way.
+   */
+  const speak = useCallback(async (text: string, langHint?: VoiceLang): Promise<void> => {
+    const clean = cleanForSpeech(text);
+    if (!clean) return;
+    const chosenLang = langHint || detectLang(clean, langRef.current);
+    cancelSpeech();
+    setPhase("speaking");
+    const generation = generationRef.current;
+    const blob = await fetchSpeech(clean, chosenLang);
+    // Stopped or interrupted while the audio was being generated.
+    if (generation !== generationRef.current) return;
+    if (blob) {
+      setProvider("elevenlabs");
+      if (await playBlob(blob)) return;
+      if (generation !== generationRef.current) return;
+    }
+    setProvider("browser");
+    await speakBrowser(clean, chosenLang);
+  }, [cancelSpeech, playBlob, speakBrowser]);
 
   const listen = useCallback(() => {
     if (!activeRef.current) return;
@@ -233,5 +285,5 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     cancelSpeech();
   }, [stopRecognition, cancelSpeech]);
 
-  return { supported, active, phase, interim, lang, setLang, start, stop, interrupt, speak };
+  return { supported, active, phase, interim, lang, setLang, provider, start, stop, interrupt, speak };
 }
