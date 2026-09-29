@@ -81,15 +81,32 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
     };
   }, [file?.path]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Remembers the spot in view so a relayout (zoom, rotation) can return to it. */
+  const captureAnchor = useCallback(() => {
+    const el = pageEls.current[currentRef.current - 1];
+    const root = scrollerRef.current;
+    if (!el || !root) return;
+    const frac = (root.scrollTop + 12 - el.offsetTop) / Math.max(1, el.offsetHeight);
+    anchor.current = { page: currentRef.current, frac: Math.min(1, Math.max(0, frac)) };
+  }, []);
+
   // Track the reading column's width.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setContainerWidth(el.clientWidth));
+    let last = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      if (w === last) return;
+      last = w;
+      // Rotating a phone reflows every page; stay on the same spot of the same page.
+      captureAnchor();
+      setContainerWidth(w);
+    });
     ro.observe(el);
     setContainerWidth(el.clientWidth);
     return () => ro.disconnect();
-  }, [doc]);
+  }, [doc, captureAnchor]);
 
   const renderPage = useCallback(async (n: number) => {
     const holder = pageEls.current[n - 1];
@@ -198,17 +215,12 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
   }, [book, doc, onPosition, onClose]);
 
   const changeZoom = useCallback((dir: 1 | -1) => {
-    const el = pageEls.current[currentRef.current - 1];
-    const root = scrollerRef.current;
-    if (el && root) {
-      const frac = (root.scrollTop + 12 - el.offsetTop) / Math.max(1, el.offsetHeight);
-      anchor.current = { page: currentRef.current, frac: Math.min(1, Math.max(0, frac)) };
-    }
+    captureAnchor();
     setZoom(z => {
       const i = ZOOMS.findIndex(x => Math.abs(x - z) < 0.001);
       return ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, (i < 0 ? 3 : i) + dir))];
     });
-  }, []);
+  }, [captureAnchor]);
 
   const go = useCallback((n: number) => {
     if (!numPages) return;
@@ -237,6 +249,34 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
   if (!book || !file) return null;
   const pct = numPages ? Math.round((current / numPages) * 100) : 0;
   const btn = "p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30";
+  // Thumb-sized buttons for the phone's bottom bar.
+  const touchBtn = "p-2.5 rounded-xl text-muted-foreground active:bg-muted/60 transition-colors disabled:opacity-30";
+
+  const pageControls = (b: string) => (
+    <>
+      <button className={b} onClick={() => go(current - 1)} disabled={current <= 1} title="Previous page (←)" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+      <input
+        value={pageInput}
+        onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ""))}
+        onKeyDown={(e) => { if (e.key === "Enter") { go(Number(pageInput) || current); (e.target as HTMLInputElement).blur(); } }}
+        onBlur={() => setPageInput(String(current))}
+        onFocus={(e) => e.target.select()}
+        inputMode="numeric"
+        enterKeyHint="go"
+        aria-label="Page"
+        className="w-11 text-center text-sm sm:text-xs py-1 rounded-md bg-muted/40 border border-border text-foreground tabular-nums focus:outline-none focus:border-primary/50"
+      />
+      <span className="text-xs text-muted-foreground tabular-nums px-1 whitespace-nowrap">/ {numPages}</span>
+      <button className={b} onClick={() => go(current + 1)} disabled={current >= numPages} title="Next page (→)" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
+    </>
+  );
+  const zoomControls = (b: string) => (
+    <>
+      <button className={b} onClick={() => changeZoom(-1)} disabled={zoom <= ZOOMS[0]} title="Zoom out (−)" aria-label="Zoom out"><ZoomOut className="w-4 h-4" /></button>
+      <span className="text-[11px] text-muted-foreground tabular-nums w-9 text-center">{Math.round(zoom * 100)}%</span>
+      <button className={b} onClick={() => changeZoom(1)} disabled={zoom >= ZOOMS[ZOOMS.length - 1]} title="Zoom in (+)" aria-label="Zoom in"><ZoomIn className="w-4 h-4" /></button>
+    </>
+  );
 
   return (
     <DialogPrimitive.Root open onOpenChange={(v) => { if (!v) close(); }}>
@@ -254,28 +294,8 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
               {book.author && <p className="text-[11px] text-muted-foreground truncate leading-tight">{book.author}</p>}
             </div>
 
-            {numPages > 0 && (
-              <div className="flex items-center gap-0.5 shrink-0">
-                <button className={btn} onClick={() => go(current - 1)} disabled={current <= 1} title="Previous page (←)"><ChevronLeft className="w-4 h-4" /></button>
-                <input
-                  value={pageInput}
-                  onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ""))}
-                  onKeyDown={(e) => { if (e.key === "Enter") go(Number(pageInput) || current); }}
-                  onBlur={() => setPageInput(String(current))}
-                  inputMode="numeric"
-                  aria-label="Page"
-                  className="w-10 text-center text-xs py-1 rounded-md bg-muted/40 border border-border text-foreground tabular-nums focus:outline-none focus:border-primary/50"
-                />
-                <span className="text-xs text-muted-foreground tabular-nums px-1">/ {numPages}</span>
-                <button className={btn} onClick={() => go(current + 1)} disabled={current >= numPages} title="Next page (→)"><ChevronRight className="w-4 h-4" /></button>
-              </div>
-            )}
-
-            <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-              <button className={btn} onClick={() => changeZoom(-1)} disabled={zoom <= ZOOMS[0]} title="Zoom out (−)"><ZoomOut className="w-4 h-4" /></button>
-              <span className="text-[11px] text-muted-foreground tabular-nums w-9 text-center">{Math.round(zoom * 100)}%</span>
-              <button className={btn} onClick={() => changeZoom(1)} disabled={zoom >= ZOOMS[ZOOMS.length - 1]} title="Zoom in (+)"><ZoomIn className="w-4 h-4" /></button>
-            </div>
+            {numPages > 0 && <div className="hidden sm:flex items-center gap-0.5 shrink-0">{pageControls(btn)}</div>}
+            <div className="hidden sm:flex items-center gap-0.5 shrink-0">{zoomControls(btn)}</div>
             <button className={btn} onClick={toggleDim} title={dim ? "Normal pages" : "Dim pages for night reading"}>
               {dim ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
@@ -302,7 +322,7 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
                 <Loader2 className="w-4 h-4 animate-spin" /> Opening…
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-3 py-3">
+              <div className="min-w-full w-max flex flex-col items-center gap-3 p-3">
                 {ratios.map((ratio, i) => (
                   <div
                     key={i}
@@ -321,6 +341,13 @@ export default function BookReader({ book, onClose, onPosition }: BookReaderProp
               </div>
             )}
           </div>
+
+          {numPages > 0 && (
+            <footer className="sm:hidden shrink-0 flex items-center justify-between gap-2 px-2 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] border-t border-border bg-background">
+              <div className="flex items-center">{pageControls(touchBtn)}</div>
+              <div className="flex items-center">{zoomControls(touchBtn)}</div>
+            </footer>
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

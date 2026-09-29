@@ -55,6 +55,12 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
       <FileText className="w-3 h-3" /> PDF
     </span>
   );
+  // While a file hovers, say plainly which book it will land on.
+  const dropHint = dropOver && (
+    <div className="absolute inset-0 z-20 flex items-center justify-center gap-1.5 bg-primary/15 backdrop-blur-[1px] text-xs font-bold text-primary pointer-events-none">
+      <FileText className="w-4 h-4" /> {book.file ? "Replace PDF" : "Attach PDF here"}
+    </div>
+  );
   const uploadBar = uploading && (
     <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 px-3 py-1 bg-background/85 backdrop-blur text-[10px] text-primary font-medium">
       <Loader2 className="w-3 h-3 animate-spin" /> {uploadLabel(uploading)}
@@ -112,6 +118,7 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
             </div>
           )}
           {uploadBar}
+          {dropHint}
         </div>
       </motion.button>
     );
@@ -189,6 +196,7 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
           )}
         </div>
         {uploadBar}
+        {dropHint}
       </div>
     </motion.button>
   );

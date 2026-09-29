@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List, Link2 } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
 import { useCoursesState } from "@/hooks/useCoursesState";
-import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS, matchFilesToBooks } from "@/lib/library-data";
+import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS } from "@/lib/library-data";
 import { CourseStatus, COURSE_STATUS_LABELS } from "@/lib/course-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
@@ -29,7 +29,7 @@ type LibraryTab = "books" | "courses";
 export default function LibraryView() {
   const {
     books, loading: booksLoading, addBook, updateBook, deleteBook,
-    uploads, attachFile, attachFiles, detachFile, saveReadingPosition,
+    uploads, attachFile, detachFile, saveReadingPosition,
   } = useLibraryState();
   const { courses, loading: coursesLoading, addCourse, updateCourse, deleteCourse } = useCoursesState();
   const allPillars = usePillars();
@@ -122,23 +122,16 @@ export default function LibraryView() {
   const otherDialogOpen = addBookOpen || addCourseOpen || suggestOpen || shareOpen || !!selectedCourse;
   const openReader = (id: string) => { setSelectedBookId(null); setReadingId(id); };
 
-  /** PDFs dropped off any card: onto the open book, or matched to books by file name. */
-  const handleDrop = async (list: FileList) => {
-    const files = Array.from(list);
-    const pdfs = files.filter(isPdf);
-    if (pdfs.length < files.length) toast.error("Only PDF files can be attached to books");
-    if (pdfs.length === 0 || readingId) return;
-    if (selectedBook) { void attachFile(selectedBook.id, pdfs[0]); return; }
-    // Dropped on some other open dialog (Add Book, Share...): not meant for matching.
-    if (otherDialogOpen) return;
-    const { matched, unmatched } = matchFilesToBooks(pdfs, books);
-    if (unmatched.length > 0) {
-      toast.warning(
-        unmatched.length === 1 ? `No book matches "${unmatched[0].name}"` : `No book matches ${unmatched.length} of the files`,
-        { description: `Drop ${unmatched.length === 1 ? "it" : "them"} straight onto the book's card. ${unmatched.length > 1 ? unmatched.map(f => f.name).slice(0, 5).join(", ") : ""}`.trim(), duration: 8000 },
-      );
-    }
-    if (matched.length > 0) await attachFiles(matched.map(m => ({ bookId: m.book.id, file: m.file })));
+  /**
+   * A file dropped off any card. A PDF only ever attaches to the book it was
+   * dropped on (or the one open in its window), never to a guess.
+   */
+  const handleDrop = (list: FileList) => {
+    const pdf = Array.from(list).find(isPdf);
+    if (!pdf) { toast.error("Only PDF files can be attached to books"); return; }
+    if (readingId || otherDialogOpen) return;
+    if (selectedBook) { void attachFile(selectedBook.id, pdf); return; }
+    toast.info("Drop the PDF onto the book's tile to attach it");
   };
 
   const dropZoneProps = tab === "books" ? {
@@ -153,7 +146,7 @@ export default function LibraryView() {
     onDrop: (e: React.DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
-      void handleDrop(e.dataTransfer.files);
+      handleDrop(e.dataTransfer.files);
     },
   } : {};
 
@@ -165,7 +158,7 @@ export default function LibraryView() {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 min-h-[60vh]" {...dropZoneProps}>
       {dragging && !selectedBook && !readingBook && !otherDialogOpen && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-32px)] px-4 py-2.5 rounded-2xl glass-card border border-primary/40 text-sm text-foreground shadow-lg pointer-events-none text-center">
-          📄 Drop on a book to attach its PDF, or anywhere to match books by file name
+          📄 Drop the PDF onto the book's tile
         </div>
       )}
       {/* Header */}

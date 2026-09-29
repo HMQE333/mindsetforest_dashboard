@@ -64,7 +64,7 @@ export function useLibraryState() {
   }, [user, fetchBooks]);
 
   /** Uploads a PDF for a book (replacing any earlier one) and records it on the book. */
-  const attachFile = useCallback(async (bookId: string, file: File, opts: { quiet?: boolean } = {}): Promise<boolean> => {
+  const attachFile = useCallback(async (bookId: string, file: File): Promise<boolean> => {
     if (!user) return false;
     const book = booksRef.current.find(b => b.id === bookId);
     if (!book) return false;
@@ -96,7 +96,7 @@ export function useLibraryState() {
       // The file the book pointed at until now, read after the upload in case it changed meanwhile.
       const previous = booksRef.current.find(b => b.id === bookId)?.file;
       if (previous && previous.path !== stored.path) void removeBookFiles(previous);
-      if (!opts.quiet) toast.success(`PDF attached to "${book.title}"`, {
+      toast.success(`PDF attached to "${book.title}"`, {
         description: isScan(stored)
           ? `${stored.pages} pages · a scan, no text layer`
           : `${stored.pages} pages · text extracted`,
@@ -111,15 +111,6 @@ export function useLibraryState() {
       setStage(null);
     }
   }, [user, fetchBooks]);
-
-  /** Several files at once, one after another so big PDFs are not all in memory together. */
-  const attachFiles = useCallback(async (pairs: { bookId: string; file: File }[]) => {
-    if (pairs.length === 1) return (await attachFile(pairs[0].bookId, pairs[0].file)) ? 1 : 0;
-    let ok = 0;
-    for (const p of pairs) if (await attachFile(p.bookId, p.file, { quiet: true })) ok++;
-    if (ok > 0) toast.success(`${ok} PDF${ok === 1 ? "" : "s"} attached`);
-    return ok;
-  }, [attachFile]);
 
   const detachFile = useCallback(async (bookId: string) => {
     if (!user) return;
@@ -161,6 +152,6 @@ export function useLibraryState() {
 
   return {
     books, loading, addBook, updateBook, deleteBook, refetch: fetchBooks,
-    uploads, attachFile, attachFiles, detachFile, saveReadingPosition,
+    uploads, attachFile, detachFile, saveReadingPosition,
   };
 }
