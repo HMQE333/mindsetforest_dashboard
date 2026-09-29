@@ -165,10 +165,19 @@ serve(async (req: Request) => {
     }
 
     if (action === "fetch") {
-      if (!apiKey || !athleteId) {
+      // Background sync sends no credentials: use the ones saved with "save".
+      let key = apiKey as string | undefined;
+      let athlete = athleteId as string | undefined;
+      if (!key || !athlete) {
+        const { data: onb } = await admin().from("user_onboarding").select("preferences").eq("user_id", userId).maybeSingle();
+        const prefs = (onb?.preferences as Record<string, unknown>) || {};
+        key = key || (prefs.intervals_api_key as string | undefined);
+        athlete = athlete || (prefs.intervals_athlete_id as string | undefined);
+      }
+      if (!key || !athlete) {
         return new Response(JSON.stringify({ error: "API key i Athlete ID są wymagane" }), { status: 400, headers: corsHeaders });
       }
-      const r = await importForUser(userId, apiKey, athleteId);
+      const r = await importForUser(userId, key, athlete);
       return new Response(JSON.stringify({ ...r, message: `Zaimportowano ${r.imported} wpisów` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

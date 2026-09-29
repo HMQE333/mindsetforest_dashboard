@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { WATCH_ENTRIES_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
@@ -38,6 +39,9 @@ export function useWatchEntries() {
   const [entries, setEntries] = useState<WatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableReady, setTableReady] = useState(true);
+  // Background intervals.icu sync (useIntervalsAutoSync) announces new rows.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  useEffect(() => onAppEvent(WATCH_ENTRIES_CHANGED_EVENT, () => setReloadNonce((n) => n + 1)), []);
 
   useEffect(() => {
     if (!user) {
@@ -71,7 +75,7 @@ export function useWatchEntries() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, reloadNonce]);
 
   const guardTable = (error: any): boolean => {
     if (isMissingTable(error)) {

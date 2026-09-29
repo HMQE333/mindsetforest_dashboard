@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { todayKey, lastNDays, computeStreak } from "@/lib/today";
+import { TRACKER_ENTRIES_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 
 export interface TrackerEntry {
   id: string;
@@ -63,6 +64,8 @@ export function useTrackerEntries() {
       ]);
     }
   }, [user]);
+
+  useEffect(() => onAppEvent(TRACKER_ENTRIES_CHANGED_EVENT, () => { void fetchEntries(); }), [fetchEntries]);
 
   return { entries, loading, addEntry, refetch: fetchEntries };
 }

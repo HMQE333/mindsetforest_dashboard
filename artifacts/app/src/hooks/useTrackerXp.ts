@@ -10,6 +10,7 @@ import {
   mergeConfig,
   DEFAULT_TRACKER_XP_CONFIG,
 } from "@/lib/tracker-xp";
+import { TRACKER_ENTRIES_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 
 interface GrantRow {
   id: string;
@@ -37,7 +38,9 @@ export function useTrackerXp() {
   const grantsRef = useRef<GrantRow[]>([]);
   useEffect(() => { grantsRef.current = grants; }, [grants]);
 
-  // Load grants
+  // Load grants (again whenever something else logged an entry, e.g. the assistant)
+  const [reloadNonce, setReloadNonce] = useState(0);
+  useEffect(() => onAppEvent(TRACKER_ENTRIES_CHANGED_EVENT, () => setReloadNonce((n) => n + 1)), []);
   useEffect(() => {
     if (!user) { setGrants([]); setLoading(false); return; }
     let cancelled = false;
@@ -56,7 +59,7 @@ export function useTrackerXp() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, reloadNonce]);
 
   const todayEntryXp = useMemo(() => {
     const today = todayKey();
@@ -81,20 +84,9 @@ export function useTrackerXp() {
   const awardEntryXp = useCallback(async (metricId: string, value: number): Promise<number> => {
     if (!user || !config.enabled) return 0;
     const metric = metrics.find(m => m.id === metricId);
-    let xp = computeEntryXp(metric, value, config);
+    // Same per-entry rule as always; there is no daily cap on Stats XP.
+    const xp = computeEntryXp(metric, value, config);
     if (xp <= 0) return 0;
-
-    // Daily cap. Compute today's entry total from the freshest grants so that
-    // several logs submitted in quick succession can't collectively exceed it.
-    if (config.dailyCap > 0) {
-      const today = todayKey();
-      const earnedToday = grantsRef.current
-        .filter(g => g.source === "entry" && g.date === today)
-        .reduce((s, g) => s + g.xp, 0);
-      const remaining = Math.max(0, config.dailyCap - earnedToday);
-      xp = Math.min(xp, remaining);
-      if (xp <= 0) return 0;
-    }
 
     const { data, error } = await supabase
       .from("tracker_xp_grants")

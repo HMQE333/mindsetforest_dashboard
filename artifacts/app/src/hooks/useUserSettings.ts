@@ -8,6 +8,7 @@ import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
 import { REWARDS, Reward } from "@/lib/oracle-data";
 import { toast } from "sonner";
 import type { TrackerXpConfig } from "@/lib/tracker-xp";
+import { USER_SETTINGS_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 
 export interface CustomCategory {
   id: string;
@@ -91,6 +92,9 @@ export function useUserSettings() {
   const [customRewards, setCustomRewards] = useState<Reward[] | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({ enabledModules: DEFAULT_MODULES });
   const [loading, setLoading] = useState(true);
+  // Preferences written elsewhere (the assistant's set_theme / toggle_module) reload here.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  useEffect(() => onAppEvent(USER_SETTINGS_CHANGED_EVENT, () => setReloadNonce((n) => n + 1)), []);
 
   // Load all settings
   useEffect(() => {
@@ -156,7 +160,7 @@ export function useUserSettings() {
       setLoading(false);
     };
     load();
-  }, [user]);
+  }, [user, reloadNonce]);
 
   const getCategories = useCallback((): Category[] => {
     return CATEGORIES.map(cat => {

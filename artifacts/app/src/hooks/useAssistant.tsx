@@ -31,6 +31,18 @@ import {
 import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
 import { findMission, listTodayMissions } from "@/lib/mission-match";
 import { annotateHistory, keywordScopes } from "@/lib/scope-hints";
+import {
+  addCalendarEvent,
+  addFinanceTransaction,
+  completePlanningTask,
+  createPath,
+  logMetricEntry,
+  logPathStepToday,
+  patchPreferences,
+  saveCurrentAsPreset,
+  setModuleEnabled,
+} from "@/lib/assistant-writes";
+import { CATEGORIES } from "@/lib/dashboard-data";
 import { replaceDashes } from "@/lib/text-style";
 import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
@@ -88,7 +100,17 @@ function loadScopes(): ScopeId[] {
 
 function useAssistantValue() {
   const { user } = useAuth();
-  const { addMission, applyMissionPreset, completeMission, state: dashboardState } = useDashboardState();
+  const {
+    addMission,
+    applyMissionPreset,
+    completeMission,
+    uncompleteMission,
+    removeMission,
+    saveCustomMissions,
+    completeExternal,
+    addXP,
+    state: dashboardState,
+  } = useDashboardState();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpenState] = useState<boolean>(() => {
@@ -393,6 +415,104 @@ function useAssistantValue() {
               ok++;
               toast.success(`Odhaczono „${match.title}” (+${match.xp} XP)`);
             }
+          } else if (action.type === "open_settings") {
+            const detail = { module: "settings", tab: action.tab };
+            if (location.pathname !== "/") navigate("/", { state: detail });
+            else window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail }));
+            ok++;
+          } else if (action.type === "set_theme") {
+            const r = await patchPreferences(user.id, {
+              ...(action.theme ? { theme: action.theme } : {}),
+              ...(action.accent ? { accentColor: action.accent } : {}),
+            });
+            if (r.ok) ok++;
+            else { failed++; toast.error(r.error); }
+          } else if (action.type === "toggle_module") {
+            const r = await setModuleEnabled(user.id, action.module, action.enabled);
+            if (r.ok) { ok++; toast.success(`${action.enabled ? "Włączono" : "Ukryto"} moduł ${action.module}`); }
+            else { failed++; toast.error(r.error); }
+          } else if (
+            action.type === "uncomplete_mission" ||
+            action.type === "edit_mission" ||
+            action.type === "remove_mission"
+          ) {
+            const completed = dashboardState.dayKey === todayKey() ? dashboardState.completedMissions : [];
+            const entries = listTodayMissions(dashboardState.customMissions, completed);
+            const pool = action.type === "uncomplete_mission" ? entries.filter((e) => e.done) : entries;
+            const match = findMission(pool, action.title, action.categoryId) ?? findMission(entries, action.title, action.categoryId);
+            if (!match) {
+              failed++;
+              toast.error(`Nie znaleziono misji „${action.title}”`);
+            } else if (action.type === "uncomplete_mission") {
+              if (match.done) {
+                uncompleteMission(match.categoryId, match.index, match.xp);
+                toast.success(`Odznaczono „${match.title}” (−${match.xp} XP)`);
+              } else {
+                toast(`„${match.title}” nie była odhaczona`);
+              }
+              ok++;
+            } else if (action.type === "remove_mission") {
+              removeMission(match.categoryId, match.index);
+              toast.success(`Usunięto misję „${match.title}”`);
+              ok++;
+            } else {
+              const custom = dashboardState.customMissions[match.categoryId];
+              const list = custom && custom.length > 0
+                ? custom
+                : CATEGORIES.find((c) => c.id === match.categoryId)?.missions || [];
+              const current = list[match.index];
+              if (!current) {
+                failed++;
+              } else {
+                const updated = {
+                  ...current,
+                  ...(action.newTitle !== undefined ? { title: action.newTitle } : {}),
+                  ...(action.description !== undefined ? { description: action.description } : {}),
+                  ...(action.duration !== undefined ? { duration: action.duration } : {}),
+                  ...(action.xp !== undefined ? { xp: action.xp } : {}),
+                };
+                const { __originalIndex: _drop, ...clean } = updated as typeof updated & { __originalIndex?: number };
+                saveCustomMissions(match.categoryId, list.map((m, i) => (i === match.index ? clean : m)));
+                toast.success(`Zmieniono misję „${action.newTitle || match.title}”`);
+                ok++;
+              }
+            }
+          } else if (action.type === "save_preset") {
+            const r = await saveCurrentAsPreset(user.id, { name: action.name, emoji: action.emoji }, dashboardState.customMissions);
+            if (r.ok) { ok++; toast.success(r.updated ? `Zaktualizowano preset „${r.name}”` : `Zapisano preset „${r.name}”`); }
+            else { failed++; toast.error(r.error); }
+          } else if (action.type === "log_metric") {
+            const r = await logMetricEntry(user.id, action.metric, action.value);
+            if (r.ok) {
+              if (r.xp > 0) addXP(r.xp);
+              ok++;
+              toast.success(`${r.metric.icon ?? ""} ${r.metric.label}: +${action.value} ${r.metric.unit}${r.xp > 0 ? ` · +${r.xp} XP` : ""}`.trim());
+            } else { failed++; toast.error(r.error); }
+          } else if (action.type === "log_path_step") {
+            const r = await logPathStepToday(user.id, action.pathName);
+            if (r.ok) {
+              if (r.xp > 0) completeExternal(r.categoryId, r.xp);
+              ok++;
+              toast.success(`${r.finished ? "Krok ukończony" : "Zalogowano dzień"}: ${r.stepTitle} · +${r.xp} XP`);
+            } else { failed++; toast.error(r.error); }
+          } else if (action.type === "create_path") {
+            const r = await createPath(user.id, { name: action.name, diagnosis: action.diagnosis, steps: action.steps });
+            if (r.ok) { ok++; toast.success(`Utworzono ścieżkę „${action.name}”`); }
+            else { failed++; toast.error(r.error); }
+          } else if (action.type === "complete_task") {
+            const r = await completePlanningTask(user.id, action.title);
+            if (r.ok) { ok++; toast.success(`Zadanie zrobione: „${r.title}”`); }
+            else { failed++; toast.error(r.error); }
+          } else if (action.type === "add_event") {
+            const r = await addCalendarEvent(user.id, { title: action.title, date: action.date, time: action.time, notes: action.notes });
+            if (r.ok) { ok++; toast.success(`Dodano do kalendarza: ${action.date} ${action.title}`); }
+            else { failed++; toast.error(r.error); }
+          } else if (action.type === "add_transaction") {
+            const r = await addFinanceTransaction(user.id, {
+              type: action.kind, amount: action.amount, title: action.title, category: action.category, date: action.date,
+            });
+            if (r.ok) { ok++; toast.success(`${action.kind === "income" ? "Przychód" : "Wydatek"}: ${action.amount} · ${action.title}`); }
+            else { failed++; toast.error(r.error); }
           } else if (action.type === "add_mission") {
             addMission(action.categoryId, {
               title: action.title,
@@ -633,7 +753,7 @@ function useAssistantValue() {
       }
       return failed === 0 && ok > 0;
     },
-    [user, addMission, applyMissionPreset, completeMission, dashboardState.customMissions, dashboardState.completedMissions, dashboardState.dayKey, navigate, location.pathname],
+    [user, addMission, applyMissionPreset, completeMission, uncompleteMission, removeMission, saveCustomMissions, completeExternal, addXP, dashboardState.customMissions, dashboardState.completedMissions, dashboardState.dayKey, navigate, location.pathname],
   );
   const runActionRef = useRef(runAction);
   useEffect(() => { runActionRef.current = runAction; }, [runAction]);
@@ -676,6 +796,13 @@ function useAssistantValue() {
     );
   }, []);
 
+  // Put text in the panel's input without sending it, so the user can finish
+  // the sentence. The nonce makes the same text requested twice land twice.
+  const [prefillRequest, setPrefillRequest] = useState<{ text: string; nonce: number } | null>(null);
+  const prefill = useCallback((text: string) => {
+    setPrefillRequest((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
   return {
     open,
     setOpen,
@@ -701,6 +828,8 @@ function useAssistantValue() {
     clearConversation,
     applyActions,
     dismissActions,
+    prefill,
+    prefillRequest,
   };
 }
 

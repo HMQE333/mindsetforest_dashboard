@@ -5,7 +5,8 @@ describe("keywordScopes", () => {
   it("maps plain mentions and write intents to sections in Polish and English", () => {
     expect(keywordScopes("chciałbym żebyś dodał notatkę że czytałem Man's Search for Meaning")).toEqual(["archive", "library"]);
     expect(keywordScopes("save a note about the meeting")).toEqual(["archive", "calendar"]);
-    expect(keywordScopes("zrobiłem pompki")).toEqual(["dashboard"]);
+    // Could be a mission or a Stats entry: both sections, so both actions are offered.
+    expect(keywordScopes("zrobiłem pompki")).toEqual(["dashboard", "tracker"]);
     expect(keywordScopes("włącz preset monk mode")).toEqual(["dashboard"]);
     expect(keywordScopes("Przejdź na kalendarz")).toEqual(["calendar"]);
     expect(keywordScopes("what's up")).toEqual([]);

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
+import { FINANCE_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 import { format, subMonths } from "date-fns";
 
 export type TransactionType = "income" | "expense" | "subscription" | "loan_out" | "loan_in";
@@ -38,6 +39,8 @@ export function useFinanceState() {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  useEffect(() => onAppEvent(FINANCE_CHANGED_EVENT, () => setReloadNonce((n) => n + 1)), []);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -51,7 +54,7 @@ export function useFinanceState() {
       setLoading(false);
     };
     load();
-  }, [user]);
+  }, [user, reloadNonce]);
 
   const addTransaction = useCallback(async (tx: Omit<FinanceTransaction, "id" | "user_id" | "created_at">) => {
     if (!user) return;

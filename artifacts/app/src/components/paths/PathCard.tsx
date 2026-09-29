@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Sparkles, Archive, History } from "lucide-react";
+import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Trash2, Check, Archive, History } from "lucide-react";
 import {
   Path, PathStep, PathRevision, DiagnosisVerdict,
   activeStep, nextStep, pathProgress, snapshotOf, sortSteps, todayKey,
@@ -10,6 +10,7 @@ import { Category } from "@/lib/dashboard-data";
 import PathDiagnosis from "./PathDiagnosis";
 import PathHistory from "./PathHistory";
 import StuckCheck from "./StuckCheck";
+import AskAIButton from "./AskAIButton";
 
 interface Props {
   path: Path;
@@ -25,7 +26,6 @@ interface Props {
   onMoveStep: (id: string, dir: -1 | 1) => void;
   onUpdatePath: (patch: Partial<Pick<Path, "name" | "category_id" | "archived">>) => void;
   onDeletePath: () => void;
-  onAI: () => void;
   revisions: PathRevision[];
   /** Days since the step last moved. Infinity when it has never been logged. */
   staleDays: (stepId: string) => number;
@@ -42,7 +42,7 @@ interface Props {
 export default function PathCard({
   path, steps, loggedTodayIds, streakOf, categories,
   onLog, onUndo, onAddStep, onUpdateStep, onDeleteStep, onMoveStep,
-  onUpdatePath, onDeletePath, onAI, focused,
+  onUpdatePath, onDeletePath, focused,
   revisions, staleDays, onSetDiagnosis, onScore, onRevert, onSnoozeStep, engineReady,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
@@ -314,7 +314,7 @@ export default function PathCard({
       {!expanded && (
         <div className="mt-3 space-y-2">
           {ordered.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">No steps yet - expand to add them, or let AI draft them.</p>
+            <p className="text-xs text-muted-foreground italic">No steps yet - expand to add them, or use Ask AI to draft them.</p>
           )}
           {finished && (
             <p className="text-xs text-green-400 font-semibold">🏆 Path complete.</p>
@@ -366,12 +366,17 @@ export default function PathCard({
 
             {/* Card actions */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <button
-                onClick={onAI}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-primary/30 bg-primary/10 text-foreground hover:bg-primary/20 transition-all"
-              >
-                <Sparkles className="h-3 w-3" /> AI draft steps
-              </button>
+              {/* The assistant only sees and revises active paths. */}
+              {!path.archived && (
+                <AskAIButton
+                  message={
+                    ordered.length === 0
+                      ? `Draft the steps for my path "${path.name}"`
+                      : `Rework the plan of my path "${path.name}"`
+                  }
+                  title="Open the assistant about this path"
+                />
+              )}
               {active && (
                 <button
                   onClick={() => setEditingStage(active.id)}

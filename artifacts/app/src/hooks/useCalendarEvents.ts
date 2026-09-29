@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { CALENDAR_EVENTS_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
 
 export interface CalendarEvent {
@@ -84,6 +85,8 @@ export function useCalendarEvents() {
 
   const nextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
   const prevMonth = () => setCurrentMonth(prev => subMonths(prev, 1));
+
+  useEffect(() => onAppEvent(CALENDAR_EVENTS_CHANGED_EVENT, () => { void fetchEvents(); }), [fetchEvents]);
 
   return { events, loading, currentMonth, nextMonth, prevMonth, addEvent, updateEvent, deleteEvent };
 }

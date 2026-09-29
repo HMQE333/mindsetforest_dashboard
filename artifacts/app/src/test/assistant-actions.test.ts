@@ -51,3 +51,57 @@ describe("assistant navigate and complete_mission actions", () => {
     expect(buildActionInstructions(["dashboard"])).toContain("complete_mission");
   });
 });
+
+describe("assistant control actions", () => {
+  const all = ["dashboard", "tracker", "paths", "planning", "calendar", "finance"] as const;
+  const one = (a: unknown) => parseActions(block([a]), [...all]).actions;
+
+  it("parses UI actions under any scope and auto-applies only the harmless ones", async () => {
+    const { isAutoApply } = await import("../lib/assistant-actions");
+    expect(parseActions(block([{ type: "open_settings", tab: "theme" }]), []).actions).toEqual([{ type: "open_settings", tab: "theme" }]);
+    expect(parseActions(block([{ type: "set_theme", theme: "OLED" }]), []).actions).toEqual([{ type: "set_theme", theme: "oled", accent: undefined }]);
+    expect(one({ type: "set_theme", theme: "rainbow" })).toEqual([]);
+    expect(one({ type: "open_settings", tab: "nope" })).toEqual([]);
+    expect(isAutoApply({ type: "set_theme", theme: "oled" })).toBe(true);
+    expect(isAutoApply({ type: "toggle_module", module: "finance", enabled: false })).toBe(false);
+    expect(one({ type: "toggle_module", module: "dashboard", enabled: false })).toEqual([]);
+  });
+
+  it("validates mission edits and needs at least one change", () => {
+    expect(one({ type: "edit_mission", title: "Read", xp: "25" })).toEqual([
+      { type: "edit_mission", title: "Read", categoryId: undefined, newTitle: undefined, description: undefined, duration: undefined, xp: 25 },
+    ]);
+    expect(one({ type: "edit_mission", title: "Read" })).toEqual([]);
+    expect(one({ type: "uncomplete_mission", title: "Read" })[0]).toMatchObject({ type: "uncomplete_mission", title: "Read" });
+    expect(parseActions(block([{ type: "remove_mission", title: "Read" }]), ["archive"]).actions).toEqual([]);
+  });
+
+  it("checks numbers, dates and kinds on data entry", () => {
+    expect(one({ type: "log_metric", metric: "reading", value: "30" })).toEqual([{ type: "log_metric", metric: "reading", value: 30 }]);
+    expect(one({ type: "log_metric", metric: "reading", value: -3 })).toEqual([]);
+    expect(one({ type: "add_event", title: "Dentist", date: "2026-10-02", time: "9:30" })[0]).toMatchObject({ date: "2026-10-02", time: "9:30" });
+    expect(one({ type: "add_event", title: "Dentist", date: "jutro" })).toEqual([]);
+    expect(one({ type: "add_transaction", kind: "expense", amount: 42.5, title: "Groceries" })[0]).toMatchObject({ kind: "expense", amount: 42.5 });
+    expect(one({ type: "add_transaction", kind: "gift", amount: 5, title: "x" })).toEqual([]);
+  });
+
+  it("builds a new path with clamped steps and shows them on the confirm card", async () => {
+    const { mindmapPreview } = await import("../lib/assistant-actions");
+    const [a] = one({ type: "create_path", name: "Run a 10k", diagnosis: "No base", steps: [{ title: "Run 3x a week", days: 12 }, { title: "Race" }, { nope: 1 }] });
+    expect(a).toMatchObject({ type: "create_path", name: "Run a 10k", diagnosis: "No base" });
+    expect(a.type === "create_path" && a.steps).toEqual([
+      { title: "Run 3x a week", stage: null, days: 12, xp: undefined },
+      { title: "Race", stage: null, days: 1, xp: undefined },
+    ]);
+    expect(mindmapPreview(a)).toContain("x12 days");
+    expect(describeAction(a)).toContain("2 steps");
+  });
+
+  it("only offers each action with its section", () => {
+    expect(buildActionInstructions(["tracker"])).toContain("log_metric");
+    expect(buildActionInstructions(["tracker"])).not.toContain("add_transaction");
+    expect(buildActionInstructions(["finance"])).toContain("add_transaction");
+    expect(buildActionInstructions([])).toContain("open_settings");
+    expect(buildActionInstructions(["paths"])).toContain("create_path");
+  });
+});

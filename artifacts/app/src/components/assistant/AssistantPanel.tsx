@@ -297,8 +297,10 @@ export default function AssistantPanel() {
     routing,
     lastModel,
     budgetExceeded,
+    prefillRequest,
   } = useAssistant();
   const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -386,6 +388,20 @@ export default function AssistantPanel() {
 
   // Keep inputRef in sync for voice formatting (needs current value synchronously).
   useEffect(() => { inputRef.current = input; }, [input]);
+
+  // An entry point elsewhere in the app asked for text to be typed in for the
+  // user (see `prefill`). Fill the input and put the caret at its end.
+  useEffect(() => {
+    if (!prefillRequest) return;
+    setInput(prefillRequest.text);
+    const frame = requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [prefillRequest]);
 
   const handleSend = () => {
     const text = input;
@@ -791,6 +807,7 @@ export default function AssistantPanel() {
               <div className={`border-t border-white/10 ${isWatch ? "px-1.5 py-1.5" : "px-3 py-3"}`}>
                 <div className={`flex items-end rounded-2xl bg-background/60 border border-white/10 focus-within:border-primary/40 transition-colors ${isWatch ? "gap-1 px-1.5 py-1" : "gap-2 px-2.5 py-2"}`}>
                   <textarea
+                    ref={textareaRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {

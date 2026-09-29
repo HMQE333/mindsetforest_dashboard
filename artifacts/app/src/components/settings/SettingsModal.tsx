@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useUserSettings } from "@/hooks/useUserSettings";
@@ -31,10 +31,15 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
+  /** Tab to show when the modal opens (the assistant's open_settings). */
+  initialTab?: string;
 }
 
-export default function SettingsModal({ open, onClose }: SettingsModalProps) {
+export default function SettingsModal({ open, onClose, initialTab }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  useEffect(() => {
+    if (open && initialTab && TABS.some((t) => t.id === initialTab)) setActiveTab(initialTab as SettingsTab);
+  }, [open, initialTab]);
   const settings = useUserSettings();
   const themeRevertRef = useRef<(() => void) | null>(null);
 

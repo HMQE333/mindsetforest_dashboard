@@ -19,7 +19,6 @@ import TrackerMilestoneModal from "@/components/TrackerMilestoneModal";
 import ComputerTime from "@/components/tracker/ComputerTime";
 import { useTrackerXp } from "@/hooks/useTrackerXp";
 import { useAssistantCurrentScope } from "@/hooks/useAssistant";
-import { Sparkles } from "lucide-react";
 
 export default function Tracker() {
   const { user, signOut } = useAuth();
@@ -28,7 +27,7 @@ export default function Tracker() {
   const { getMetrics } = useUserSettings();
   const metrics = getMetrics();
   const isWatch = useIsWatch();
-  const { awardEntryXp, totalXp, todayEntryXp, config } = useTrackerXp();
+  const { awardEntryXp } = useTrackerXp();
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; value: number; x: number; y: number } | null>(null);
   const [milestone, setMilestone] = useState<{ id: string; title: string; icon: string; xp: number } | null>(null);
@@ -47,7 +46,8 @@ export default function Tracker() {
     await addEntry(metricId, value);
     setActiveMetricId(null);
     const xp = await awardEntryXp(metricId, value);
-    setFloatingXP({ id: Date.now(), value: xp > 0 ? xp : value, x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    if (xp <= 0) return;
+    setFloatingXP({ id: Date.now(), value: xp, x: window.innerWidth / 2, y: window.innerHeight / 2 });
     setTimeout(() => setFloatingXP(null), 1500);
   }, [addEntry, awardEntryXp]);
 
@@ -111,14 +111,6 @@ export default function Tracker() {
           </Link>
           <h1 className="text-2xl font-bold text-gradient-purple">Stats Tracker</h1>
           <div className="flex items-center gap-2">
-            {config.enabled && (
-              <div
-                title={`${todayEntryXp} XP earned today from logs${config.dailyCap > 0 ? ` (cap ${config.dailyCap})` : ""}`}
-                className="hidden sm:inline-flex items-center gap-1.5 glass-card px-3 py-2 text-xs font-bold text-primary"
-              >
-                <Sparkles className="w-3.5 h-3.5" /> {totalXp} XP
-              </div>
-            )}
             <button
             onClick={handleSignOut}
             className="glass-card px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"

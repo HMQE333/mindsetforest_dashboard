@@ -6,6 +6,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DashboardStateProvider } from "@/hooks/useDashboardState";
 import { AssistantProvider } from "@/hooks/useAssistant";
+import { useIntervalsAutoSync } from "@/hooks/useIntervalsAutoSync";
 import AssistantPanel from "@/components/assistant/AssistantPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
@@ -20,6 +21,12 @@ const queryClient = new QueryClient();
 // arbitrary path, so they use hash routing (#/tracker) instead of clean URLs.
 // Production keeps BrowserRouter with the deployment's base path.
 const useHashRouter = import.meta.env.VITE_HASH_ROUTER === "1";
+/** App-wide background work with no UI: pulls watch data from intervals.icu when stale. */
+function BackgroundSync() {
+  useIntervalsAutoSync();
+  return null;
+}
+
 const AppRouter = ({ children }: { children: React.ReactNode }) =>
   useHashRouter ? <HashRouter>{children}</HashRouter> : <BrowserRouter basename={import.meta.env.BASE_URL}>{children}</BrowserRouter>;
 
@@ -40,6 +47,7 @@ const App = () => (
           <AuthProvider>
             <DashboardStateProvider>
               <AssistantProvider>
+                <BackgroundSync />
                 <Routes>
                   <Route path="/" element={<Index />} />
                   <Route path="/auth" element={<Auth />} />

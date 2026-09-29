@@ -22,7 +22,7 @@ const HINTS: { scope: ScopeId; pattern: RegExp }[] = [
   { scope: "finance", pattern: /\b(finans\w*|finance\w*|pieni[aą]dz\w*|money|wydatk\w*|expense\w*|bud[zż]et\w*|budget\w*|subskrypcj\w*|subscription\w*)\b/i },
   { scope: "health", pattern: /\b(zdrowi\w*|health|waga|weight|sen|sleep|hrv|t[eę]tno|heart rate|trening\w*|workout\w*)\b/i },
   { scope: "computer", pattern: /\b(komputer\w*|computer|screen time|czas przy komputerze|aplikacj\w*|apps?)\b/i },
-  { scope: "tracker", pattern: /\b(tracker|statystyk\w*|stats|metryk\w*|metric\w*)\b/i },
+  { scope: "tracker", pattern: /\b(tracker|statystyk\w*|stats|metryk\w*|metric\w*|zaloguj\w*|wpisz\w*|pompk\w*|push-?ups?|przeczyta\w*|stron\w*|pages|godzin\w* pracy|deep work|kroków|wypi\w*)\b/i },
   { scope: "library", pattern: /\b(ksi[aą][zż]k\w*|book\w*|library|bibliotek\w*|czyta[lł]\w*|reading)\b/i },
   { scope: "cooking", pattern: /\b(przepis\w*|recipe\w*|gotowani\w*|cooking|posi[lł]\w*|meal\w*)\b/i },
   { scope: "breathing", pattern: /\b(oddech\w*|breath\w*|breathing)\b/i },

@@ -239,6 +239,66 @@ function useDashboardStateValue() {
     });
   }, [persist]);
 
+  /** Undo a tick (the assistant's "odznacz"): the XP it gave is taken back. */
+  const uncompleteMission = useCallback((categoryId: string, missionIndex: number, xp: number) => {
+    setState(prev => {
+      const base = rolloverIfNeeded(prev, todayKey());
+      const missionId = `${categoryId}-${missionIndex}`;
+      if (!base.completedMissions.has(missionId)) return prev;
+      const newCompleted = new Set(base.completedMissions);
+      newCompleted.delete(missionId);
+      const newXP = Math.max(0, base.currentXP - Math.max(0, xp));
+      const next: DashboardState = {
+        ...base,
+        currentXP: newXP,
+        currentLevel: Math.floor(newXP / 100) + 1,
+        missionsCompleted: Math.max(0, base.missionsCompleted - 1),
+        completedMissions: newCompleted,
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  /**
+   * Remove one mission from a list. Completion marks and rolled variants are
+   * keyed by position, so the ones after the removed mission shift down with it
+   * instead of landing on the wrong mission. XP already earned stays.
+   */
+  const removeMission = useCallback((categoryId: string, missionIndex: number) => {
+    setState(prev => {
+      const custom = prev.customMissions[categoryId];
+      const list = custom && custom.length > 0 ? custom : (CATEGORIES.find(c => c.id === categoryId)?.missions || []);
+      if (missionIndex < 0 || missionIndex >= list.length) return prev;
+      const prefix = `${categoryId}-`;
+      const shift = (key: string): string | null => {
+        if (!key.startsWith(prefix)) return key;
+        const n = Number(key.slice(prefix.length));
+        if (!Number.isInteger(n)) return key;
+        if (n === missionIndex) return null;
+        return `${prefix}${n > missionIndex ? n - 1 : n}`;
+      };
+      const completed = new Set<string>();
+      for (const id of prev.completedMissions) {
+        const k = shift(id);
+        if (k) completed.add(k);
+      }
+      const rolled: Record<string, number> = {};
+      for (const [k, v] of Object.entries(prev.rolledVariants)) {
+        const nk = shift(k);
+        if (nk) rolled[nk] = v;
+      }
+      const next: DashboardState = {
+        ...prev,
+        customMissions: { ...prev.customMissions, [categoryId]: list.filter((_, i) => i !== missionIndex) },
+        completedMissions: completed,
+        rolledVariants: rolled,
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const resetDay = useCallback(() => {
     setState(prev => {
       const newCustomMissions: Record<string, Mission[]> = {};
@@ -499,6 +559,8 @@ function useDashboardStateValue() {
     state,
     loading,
     completeMission,
+    uncompleteMission,
+    removeMission,
     resetDay,
     saveCustomMissions,
     applyMissionPreset,

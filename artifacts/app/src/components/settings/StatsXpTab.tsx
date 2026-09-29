@@ -119,20 +119,6 @@ export default function StatsXpTab() {
           checked={draft.retroactive}
           onChange={(v) => update({ retroactive: v })}
         />
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-foreground/90">Daily entry cap</div>
-            <div className="text-xs text-muted-foreground">0 = no cap. Prevents farming.</div>
-          </div>
-          <input
-            type="number"
-            min={0}
-            max={5000}
-            value={draft.dailyCap}
-            onChange={(e) => update({ dailyCap: Math.max(0, parseInt(e.target.value) || 0) })}
-            className="w-20 bg-secondary/50 border border-white/10 rounded-lg px-2 py-1 text-sm text-right font-mono text-foreground focus:outline-none focus:border-primary/50"
-          />
-        </div>
       </div>
 
       {/* Per-metric */}

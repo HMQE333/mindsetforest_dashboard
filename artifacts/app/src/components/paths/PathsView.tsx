@@ -1,19 +1,19 @@
 import { useState, useMemo, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { usePaths } from "@/hooks/usePaths";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useDashboardState } from "@/hooks/useDashboardState";
 import { stepStreak, stepIdleDays, todayKey } from "@/lib/path-data";
 import { toast } from "sonner";
 import PathCard from "./PathCard";
-import AIPathModal from "./AIPathModal";
+import AskAIButton from "./AskAIButton";
 
 export default function PathsView() {
   const {
     paths, logs, loading, missingTables, engineReady, stepsByPath, revisionsOf,
     createPath, updatePath, deletePath,
     addStep, updateStep, deleteStep, moveStep, logStep, undoToday,
-    recordRevision, revertTo, setDiagnosis, scoreDiagnosis, snoozeStep,
+    revertTo, setDiagnosis, scoreDiagnosis, snoozeStep,
   } = usePaths();
   const { getCategories } = useUserSettings();
   const { completeExternal, undoExternal } = useDashboardState();
@@ -21,7 +21,6 @@ export default function PathsView() {
 
   const [newName, setNewName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
-  const [aiPathId, setAIPathId] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
   // A Planning mention opens Paths and asks for one path to be shown expanded.
@@ -41,7 +40,6 @@ export default function PathsView() {
 
   const visible = paths.filter(p => (showArchived ? p.archived : !p.archived));
   const archivedCount = paths.filter(p => p.archived).length;
-  const aiPath = paths.find(p => p.id === aiPathId) || null;
 
   const handleLog = async (pathId: string, pathCategoryId: string | null, stepId: string) => {
     const before = stepsByPath(pathId);
@@ -128,6 +126,14 @@ export default function PathsView() {
               placeholder="New path — what do you want to get good at?"
               className="flex-1 min-w-0 bg-background/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/40"
             />
+            {/* The assistant cannot create a path yet, so this only types the
+                request in; the user finishes the sentence and sends it. */}
+            <AskAIButton
+              mode="prefill"
+              message={`Help me plan a new path: ${newName.trim()}`}
+              title="Plan a new path with the assistant"
+              className="self-stretch rounded-xl px-3.5"
+            />
             <button
               onClick={handleCreate}
               className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold glow-sm hover:-translate-y-0.5 transition-all flex-shrink-0"
@@ -139,7 +145,7 @@ export default function PathsView() {
           {visible.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-muted-foreground text-sm">
-                {showArchived ? "Nothing archived." : "No paths yet. Name one above — steps can come later, or from AI."}
+                {showArchived ? "Nothing archived." : "No paths yet. Name one above — steps can come later, or use Ask AI."}
               </p>
             </div>
           ) : (
@@ -168,7 +174,6 @@ export default function PathsView() {
                   onMoveStep={moveStep}
                   onUpdatePath={(patch) => updatePath(path.id, patch)}
                   onDeletePath={() => deletePath(path.id)}
-                  onAI={() => setAIPathId(path.id)}
                 />
               ))}
             </div>
@@ -184,31 +189,6 @@ export default function PathsView() {
           )}
         </>
       )}
-
-      <AnimatePresence>
-        {aiPath && (
-          <AIPathModal
-            pathName={aiPath.name}
-            categoryName={categories.find(c => c.id === aiPath.category_id)?.name}
-            existingSteps={stepsByPath(aiPath.id).map(s => s.title)}
-            onApply={async (drafted, diagnosis) => {
-              if (stepsByPath(aiPath.id).length > 0) {
-                await recordRevision(aiPath.id, "AI drafted new steps", "ai_plan");
-              }
-              if (diagnosis && !aiPath.diagnosis) await setDiagnosis(aiPath.id, diagnosis);
-              for (const s of drafted) {
-                await addStep(aiPath.id, s.title, {
-                  mode: s.days > 1 ? "reps" : "once",
-                  repsTarget: s.days,
-                  stage: s.stage || null,
-                  xp: s.xp,
-                });
-              }
-            }}
-            onClose={() => setAIPathId(null)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }

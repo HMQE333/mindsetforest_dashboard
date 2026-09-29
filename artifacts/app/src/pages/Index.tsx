@@ -72,6 +72,7 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);
   const [moreOpen, setMoreOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const { badgeCount } = useFriends();
@@ -85,6 +86,7 @@ const Index = () => {
       const module = typeof detail?.module === "string" ? detail.module : "";
       if (!module) return;
       if (module === "settings") {
+        setSettingsTab(typeof detail?.tab === "string" ? detail.tab : undefined);
         setSettingsOpen(true);
         return;
       }
@@ -115,9 +117,10 @@ const Index = () => {
   // from /tracker): hand it to the listener above, then clear the state so a
   // reload does not replay it.
   useEffect(() => {
-    const module = (location.state as { module?: string } | null)?.module;
+    const routed = location.state as { module?: string; tab?: string } | null;
+    const module = routed?.module;
     if (!module) return;
-    window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module } }));
+    window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module, tab: routed?.tab } }));
     navigate(location.pathname, { replace: true, state: null });
   }, [location.state, location.pathname, navigate]);
 
@@ -208,7 +211,7 @@ const Index = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setSettingsOpen(true)}
+                  onClick={() => { setSettingsTab(undefined); setSettingsOpen(true); }}
                   className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
                   title="Settings"
                 >
@@ -333,7 +336,7 @@ const Index = () => {
 
       {/* Global Quick Capture. Ctrl/Cmd+N */}
       {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
-      {user && <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+      {user && <SettingsModal open={settingsOpen} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />}
       {user && <FriendsPanel open={friendsOpen} onOpenChange={setFriendsOpen} />}
     </div>
   );

@@ -14,6 +14,7 @@ import {
 import { DAILY_COLUMNS, dailyRowToSession, rowToClass, rowToRule } from "@/lib/app-usage-rows";
 import { formatMissionList, listTodayMissions } from "@/lib/mission-match";
 import { parseMissionMap } from "@/lib/mission-presets";
+import { loadMetrics } from "@/lib/assistant-writes";
 
 export type ScopeId =
   | "dashboard"
@@ -117,12 +118,15 @@ async function gatherDashboard(userId: string): Promise<string> {
 
 async function gatherTracker(userId: string): Promise<string> {
   const since = daysAgoISO(30);
-  const { data } = await supabase
-    .from("tracker_entries")
-    .select("metric_id,value,date")
-    .eq("user_id", userId)
-    .gte("date", since);
-  if (!data || data.length === 0) return "No tracker entries in the last 30 days.";
+  const [{ data }, metrics] = await Promise.all([
+    supabase.from("tracker_entries").select("metric_id,value,date").eq("user_id", userId).gte("date", since),
+    loadMetrics(userId),
+  ]);
+  const labelOf = (id: string) => metrics.find((m) => m.id === id)?.label || metricLabel(id);
+  const loggable =
+    "Metrics you can log with log_metric (id: label, unit): " +
+    metrics.map((m) => `${m.id}: ${m.label} (${m.unit})`).join("; ");
+  if (!data || data.length === 0) return ["No tracker entries in the last 30 days.", loggable].join("\n");
 
   const totals: Record<string, number> = {};
   const days: Record<string, Set<string>> = {};
@@ -134,10 +138,16 @@ async function gatherTracker(userId: string): Promise<string> {
   }
   const lines = Object.entries(totals)
     .sort((a, b) => b[1] - a[1])
-    .map(([id, total]) => `- ${metricLabel(id)}: ${Math.round(total * 10) / 10} total over ${days[id].size} active day(s)`);
+    .map(([id, total]) => `- ${labelOf(id)}: ${Math.round(total * 10) / 10} total over ${days[id].size} active day(s)`);
+  const today = todayKey();
+  const todayLines = data
+    .filter((e) => e.date === today)
+    .map((e) => `${labelOf(e.metric_id)} ${Math.round(Number(e.value) * 10) / 10}`);
   return [
     `Tracker summary for the last 30 days (${allDays.size} active days):`,
     ...lines,
+    `Logged today: ${todayLines.length > 0 ? todayLines.join(", ") : "nothing yet"}`,
+    loggable,
   ].join("\n");
 }
 
@@ -386,6 +396,10 @@ async function gatherHealth(userId: string): Promise<string> {
 
 async function gatherFinance(userId: string): Promise<string> {
   const since = daysAgoISO(90);
+  const { data: cats } = await supabase.from("finance_categories").select("name,kind").eq("user_id", userId);
+  const categoryLine = cats && cats.length > 0
+    ? "Categories (use with add_transaction): " + cats.map((c) => `${c.name}${c.kind ? ` [${c.kind}]` : ""}`).join(", ")
+    : "Categories: none defined yet";
   const { data } = await supabase
     .from("finance_transactions")
     .select("type,title,amount,category,date")
@@ -393,7 +407,7 @@ async function gatherFinance(userId: string): Promise<string> {
     .gte("date", since)
     .order("date", { ascending: false })
     .limit(200);
-  if (!data || data.length === 0) return "No finance transactions in the last 90 days.";
+  if (!data || data.length === 0) return ["No finance transactions in the last 90 days.", categoryLine].join("\n");
   let income = 0;
   let expenses = 0;
   const byCat: Record<string, number> = {};
@@ -416,6 +430,7 @@ async function gatherFinance(userId: string): Promise<string> {
     ...topCats,
     "Recent transactions:",
     ...recent,
+    categoryLine,
   ].join("\n");
 }
 
@@ -676,5 +691,10 @@ export async function gatherContext(
     }
   }
 
-  return { text: sections.join("\n\n"), citations };
+  const now = new Date();
+  const header =
+    `Now: ${todayKey()} (${now.toLocaleDateString("en-US", { weekday: "long" })}), local time ` +
+    `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}. ` +
+    "The app's day starts at 04:00, so before 04:00 \"today\" is still the previous date.";
+  return { text: [header, ...sections].join("\n\n"), citations };
 }

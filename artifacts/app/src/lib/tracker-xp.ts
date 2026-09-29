@@ -9,7 +9,8 @@ export interface MetricXpRule {
 
 export interface TrackerXpConfig {
   enabled: boolean;
-  dailyCap: number;       // 0 = no cap
+  /** Kept for stored configs; not enforced. Stats XP has no daily cap. */
+  dailyCap: number;
   retroactive: boolean;   // award milestone XP for already-unlocked achievements
   perMetric: Record<string, MetricXpRule>;
   milestones: Record<string, number>;
@@ -42,7 +43,7 @@ export function defaultPerMetricMap(metrics: TrackerMetric[]): Record<string, Me
 
 export const DEFAULT_TRACKER_XP_CONFIG: TrackerXpConfig = {
   enabled: true,
-  dailyCap: 300,
+  dailyCap: 0,
   retroactive: false,
   perMetric: {},
   milestones: defaultMilestoneMap(),
@@ -60,7 +61,7 @@ export function mergeConfig(
   if (!cfg) return base;
   return {
     enabled: cfg.enabled ?? base.enabled,
-    dailyCap: cfg.dailyCap ?? base.dailyCap,
+    dailyCap: 0,
     retroactive: cfg.retroactive ?? base.retroactive,
     perMetric: { ...base.perMetric, ...(cfg.perMetric || {}) },
     milestones: { ...base.milestones, ...(cfg.milestones || {}) },

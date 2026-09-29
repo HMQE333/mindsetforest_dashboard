@@ -15,6 +15,24 @@ export const MODULE_LABELS: Record<AppModule, string> = {
 };
 const VALID_MODULES = new Set<string>(APP_MODULES);
 
+export const SETTINGS_TABS = [
+  "profile", "context", "modules", "theme", "keybinds", "categories", "projects", "metrics", "stats-xp", "rewards",
+] as const;
+export type SettingsTabId = (typeof SETTINGS_TABS)[number];
+const SETTINGS_TAB_LABELS: Record<SettingsTabId, string> = {
+  profile: "Profile", context: "AI Context", modules: "Modules", theme: "Theme", keybinds: "Keybinds",
+  categories: "Pillars", projects: "Projects", metrics: "Metrics", "stats-xp": "Stats XP", rewards: "Rewards",
+};
+const VALID_TABS = new Set<string>(SETTINGS_TABS);
+const THEMES = ["dark", "light", "oled", "midnight", "forest", "crimson", "cyber", "sandstone", "frost", "timber"];
+const ACCENTS = ["purple", "blue", "green", "orange", "pink", "red", "cyan", "gold"];
+/** Modules that can be switched on/off (Home is always on). */
+const TOGGLEABLE_MODULES = [
+  "tracker", "paths", "oracle", "archive", "projects", "library", "cooking", "finance", "breathing",
+  "calendar", "planning", "health", "monthly-focus",
+];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * Structured write actions the assistant can propose. These are never applied
  * automatically. The panel shows a confirm step first, and every action is
@@ -51,6 +69,32 @@ export type AssistantAction =
       type: "navigate";
       module: AppModule;
     }
+  | { /** Open the settings on a tab. Instant, no confirm. */ type: "open_settings"; tab: SettingsTabId }
+  | { /** Switch the colour theme and/or accent. Instant and reversible, no confirm. */ type: "set_theme"; theme?: string; accent?: string }
+  | { type: "toggle_module"; module: string; enabled: boolean }
+  | { type: "uncomplete_mission"; title: string; categoryId?: string }
+  | {
+      type: "edit_mission";
+      title: string;
+      categoryId?: string;
+      newTitle?: string;
+      description?: string;
+      duration?: string;
+      xp?: number;
+    }
+  | { type: "remove_mission"; title: string; categoryId?: string }
+  | { type: "save_preset"; name: string; emoji?: string }
+  | { type: "log_metric"; metric: string; value: number }
+  | { type: "log_path_step"; pathName: string }
+  | {
+      type: "create_path";
+      name: string;
+      diagnosis?: string;
+      steps: { title: string; stage?: string | null; days?: number; xp?: number }[];
+    }
+  | { type: "complete_task"; title: string }
+  | { type: "add_event"; title: string; date: string; time?: string; notes?: string }
+  | { type: "add_transaction"; kind: "expense" | "income"; amount: number; title: string; category?: string; date?: string }
   | {
       /** Tick one of today's missions on Home. Matched by title against the list in the context. */
       type: "complete_mission";
@@ -101,6 +145,19 @@ export type ActionType = AssistantAction["type"];
 /** Which granted scope an action needs; null means always allowed (navigation). */
 export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
   navigate: null,
+  open_settings: null,
+  set_theme: null,
+  toggle_module: null,
+  uncomplete_mission: "dashboard",
+  edit_mission: "dashboard",
+  remove_mission: "dashboard",
+  save_preset: "dashboard",
+  log_metric: "tracker",
+  log_path_step: "paths",
+  create_path: "paths",
+  complete_task: "planning",
+  add_event: "calendar",
+  add_transaction: "finance",
   complete_mission: "dashboard",
   add_task: "planning",
   add_mission: "dashboard",
@@ -160,6 +217,18 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
       '). Use it whenever the user asks to open / go to / show a section ("pokaż statystyki", "open finance"). ' +
       "It runs immediately without confirmation, so pair it with a one-line reply.",
   );
+  specs.push(
+    "- open_settings: open the settings window on a tab. Field: tab (one of " +
+      SETTINGS_TABS.map((t) => `"${t}" (${SETTINGS_TAB_LABELS[t]})`).join(", ") +
+      "). Runs immediately.",
+  );
+  specs.push(
+    `- set_theme: change the look. Fields: theme (optional, one of ${THEMES.map((t) => `"${t}"`).join(", ")}), ` +
+      `accent (optional, one of ${ACCENTS.map((a) => `"${a}"`).join(", ")}). Runs immediately; use when the user asks for a darker/lighter look or a colour.`,
+  );
+  specs.push(
+    `- toggle_module: show or hide a module in the navigation. Fields: module (one of ${TOGGLEABLE_MODULES.map((m) => `"${m}"`).join(", ")}), enabled (boolean).`,
+  );
 
   if (scopes.includes("planning")) {
     specs.push(
@@ -186,13 +255,15 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
 
   if (scopes.includes("paths")) {
     specs.push(
-      "- revise_path: rewrite the steps of an existing path. Use this whenever the user pushes back on a plan " +
-        '("too aggressive", "wrong order", "I can\'t do daily"). Do NOT reply with a new plan in prose - emit this action. ' +
+      "- revise_path: write or rewrite the steps of an existing path. Use it when the user asks you to draft, plan, rework or fix a path's steps, " +
+        '(also for an empty path) and whenever they push back on a plan ("too aggressive", "wrong order", "I can\'t do daily"). ' +
+        "Do NOT reply with a plan in prose - emit this action; your prose is one or two lines on the idea behind the plan. " +
         "Fields: pathName (string, must match one of the active paths listed in the context), " +
         "reason (string, required - one short line saying what the user objected to, in their words where possible), " +
         "steps (array, max 20, IN ORDER - the complete new list, not a diff. Each: title (short handle, not an instruction), " +
         "optional stage, optional days (number of separate days to repeat it; omit or 1 for a one-off), optional xp), " +
-        "diagnosis (string, optional - only when the conversation established that the real obstacle was misnamed). " +
+        "diagnosis (string, optional - the one binding constraint, in one line; include it when the path has none yet, " +
+        "or when the conversation established that the named obstacle was the wrong one). " +
         "Steps the user has already worked on are preserved automatically, and the whole revision is one click to undo, " +
         "so prefer proposing the honest plan over a timid edit.",
     );
@@ -218,6 +289,53 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         "categoryId (optional - the id in parentheses after the pillar name). " +
         'Use when the user says they did / finished / completed a mission ("zrobiłem pompki", "I read my 20 pages"). ' +
         "Never tick a mission that is already [x]; say it is done instead.",
+    );
+    specs.push(
+      "- uncomplete_mission: untick a mission marked [x] today (takes its XP back). Fields: title (exact title from the list), categoryId (optional).",
+    );
+    specs.push(
+      "- edit_mission: change an existing mission. Fields: title (current exact title), categoryId (optional), " +
+        "newTitle, description, duration, xp (all optional; only what changes).",
+    );
+    specs.push(
+      "- remove_mission: delete a mission from its list. Fields: title (exact title), categoryId (optional).",
+    );
+    specs.push(
+      "- save_preset: save the current Home missions as a named preset (overwrites a preset with the same name). Fields: name, emoji (optional).",
+    );
+  }
+
+  if (scopes.includes("tracker")) {
+    specs.push(
+      "- log_metric: log a number for one of the user's Stats metrics today (awards Stats XP). Fields: metric (the metric id or its exact label from the \"Metrics you can log\" list), " +
+        'value (number in the metric\'s unit). Use when the user reports a measurable amount ("przeczytałem 30 stron", "3 hours of deep work").',
+    );
+  }
+
+  if (scopes.includes("paths")) {
+    specs.push(
+      "- log_path_step: log today's day/rep of the ACTIVE step (marked >) of a path, like the button on Home (awards its XP). Field: pathName (exact name).",
+    );
+    specs.push(
+      "- create_path: create a new path. Fields: name, diagnosis (optional: the one binding constraint), steps (array, max 20, in order: " +
+        "title, optional stage, optional days = separate days to repeat, optional xp). Prefer 4-10 concrete steps.",
+    );
+  }
+
+  if (scopes.includes("planning")) {
+    specs.push("- complete_task: mark an open planning task as done. Field: title (exact or unambiguous part of the title).");
+  }
+
+  if (scopes.includes("calendar")) {
+    specs.push(
+      '- add_event: add a calendar event. Fields: title, date ("YYYY-MM-DD"; resolve "jutro"/"tomorrow" from today\'s date in the data), time (optional "HH:MM"), notes (optional).',
+    );
+  }
+
+  if (scopes.includes("finance")) {
+    specs.push(
+      '- add_transaction: record money in or out. Fields: kind ("expense" or "income"), amount (positive number), title, ' +
+        'category (optional, prefer one of the user\'s categories listed in the data), date (optional "YYYY-MM-DD", default today).',
     );
   }
 
@@ -323,6 +441,111 @@ function coerceAction(raw: unknown): AssistantAction | null {
     const module = typeof o.module === "string" ? o.module.trim().toLowerCase() : "";
     if (!VALID_MODULES.has(module)) return null;
     return { type: "navigate", module: module as AppModule };
+  }
+
+  if (type === "open_settings") {
+    const tab = typeof o.tab === "string" ? o.tab.trim().toLowerCase() : "";
+    return VALID_TABS.has(tab) ? { type: "open_settings", tab: tab as SettingsTabId } : null;
+  }
+
+  if (type === "set_theme") {
+    const theme = typeof o.theme === "string" && THEMES.includes(o.theme.toLowerCase()) ? o.theme.toLowerCase() : undefined;
+    const accent = typeof o.accent === "string" && ACCENTS.includes(o.accent.toLowerCase()) ? o.accent.toLowerCase() : undefined;
+    return theme || accent ? { type: "set_theme", theme, accent } : null;
+  }
+
+  if (type === "toggle_module") {
+    const module = typeof o.module === "string" ? o.module.trim().toLowerCase() : "";
+    if (!TOGGLEABLE_MODULES.includes(module) || typeof o.enabled !== "boolean") return null;
+    return { type: "toggle_module", module, enabled: o.enabled };
+  }
+
+  if (type === "uncomplete_mission" || type === "remove_mission") {
+    const title = typeof o.title === "string" ? o.title.trim().slice(0, 200) : "";
+    if (!title) return null;
+    const categoryId = typeof o.categoryId === "string" && o.categoryId.trim() ? o.categoryId.trim().slice(0, 80) : undefined;
+    return { type, title, categoryId };
+  }
+
+  if (type === "edit_mission") {
+    const title = typeof o.title === "string" ? o.title.trim().slice(0, 200) : "";
+    if (!title) return null;
+    const categoryId = typeof o.categoryId === "string" && o.categoryId.trim() ? o.categoryId.trim().slice(0, 80) : undefined;
+    const newTitle = typeof o.newTitle === "string" && o.newTitle.trim() ? o.newTitle.trim().slice(0, 200) : undefined;
+    const description = typeof o.description === "string" ? o.description.slice(0, 500) : undefined;
+    const duration = typeof o.duration === "string" ? o.duration.slice(0, 40) : undefined;
+    const xpNum = Number(o.xp);
+    const xp = o.xp !== undefined && Number.isFinite(xpNum) && xpNum > 0 ? Math.min(500, Math.round(xpNum)) : undefined;
+    if (newTitle === undefined && description === undefined && duration === undefined && xp === undefined) return null;
+    return { type: "edit_mission", title, categoryId, newTitle, description, duration, xp };
+  }
+
+  if (type === "save_preset") {
+    const name = typeof o.name === "string" ? o.name.trim().slice(0, 40) : "";
+    if (!name) return null;
+    const emoji = typeof o.emoji === "string" && o.emoji.trim() ? o.emoji.trim().slice(0, 8) : undefined;
+    return { type: "save_preset", name, emoji };
+  }
+
+  if (type === "log_metric") {
+    const metric = typeof o.metric === "string" ? o.metric.trim().slice(0, 80) : "";
+    const value = Number(o.value);
+    if (!metric || !Number.isFinite(value) || value <= 0 || value > 100000) return null;
+    return { type: "log_metric", metric, value: Math.round(value * 100) / 100 };
+  }
+
+  if (type === "log_path_step") {
+    const pathName = typeof o.pathName === "string" ? o.pathName.trim().slice(0, 200) : "";
+    return pathName ? { type: "log_path_step", pathName } : null;
+  }
+
+  if (type === "create_path") {
+    const name = typeof o.name === "string" ? o.name.trim().slice(0, 120) : "";
+    if (!name) return null;
+    const rawSteps = Array.isArray(o.steps) ? o.steps : [];
+    const steps = rawSteps
+      .slice(0, 20)
+      .map((r) => {
+        if (!r || typeof r !== "object") return null;
+        const x = r as Record<string, unknown>;
+        const title = typeof x.title === "string" ? x.title.trim().slice(0, 200) : "";
+        if (!title) return null;
+        const days = Number(x.days);
+        const xpNum = Number(x.xp);
+        return {
+          title,
+          stage: typeof x.stage === "string" && x.stage.trim() ? x.stage.trim().slice(0, 60) : null,
+          days: Number.isFinite(days) && days > 1 ? Math.min(365, Math.round(days)) : 1,
+          xp: Number.isFinite(xpNum) && xpNum > 0 ? Math.min(500, Math.round(xpNum)) : undefined,
+        };
+      })
+      .filter(Boolean) as { title: string; stage: string | null; days: number; xp?: number }[];
+    const diagnosis = typeof o.diagnosis === "string" && o.diagnosis.trim() ? o.diagnosis.trim().slice(0, 400) : undefined;
+    return { type: "create_path", name, diagnosis, steps };
+  }
+
+  if (type === "complete_task") {
+    const title = typeof o.title === "string" ? o.title.trim().slice(0, 300) : "";
+    return title ? { type: "complete_task", title } : null;
+  }
+
+  if (type === "add_event") {
+    const title = typeof o.title === "string" ? o.title.trim().slice(0, 200) : "";
+    const date = typeof o.date === "string" && ISO_DATE.test(o.date) ? o.date : "";
+    if (!title || !date) return null;
+    const time = typeof o.time === "string" && /^\d{1,2}:\d{2}$/.test(o.time.trim()) ? o.time.trim() : undefined;
+    const notes = typeof o.notes === "string" ? o.notes.slice(0, 1000) : undefined;
+    return { type: "add_event", title, date, time, notes };
+  }
+
+  if (type === "add_transaction") {
+    const kind = o.kind === "income" ? "income" : o.kind === "expense" ? "expense" : null;
+    const amount = Number(o.amount);
+    const title = typeof o.title === "string" ? o.title.trim().slice(0, 200) : "";
+    if (!kind || !title || !Number.isFinite(amount) || amount <= 0 || amount > 10_000_000) return null;
+    const category = typeof o.category === "string" && o.category.trim() ? o.category.trim().slice(0, 60) : undefined;
+    const date = typeof o.date === "string" && ISO_DATE.test(o.date) ? o.date : undefined;
+    return { type: "add_transaction", kind, amount: Math.round(amount * 100) / 100, title, category, date };
   }
 
   if (type === "complete_mission") {
@@ -435,6 +658,11 @@ export function mindmapPreview(action: AssistantAction): string | null {
   if (action.type === "add_mindmap_nodes") {
     return "New map\n" + nodesToTreePreview(action.nodes);
   }
+  if (action.type === "create_path") {
+    return action.steps
+      .map((step, i) => `${String(i + 1).padStart(2, " ")}. ${step.stage ? `[${step.stage}] ` : ""}${step.title}${(step.days || 1) > 1 ? `  x${step.days} days` : ""}`)
+      .join("\n");
+  }
   if (action.type === "revise_path") {
     // The whole proposed plan, so the user agrees to something they can see
     // rather than to a sentence describing it.
@@ -470,6 +698,31 @@ export function describeAction(action: AssistantAction): string {
   if (action.type === "complete_mission") {
     return `Mark mission done: "${action.title}"`;
   }
+  if (action.type === "open_settings") return `Open settings: ${SETTINGS_TAB_LABELS[action.tab]}`;
+  if (action.type === "set_theme") {
+    return `Change look: ${[action.theme && `theme ${action.theme}`, action.accent && `accent ${action.accent}`].filter(Boolean).join(", ")}`;
+  }
+  if (action.type === "toggle_module") return `${action.enabled ? "Show" : "Hide"} module: ${action.module}`;
+  if (action.type === "uncomplete_mission") return `Untick mission: "${action.title}" (XP taken back)`;
+  if (action.type === "edit_mission") {
+    const bits = [
+      action.newTitle && `rename to "${action.newTitle}"`,
+      action.xp !== undefined && `${action.xp} XP`,
+      action.duration !== undefined && `duration ${action.duration || "none"}`,
+      action.description !== undefined && "new description",
+    ].filter(Boolean);
+    return `Edit mission "${action.title}": ${bits.join(", ")}`;
+  }
+  if (action.type === "remove_mission") return `Remove mission: "${action.title}"`;
+  if (action.type === "save_preset") return `Save current missions as preset "${action.emoji ? `${action.emoji} ` : ""}${action.name}"`;
+  if (action.type === "log_metric") return `Log ${action.value} for "${action.metric}" today`;
+  if (action.type === "log_path_step") return `Log today on path "${action.pathName}" (active step)`;
+  if (action.type === "create_path") return `Create path "${action.name}" (${action.steps.length} steps)`;
+  if (action.type === "complete_task") return `Mark task done: "${action.title}"`;
+  if (action.type === "add_event") return `Add event ${action.date}${action.time ? ` ${action.time}` : ""}: "${action.title}"`;
+  if (action.type === "add_transaction") {
+    return `Add ${action.kind}: ${action.amount} · "${action.title}"${action.category ? ` (${action.category})` : ""}${action.date ? ` on ${action.date}` : ""}`;
+  }
   if (action.type === "apply_preset") {
     return `Load mission preset "${action.presetName}" (replaces every mission list on Home)`;
   }
@@ -494,7 +747,7 @@ export function describeAction(action: AssistantAction): string {
 }
 
 /** Actions that run as soon as they are parsed, without the confirm card. */
-export const AUTO_APPLY_ACTIONS = new Set<ActionType>(["navigate"]);
+export const AUTO_APPLY_ACTIONS = new Set<ActionType>(["navigate", "open_settings", "set_theme"]);
 export function isAutoApply(action: AssistantAction): boolean {
   return AUTO_APPLY_ACTIONS.has(action.type);
 }
