@@ -468,7 +468,8 @@ function useAssistantValue() {
             // rollover (applied lazily by completeMission) they are yesterday's.
             const dash = dashboardRef.current;
             const completed = dash.dayKey === todayKey() ? dash.completedMissions : [];
-            const entries = listTodayMissions(dash.customMissions, completed);
+            const rolled = dash.dayKey === todayKey() ? dash.rolledVariants : {};
+            const entries = listTodayMissions(dash.customMissions, completed, {}, undefined, rolled);
             const match = findMission(entries, action.title, action.categoryId);
             if (!match) {
               failed++;
@@ -504,7 +505,8 @@ function useAssistantValue() {
           ) {
             const dash = dashboardRef.current;
             const completed = dash.dayKey === todayKey() ? dash.completedMissions : [];
-            const entries = listTodayMissions(dash.customMissions, completed);
+            const rolled = dash.dayKey === todayKey() ? dash.rolledVariants : {};
+            const entries = listTodayMissions(dash.customMissions, completed, {}, undefined, rolled);
             const pool = action.type === "uncomplete_mission" ? entries.filter((e) => e.done) : entries;
             const match = findMission(pool, action.title, action.categoryId) ?? findMission(entries, action.title, action.categoryId);
             if (!match) {
@@ -538,8 +540,12 @@ function useAssistantValue() {
                   ...(action.duration !== undefined ? { duration: action.duration } : {}),
                   ...(action.xp !== undefined ? { xp: action.xp } : {}),
                 };
-                const { __originalIndex: _drop, ...clean } = updated as typeof updated & { __originalIndex?: number };
-                flushSync(() => saveCustomMissions(match.categoryId, list.map((m, i) => (i === match.index ? clean : m))));
+                // Every row carries its index so saveCustomMissions keeps ticks and rolled
+                // variants on the same missions (a rename would otherwise lose the tick).
+                flushSync(() => saveCustomMissions(
+                  match.categoryId,
+                  list.map((m, i) => ({ ...(i === match.index ? updated : m), __originalIndex: i })),
+                ));
                 toast.success(`Zmieniono misję „${action.newTitle || match.title}”`);
                 ok++;
               }

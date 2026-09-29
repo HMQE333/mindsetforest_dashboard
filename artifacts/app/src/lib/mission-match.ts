@@ -11,9 +11,12 @@ export interface MissionEntry {
   categoryName: string;
   /** Index into the unfiltered list: the completion id is `${categoryId}-${index}`. */
   index: number;
+  /** As the card shows it: the rolled variant's title and XP when the mission has variants. */
   title: string;
   xp: number;
   done: boolean;
+  /** The mission's own title when a variant is showing, so either name finds it. */
+  baseTitle?: string;
 }
 
 // The weekday of the app's day (04:00 boundary), so at 01:00 on Tuesday the
@@ -28,19 +31,24 @@ export function listTodayMissions(
   completed: Iterable<string>,
   projectNames: Record<string, string> = {},
   today: number = logicalDate().getDay(),
+  /** Today's rolled variant per completion id (dashboard_state.rolled_variants). */
+  rolled: Record<string, number> = {},
 ): MissionEntry[] {
   const done = new Set(completed);
   const out: MissionEntry[] = [];
   const push = (categoryId: string, categoryName: string, list: Mission[]) => {
     list.forEach((m, index) => {
       if (!m || typeof m.title !== "string" || !isMissionVisibleToday(m, today)) return;
+      const id = `${categoryId}-${index}`;
+      const variant = m.variants && rolled[id] !== undefined ? m.variants[rolled[id]] : undefined;
       out.push({
         categoryId,
         categoryName,
         index,
-        title: m.title,
-        xp: Number(m.xp) || 0,
-        done: done.has(`${categoryId}-${index}`),
+        title: variant?.title || m.title,
+        xp: Number(variant ? variant.xp : m.xp) || 0,
+        done: done.has(id),
+        ...(variant?.title && variant.title !== m.title ? { baseTitle: m.title } : {}),
       });
     });
   };
@@ -75,20 +83,18 @@ export function findMission(entries: MissionEntry[], title: string, categoryId?:
   const pool = categoryId ? entries.filter((e) => e.categoryId === categoryId) : entries;
   const candidates = pool.length > 0 ? pool : entries;
 
-  const exact = candidates.filter((e) => norm(e.title) === wanted);
+  const names = (e: MissionEntry) => (e.baseTitle ? [e.title, e.baseTitle] : [e.title]).map(norm);
+  const exact = candidates.filter((e) => names(e).includes(wanted));
   if (exact.length > 0) return exact.find((e) => !e.done) ?? exact[0];
 
-  const contains = candidates.filter((e) => {
-    const t = norm(e.title);
-    return t.includes(wanted) || wanted.includes(t);
-  });
+  const contains = candidates.filter((e) => names(e).some((t) => t.includes(wanted) || wanted.includes(t)));
   if (contains.length === 1) return contains[0];
   if (contains.length > 1) return contains.find((e) => !e.done) ?? contains[0];
 
   const words = new Set(wanted.split(" ").filter((w) => w.length > 2 && !STOPWORDS.has(w)));
   if (words.size === 0) return null;
   const scored = candidates
-    .map((e) => ({ e, shared: norm(e.title).split(" ").filter((w) => words.has(w)).length }))
+    .map((e) => ({ e, shared: Math.max(...names(e).map((t) => t.split(" ").filter((w) => words.has(w)).length)) }))
     .filter((x) => x.shared > 0)
     .sort((a, b) => b.shared - a.shared || Number(a.e.done) - Number(b.e.done));
   if (scored.length === 0) return null;

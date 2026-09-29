@@ -108,7 +108,8 @@ async function gatherDashboard(userId: string): Promise<string> {
   const sameDay = !data.day_key || data.day_key === todayKey();
   const projectNames: Record<string, string> = {};
   for (const p of projects || []) projectNames[`project-${p.id}`] = p.name;
-  const missions = listTodayMissions(parseMissionMap(data.custom_missions), sameDay ? data.completed_missions || [] : [], projectNames);
+  const rolled = sameDay ? ((data as { rolled_variants?: Record<string, number> }).rolled_variants || {}) : {};
+  const missions = listTodayMissions(parseMissionMap(data.custom_missions), sameDay ? data.completed_missions || [] : [], projectNames, undefined, rolled);
   const missionBlock = missions.length > 0
     ? "Today's missions ([x] done, [ ] not yet; use complete_mission with the exact title to tick one):\n" + formatMissionList(missions)
     : "Today's missions: none";

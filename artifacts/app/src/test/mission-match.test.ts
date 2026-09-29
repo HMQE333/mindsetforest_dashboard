@@ -70,3 +70,26 @@ describe("mission weekday and the 04:00 boundary", () => {
     expect(titles()).toEqual(["Tuesday only"]);
   });
 });
+
+describe("rolled variants", () => {
+  const withVariants = {
+    body: [m("Workout", {
+      xp: 20,
+      variants: [
+        { title: "Workout", description: "", duration: "", xp: 20, weight: 1 },
+        { title: "10 km run", description: "", duration: "", xp: 45, weight: 1 },
+      ],
+    })],
+  };
+
+  it("lists the variant the card shows, with its XP", () => {
+    const [e] = listTodayMissions(withVariants, [], {}, undefined, { "body-0": 1 }).filter((x) => x.categoryId === "body");
+    expect(e).toMatchObject({ title: "10 km run", xp: 45, baseTitle: "Workout" });
+  });
+
+  it("finds it by either name", () => {
+    const entries = listTodayMissions(withVariants, [], {}, undefined, { "body-0": 1 });
+    expect(findMission(entries, "10 km run")?.index).toBe(0);
+    expect(findMission(entries, "workout", "body")?.xp).toBe(45);
+  });
+});
