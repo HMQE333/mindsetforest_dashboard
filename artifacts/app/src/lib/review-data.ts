@@ -1,4 +1,4 @@
-import { addDays, todayKey } from "@/lib/today";
+import { addDays, dayKey, todayKey } from "@/lib/today";
 import type { KindSeconds } from "@/lib/app-usage-classify";
 
 /**
@@ -47,6 +47,19 @@ export function reviewDay(today: string = todayKey()): string {
   return addDays(today, -1);
 }
 
+/**
+ * Whether a timestamp (e.g. a path step's done_at) falls between two day keys,
+ * dated on the app's own clock (local time, 04:00 boundary) rather than by its
+ * UTC date, so a step finished this morning is not counted in yesterday's review.
+ */
+export function withinDays(at: string | null | undefined, from: string, to: string): boolean {
+  if (!at) return false;
+  const t = new Date(at);
+  if (Number.isNaN(t.getTime())) return false;
+  const day = dayKey(t);
+  return day >= from && day <= to;
+}
+
 /** "2026-09" for any day in September. */
 export function monthOf(day: string): string {
   return day.slice(0, 7);
@@ -82,6 +95,27 @@ export function reviewStreak(donePeriods: Iterable<string>, lastDay: string = re
     day = addDays(day, -1);
   }
   return n;
+}
+
+/**
+ * A saved review reopened: its answered questions come back as the questions,
+ * answers filled in, so saving again edits them instead of replacing them with
+ * a blank set. Null when nothing usable was saved (a skip, or no answers).
+ */
+export function savedQuestions(qa: unknown): {
+  questions: { id: string; question: string; suggestions: string[] }[];
+  answers: Record<string, string>;
+} | null {
+  if (!Array.isArray(qa)) return null;
+  const questions: { id: string; question: string; suggestions: string[] }[] = [];
+  const answers: Record<string, string> = {};
+  for (const item of qa as { question?: unknown; answer?: unknown }[]) {
+    if (!item || typeof item.question !== "string" || !item.question.trim()) continue;
+    const id = `saved-${questions.length + 1}`;
+    questions.push({ id, question: item.question, suggestions: [] });
+    answers[id] = typeof item.answer === "string" ? item.answer : "";
+  }
+  return questions.length > 0 ? { questions, answers } : null;
 }
 
 const pln = (n: number) => `${Math.round(n).toLocaleString("pl-PL")} zł`;
@@ -160,7 +194,7 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
       key: "sleep",
       icon: "😴",
       label: monthly ? "Sen (średnio)" : "Sen",
-      value: mins ? hoursMinutes(mins) : `${s.sleep.avgScore}`,
+      value: mins ? hoursMinutes(mins) : `${Math.round(s.sleep.avgScore ?? 0)}`,
       detail: [
         s.sleep.avgScore ? `score ${Math.round(s.sleep.avgScore)}` : null,
         s.sleep.avgHrv ? `HRV ${Math.round(s.sleep.avgHrv)}` : null,

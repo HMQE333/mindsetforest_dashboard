@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emptySnapshot, monthRange, monthlyDue, periodLabel, previousMonth, reviewDay, reviewStreak, reviewTiles } from "../lib/review-data";
+import { emptySnapshot, monthRange, monthlyDue, periodLabel, previousMonth, reviewDay, reviewStreak, reviewTiles, savedQuestions, withinDays } from "../lib/review-data";
 
 describe("review periods", () => {
   it("works out yesterday, the previous month and its range", () => {
@@ -50,5 +50,39 @@ describe("review tiles", () => {
     expect(tiles[2].detail).toContain("YouTube");
     expect(tiles[3].value).toBe("7h 10m");
     expect(tiles[5].value).toMatch(/124/);
+  });
+});
+
+describe("review details", () => {
+  it("rounds the sleep score when it stands in for a missing duration", () => {
+    const s = emptySnapshot("monthly", "2026-09", 30);
+    s.sleep = { avgMinutes: null, avgScore: 244 / 3, avgHrv: null, avgRestingHr: null, steps: null, nights: 3 };
+    const sleep = reviewTiles(s).find((t) => t.key === "sleep");
+    expect(sleep?.value).toBe("81");
+  });
+
+  it("dates a finished step on the app's day, not the UTC date plus one", () => {
+    // Local 08:00 on the 28th is the 28th; 02:00 on the 28th still belongs to the 27th.
+    const morning = new Date(2026, 8, 28, 8, 0).toISOString();
+    const lateNight = new Date(2026, 8, 28, 2, 0).toISOString();
+    expect(withinDays(morning, "2026-09-27", "2026-09-27")).toBe(false);
+    expect(withinDays(morning, "2026-09-28", "2026-09-28")).toBe(true);
+    expect(withinDays(lateNight, "2026-09-27", "2026-09-27")).toBe(true);
+    expect(withinDays(morning, "2026-09-01", "2026-09-30")).toBe(true);
+    expect(withinDays(null, "2026-09-01", "2026-09-30")).toBe(false);
+    expect(withinDays("not a date", "2026-09-01", "2026-09-30")).toBe(false);
+  });
+
+  it("reopens a saved review with its questions and answers", () => {
+    const prior = savedQuestions([
+      { question: "Na co poszedł czas?", answer: "Praca" },
+      { question: "", answer: "x" },
+      { question: "Co dalej?", answer: "Sen" },
+    ]);
+    expect(prior?.questions.map((q) => q.question)).toEqual(["Na co poszedł czas?", "Co dalej?"]);
+    expect(prior && prior.questions.map((q) => prior.answers[q.id])).toEqual(["Praca", "Sen"]);
+    expect(savedQuestions([])).toBeNull();
+    expect(savedQuestions(null)).toBeNull();
+    expect(savedQuestions({})).toBeNull();
   });
 });

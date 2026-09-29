@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { todayKey } from "@/lib/today";
@@ -8,6 +8,7 @@ import {
   previousMonth,
   reviewDay,
   reviewStreak,
+  savedQuestions,
   type ReviewKind,
   type ReviewSnapshot,
 } from "@/lib/review-data";
@@ -27,6 +28,7 @@ const MISSING_TABLE = /PGRST205|42P01|schema cache/;
 const qKey = (t: ReviewTarget) => `mf-review-q-${t.kind}-${t.period}`;
 const laterKey = (t: ReviewTarget) => `mf-review-later-${t.kind}-${t.period}`;
 const AUTO_KEY = "mf-review-auto";
+const NO_ANSWERS: Record<string, string> = {};
 
 function readJson<T>(key: string): T | null {
   try {
@@ -58,7 +60,14 @@ export function useReview() {
   const [questions, setQuestions] = useState<ReviewQuestion[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState(false);
+  // Answers of a review saved earlier, filled back in when it is reopened.
+  const [initialAnswers, setInitialAnswers] = useState<Record<string, string>>(NO_ANSWERS);
   const [autoOpen, setAutoOpenState] = useState<boolean>(() => readJson<boolean>(AUTO_KEY) ?? true);
+  // Bumped by every start(), so a slow load for a review the user already left
+  // cannot fill in the one on screen.
+  const startSeq = useRef(0);
+  // The pending auto-open, cancelled when the review is opened by hand first.
+  const autoTimer = useRef<number | null>(null);
 
   const today = todayKey();
   const yesterday = reviewDay(today);
@@ -73,8 +82,12 @@ export function useReview() {
       .order("period", { ascending: false })
       .limit(120);
     if (error) {
-      if (MISSING_TABLE.test(`${error.code} ${error.message}`)) setTableReady(false);
-      setLoaded(true);
+      if (MISSING_TABLE.test(`${error.code} ${error.message}`)) {
+        setTableReady(false);
+        setLoaded(true);
+      }
+      // Any other failure keeps the last list read (or none): working out what
+      // is due from an empty list would re-open reviews that are already done.
       return;
     }
     setTableReady(true);
@@ -110,6 +123,7 @@ export function useReview() {
       setQuestions(cached.questions);
       return;
     }
+    const seq = startSeq.current;
     setQuestionsLoading(true);
     setQuestionsError(false);
     try {
@@ -125,9 +139,11 @@ export function useReview() {
       if (error || !data || !Array.isArray(data.questions) || data.questions.length === 0) throw new Error("no questions");
       const result = { headline: String(data.headline || ""), questions: data.questions as ReviewQuestion[] };
       writeJson(qKey(t), result);
+      if (seq !== startSeq.current) return;
       setHeadline(result.headline);
       setQuestions(result.questions);
     } catch {
+      if (seq !== startSeq.current) return;
       setQuestionsError(true);
       // Still usable without AI: the classic three.
       setQuestions(
@@ -144,19 +160,41 @@ export function useReview() {
             ],
       );
     } finally {
-      setQuestionsLoading(false);
+      if (seq === startSeq.current) setQuestionsLoading(false);
     }
   }, [today]);
 
   const start = useCallback(async (t: ReviewTarget) => {
     if (!user) return;
+    // Opened by hand before the auto-open fired: don't open (and ask the AI) twice.
+    if (autoTimer.current !== null) {
+      window.clearTimeout(autoTimer.current);
+      autoTimer.current = null;
+    }
+    const seq = ++startSeq.current;
     setTarget(t);
     setSnapshot(null);
     setHeadline("");
     setQuestions([]);
+    setQuestionsLoading(false);
+    setQuestionsError(false);
+    setInitialAnswers(NO_ANSWERS);
     setOpen(true);
-    const snap = await loadReviewSnapshot(user.id, t.kind, t.period);
+    const [snap, saved] = await Promise.all([
+      loadReviewSnapshot(user.id, t.kind, t.period),
+      supabase.from("reviews").select("headline,qa").eq("user_id", user.id).eq("kind", t.kind).eq("period", t.period).maybeSingle(),
+    ]);
+    if (seq !== startSeq.current) return;
     setSnapshot(snap);
+    // Answered before: bring its questions and answers back, so saving again
+    // keeps or edits them instead of writing a blank set over them.
+    const prior = savedQuestions(saved.data?.qa);
+    if (prior) {
+      setHeadline(saved.data?.headline || "");
+      setQuestions(prior.questions);
+      setInitialAnswers(prior.answers);
+      return;
+    }
     void loadQuestions(t, snap);
   }, [user, loadQuestions]);
 
@@ -165,26 +203,32 @@ export function useReview() {
     if (!autoOpen || open || due.length === 0) return;
     const first = due[0];
     if (readJson<string>(laterKey(first)) === today) return;
-    const t = window.setTimeout(() => { void start(first); }, 900);
-    return () => window.clearTimeout(t);
+    const t = window.setTimeout(() => { autoTimer.current = null; void start(first); }, 900);
+    autoTimer.current = t;
+    return () => {
+      window.clearTimeout(t);
+      if (autoTimer.current === t) autoTimer.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpen, due.length, due[0]?.kind, due[0]?.period]);
 
   const write = useCallback(async (status: "done" | "skipped", qa: { question: string; answer: string }[]) => {
     if (!user || !target) return false;
-    const { error } = await supabase.from("reviews").upsert(
-      {
-        user_id: user.id,
-        kind: target.kind,
-        period: target.period,
-        status,
-        headline,
-        snapshot: (snapshot ?? {}) as never,
-        qa: qa as never,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,kind,period" },
-    );
+    const row = {
+      user_id: user.id,
+      kind: target.kind,
+      period: target.period,
+      status,
+      headline,
+      snapshot: (snapshot ?? {}) as never,
+      qa: qa as never,
+      updated_at: new Date().toISOString(),
+    };
+    // A skip only records that the period was seen. It is insert-only, so it can
+    // never overwrite a review that was already answered.
+    const { error } = await supabase
+      .from("reviews")
+      .upsert(row, { onConflict: "user_id,kind,period", ignoreDuplicates: status === "skipped" });
     if (error) return false;
     try { localStorage.removeItem(qKey(target)); } catch { /* ignore */ }
     await refresh();
@@ -221,6 +265,7 @@ export function useReview() {
     snapshot,
     headline,
     questions,
+    initialAnswers,
     questionsLoading,
     questionsError,
     retryQuestions: () => { if (target && snapshot) void loadQuestions(target, snapshot, true); },

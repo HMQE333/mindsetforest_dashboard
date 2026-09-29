@@ -7,6 +7,8 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDailyCompletions } from "@/hooks/useDailyCompletions";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { pathProgress, TodayStep } from "@/lib/path-data";
+import { completedMissionDetails, taggedMissions, withVariant } from "@/lib/mission-keys";
+import { todayKey } from "@/lib/today";
 import PathsTodayStrip from "./PathsTodayStrip";
 import ReviewModal from "@/components/review/ReviewModal";
 import { useReview } from "@/hooks/useReview";
@@ -46,28 +48,29 @@ export default function DashboardView() {
 
   // Save daily snapshot whenever missions are completed. Path steps logged
   // today are folded in so the snapshot matches the XP actually awarded.
+  // Titles and XP are read back from the ticks: the full list at the tick's
+  // index (keys index every weekday, not today's filtered view) with the rolled
+  // variant, as the card shows it. Recording {title, xp} at completion time
+  // would also survive a preset load or Reset Day clearing the ticks mid-day,
+  // but dashboard_state has nowhere to keep it across reloads without a
+  // migration, so that part is left to an owner decision.
   useEffect(() => {
+    // Only while the state is today's: before the 04:00 rollover reaches it
+    // these are yesterday's counts, which must not be filed under today.
+    if (loading || !state.dayKey || state.dayKey !== todayKey()) return;
     if (state.missionsCompleted > 0) {
-      // Collect completed mission titles and compute today's XP
-      const titles: string[] = todayLog.map(l => l.title);
-      let todayXP = todayLog.reduce((sum, l) => sum + l.xp, 0);
-      for (const missionId of state.completedMissions) {
-        const [catId, idxStr] = [missionId.substring(0, missionId.lastIndexOf("-")), missionId.substring(missionId.lastIndexOf("-") + 1)];
-        const missions = getMissions(catId);
-        const idx = parseInt(idxStr);
-        if (missions[idx]) {
-          titles.push(missions[idx].title);
-          todayXP += missions[idx].xp;
-        }
-      }
+      const done = completedMissionDetails(state.completedMissions, state.customMissions, state.rolledVariants);
+      const titles = [...todayLog.map(l => l.title), ...done.map(d => d.title)];
+      const todayXP = todayLog.reduce((sum, l) => sum + l.xp, 0) + done.reduce((sum, d) => sum + d.xp, 0);
       saveDailySnapshot(
         state.missionsCompleted,
         todayXP,
         Array.from(state.categoriesEngaged),
         titles,
+        state.dayKey,
       );
     }
-  }, [state.missionsCompleted, state.completedMissions, todayLog]);
+  }, [loading, state.dayKey, state.missionsCompleted, state.completedMissions, todayLog]);
 
   // Listen for friend-suggestion accepts → add as a persistent mission to chosen category
   useEffect(() => {
@@ -119,18 +122,38 @@ export default function DashboardView() {
 
   const missions = selectedCategory && selectedCategory !== "__projects__" ? getMissions(selectedCategory) : [];
 
+  // The edit and AI modals save the whole category list back, so they get the
+  // full list (every weekday, tagged with each mission's index), not today's
+  // filtered view. Memoised so the edit modal's buffer isn't reset on every render.
+  const editingMissions = useMemo(
+    () => (editingCategory ? taggedMissions(state.customMissions, editingCategory) : []),
+    [editingCategory, state.customMissions],
+  );
+  const aiMissions = useMemo(
+    () => (aiCategory ? taggedMissions(state.customMissions, aiCategory) : []),
+    [aiCategory, state.customMissions],
+  );
+
   useKeyboardShortcuts({
     context: shortcutContext,
     selectCategory: setSelectedCategory,
     completeMission: shortcutContext === "mission" && selectedCategory ? (index: number) => {
+      // `index` is the position on screen; ticks are keyed by the full list's
+      // index, and the XP is the rolled variant's, as on the card.
       const m = missions[index];
-      if (m && !state.completedMissions.has(`${selectedCategory}-${index}`)) {
-        handleComplete(selectedCategory, index, m.xp);
+      if (!m) return;
+      const original = m.__originalIndex ?? index;
+      const key = `${selectedCategory}-${original}`;
+      if (!state.completedMissions.has(key)) {
+        handleComplete(selectedCategory, original, withVariant(m, state.rolledVariants[key]).xp);
       }
     } : undefined,
     editTasks: selectedCategory && selectedCategory !== "__projects__" ? () => setEditingCategory(selectedCategory) : undefined,
     aiSuggestions: selectedCategory && selectedCategory !== "__projects__" ? () => setAICategory(selectedCategory) : undefined,
-    resetDefaults: selectedCategory && selectedCategory !== "__projects__" ? () => resetCategory(selectedCategory) : undefined,
+    // Like the "Reset defaults" button: only when there is a custom list to drop.
+    resetDefaults: selectedCategory && selectedCategory !== "__projects__" && state.customMissions[selectedCategory]?.length
+      ? () => resetCategory(selectedCategory)
+      : undefined,
     resetDay: resetDay,
     goBack: selectedCategory ? () => setSelectedCategory(selectedCategory === "__projects__" ? null : selectedCategory.startsWith("project-") ? "__projects__" : null) : undefined,
     selectProject: shortcutContext === "projects" ? (index: number) => {
@@ -298,7 +321,7 @@ export default function DashboardView() {
         {editingCategory && (
           <EditMissionsModal
             categoryId={editingCategory}
-            missions={getMissions(editingCategory)}
+            missions={editingMissions}
             onSave={saveCustomMissions}
             onClose={() => setEditingCategory(null)}
           />
@@ -310,7 +333,7 @@ export default function DashboardView() {
         {aiCategory && (
           <AISuggestionsModal
             categoryId={aiCategory}
-            currentMissions={getMissions(aiCategory)}
+            currentMissions={aiMissions}
             onApply={saveCustomMissions}
             onClose={() => setAICategory(null)}
             pathContext={pathContext}

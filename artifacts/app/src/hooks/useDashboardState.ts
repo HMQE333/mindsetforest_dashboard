@@ -12,7 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "./useAuth";
 import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
-import { todayKey, computeStreak, logicalDate } from "@/lib/today";
+import { todayKey, keyToDate, computeStreak } from "@/lib/today";
+import { categoryMissions, missionSources, remapCategoryKeys, stripOriginalIndex } from "@/lib/mission-keys";
 import { activeDayKeys } from "./useDailyCompletions";
 
 export interface DashboardState {
@@ -40,7 +41,8 @@ export function rollVariant(variants: MissionVariant[]): number {
   return 0;
 }
 
-export function isVisibleToday(mission: Mission, today: number = logicalDate().getDay()): boolean {
+// Weekday of the app's day (04:00 boundary), so Monday's missions stay up until 04:00 Tuesday.
+export function isVisibleToday(mission: Mission, today: number = keyToDate(todayKey()).getDay()): boolean {
   if (!mission.daysOfWeek || mission.daysOfWeek.length === 0 || mission.daysOfWeek.length === 7) return true;
   return mission.daysOfWeek.includes(today);
 }
@@ -102,8 +104,13 @@ const defaultState: DashboardState = {
 
 function useDashboardStateValue() {
   const { user } = useAuth();
+  // Keyed on the id: useAuth hands out a new user object on every token refresh
+  // and tab focus, which must not reload (and briefly blank) the dashboard.
+  const userId = user?.id ?? null;
   const [state, setState] = useState<DashboardState>({ ...defaultState, dayKey: todayKey() });
   const [loading, setLoading] = useState(true);
+  // Bumped to read the row again once the app's day has moved on (see below).
+  const [reloadNonce, setReloadNonce] = useState(0);
   // Days with a mission or XP logged (from daily_completions), plus today once a
   // completion happens. The streak is computed over this set, never incremented.
   const activeDaysRef = useRef<Set<string>>(new Set());
@@ -113,10 +120,32 @@ function useDashboardStateValue() {
   // would upsert the default (currentXP:0, empty missions) row and clobber real data.
   const loadedRef = useRef(false);
 
+  // Save to DB
+  const persist = useCallback(async (s: DashboardState) => {
+    // Never write before the current user's real state has loaded.
+    if (!userId || !loadedRef.current) return;
+    const payload = {
+      user_id: userId,
+      current_xp: s.currentXP,
+      current_level: s.currentLevel,
+      streak_days: s.streakDays,
+      last_completion_date: s.lastCompletionDate,
+      day_key: s.dayKey || todayKey(),
+      missions_completed: s.missionsCompleted,
+      categories_engaged: Array.from(s.categoriesEngaged),
+      completed_missions: Array.from(s.completedMissions),
+      custom_missions: s.customMissions as unknown as Record<string, never>,
+      rolled_variants: s.rolledVariants as unknown as Record<string, never>,
+    };
+
+    const { error } = await supabase.from("dashboard_state").upsert([payload], { onConflict: "user_id" });
+    if (error) toast({ title: "Save failed", description: "Could not save dashboard state.", variant: "destructive" });
+  }, [userId]);
+
   // Load from DB
   useEffect(() => {
     loadedRef.current = false;
-    if (!user) {
+    if (!userId) {
       // Logged out (or not yet logged in): reset to defaults so a previous
       // user's state can never leak or be persisted under a new session.
       setState({ ...defaultState, dayKey: todayKey() });
@@ -132,9 +161,9 @@ function useDashboardStateValue() {
         supabase
           .from("dashboard_state")
           .select("*")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .maybeSingle(),
-        activeDayKeys(user.id),
+        activeDayKeys(userId),
       ]);
       if (cancelled) return;
       if (activeDays) activeDaysRef.current = activeDays;
@@ -152,9 +181,16 @@ function useDashboardStateValue() {
         return;
       }
 
+      let rolledOver: DashboardState | null = null;
       if (data) {
         const today = todayKey();
-        const customMissions = (data.custom_missions as unknown as Record<string, Mission[]>) || {};
+        const storedMissions = (data.custom_missions as unknown as Record<string, Mission[]>) || {};
+        // Older saves could store the runtime `__originalIndex`; a stale one would
+        // mislead saveCustomMissions' re-keying, so it is dropped on the way in.
+        const customMissions: Record<string, Mission[]> = {};
+        for (const [catId, list] of Object.entries(storedMissions)) {
+          customMissions[catId] = Array.isArray(list) ? stripOriginalIndex(list) : list;
+        }
         const existingRolled = ((data as { rolled_variants?: Record<string, number> }).rolled_variants) || {};
 
         const loaded: DashboardState = {
@@ -171,7 +207,9 @@ function useDashboardStateValue() {
           customMissions,
           rolledVariants: existingRolled,
         };
-        setState(rolloverIfNeeded(loaded, today));
+        const current = rolloverIfNeeded(loaded, today);
+        setState(current);
+        if (current !== loaded) rolledOver = current;
       } else {
         // No existing row (new user) . start clean rather than inheriting any
         // prior in-memory state.
@@ -179,32 +217,36 @@ function useDashboardStateValue() {
       }
       loadedRef.current = true;
       setLoading(false);
+      // Save the rollover, or every reload until the first completion of the
+      // day would roll today's variants again.
+      if (rolledOver) void persist(rolledOver);
     };
     load();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [userId, persist, reloadNonce]);
 
-  // Save to DB
-  const persist = useCallback(async (s: DashboardState) => {
-    // Never write before the current user's real state has loaded.
-    if (!user || !loadedRef.current) return;
-    const payload = {
-      user_id: user.id,
-      current_xp: s.currentXP,
-      current_level: s.currentLevel,
-      streak_days: s.streakDays,
-      last_completion_date: s.lastCompletionDate,
-      day_key: s.dayKey || todayKey(),
-      missions_completed: s.missionsCompleted,
-      categories_engaged: Array.from(s.categoriesEngaged),
-      completed_missions: Array.from(s.completedMissions),
-      custom_missions: s.customMissions as unknown as Record<string, never>,
-      rolled_variants: s.rolledVariants as unknown as Record<string, never>,
+  // The load above runs once per user, not on every tab focus, so a tab left
+  // open past 04:00 would keep yesterday's ticks and variants. When the tab
+  // comes back into view (or, for one that stays open, within a minute) and the
+  // app's day has moved on, read the row again: the load rolls it over and
+  // saves that, with the streak recomputed. A fresh read rather than rolling the
+  // in-memory copy, which is stale if another device wrote since; saving that
+  // copy unprompted would overwrite the newer row.
+  const dayKeyRef = useRef(state.dayKey);
+  useEffect(() => { dayKeyRef.current = state.dayKey; }, [state.dayKey]);
+  useEffect(() => {
+    if (!userId) return;
+    const check = () => {
+      if (loadedRef.current && dayKeyRef.current !== todayKey()) setReloadNonce(n => n + 1);
     };
-
-    const { error } = await supabase.from("dashboard_state").upsert([payload], { onConflict: "user_id" });
-    if (error) toast({ title: "Save failed", description: "Could not save dashboard state.", variant: "destructive" });
-  }, [user]);
+    const onVisibility = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    const timer = window.setInterval(check, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(timer);
+    };
+  }, [userId]);
 
   const completeMission = useCallback((categoryId: string, missionIndex: number, xp: number) => {
     setState(prev => {
@@ -323,23 +365,25 @@ function useDashboardStateValue() {
     });
   }, [persist]);
 
+  /**
+   * Replace one category's list (the edit modal, AI suggestions, the assistant).
+   * Ticks and rolled variants are keyed by position, so they move with their
+   * missions - matched by the `__originalIndex` an editor carried through, else
+   * by title - instead of staying on the old position, where a tick could be
+   * earned a second time or land on a neighbour.
+   */
   const saveCustomMissions = useCallback((categoryId: string, missions: Mission[]) => {
     setState(prev => {
-      // Re-roll any variants for this category
-      const newRolled = { ...prev.rolledVariants };
-      // Clear old rolls for this category
-      Object.keys(newRolled).forEach(k => {
-        if (k.startsWith(categoryId + "-")) delete newRolled[k];
-      });
-      missions.forEach((m, idx) => {
-        if (m.variants && m.variants.length > 0) {
-          newRolled[`${categoryId}-${idx}`] = rollVariant(m.variants);
-        }
-      });
+      const list = stripOriginalIndex(missions);
+      // An empty list shows the defaults, so that is what the keys will index.
+      const shown = categoryMissions({ [categoryId]: list }, categoryId);
+      const sources = missionSources(categoryMissions(prev.customMissions, categoryId), list.length > 0 ? missions : shown);
+      const { completed, rolled } = remapCategoryKeys(categoryId, sources, shown, prev.completedMissions, prev.rolledVariants, rollVariant);
       const next: DashboardState = {
         ...prev,
-        customMissions: { ...prev.customMissions, [categoryId]: missions },
-        rolledVariants: newRolled,
+        customMissions: { ...prev.customMissions, [categoryId]: list },
+        completedMissions: completed,
+        rolledVariants: rolled,
       };
       persist(next);
       return next;
@@ -411,12 +455,8 @@ function useDashboardStateValue() {
   }, [persist]);
 
   const getMissions = useCallback((categoryId: string): Mission[] => {
-    const custom = state.customMissions[categoryId];
-    const base = (custom && custom.length > 0)
-      ? custom
-      : (CATEGORIES.find(c => c.id === categoryId)?.missions || []);
     // Tag with original index so callers can preserve completion IDs across filtered views
-    return base
+    return categoryMissions(state.customMissions, categoryId)
       .map((m, i) => ({ ...m, __originalIndex: i } as Mission & { __originalIndex: number }))
       .filter(m => isVisibleToday(m));
   }, [state.customMissions]);
@@ -428,14 +468,21 @@ function useDashboardStateValue() {
 
   const splitMission = useCallback((categoryId: string, missionIndex: number, subTasks: Mission[]) => {
     setState(prev => {
-      const currentMissions = prev.customMissions[categoryId]
-        || CATEGORIES.find(c => c.id === categoryId)?.missions
-        || [];
+      const currentMissions = categoryMissions(prev.customMissions, categoryId);
+      if (missionIndex < 0 || missionIndex >= currentMissions.length) return prev;
       const newMissions = [...currentMissions];
       newMissions.splice(missionIndex, 1, ...subTasks);
+      // The missions after the split one move by (subTasks - 1); their ticks and
+      // rolled variants move with them. The subtasks start unticked.
+      const sources = newMissions.map((_, j) =>
+        j < missionIndex ? j : j < missionIndex + subTasks.length ? null : j - subTasks.length + 1,
+      );
+      const { completed, rolled } = remapCategoryKeys(categoryId, sources, newMissions, prev.completedMissions, prev.rolledVariants, rollVariant);
       const next: DashboardState = {
         ...prev,
         customMissions: { ...prev.customMissions, [categoryId]: newMissions },
+        completedMissions: completed,
+        rolledVariants: rolled,
       };
       persist(next);
       return next;

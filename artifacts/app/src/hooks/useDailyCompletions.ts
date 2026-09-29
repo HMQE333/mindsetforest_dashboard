@@ -60,14 +60,15 @@ export function useDailyCompletions() {
     load();
   }, [user]);
 
+  /** `date` is the day the counts belong to (the dashboard state's dayKey); defaults to today. */
   const saveDailySnapshot = useCallback(async (
     missionsCompleted: number,
     xpEarned: number,
     categoriesEngaged: string[],
     completedTitles: string[],
+    date: string = todayKey(),
   ) => {
     if (!user) return;
-    const date = todayKey();
     await (supabase.from("daily_completions" as any) as any)
       .upsert([{
         user_id: user.id,
