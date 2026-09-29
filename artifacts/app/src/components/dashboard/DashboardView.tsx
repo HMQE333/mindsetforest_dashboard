@@ -30,6 +30,8 @@ export default function DashboardView() {
   const categories = getCategories();
   const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
   const showMonthlyFocus = !preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus");
+  // Hiding Paths in Settings -> Modules hides its steps on Home too.
+  const showPaths = !preferences.enabledModules.length || preferences.enabledModules.includes("paths");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [aiCategory, setAICategory] = useState<string | null>(null);
@@ -141,7 +143,7 @@ export default function DashboardView() {
 
   // What the AI mission planner is told about the user's paths.
   const pathContext = useMemo(() => {
-    if (todaySteps.length === 0) return null;
+    if (!showPaths || todaySteps.length === 0) return null;
     return {
       paths: todaySteps.map(({ path, step }) => {
         const progress = pathProgress(stepsByPath(path.id));
@@ -153,7 +155,7 @@ export default function DashboardView() {
         };
       }),
     };
-  }, [todaySteps, stepsByPath]);
+  }, [showPaths, todaySteps, stepsByPath]);
 
   const handleLogPathStep = useCallback(async ({ path, step }: TodayStep) => {
     const xp = await logStep(step.id);
@@ -239,13 +241,15 @@ export default function DashboardView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <PathsTodayStrip
-              steps={todaySteps}
-              categories={categories}
-              onLog={handleLogPathStep}
-              onUndo={handleUndoPathStep}
-              onOpenPaths={() => window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: "paths" } }))}
-            />
+            {showPaths && (
+              <PathsTodayStrip
+                steps={todaySteps}
+                categories={categories}
+                onLog={handleLogPathStep}
+                onUndo={handleUndoPathStep}
+                onOpenPaths={() => window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: "paths" } }))}
+              />
+            )}
             <CategoryGrid
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
