@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +10,17 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { items, existingTags } = await req.json();
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const body = await req.json();
+    // Bounded: all of this goes to a paid model.
+    const items: string[] | null = Array.isArray(body.items) ? body.items.slice(0, 100).map((t: unknown) => String(t ?? "").slice(0, 4_000)) : null;
+    const existingTags: string[] = Array.isArray(body.existingTags) ? body.existingTags.map((t: unknown) => String(t).slice(0, 60)) : [];
     if (!Array.isArray(items) || items.length === 0) throw new Error("No items provided");
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER" + "_API_KEY");
     if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");

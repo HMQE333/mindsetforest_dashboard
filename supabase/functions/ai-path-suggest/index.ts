@@ -23,10 +23,14 @@ serve(async (req) => {
     if (!auth) return jsonResponse({ error: "Unauthorized" }, 401);
 
     const body = await req.json().catch(() => ({}));
-    const pathName: string = body.pathName || "Untitled path";
-    const categoryName: string | undefined = body.categoryName;
-    const aim: string | undefined = body.aim;
-    const existingSteps: string[] = Array.isArray(body.existingSteps) ? body.existingSteps : [];
+    // Bounded: all of this goes into a paid prompt.
+    const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+    const pathName: string = text(body.pathName, 200) || "Untitled path";
+    const categoryName: string | undefined = text(body.categoryName, 100) || undefined;
+    const aim: string | undefined = text(body.aim, 2000) || undefined;
+    const existingSteps: string[] = Array.isArray(body.existingSteps)
+      ? body.existingSteps.slice(0, 60).map((s: unknown) => text(s, 200)).filter(Boolean)
+      : [];
     const moment: LocalMoment = body.moment || {};
 
     const { profile, situation } = await buildPlannerContext(auth.client, auth.userId, moment);

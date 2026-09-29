@@ -1,6 +1,7 @@
 // AI Lab Report Extractor — uses Lovable AI Gateway (Gemini vision).
-// Input: { fileBase64, mimeType }  OR  { fileUrl, mimeType }
+// Input: { fileBase64, mimeType } (an uploaded image or PDF)
 // Output: { extracted: { ...numeric fields }, raw_text: string }
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,10 +46,19 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const body = await req.json();
-    const { fileBase64, fileUrl, mimeType } = body || {};
-    if (!fileBase64 && !fileUrl) {
-      return new Response(JSON.stringify({ error: "Provide fileBase64 or fileUrl" }), {
+    // Only an uploaded file (base64, up to ~10 MB); arbitrary URLs are not fetched.
+    const { fileBase64, mimeType } = body || {};
+    const typeOk = typeof mimeType !== "string" || /^(image\/(png|jpe?g|webp|heic|heif)|application\/pdf)$/.test(mimeType);
+    if (typeof fileBase64 !== "string" || !fileBase64 || fileBase64.length > 14_000_000 || !typeOk) {
+      return new Response(JSON.stringify({ error: "Provide the report as an image or PDF under 10 MB" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -58,12 +68,7 @@ Deno.serve(async (req: Request) => {
     if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");
     const AI_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";
 
-    // Build the user content (image_url accepts data URIs OR https URLs)
-    let imageUrl = fileUrl as string | undefined;
-    if (fileBase64) {
-      const mt = mimeType || "image/png";
-      imageUrl = `data:${mt};base64,${fileBase64}`;
-    }
+    const imageUrl = `data:${mimeType || "image/png"};base64,${fileBase64}`;
 
     const messages = [
       {

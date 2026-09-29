@@ -54,7 +54,7 @@ serve(async (req) => {
       auth.client.from("user_context").select("notes,lenses,season").eq("user_id", auth.userId).maybeSingle(),
     ]);
     const shelf = (books as ShelfBook[] | null) || [];
-    const exclude: string[] = Array.isArray(body.exclude) ? body.exclude.map(String).slice(0, 60) : [];
+    const exclude: string[] = Array.isArray(body.exclude) ? body.exclude.slice(0, 60).map((t: unknown) => String(t).slice(0, 200)) : [];
 
     const line = (b: ShelfBook) =>
       `- ${b.title}${b.author ? ` (${b.author})` : ""}${b.rating ? `, rated ${b.rating}/5` : ""}${b.tags?.length ? ` [${b.tags.slice(0, 3).join(", ")}]` : ""}`;

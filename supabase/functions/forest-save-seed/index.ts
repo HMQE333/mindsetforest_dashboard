@@ -24,7 +24,7 @@ serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    if (claimsError || !claimsData?.claims?.sub) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
     const userId = claimsData.claims.sub as string;
@@ -94,8 +94,21 @@ serve(async (req) => {
       .from("forest_saves")
       .insert({ seed_id: seedId, user_id: userId, saved_block_id: newBlock.id } as any);
     if (saveErr) {
-      // Best-effort: continue but log
       console.error("forest_saves insert failed:", saveErr);
+      // A second click that raced the first: keep the first copy, drop this one.
+      const { data: raced } = await userClient
+        .from("forest_saves")
+        .select("saved_block_id")
+        .eq("seed_id", seedId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (raced?.saved_block_id && raced.saved_block_id !== newBlock.id) {
+        await userClient.from("archive_blocks").delete().eq("id", newBlock.id).eq("user_id", userId);
+        return new Response(JSON.stringify({ ok: true, alreadySaved: true, savedBlockId: raced.saved_block_id }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     return new Response(JSON.stringify({ ok: true, savedBlockId: newBlock.id }), {

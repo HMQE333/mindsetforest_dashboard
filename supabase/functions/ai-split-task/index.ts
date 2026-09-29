@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +10,19 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title, description, duration, xp } = await req.json();
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const body = await req.json();
+    const title = String(body.title ?? "").slice(0, 300);
+    const description = String(body.description ?? "").slice(0, 3_000);
+    const duration = String(body.duration ?? "").slice(0, 60);
+    // A task without XP still splits (NaN used to reach the prompt).
+    const xp = Math.min(500, Math.max(3, Math.round(Number(body.xp) || 20)));
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");
     const AI_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";
@@ -102,7 +115,11 @@ You MUST respond using the split_task tool.`;
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
-        subtasks = parsed.subtasks || [];
+        // Three micro-tasks with sane XP, whatever the model returned.
+        subtasks = (Array.isArray(parsed.subtasks) ? parsed.subtasks : []).slice(0, 3).map((t: Record<string, unknown>) => ({
+          ...t,
+          xp: Math.min(120, Math.max(5, Math.round(Number(t.xp) || perTaskXP))),
+        }));
       } catch {
         console.error("Failed to parse tool call arguments");
       }

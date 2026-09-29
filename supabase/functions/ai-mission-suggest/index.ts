@@ -25,10 +25,14 @@ serve(async (req) => {
     if (!auth) return jsonResponse({ error: "Unauthorized" }, 401);
 
     const body = await req.json().catch(() => ({}));
-    const categoryName: string = body.categoryName || "this area";
-    const categoryTagline: string = body.categoryTagline || "";
-    const projectName: string | undefined = body.projectName;
-    const currentMissions: string[] = Array.isArray(body.currentMissions) ? body.currentMissions : [];
+    // Bounded: all of this goes into a paid prompt.
+    const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+    const categoryName: string = text(body.categoryName, 100) || "this area";
+    const categoryTagline: string = text(body.categoryTagline, 300);
+    const projectName: string | undefined = text(body.projectName, 200) || undefined;
+    const currentMissions: string[] = Array.isArray(body.currentMissions)
+      ? body.currentMissions.slice(0, 60).map((m: unknown) => text(m, 200)).filter(Boolean)
+      : [];
     const moment: LocalMoment = body.moment || {};
     // Kept as an override only: the client no longer asks for it up front.
     const aiMode: string | undefined = body.aiMode;

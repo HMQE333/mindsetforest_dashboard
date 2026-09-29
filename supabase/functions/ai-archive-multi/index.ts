@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +10,24 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { notes, prompt, preset } = await req.json();
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const body = await req.json();
+    if (!Array.isArray(body.notes) || body.notes.length === 0) {
+      return new Response(JSON.stringify({ error: "Select at least one note" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    // Bounded: all of this goes to a paid model.
+    const notes = body.notes.slice(0, 40).map((n: { title?: unknown; content?: unknown }) => ({
+      title: String(n?.title ?? "").slice(0, 300),
+      content: String(n?.content ?? "").slice(0, 8_000),
+    }));
+    const prompt = String(body.prompt ?? "").slice(0, 2_000);
+    const preset = typeof body.preset === "string" ? body.preset : undefined;
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");
     const AI_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";

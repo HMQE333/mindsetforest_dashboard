@@ -53,7 +53,7 @@ serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    if (claimsError || !claimsData?.claims?.sub) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
     const userId = claimsData.claims.sub as string;
@@ -90,7 +90,9 @@ serve(async (req) => {
     const pillars = sanitiseTags(edits.pillars ?? block.pillars);
     const directions = sanitiseTags(edits.directions ?? block.directions);
     const tags = sanitiseTags(edits.tags ?? block.tags);
-    const sourceUrl = typeof edits.source_url === "string" ? edits.source_url.slice(0, 500) : (block.source_url || null);
+    // Only web links travel to other people's feeds (a javascript: URL would run in their browser).
+    const rawUrl = typeof edits.source_url === "string" ? edits.source_url : (block.source_url || "");
+    const sourceUrl = /^https?:\/\//i.test(rawUrl.trim()) ? rawUrl.trim().slice(0, 500) : null;
 
     if (!title && !content) {
       return new Response(JSON.stringify({ error: "Empty seed" }), { status: 400, headers: corsHeaders });
@@ -128,7 +130,14 @@ serve(async (req) => {
         .slice(0, 200)
         .map((uid) => ({ seed_id: seed.id, user_id: uid }));
       if (rows.length > 0) {
-        await userClient.from("forest_seed_audience").insert(rows as any);
+        const { error: audienceErr } = await userClient.from("forest_seed_audience").insert(rows as any);
+        // The seed exists but nobody chosen can see it: say so rather than report success.
+        if (audienceErr) {
+          console.error("forest_seed_audience insert failed:", audienceErr);
+          return new Response(JSON.stringify({ error: "Seed saved, but sharing with the chosen people failed", seedId: seed.id }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
     }
 

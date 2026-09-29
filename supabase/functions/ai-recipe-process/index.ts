@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +10,17 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { recipe, prompt } = await req.json();
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const body = await req.json();
+    // Bounded: all of this goes to a paid model.
+    const recipe = String(body.recipe ?? "").slice(0, 30_000);
+    const prompt = String(body.prompt ?? "").slice(0, 2_000);
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
     const AI_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";
@@ -79,8 +90,9 @@ User request: ${prompt}`;
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const txt = await response.text();
-      throw new Error(`AI gateway error ${response.status}: ${txt}`);
+      // Log the provider's reply; the client only needs to know it failed.
+      console.error("AI gateway error", response.status, await response.text());
+      throw new Error(`AI gateway error ${response.status}`);
     }
 
     const data = await response.json();

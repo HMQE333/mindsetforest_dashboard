@@ -51,27 +51,46 @@ async function importForUser(userId: string, apiKey: string, athleteId: string):
   let imported = 0;
   let skipped = 0;
 
+  const dateOf = (entry: Record<string, unknown>) => String(entry.id || entry.date || "").split("_")[0].slice(0, 10);
+  // Rows already there: notes written by hand are kept, not replaced by the import's summary line.
+  const dates = entries.map(dateOf).filter(Boolean);
+  const { data: existingRows } = dates.length
+    ? await db.from("watch_entries").select("entry_date,notes,source").eq("user_id", userId).in("entry_date", dates)
+    : { data: [] };
+  const existingByDate = new Map((existingRows || []).map((r: { entry_date: string; notes: string | null; source: string | null }) => [r.entry_date, r]));
+
   for (const entry of entries) {
-    const entryDate = (entry.id || entry.date || "").toString().split("_")[0].slice(0, 10);
+    const entryDate = dateOf(entry);
     if (!entryDate) continue;
 
-    const row = {
+    const notes = [
+      entry.sleepSecs ? `Sen: ${Math.round(entry.sleepSecs / 3600)}h` : "",
+      entry.sleepQuality ? `Jakość snu: ${entry.sleepQuality}/5` : "",
+      entry.weight ? `Waga: ${entry.weight}kg` : "",
+      entry.readiness != null ? `Readiness: ${entry.readiness}` : "",
+    ].filter(Boolean).join(" | ");
+
+    // Only what intervals actually reported: a missing value must not blank out one logged by hand.
+    const measured: Record<string, number> = {};
+    const put = (column: string, value: unknown) => {
+      if (typeof value === "number" && Number.isFinite(value)) measured[column] = value;
+    };
+    put("resting_hr", entry.restingHR);
+    put("hrv_ms", entry.hrv);
+    put("sleep_score", entry.sleepScore);
+    put("steps", entry.steps);
+    put("body_battery", entry.bodyBattery);
+    put("stress_level", entry.stress);
+    put("vo2max", entry.vo2max);
+    if (typeof entry.sleepSecs === "number" && entry.sleepSecs > 0) measured.sleep_total_min = Math.round(entry.sleepSecs / 60);
+
+    const before = existingByDate.get(entryDate);
+    const handWritten = !!before?.notes && before.source !== "intervals.icu";
+    const row: Record<string, unknown> = {
       user_id: userId,
       entry_date: entryDate,
-      source: "intervals.icu",
-      resting_hr: entry.restingHR ?? null,
-      hrv_ms: entry.hrv ?? null,
-      sleep_score: entry.sleepScore ?? null,
-      steps: entry.steps ?? null,
-      body_battery: entry.bodyBattery ?? null,
-      stress_level: entry.stress ?? null,
-      vo2max: entry.vo2max ?? null,
-      notes: [
-        entry.sleepSecs ? `Sen: ${Math.round(entry.sleepSecs / 3600)}h` : "",
-        entry.sleepQuality ? `Jakość snu: ${entry.sleepQuality}/5` : "",
-        entry.weight ? `Waga: ${entry.weight}kg` : "",
-        entry.readiness != null ? `Readiness: ${entry.readiness}` : "",
-      ].filter(Boolean).join(" | ") || "",
+      ...measured,
+      ...(handWritten ? {} : { notes, source: "intervals.icu" }),
     };
 
     const { error } = await db

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,8 +41,18 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const body = await req.json();
-    const { text, expenseCategories, incomeCategories } = body || {};
+    const { text } = body || {};
+    const cats = (v: unknown) => (Array.isArray(v) ? v.slice(0, 100).map((c) => String(c).slice(0, 60)) : []);
+    const expenseCategories = cats(body?.expenseCategories);
+    const incomeCategories = cats(body?.incomeCategories);
     if (!text || typeof text !== "string" || !text.trim()) {
       return new Response(JSON.stringify({ error: "No statement text provided" }), {
         status: 400,

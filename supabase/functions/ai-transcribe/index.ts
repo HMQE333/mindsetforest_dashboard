@@ -1,6 +1,7 @@
 // Recovered from the deployed bundle on the production project (v3).
 // Transcribes recorded audio for the assistant microphone via OpenRouter Whisper.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getUserClient } from "../_shared/planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,14 +15,26 @@ serve(async (req: Request) => {
   }
 
   try {
+    // A paid model sits behind this: signed-in users of the app only.
+    if (!(await getUserClient(req))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const key = Deno.env.get("OPENROUTER_API_KEY");
     if (!key) {
       throw new Error("OPENROUTER_API_KEY not configured");
     }
 
     const { audio, format, language } = await req.json();
-    if (!audio || !format) {
-      throw new Error("Missing audio (base64) or format (webm/wav/mp3)");
+    // About 15 MB of audio as base64: a long voice note, well under Whisper's limit.
+    const FORMATS = ["webm", "wav", "mp3", "ogg", "m4a", "mp4", "mpeg", "flac"];
+    if (typeof audio !== "string" || !audio || audio.length > 20_000_000 || !FORMATS.includes(String(format))) {
+      return new Response(
+        JSON.stringify({ error: "Missing or unsupported audio (base64 webm/wav/mp3/ogg/m4a)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const orResp = await fetch(
@@ -35,7 +48,7 @@ serve(async (req: Request) => {
         body: JSON.stringify({
           model: "openai/whisper-large-v3-turbo",
           input_audio: { data: audio, format: format },
-          ...(language ? { language } : {}),
+          ...(typeof language === "string" && /^[a-z]{2}$/.test(language) ? { language } : {}),
         }),
       },
     );
@@ -43,9 +56,8 @@ serve(async (req: Request) => {
     if (!orResp.ok) {
       const errText = await orResp.text();
       console.error("OpenRouter STT error:", orResp.status, errText);
-      throw new Error(
-        "Transcription failed (" + orResp.status + "). " + errText.slice(0, 200),
-      );
+      // The provider's reply stays in the logs; the client only needs to know it failed.
+      throw new Error("Transcription failed (" + orResp.status + ")");
     }
 
     const data = await orResp.json();
