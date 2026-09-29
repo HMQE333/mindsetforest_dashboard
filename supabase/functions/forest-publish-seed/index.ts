@@ -21,12 +21,21 @@ function sanitiseTags(arr: unknown): string[] {
     .slice(0, 12);
 }
 
-async function getEmbedding(openaiKey: string, text: string): Promise<number[] | null> {
+// Same model and route as ai-embed-block (OpenRouter, openai/text-embedding-3-small), so a
+// seed's vector is comparable with the query vectors Forest search makes there.
+// This used to call OpenAI directly with OPENAI_API_KEY, which is not set, so
+// new seeds never got a vector and never showed up in Forest search.
+async function getEmbedding(apiKey: string, text: string): Promise<number[] | null> {
   try {
-    const resp = await fetch("https://api.openai.com/v1/embeddings", {
+    const resp = await fetch("https://openrouter.ai/api/v1/embeddings", {
       method: "POST",
-      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "text-embedding-3-small", input: text.slice(0, 8000) }),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://mindsetforest.app",
+        "X-Title": "MindsetForest",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: "openai/text-embedding-3-small", input: text.slice(0, 8000) }),
     });
     if (!resp.ok) return null;
     const data = await resp.json();
@@ -142,10 +151,10 @@ serve(async (req) => {
     }
 
     // Fire-and-forget embedding (uses service role to bypass counter-protection trigger)
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (OPENAI_API_KEY) {
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (OPENROUTER_API_KEY) {
       const text = `${title}\n\n${content}`;
-      const emb = await getEmbedding(OPENAI_API_KEY, text);
+      const emb = await getEmbedding(OPENROUTER_API_KEY, text);
       if (emb) {
         const serviceClient = createClient(
           Deno.env.get("SUPABASE_URL")!,
