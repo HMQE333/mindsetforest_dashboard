@@ -26,6 +26,7 @@ import {
   buildActionInstructions,
   isAutoApply,
   parseActions,
+  visibleReplyText,
   type AssistantAction,
 } from "@/lib/assistant-actions";
 import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
@@ -36,6 +37,7 @@ import {
   addFinanceTransaction,
   completePlanningTask,
   createPath,
+  createPresetFromMissions,
   logMetricEntry,
   logPathStepToday,
   patchPreferences,
@@ -46,7 +48,7 @@ import { CATEGORIES } from "@/lib/dashboard-data";
 import { replaceDashes } from "@/lib/text-style";
 import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
-import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap } from "@/lib/mission-presets";
+import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap, type MissionMap } from "@/lib/mission-presets";
 
 export interface AssistantMessage {
   id: string;
@@ -322,7 +324,7 @@ function useAssistantValue() {
               const delta = json.choices?.[0]?.delta?.content;
               if (delta) {
                 acc += delta;
-                const shown = replaceDashes(acc);
+                const shown = replaceDashes(visibleReplyText(acc));
                 patchAssistant((m) => ({ ...m, content: shown }));
               }
             } catch {
@@ -341,7 +343,11 @@ function useAssistantValue() {
           // Pull any proposed write actions out of the reply and gate them by the
           // sections in play. Navigation runs right away; the rest wait for a click
           // (or a spoken yes in voice mode).
-          const { text: display, actions } = parseActions(replaceDashes(acc), scopesForSend);
+          const { text: parsedText, actions, broken } = parseActions(replaceDashes(acc), scopesForSend);
+          // A block that was cut off or malformed is never shown as raw JSON.
+          const display = broken
+            ? `${parsedText}\n\n(Nie udało się odczytać proponowanych akcji. Poproś jeszcze raz, krócej.)`.trim()
+            : parsedText;
           const pending = actions.filter((a) => !isAutoApply(a));
           for (const a of actions.filter(isAutoApply)) void runActionRef.current(a);
           final = {
@@ -476,6 +482,20 @@ function useAssistantValue() {
                 toast.success(`Zmieniono misję „${action.newTitle || match.title}”`);
                 ok++;
               }
+            }
+          } else if (action.type === "create_preset") {
+            const map = action.missions as unknown as MissionMap;
+            const r = await createPresetFromMissions(
+              user.id,
+              { name: action.name, emoji: action.emoji, description: action.description },
+              map,
+              action.apply,
+            );
+            if (!r.ok) { failed++; toast.error(r.error); }
+            else {
+              if (action.apply) applyMissionPreset(missionsForApply(parseMissionMap(map)));
+              ok++;
+              toast.success(`${r.updated ? "Zaktualizowano" : "Utworzono"} preset „${r.name}”${action.apply ? " i załadowano na Home" : ""}`);
             }
           } else if (action.type === "save_preset") {
             const r = await saveCurrentAsPreset(user.id, { name: action.name, emoji: action.emoji }, dashboardState.customMissions);

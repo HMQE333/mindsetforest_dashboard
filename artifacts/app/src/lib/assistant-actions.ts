@@ -84,6 +84,15 @@ export type AssistantAction =
     }
   | { type: "remove_mission"; title: string; categoryId?: string }
   | { type: "save_preset"; name: string; emoji?: string }
+  | {
+      /** A NEW set of missions saved as a preset, optionally loaded onto Home right away. */
+      type: "create_preset";
+      name: string;
+      emoji?: string;
+      description?: string;
+      missions: Record<string, { title: string; description?: string; duration?: string; xp: number }[]>;
+      apply: boolean;
+    }
   | { type: "log_metric"; metric: string; value: number }
   | { type: "log_path_step"; pathName: string }
   | {
@@ -152,6 +161,7 @@ export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
   edit_mission: "dashboard",
   remove_mission: "dashboard",
   save_preset: "dashboard",
+  create_preset: "dashboard",
   log_metric: "tracker",
   log_path_step: "paths",
   create_path: "paths",
@@ -301,7 +311,13 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
       "- remove_mission: delete a mission from its list. Fields: title (exact title), categoryId (optional).",
     );
     specs.push(
-      "- save_preset: save the current Home missions as a named preset (overwrites a preset with the same name). Fields: name, emoji (optional).",
+      "- save_preset: save the CURRENT Home missions, unchanged, as a named preset (overwrites a preset with the same name). Fields: name, emoji (optional).",
+    );
+    specs.push(
+      "- create_preset: build a NEW set of missions (\"a balanced day\", \"monk mode\", \"przygotuj zestaw\") and save it as a preset in ONE action. " +
+        `Fields: name, emoji (optional), description (optional, one line), missions (object: category id -> array of {title, xp, duration (optional), description (optional)}; ids: ${CATEGORIES.map((c) => `"${c.id}"`).join(", ")}; 1-3 missions per category), ` +
+        "apply (boolean: true to also load it onto Home now, replacing the current missions; use true only when the user asked to switch/use it now). " +
+        "To rebuild or replace missions NEVER emit a series of remove_mission/add_mission; use create_preset.",
     );
   }
 
@@ -376,10 +392,6 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
   ].join("\n");
 }
 
-interface ParseResult {
-  text: string;
-  actions: AssistantAction[];
-}
 
 /** Shared node array coercion for both mindmap action types. */
 function coerceNodes(raw: unknown): { title: string; level: "goal" | "phase" | "task" | "action"; parentIndex?: number }[] {
@@ -485,6 +497,42 @@ function coerceAction(raw: unknown): AssistantAction | null {
     if (!name) return null;
     const emoji = typeof o.emoji === "string" && o.emoji.trim() ? o.emoji.trim().slice(0, 8) : undefined;
     return { type: "save_preset", name, emoji };
+  }
+
+  if (type === "create_preset") {
+    const name = typeof o.name === "string" ? o.name.trim().slice(0, 40) : "";
+    const raw = o.missions && typeof o.missions === "object" && !Array.isArray(o.missions) ? (o.missions as Record<string, unknown>) : {};
+    const missions: Record<string, { title: string; description?: string; duration?: string; xp: number }[]> = {};
+    for (const [key, list] of Object.entries(raw)) {
+      const id = key.trim().toLowerCase();
+      if (!VALID_CATEGORY_IDS.has(id) || !Array.isArray(list)) continue;
+      const items = list
+        .slice(0, 6)
+        .map((m) => {
+          if (!m || typeof m !== "object") return null;
+          const x = m as Record<string, unknown>;
+          const title = typeof x.title === "string" ? x.title.trim().slice(0, 200) : "";
+          if (!title) return null;
+          const xpNum = Number(x.xp);
+          return {
+            title,
+            description: typeof x.description === "string" ? x.description.slice(0, 500) : "",
+            duration: typeof x.duration === "string" ? x.duration.slice(0, 40) : "",
+            xp: Number.isFinite(xpNum) && xpNum > 0 ? Math.min(500, Math.round(xpNum)) : 20,
+          };
+        })
+        .filter(Boolean) as { title: string; description?: string; duration?: string; xp: number }[];
+      if (items.length > 0) missions[id] = items;
+    }
+    if (!name || Object.keys(missions).length === 0) return null;
+    return {
+      type: "create_preset",
+      name,
+      emoji: typeof o.emoji === "string" && o.emoji.trim() ? o.emoji.trim().slice(0, 8) : undefined,
+      description: typeof o.description === "string" ? o.description.trim().slice(0, 200) : undefined,
+      missions,
+      apply: o.apply === true,
+    };
   }
 
   if (type === "log_metric") {
@@ -635,12 +683,36 @@ function coerceAction(raw: unknown): AssistantAction | null {
   return null;
 }
 
+/**
+ * The reply as the user should see it while it is still streaming: prose only.
+ * Everything from the start of an action block on is hidden (it becomes the
+ * confirm card when the reply is complete), including a half-typed fence.
+ */
+export function visibleReplyText(raw: string): string {
+  const start = raw.search(/```\s*action/i);
+  let text = start >= 0 ? raw.slice(0, start) : raw;
+  // A fence still being typed at the very end ("`", "``", "```", "```act").
+  text = text.replace(/`{1,3}[a-z]*$/i, "");
+  return text.trimEnd();
+}
+
+export interface ParseResult {
+  text: string;
+  actions: AssistantAction[];
+  /** An action block was started but could not be read (cut off or malformed). */
+  broken?: boolean;
+}
+
 export function parseActions(text: string, allowedScopes: ScopeId[]): ParseResult {
-  const match = text.match(/```action\s*([\s\S]*?)```/i);
-  if (!match) return { text, actions: [] };
-  const cleaned = (text.slice(0, match.index) + text.slice(match.index! + match[0].length)).trim();
+  const start = text.search(/```\s*action/i);
+  if (start < 0) return { text, actions: [] };
+  const rest = text.slice(start).replace(/^```\s*action\s*/i, "");
+  const close = rest.indexOf("```");
+  const body = close >= 0 ? rest.slice(0, close) : rest;
+  const after = close >= 0 ? rest.slice(close + 3) : "";
+  const cleaned = (text.slice(0, start) + after).trim();
   let parsed: unknown;
-  try { parsed = JSON.parse(match[1].trim()); } catch { return { text: cleaned, actions: [] }; }
+  try { parsed = JSON.parse(body.trim()); } catch { return { text: cleaned, actions: [], broken: true }; }
   const list = Array.isArray(parsed) ? parsed : [parsed];
   const allowed = new Set(allowedScopes);
   const actions: AssistantAction[] = [];
@@ -657,6 +729,11 @@ export function parseActions(text: string, allowedScopes: ScopeId[]): ParseResul
 export function mindmapPreview(action: AssistantAction): string | null {
   if (action.type === "add_mindmap_nodes") {
     return "New map\n" + nodesToTreePreview(action.nodes);
+  }
+  if (action.type === "create_preset") {
+    return Object.entries(action.missions)
+      .map(([id, list]) => `${PILLAR_NAMES[id] || id}: ${list.map((m) => `${m.title} (+${m.xp})`).join("; ")}`)
+      .join("\n");
   }
   if (action.type === "create_path") {
     return action.steps
@@ -714,6 +791,10 @@ export function describeAction(action: AssistantAction): string {
     return `Edit mission "${action.title}": ${bits.join(", ")}`;
   }
   if (action.type === "remove_mission") return `Remove mission: "${action.title}"`;
+  if (action.type === "create_preset") {
+    const n = Object.values(action.missions).reduce((a, l) => a + l.length, 0);
+    return `${action.apply ? "Create and load" : "Create"} preset "${action.emoji ? `${action.emoji} ` : ""}${action.name}" (${n} missions)${action.apply ? ", replaces the missions on Home" : ""}`;
+  }
   if (action.type === "save_preset") return `Save current missions as preset "${action.emoji ? `${action.emoji} ` : ""}${action.name}"`;
   if (action.type === "log_metric") return `Log ${action.value} for "${action.metric}" today`;
   if (action.type === "log_path_step") return `Log today on path "${action.pathName}" (active step)`;

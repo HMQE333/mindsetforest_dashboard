@@ -12,7 +12,7 @@ import {
   USER_SETTINGS_CHANGED_EVENT,
   emitAppEvent,
 } from "@/lib/app-events";
-import { MISSION_PRESETS_CHANGED_EVENT, normalizePresetName, snapshotMissions, type MissionMap } from "@/lib/mission-presets";
+import { MISSION_PRESETS_CHANGED_EVENT, normalizePresetName, parseMissionMap, snapshotMissions, type MissionMap } from "@/lib/mission-presets";
 import { todayKey } from "@/lib/today";
 
 /**
@@ -251,6 +251,51 @@ export async function addFinanceTransaction(
 // ---------------------------------------------------------------------------
 // Mission presets
 // ---------------------------------------------------------------------------
+
+/**
+ * Save a new mission set (written by the assistant) as a preset. An existing
+ * preset of that name is overwritten. `applied` stamps last_applied_at so the
+ * picker shows it as active when the caller also loads it onto Home.
+ */
+export async function createPresetFromMissions(
+  userId: string,
+  input: { name: string; emoji?: string; description?: string },
+  missions: MissionMap,
+  applied: boolean,
+): Promise<WriteResult<{ name: string; updated: boolean }>> {
+  const name = normalizePresetName(input.name);
+  if (!name) return { ok: false, error: "Podaj nazwę presetu" };
+  const clean = parseMissionMap(missions) as unknown as never;
+  const stamp = applied ? { last_applied_at: new Date().toISOString() } : {};
+  const { data: existing } = await supabase.from("mission_presets").select("id").eq("user_id", userId).eq("name", name).maybeSingle();
+  if (existing) {
+    const { error } = await supabase
+      .from("mission_presets")
+      .update({
+        missions: clean,
+        updated_at: new Date().toISOString(),
+        ...(input.emoji ? { emoji: input.emoji } : {}),
+        ...(input.description ? { description: input.description.slice(0, 200) } : {}),
+        ...stamp,
+      })
+      .eq("id", existing.id);
+    if (error) return { ok: false, error: "Nie udało się zapisać presetu" };
+  } else {
+    const { count } = await supabase.from("mission_presets").select("id", { count: "exact", head: true }).eq("user_id", userId);
+    const { error } = await supabase.from("mission_presets").insert({
+      user_id: userId,
+      name,
+      emoji: input.emoji || "⚡",
+      description: (input.description || "").slice(0, 200),
+      missions: clean,
+      sort_order: count ?? 0,
+      ...stamp,
+    });
+    if (error) return { ok: false, error: "Nie udało się zapisać presetu" };
+  }
+  emitAppEvent(MISSION_PRESETS_CHANGED_EVENT);
+  return { ok: true, name, updated: !!existing };
+}
 
 /** Save the current Home missions as a preset; an existing preset of that name is overwritten. */
 export async function saveCurrentAsPreset(

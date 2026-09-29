@@ -67,7 +67,7 @@ export function detectLang(text: string, fallback: VoiceLang = "en-US"): VoiceLa
 /** Strip everything a speech synthesizer would read badly: action blocks, markdown, URLs, emoji. */
 export function cleanForSpeech(text: string): string {
   return text
-    .replace(/```action[\s\S]*?```/gi, " ")
+    .replace(/```\s*action[\s\S]*?(```|$)/gi, " ")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/\s*→\s*/g, ", ")

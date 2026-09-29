@@ -105,3 +105,43 @@ describe("assistant control actions", () => {
     expect(buildActionInstructions(["paths"])).toContain("create_path");
   });
 });
+
+describe("action blocks in replies", () => {
+  it("hides the action block while streaming, including a half-typed fence", async () => {
+    const { visibleReplyText } = await import("../lib/assistant-actions");
+    expect(visibleReplyText('Robię to.\n```action\n[{"type":"navigate"')).toBe("Robię to.");
+    expect(visibleReplyText("Robię to.\n``")).toBe("Robię to.");
+    expect(visibleReplyText("Robię to.\n```act")).toBe("Robię to.");
+    expect(visibleReplyText("Zwykła odpowiedź")).toBe("Zwykła odpowiedź");
+  });
+
+  it("strips a cut-off block instead of showing JSON and flags it", () => {
+    const r = parseActions('Przygotowuję zestaw.\n```action\n[{"type":"remove_mission","title":"Read 20', ["dashboard"]);
+    expect(r.text).toBe("Przygotowuję zestaw.");
+    expect(r.actions).toEqual([]);
+    expect(r.broken).toBe(true);
+  });
+
+  it("keeps prose after a closed block", () => {
+    const r = parseActions('Jasne.\n```action\n[{"type":"navigate","module":"paths"}]\n```\nGotowe?', []);
+    expect(r.text).toBe("Jasne.\n\nGotowe?");
+    expect(r.actions).toEqual([{ type: "navigate", module: "paths" }]);
+    expect(r.broken).toBeUndefined();
+  });
+
+  it("parses create_preset, drops unknown categories and previews it per pillar", async () => {
+    const { mindmapPreview } = await import("../lib/assistant-actions");
+    const [a] = parseActions(block([{
+      type: "create_preset",
+      name: "Balanced day",
+      emoji: "⚖️",
+      missions: { mind: [{ title: "Read 20 pages", xp: 15 }], body: [{ title: "Walk", xp: "10", duration: "30 min" }], mars: [{ title: "x" }] },
+      apply: true,
+    }]), ["dashboard"]).actions;
+    expect(a).toMatchObject({ type: "create_preset", name: "Balanced day", apply: true });
+    expect(a.type === "create_preset" && Object.keys(a.missions)).toEqual(["mind", "body"]);
+    expect(describeAction(a)).toContain("2 missions");
+    expect(mindmapPreview(a)).toContain("Read 20 pages (+15)");
+    expect(parseActions(block([{ type: "create_preset", name: "Empty", missions: {} }]), ["dashboard"]).actions).toEqual([]);
+  });
+});

@@ -234,7 +234,9 @@ FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, 
     model,
     messages,
     stream: true,
-    ...(voice ? { max_tokens: 700 } : {}),
+    // No voice cap: the prompt keeps spoken prose short, and a cap cuts
+    // action blocks mid-JSON (a preset with a dozen missions is long).
+    max_tokens: 4000,
   });
   if (!response.ok || !response.body) return gatewayError(response, await response.text());
 

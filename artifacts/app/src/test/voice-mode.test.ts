@@ -60,3 +60,9 @@ describe("voice confirm precedence", () => {
     expect(isStopPhrase("stop")).toBe(true);
   });
 });
+
+describe("speech never reads action JSON", () => {
+  it("drops a cut-off action block", () => {
+    expect(cleanForSpeech('Przygotowuję zestaw.\n```action\n[{"type":"remove_mission"')).toBe("Przygotowuję zestaw.");
+  });
+});
