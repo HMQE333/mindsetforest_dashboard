@@ -170,7 +170,10 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
         }
         if (key === binds.resetDefaults.toLowerCase() && actions.resetDefaults) {
           e.preventDefault();
-          actions.resetDefaults();
+          // One key drops the whole custom list, so it asks first, like Reset Day.
+          if (window.confirm("Przywrócić domyślne misje w tej kategorii? Twoja lista i dzisiejsze odhaczenia w niej zostaną usunięte.")) {
+            actions.resetDefaults();
+          }
         }
       }
     };

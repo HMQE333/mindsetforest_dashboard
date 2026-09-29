@@ -154,14 +154,16 @@ function QuestionStep({
  * questions with ready answers, then done. Also used for the monthly review.
  */
 export default function ReviewModal({ review }: { review: Review }) {
-  const { open, target, snapshot, headline, questions, questionsLoading, questionsError } = review;
+  const { open, target, snapshot, headline, questions, initialAnswers, questionsLoading, questionsError } = review;
   const [step, setStep] = useState<"summary" | number | "done">("summary");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  // A review reopened after saving comes back with its answers (initialAnswers
+  // arrives with its questions, before the first question can be reached).
   useEffect(() => {
-    if (open) { setStep("summary"); setAnswers({}); }
-  }, [open, target?.kind, target?.period]);
+    if (open) { setStep("summary"); setAnswers(initialAnswers); }
+  }, [open, target?.kind, target?.period, initialAnswers]);
 
   const tiles = useMemo(() => (snapshot ? reviewTiles(snapshot) : []), [snapshot]);
   const monthly = target?.kind === "monthly";

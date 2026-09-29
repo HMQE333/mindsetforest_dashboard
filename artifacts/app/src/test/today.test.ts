@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { dayKey, monthKey, addDays, lastNDays, computeStreak } from "../lib/today";
 
 describe("dayKey: the day ends at 04:00", () => {
@@ -11,6 +11,32 @@ describe("dayKey: the day ends at 04:00", () => {
   it("00:30 on the 1st still belongs to last month", () => {
     expect(dayKey(new Date(2026, 9, 1, 0, 30))).toBe("2026-09-30");
     expect(monthKey(new Date(2026, 9, 1, 0, 30))).toBe("2026-09");
+  });
+  it("00:30 on 1 January still belongs to last year", () => {
+    expect(dayKey(new Date(2027, 0, 1, 0, 30))).toBe("2026-12-31");
+  });
+});
+
+describe("dayKey across DST changes (Europe/Warsaw)", () => {
+  // The boundary is 04:00 on the local clock, also on the 23- and 25-hour days.
+  let saved: string | undefined;
+  beforeAll(() => { saved = process.env.TZ; process.env.TZ = "Europe/Warsaw"; });
+  afterAll(() => { if (saved === undefined) delete process.env.TZ; else process.env.TZ = saved; });
+
+  it("runs in the zone it claims to", () => {
+    expect(new Date(2026, 0, 15, 12).getTimezoneOffset()).toBe(-60);
+    expect(new Date(2026, 6, 15, 12).getTimezoneOffset()).toBe(-120);
+  });
+  it("spring forward (29 Mar 2026, 02:00 -> 03:00): 04:30 is already the new day", () => {
+    expect(dayKey(new Date(2026, 2, 29, 3, 30))).toBe("2026-03-28");
+    expect(dayKey(new Date(2026, 2, 29, 4, 0))).toBe("2026-03-29");
+    expect(dayKey(new Date(2026, 2, 29, 4, 30))).toBe("2026-03-29");
+  });
+  it("fall back (25 Oct 2026, 03:00 -> 02:00): the repeated hour and 03:30 are still the old day", () => {
+    // 01:30 UTC is 02:30 CET, the second pass through 02:00-03:00.
+    expect(dayKey(new Date(Date.UTC(2026, 9, 25, 1, 30)))).toBe("2026-10-24");
+    expect(dayKey(new Date(2026, 9, 25, 3, 30))).toBe("2026-10-24");
+    expect(dayKey(new Date(2026, 9, 25, 4, 0))).toBe("2026-10-25");
   });
 });
 

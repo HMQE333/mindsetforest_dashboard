@@ -18,11 +18,10 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
   const project = categoryId.startsWith("project-") ? getProjectFromKey(categoryId) : null;
   const displayName = project?.name || category?.name || "";
 
+  // Rows keep their `__originalIndex` through the edit so saveCustomMissions can
+  // move today's ticks with them (it strips the field before storing).
   useEffect(() => {
-    setBuffer(missions.map(m => {
-      const { __originalIndex, ...rest } = m;
-      return { ...rest, persistent: m.persistent !== false ? true : false };
-    }));
+    setBuffer(missions.map(m => ({ ...m, persistent: m.persistent !== false ? true : false })));
   }, [missions]);
 
   const updateField = (index: number, field: keyof Mission, value: string | number) => {

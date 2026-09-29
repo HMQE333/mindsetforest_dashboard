@@ -19,9 +19,15 @@ export function formatLocalDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** The instant shifted back by the day-start hour, so 03:59 still counts as the previous day. */
+/**
+ * Local noon of the day an instant belongs to, so 03:59 still counts as the
+ * previous day. Read off the local clock rather than by subtracting four hours
+ * of absolute time: on a DST change the day has 23 or 25 hours and the
+ * subtraction would move the boundary to 03:00 or 05:00.
+ */
 export function logicalDate(at: Date = new Date()): Date {
-  return new Date(at.getTime() - DAY_START_HOUR * 60 * 60 * 1000);
+  const day = at.getHours() < DAY_START_HOUR ? at.getDate() - 1 : at.getDate();
+  return new Date(at.getFullYear(), at.getMonth(), day, 12, 0, 0);
 }
 
 /** Day key for an instant, honouring the 04:00 boundary. */

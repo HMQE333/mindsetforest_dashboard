@@ -3,8 +3,8 @@ import { aggregateUsage, classifyAll, type UsageSession } from "@/lib/app-usage-
 import { DAILY_COLUMNS, dailyRowToSession, rowToClass, rowToRule } from "@/lib/app-usage-rows";
 import { loadMetrics } from "@/lib/assistant-writes";
 import type { TrackerMetric } from "@/lib/tracker-data";
-import { addDays, todayKey } from "@/lib/today";
-import { emptySnapshot, monthRange, type ReviewKind, type ReviewSnapshot } from "@/lib/review-data";
+import { todayKey } from "@/lib/today";
+import { emptySnapshot, monthRange, withinDays, type ReviewKind, type ReviewSnapshot } from "@/lib/review-data";
 
 /**
  * Reads everything the review summary shows for one day or one month. Each
@@ -61,7 +61,7 @@ export async function loadReviewSnapshot(userId: string, kind: ReviewKind, perio
     }
     snap.paths = [...byPath.values()].sort((a, b) => b.count - a.count);
     snap.pathStepsFinished = stepRows
-      .filter((s) => s.done && s.done_at && s.done_at.slice(0, 10) >= from && s.done_at.slice(0, 10) <= addDays(to, 1))
+      .filter((s) => s.done && withinDays(s.done_at, from, to))
       .map((s) => `${pathName.get(s.path_id) || ""}: ${s.title}`)
       .slice(0, 15);
   }
