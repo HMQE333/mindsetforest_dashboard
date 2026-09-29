@@ -60,3 +60,6 @@ artifacts/app/.env.local
 
 # Claude Code personal settings
 .claude/settings.local.json
+
+# Agent worktrees (temporary checkouts)
+.claude/worktrees/
