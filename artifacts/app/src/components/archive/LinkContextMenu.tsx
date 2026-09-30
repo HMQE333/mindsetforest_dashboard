@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Pencil, MessageSquarePlus, Tag, Trash2, FileText, Clapperboard } from "lucide-react";
+import { ExternalLink, Copy, Pencil, MessageSquarePlus, Tag, Trash2, FileText, Clapperboard, Star } from "lucide-react";
 import type { LinkSummaryMeta } from "@/hooks/useLinkSummaries";
 import { youtubeId } from "@/lib/youtube";
 import { usePillars } from "@/hooks/usePillars";
@@ -24,10 +24,12 @@ interface Props {
   /** A YouTube link's summary, if any (by video id). */
   summaryFor?: (videoId: string) => LinkSummaryMeta | undefined;
   onVideo?: (url: string, action: "summarize" | "workshop") => void;
+  isBookmarked?: (url: string) => boolean;
+  onToggleBookmark?: (url: string, block: ArchiveBlock) => void;
   updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
-const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor, onVideo, updateBlock }: Props) => {
+const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor, onVideo, isBookmarked, onToggleBookmark, updateBlock }: Props) => {
   const allPillars = usePillars();
   const [subView, setSubView] = useState<null | "note" | "tags">(null);
   const [noteText, setNoteText] = useState("");
@@ -172,6 +174,12 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor,
       <button onClick={handleCopyUrl} className={menuItem}>
         <Copy size={14} className="text-muted-foreground" /> Copy URL
       </button>
+      {onToggleBookmark && (
+        <button onClick={() => { onToggleBookmark(url, block); onClose(); }} className={menuItem}>
+          <Star size={14} className={isBookmarked?.(url) ? "text-amber-400 fill-amber-400" : "text-muted-foreground"} />
+          {isBookmarked?.(url) ? "Remove bookmark" : "Bookmark link"}
+        </button>
+      )}
 
       <div className={separator} />
 

@@ -76,7 +76,7 @@ const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch, skipFi
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground font-semibold">
                   {type}
                 </span>
-                {block.is_pinned && <span className="text-[10px]">📌</span>}
+                {block.is_pinned && <span className="text-[10px] text-amber-400">★</span>}
               </div>
               <h4 className="font-semibold text-sm truncate">{block.title || "Untitled"}</h4>
               <p className="text-xs text-muted-foreground line-clamp-2">{block.content}</p>

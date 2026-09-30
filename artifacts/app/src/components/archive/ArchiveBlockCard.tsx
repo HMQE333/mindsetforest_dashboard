@@ -118,7 +118,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
           </button>
           <div className="flex-1 min-w-0" onClick={onEdit}>
             <div className="flex items-center gap-1.5">
-              {block.is_pinned && <span className="text-xs">📌</span>}
               <h4 className="font-semibold text-sm truncate">{displayTitle}</h4>
               {similarityScore !== undefined && (
                 <span className="ml-auto flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">
@@ -131,12 +130,14 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               {block.content.replace(IMAGE_TAG_REGEX, "").trim().slice(0, 600) || "Image block"}
             </p>
           </div>
+          {/* A bookmarked note (is_pinned) is listed in Bookmarks and shown first here. */}
           <button
             onClick={(e) => { e.stopPropagation(); onUpdate(block.id, { is_pinned: !block.is_pinned }); }}
-            className={`mt-1 text-sm transition-opacity ${block.is_pinned ? "opacity-100" : "opacity-0 group-hover:opacity-50 hover:!opacity-100"}`}
-            title={block.is_pinned ? "Unpin" : "Pin"}
+            className={`mt-1 text-sm transition-opacity ${block.is_pinned ? "opacity-100 text-amber-400" : "opacity-0 group-hover:opacity-60 [@media(hover:none)]:opacity-40 hover:!opacity-100 text-muted-foreground"}`}
+            title={block.is_pinned ? "Remove bookmark" : "Bookmark"}
+            aria-label={block.is_pinned ? "Remove bookmark" : "Bookmark this note"}
           >
-            📌
+            {block.is_pinned ? "★" : "☆"}
           </button>
           {onPlant && (
             <button
@@ -256,7 +257,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             >
               <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  {block.is_pinned && <span className="text-base shrink-0">📌</span>}
+                  {block.is_pinned && <span className="text-base shrink-0 text-amber-400">★</span>}
                   <h2 className="font-bold text-foreground text-lg truncate">{displayTitle}</h2>
                 </div>
                 <button

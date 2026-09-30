@@ -5,6 +5,7 @@ import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronR
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { autoTitle, LINK_REGEX, removeUrls, type ArchiveBlock } from "@/lib/archive-data";
+import type { useBookmarks } from "@/hooks/useBookmarks";
 import ArchiveEditModal from "./ArchiveEditModal";
 import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
 import VideoSummaryPanel, { type VideoPanelTarget } from "./VideoSummaryPanel";
@@ -19,6 +20,7 @@ interface Props {
   updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
   deleteBlock: (id: string) => Promise<unknown>;
   addBlock: (block: Partial<ArchiveBlock>) => Promise<unknown>;
+  bookmarks?: ReturnType<typeof useBookmarks>;
 }
 
 type LinkType = "all" | "link" | "video" | "image" | "other";
@@ -48,6 +50,9 @@ const PAGE = 200;
 
 /** A note with more links than this is a list, not a note (see allLinks). */
 const BULK_NOTE_LINKS = 100;
+
+/** Marks a bookmarked link. */
+const Star = () => <span className="text-amber-400 mr-1" title="Bookmarked" aria-label="Bookmarked">★</span>;
 
 /** Shown on a link whose video has a summary (or one being made); opens it. */
 function SummaryMarker({ summary, onOpen }: { summary?: LinkSummaryMeta; onOpen?: () => void }) {
@@ -145,7 +150,7 @@ function getHostname(url: string) {
 
 // ── Sub-renderers ──────────────────────────────────────────────
 
-function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void }) {
+function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
   const ytId = link.type === "video" ? youtubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
@@ -174,7 +179,7 @@ function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary }: { l
             {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
+            <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{bookmarked && <Star />}{hostname}</p>
             <p className="text-xs text-muted-foreground truncate mt-0.5">{link.url}</p>
             <div className="flex items-center gap-2 mt-1.5">
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10">
@@ -194,7 +199,7 @@ function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary }: { l
   );
 }
 
-function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void }) {
+function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
   const ytId = link.type === "video" ? youtubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
@@ -223,7 +228,7 @@ function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary }: { l
           </div>
         )}
         <div className="p-2.5 flex-1 min-w-0">
-          <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
+          <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{bookmarked && <Star />}{hostname}</p>
           <div className="flex items-center gap-1.5 mt-1">
             <Badge variant="outline" className="text-[9px] px-1 py-0 border-white/10">
               {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
@@ -241,7 +246,7 @@ function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary }: { l
   );
 }
 
-function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void }) {
+function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
@@ -257,7 +262,7 @@ function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary }: {
         <div className="shrink-0 w-4 h-4 rounded overflow-hidden flex items-center justify-center">
           {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-[10px]">🔗</span>}
         </div>
-        <span className="text-xs font-semibold text-foreground w-28 truncate shrink-0 group-hover:text-primary transition-colors">{hostname}</span>
+        <span className="text-xs font-semibold text-foreground w-28 truncate shrink-0 group-hover:text-primary transition-colors">{bookmarked && <Star />}{hostname}</span>
         <span className="text-xs text-muted-foreground truncate flex-1">{link.url}</span>
         {link.note && (
           <span className="text-[9px] text-muted-foreground/60 truncate max-w-[180px] italic shrink-0">{link.note}</span>
@@ -272,13 +277,14 @@ function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary }: {
   );
 }
 
-function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summaryOf, onOpenSummary }: {
+function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summaryOf, onOpenSummary, isBookmarked }: {
   links: ExtractedLink[];
   onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void;
   onRemove: (link: ExtractedLink) => void;
   onRemoveDomain: (domain: string, links: ExtractedLink[]) => void;
   summaryOf: (link: ExtractedLink) => LinkSummaryMeta | undefined;
   onOpenSummary: (link: ExtractedLink) => void;
+  isBookmarked: (url: string) => boolean;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [groupsShown, setGroupsShown] = useState(PAGE);
@@ -330,7 +336,7 @@ function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summa
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {domainLinks.slice(0, shown).map((link, i) => (
-                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} onRemove={() => onRemove(link)} summary={summaryOf(link)} onOpenSummary={() => onOpenSummary(link)} />
+                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} onRemove={() => onRemove(link)} summary={summaryOf(link)} onOpenSummary={() => onOpenSummary(link)} bookmarked={isBookmarked(link.url)} />
                 ))}
                 <ShowMore shown={shown} total={domainLinks.length} onMore={() => setLinksShown((p) => ({ ...p, [domain]: shown + PAGE }))} />
               </div>
@@ -345,7 +351,7 @@ function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summa
 
 // ── Main Component ─────────────────────────────────────────────
 
-const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock }: Props) => {
+const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock, bookmarks }: Props) => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<LinkType>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -477,6 +483,17 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
     setVideo({ url, videoId: id, tab: action === "workshop" ? "workshop" : "summary", start: action && !done ? action : undefined });
   }, [summaries]);
 
+  // Bookmarks of links, shared with the Bookmarks tab.
+  const isMarked = useCallback((url: string) => bookmarks?.isBookmarked(url) ?? false, [bookmarks]);
+  const toggleBookmark = useCallback((url: string, block: ArchiveBlock) => {
+    if (!bookmarks) return;
+    const id = youtubeId(url);
+    const title = id ? summaries.get(id)?.title ?? "" : "";
+    void bookmarks.toggleBookmark(url, title, block.id).then((done) => {
+      if (done) toast.success(done === "added" ? "Bookmarked" : "Bookmark removed");
+    });
+  }, [bookmarks, summaries]);
+
   // Every workshop in one place, once there is one.
   const [workshopsOpen, setWorkshopsOpen] = useState(false);
   const workshopCount = useMemo(() => [...summaries.values()].filter((s) => s.workshop_status === "ready").length, [summaries]);
@@ -561,7 +578,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {visible.map((link, i) => (
-            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} />
+            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
           ))}
           {more}
         </div>
@@ -569,7 +586,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {visible.map((link, i) => (
-              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} />
+              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
             ))}
           </div>
           {more}
@@ -577,7 +594,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
       ) : viewMode === "compact" ? (
         <div className="space-y-1">
           {visible.map((link, i) => (
-            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} />
+            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
           ))}
           {more}
         </div>
@@ -588,6 +605,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
           onRemove={(link) => removeLink(link.url, link.blockId)}
           summaryOf={summaryOf}
           onOpenSummary={(link) => openVideo(link.url)}
+          isBookmarked={isMarked}
           onRemoveDomain={(domain, links) => setConfirmDomain({ domain, links })}
         />
       )}
@@ -638,6 +656,8 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
         onRemoveLink={(url, block) => removeLink(url, block.id)}
         summaryFor={(id) => summaries.get(id)}
         onVideo={openVideo}
+        isBookmarked={bookmarks ? isMarked : undefined}
+        onToggleBookmark={bookmarks ? toggleBookmark : undefined}
         updateBlock={updateBlock}
       />
 

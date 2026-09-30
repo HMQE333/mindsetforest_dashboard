@@ -368,6 +368,7 @@ export type Database = {
       }
       bookmarks: {
         Row: {
+          block_id: string | null
           created_at: string
           id: string
           title: string
@@ -375,6 +376,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          block_id?: string | null
           created_at?: string
           id?: string
           title: string
@@ -382,13 +384,22 @@ export type Database = {
           user_id: string
         }
         Update: {
+          block_id?: string | null
           created_at?: string
           id?: string
           title?: string
           url?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bookmarks_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "archive_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       breathing_sessions: {
         Row: {

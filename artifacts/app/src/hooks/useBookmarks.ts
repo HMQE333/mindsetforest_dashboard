@@ -2,11 +2,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "./useAuth";
+import { youtubeId } from "@/lib/youtube";
 
+/**
+ * A bookmarked URL: added by hand, or a link bookmarked from a note (then
+ * `blockId` is that note). Bookmarked notes themselves are archive blocks
+ * with is_pinned set; the Bookmarks tab shows both.
+ */
 export interface Bookmark {
   id: string;
   title: string;
   url: string;
+  blockId: string | null;
 }
 
 // Bookmarks live in their own `public.bookmarks` table (one row per bookmark)
@@ -41,15 +48,27 @@ export function normalizedUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
+/** The title when none is given: the host and path, which tell two links on one site apart. */
 function deriveTitle(title: string, nUrl: string): string {
   const t = title.trim();
   if (t) return t;
+  const video = youtubeId(nUrl);
+  if (video) return `YouTube video ${video}`;
   try {
-    return new URL(nUrl).hostname.replace(/^www\./, "");
+    const u = new URL(nUrl);
+    const path = u.pathname.replace(/\/+$/, "");
+    return `${u.hostname.replace(/^www\./, "")}${path}`.slice(0, 80);
   } catch {
     return nUrl;
   }
 }
+
+const rowToBookmark = (r: { id: string; title: string; url: string; block_id?: string | null }): Bookmark => ({
+  id: r.id,
+  title: r.title,
+  url: r.url,
+  blockId: r.block_id ?? null,
+});
 
 /**
  * Per-user bookmark store backed by the `public.bookmarks` table. Reads/writes
@@ -79,16 +98,12 @@ export function useBookmarks() {
     (async () => {
       const { data, error } = await supabase
         .from("bookmarks")
-        .select("id, title, url, created_at")
+        .select("id, title, url, block_id, created_at")
         .eq("user_id", uid)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (cancelled) return;
       if (error) return;
-      const bms: Bookmark[] = (data || []).map((r: any) => ({
-        id: r.id,
-        title: r.title,
-        url: r.url,
-      }));
+      const bms: Bookmark[] = (data || []).map(rowToBookmark);
       setBoth(bms);
       writeCache(uid, bms);
     })();
@@ -98,23 +113,29 @@ export function useBookmarks() {
     };
   }, [user?.id, setBoth]);
 
+  /** Adds a bookmark, newest first; a URL already bookmarked is left as it is. */
   const addBookmark = useCallback(
-    async (title: string, url: string) => {
-      if (!user) return;
+    async (title: string, url: string, blockId: string | null = null): Promise<boolean> => {
+      if (!user) return false;
       const nUrl = normalizedUrl(url);
-      if (!nUrl) return;
+      if (!nUrl) return false;
+      if (bookmarksRef.current.some((b) => b.url === nUrl)) {
+        toast.info("Already bookmarked");
+        return false;
+      }
       const finalTitle = deriveTitle(title, nUrl);
       const { data, error } = await (supabase.from("bookmarks") as any)
-        .insert([{ user_id: user.id, title: finalTitle, url: nUrl }])
-        .select("id, title, url")
+        .insert([{ user_id: user.id, title: finalTitle, url: nUrl, block_id: blockId }])
+        .select("id, title, url, block_id")
         .single();
       if (error || !data) {
-        toast.error("Failed to save bookmark");
-        return;
+        toast.error(error?.code === "23505" ? "Already bookmarked" : "Failed to save bookmark");
+        return false;
       }
-      const next = [...bookmarksRef.current, { id: data.id, title: data.title, url: data.url }];
+      const next = [rowToBookmark(data), ...bookmarksRef.current];
       setBoth(next);
       writeCache(user.id, next);
+      return true;
     },
     [user, setBoth]
   );
@@ -143,8 +164,8 @@ export function useBookmarks() {
   );
 
   const deleteBookmark = useCallback(
-    async (id: string) => {
-      if (!user) return;
+    async (id: string): Promise<boolean> => {
+      if (!user) return false;
       const { error } = await supabase
         .from("bookmarks")
         .delete()
@@ -152,14 +173,28 @@ export function useBookmarks() {
         .eq("user_id", user.id);
       if (error) {
         toast.error("Failed to delete bookmark");
-        return;
+        return false;
       }
       const next = bookmarksRef.current.filter((b) => b.id !== id);
       setBoth(next);
       writeCache(user.id, next);
+      return true;
     },
     [user, setBoth]
   );
 
-  return { bookmarks, addBookmark, updateBookmark, deleteBookmark };
+  const isBookmarked = useCallback((url: string) => {
+    const nUrl = normalizedUrl(url);
+    return bookmarks.some((b) => b.url === nUrl);
+  }, [bookmarks]);
+
+  /** Bookmark a link from a note, or take its bookmark away; says which happened (null: neither). */
+  const toggleBookmark = useCallback(async (url: string, title: string, blockId: string | null): Promise<"added" | "removed" | null> => {
+    const nUrl = normalizedUrl(url);
+    const existing = bookmarksRef.current.find((b) => b.url === nUrl);
+    if (existing) return (await deleteBookmark(existing.id)) ? "removed" : null;
+    return (await addBookmark(title, nUrl, blockId)) ? "added" : null;
+  }, [addBookmark, deleteBookmark]);
+
+  return { bookmarks, addBookmark, updateBookmark, deleteBookmark, isBookmarked, toggleBookmark };
 }

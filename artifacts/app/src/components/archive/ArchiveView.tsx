@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
+import { useBookmarks } from "@/hooks/useBookmarks";
 import ArchiveInbox from "./ArchiveInbox";
 import ArchiveLibrary from "./ArchiveLibrary";
 import ArchiveLinksView from "./ArchiveLinksView";
@@ -51,6 +52,8 @@ const ArchiveView = () => {
   const [plantOpen, setPlantOpen] = useState(false);
   const [singlePlantBlock, setSinglePlantBlock] = useState<ArchiveBlock | null>(null);
   const archive = useArchiveState();
+  // One store for both views, so a link bookmarked in Links is in Bookmarks at once.
+  const bookmarks = useBookmarks();
 
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
   const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
@@ -246,7 +249,7 @@ const ArchiveView = () => {
           />
         </div>
         <div className={subView === "links" ? "" : "hidden"}>
-          <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} />
+          <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} bookmarks={bookmarks} />
         </div>
         <div className={subView === "images" ? "" : "hidden"}>
           <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
@@ -258,7 +261,7 @@ const ArchiveView = () => {
           <ArchiveForestView />
         </div>
         <div className={subView === "bookmarks" ? "" : "hidden"}>
-          <ArchiveBookmarksView />
+          <ArchiveBookmarksView bookmarks={bookmarks} blocks={archive.blocks} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
         </div>
         <div className={subView === "fileshare" ? "" : "hidden"}>
           <FileShareView />
