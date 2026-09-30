@@ -55,7 +55,7 @@ export async function loadReviewSnapshot(userId: string, kind: ReviewKind, perio
     const byPath = new Map<string, { path: string; step: string; count: number }>();
     for (const l of logs) {
       const key = l.path_id;
-      const row = byPath.get(key) || { path: pathName.get(l.path_id) || "Ścieżka", step: stepTitle.get(l.step_id) || "", count: 0 };
+      const row = byPath.get(key) || { path: pathName.get(l.path_id) || "Path", step: stepTitle.get(l.step_id) || "", count: 0 };
       row.count++;
       byPath.set(key, row);
     }

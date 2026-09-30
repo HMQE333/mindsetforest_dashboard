@@ -18,9 +18,9 @@ describe("review periods", () => {
     expect(reviewStreak([], "2026-09-28")).toBe(0);
   });
 
-  it("labels periods in Polish", () => {
-    expect(periodLabel("daily", "2026-09-28")).toMatch(/28 września/);
-    expect(periodLabel("monthly", "2026-09")).toMatch(/wrzesień 2026/);
+  it("labels periods in English", () => {
+    expect(periodLabel("daily", "2026-09-28")).toBe("Monday, September 28");
+    expect(periodLabel("monthly", "2026-09")).toBe("September 2026");
   });
 });
 
@@ -45,7 +45,7 @@ describe("review tiles", () => {
     const tiles = reviewTiles(s);
     expect(tiles.map((t) => t.key)).toEqual(["xp", "focus", "lost", "sleep", "paths", "spend"]);
     expect(tiles[0].value).toBe("+120");
-    expect(tiles[1].detail).toBe("66% fokusu");
+    expect(tiles[1].detail).toBe("66% focus");
     expect(tiles[1].value).toBe("4h 00m");
     expect(tiles[2].detail).toContain("YouTube");
     expect(tiles[3].value).toBe("7h 10m");

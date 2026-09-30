@@ -149,14 +149,14 @@ export function useReview() {
       setQuestions(
         t.kind === "monthly"
           ? [
-              { id: "q1", question: "Co udało ci się zrobić w tym miesiącu?", suggestions: [] },
-              { id: "q2", question: "Na co naprawdę poszedł twój czas?", suggestions: [] },
-              { id: "q3", question: "Co zabierasz w następny miesiąc, a co zostawiasz?", suggestions: [] },
+              { id: "q1", question: "What did you get done this month?", suggestions: [] },
+              { id: "q2", question: "Where did your time really go?", suggestions: [] },
+              { id: "q3", question: "What do you take into next month, and what do you leave behind?", suggestions: [] },
             ]
           : [
-              { id: "q1", question: "Na co wczoraj naprawdę poszedł twój czas?", suggestions: [] },
-              { id: "q2", question: "Co wyszło, a co nie?", suggestions: [] },
-              { id: "q3", question: "Co jest dziś najważniejsze?", suggestions: [] },
+              { id: "q1", question: "Where did your time really go yesterday?", suggestions: [] },
+              { id: "q2", question: "What worked, and what didn't?", suggestions: [] },
+              { id: "q3", question: "What matters most today?", suggestions: [] },
             ],
       );
     } finally {

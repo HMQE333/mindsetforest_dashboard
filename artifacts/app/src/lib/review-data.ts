@@ -118,7 +118,7 @@ export function savedQuestions(qa: unknown): {
   return questions.length > 0 ? { questions, answers } : null;
 }
 
-const pln = (n: number) => `${Math.round(n).toLocaleString("pl-PL")} zł`;
+const pln = (n: number) => `${Math.round(n).toLocaleString("en-US")} zł`;
 
 function hoursMinutes(min: number): string {
   const total = Math.max(0, Math.round(min));
@@ -155,11 +155,11 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
   tiles.push({
     key: "xp",
     icon: "⚡",
-    label: monthly ? "XP w miesiącu" : "XP",
+    label: monthly ? "XP this month" : "XP",
     value: `+${s.xp}`,
     detail: monthly
-      ? `${s.missions} misji · ${s.activeDays}/${s.days} aktywnych dni`
-      : s.missions > 0 ? `${s.missions} ${s.missions === 1 ? "misja" : s.missions < 5 ? "misje" : "misji"}` : "brak misji",
+      ? `${s.missions} missions · ${s.activeDays}/${s.days} active days`
+      : s.missions > 0 ? `${s.missions} ${s.missions === 1 ? "mission" : "missions"}` : "no missions",
     tone: s.missions > 0 ? "good" : "warn",
   });
 
@@ -170,9 +170,9 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
     tiles.push({
       key: "focus",
       icon: "🎯",
-      label: "Praca i nauka",
+      label: "Work & learning",
       value: formatHm(productive),
-      detail: focus === null ? `z ${formatHm(s.computer.total)} przy komputerze` : `${Math.round(focus * 100)}% fokusu`,
+      detail: focus === null ? `of ${formatHm(s.computer.total)} at the computer` : `${Math.round(focus * 100)}% focus`,
       tone: focus === null ? "neutral" : focus >= 0.6 ? "good" : focus >= 0.4 ? "neutral" : "warn",
     });
     if (lost > 0) {
@@ -180,9 +180,9 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
       tiles.push({
         key: "lost",
         icon: "📺",
-        label: "Rozproszenia",
+        label: "Distractions",
         value: formatHm(lost),
-        detail: top ? `najwięcej: ${top.name}` : "strata i oglądanie",
+        detail: top ? `most: ${top.name}` : "wasted and watching",
         tone: lost >= 2 * 3600 * s.days ? "warn" : "neutral",
       });
     }
@@ -193,12 +193,12 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
     tiles.push({
       key: "sleep",
       icon: "😴",
-      label: monthly ? "Sen (średnio)" : "Sen",
+      label: monthly ? "Sleep (average)" : "Sleep",
       value: mins ? hoursMinutes(mins) : `${Math.round(s.sleep.avgScore ?? 0)}`,
       detail: [
         s.sleep.avgScore ? `score ${Math.round(s.sleep.avgScore)}` : null,
         s.sleep.avgHrv ? `HRV ${Math.round(s.sleep.avgHrv)}` : null,
-      ].filter(Boolean).join(" · ") || "z zegarka",
+      ].filter(Boolean).join(" · ") || "from the watch",
       tone: mins ? (mins >= 420 ? "good" : mins >= 360 ? "neutral" : "warn") : "neutral",
     });
   }
@@ -208,10 +208,10 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
     tiles.push({
       key: "paths",
       icon: "🪜",
-      label: "Ścieżki",
-      value: monthly ? `${s.pathStepsFinished.length} kroków` : `${pathCount}`,
+      label: "Paths",
+      value: monthly ? `${s.pathStepsFinished.length} steps` : `${pathCount}`,
       detail: monthly
-        ? `${pathCount} zalogowanych dni`
+        ? `${pathCount} days logged`
         : s.paths.map((p) => p.path).slice(0, 2).join(", "),
       tone: "good",
     });
@@ -221,9 +221,9 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
     tiles.push({
       key: "spend",
       icon: "💸",
-      label: monthly ? "Wydatki" : "Wydane",
+      label: monthly ? "Spending" : "Spent",
       value: pln(s.spend.total),
-      detail: s.spend.top[0] ? `najwięcej: ${s.spend.top[0].label}` : `${s.spend.count} transakcji`,
+      detail: s.spend.top[0] ? `most: ${s.spend.top[0].label}` : `${s.spend.count} transactions`,
       tone: "neutral",
     });
   }
@@ -233,9 +233,9 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
     tiles.push({
       key: "metrics",
       icon: m.icon || "📊",
-      label: s.metrics.length > 1 ? "Statystyki" : m.label,
+      label: s.metrics.length > 1 ? "Stats" : m.label,
       value: `${Math.round(m.value * 10) / 10} ${m.unit}`,
-      detail: s.metrics.length > 1 ? `${m.label} + ${s.metrics.length - 1} inne` : "zalogowane",
+      detail: s.metrics.length > 1 ? `${m.label} + ${s.metrics.length - 1} more` : "logged",
       tone: "good",
     });
   }
@@ -243,13 +243,13 @@ export function reviewTiles(s: ReviewSnapshot): ReviewTile[] {
   return tiles.slice(0, 6);
 }
 
-/** "wtorek, 29 września" / "wrzesień 2026". */
+/** "Tuesday, September 29" / "September 2026". */
 export function periodLabel(kind: ReviewKind, period: string): string {
   if (kind === "monthly") {
     const [y, m] = period.split("-").map(Number);
-    const name = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("pl-PL", { month: "long", timeZone: "UTC" });
+    const name = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" });
     return `${name} ${y}`;
   }
   const [y, m, d] = period.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 }

@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Loader2, Mic, Square, RefreshCw } from "l
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useVoiceNote } from "@/hooks/useVoiceNote";
-import { KIND_LABELS, useKindPalette } from "@/components/tracker/computer-time-shared";
+import { useKindPalette } from "@/components/tracker/computer-time-shared";
 import type { AppKind } from "@/lib/app-usage-classify";
 import { formatDuration as formatHm, periodLabel, reviewTiles, type ReviewSnapshot, type ReviewTile } from "@/lib/review-data";
 import type { useReview } from "@/hooks/useReview";
@@ -16,7 +16,13 @@ const TONE_DOT: Record<ReviewTile["tone"], string> = {
   neutral: "bg-white/30",
   warn: "bg-amber-400",
 };
-const TONE_WORD: Record<ReviewTile["tone"], string> = { good: "dobrze", neutral: "", warn: "uwaga" };
+const TONE_WORD: Record<ReviewTile["tone"], string> = { good: "good", neutral: "", warn: "watch this" };
+
+/** The review is in English (the Stats labels for these kinds are still Polish). */
+const KIND_NAMES: Record<AppKind | "unassigned", string> = {
+  work: "Work", learning: "Learning", communication: "Communication", watching: "Watching",
+  waste: "Wasted", neutral: "Neutral", unassigned: "Unassigned",
+};
 
 /**
  * Order of the computer-time bar: productive first, lost last. Neutral sits
@@ -31,15 +37,15 @@ function TimeBar({ computer }: { computer: NonNullable<ReviewSnapshot["computer"
   const total = parts.reduce((n, p) => n + p.secs, 0);
   if (total <= 0) return null;
   const color = (k: string) => (k === "unassigned" ? palette.unassigned : palette[k as AppKind]);
-  const label = (k: string) => (k === "unassigned" ? "Nieprzypisane" : KIND_LABELS[k as AppKind]);
+  const label = (k: string) => KIND_NAMES[k as AppKind | "unassigned"] ?? k;
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
       <div className="flex items-baseline justify-between mb-2">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Czas przy komputerze</span>
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Time at the computer</span>
         <span className="text-xs text-foreground/80 tabular-nums">{formatHm(total)}</span>
       </div>
       {/* One stacked bar; 2px gaps separate segments, legend below carries the numbers. */}
-      <div className="flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full" role="img" aria-label="Podział czasu przy komputerze">
+      <div className="flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full" role="img" aria-label="How computer time was split">
         {parts.map((p) => (
           <div
             key={p.kind}
@@ -98,7 +104,7 @@ function QuestionStep({
   const voice = useVoiceNote((text) => onAnswer(answer.trim() ? `${answer.trim()} ${text}` : text));
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1.5" aria-label={`Pytanie ${index + 1} z ${total}`}>
+      <div className="flex items-center gap-1.5" aria-label={`Question ${index + 1} of ${total}`}>
         {Array.from({ length: total }).map((_, i) => (
           <span key={i} className={`h-1 flex-1 rounded-full ${i <= index ? "bg-primary" : "bg-white/10"}`} />
         ))}
@@ -129,15 +135,15 @@ function QuestionStep({
           value={answer}
           onChange={(e) => onAnswer(e.target.value)}
           rows={3}
-          placeholder={suggestions.length ? "Wybierz podpowiedź, dopisz swoje albo nagraj" : "Napisz albo nagraj odpowiedź"}
+          placeholder={suggestions.length ? "Pick a suggestion, add your own, or record (any language)" : "Write or record your answer (any language)"}
           className="w-full resize-none rounded-2xl border border-white/10 bg-background/60 px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary/40"
         />
         <button
           type="button"
           onClick={() => void voice.toggle()}
           disabled={voice.transcribing}
-          aria-label={voice.recording ? "Zatrzymaj nagrywanie" : "Nagraj odpowiedź"}
-          title={voice.recording ? "Zatrzymaj nagrywanie" : "Nagraj odpowiedź głosem"}
+          aria-label={voice.recording ? "Stop recording" : "Record an answer"}
+          title={voice.recording ? "Stop recording" : "Record your answer"}
           className={`absolute right-2.5 bottom-3 h-9 w-9 rounded-xl flex items-center justify-center transition-colors ${
             voice.recording ? "bg-red-500/25 text-red-300 animate-pulse" : voice.transcribing ? "bg-amber-500/20 text-amber-300" : "bg-white/[0.06] text-muted-foreground hover:text-foreground"
           }`}
@@ -174,7 +180,7 @@ export default function ReviewModal({ review }: { review: Review }) {
     const ok = await review.save(qa);
     setSaving(false);
     if (ok) setStep("done");
-    else toast.error("Nie udało się zapisać podsumowania");
+    else toast.error("Couldn't save the review");
   };
 
   const qIndex = typeof step === "number" ? step : -1;
@@ -188,7 +194,7 @@ export default function ReviewModal({ review }: { review: Review }) {
       >
         <div className="space-y-1 pr-6">
           <DialogTitle className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
-            {monthly ? "Podsumowanie miesiąca" : "Wczoraj"}
+            {monthly ? "Month in review" : "Yesterday"}
           </DialogTitle>
           <DialogDescription className="text-xl font-bold text-foreground first-letter:uppercase">
             {target ? periodLabel(target.kind, target.period) : ""}
@@ -219,8 +225,8 @@ export default function ReviewModal({ review }: { review: Review }) {
 
               <div className="flex items-center gap-2 pt-1">
                 {review.streak > 0 && (
-                  <span className="text-xs text-muted-foreground mr-auto" title="Dni z rzędu z podsumowaniem">
-                    🔥 {review.streak} {review.streak === 1 ? "dzień" : "dni"} z rzędu
+                  <span className="text-xs text-muted-foreground mr-auto" title="Days in a row with a review">
+                    🔥 {review.streak}-day streak
                   </span>
                 )}
                 <button
@@ -228,7 +234,7 @@ export default function ReviewModal({ review }: { review: Review }) {
                   onClick={() => void review.skip()}
                   className={`px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground ${review.streak > 0 ? "" : "mr-auto"}`}
                 >
-                  Pomiń
+                  Skip
                 </button>
                 <button
                   type="button"
@@ -237,15 +243,15 @@ export default function ReviewModal({ review }: { review: Review }) {
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold disabled:opacity-60"
                 >
                   {questionsLoading || questions.length === 0 ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Układam pytania…</>
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Preparing questions…</>
                   ) : (
-                    <>{questions.length} {questions.length === 1 ? "pytanie" : questions.length < 5 ? "pytania" : "pytań"} <ArrowRight className="h-4 w-4" /></>
+                    <>{questions.length} {questions.length === 1 ? "question" : "questions"} <ArrowRight className="h-4 w-4" /></>
                   )}
                 </button>
               </div>
               {questionsError && (
                 <button type="button" onClick={review.retryQuestions} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
-                  <RefreshCw className="h-3 w-3" /> AI nie odpowiedziało, pokazuję podstawowe pytania. Spróbuj ponownie
+                  <RefreshCw className="h-3 w-3" /> The AI didn't answer, so these are the basic questions. Try again
                 </button>
               )}
             </motion.div>
@@ -267,7 +273,7 @@ export default function ReviewModal({ review }: { review: Review }) {
                   onClick={() => setStep(qIndex === 0 ? "summary" : qIndex - 1)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground"
                 >
-                  <ArrowLeft className="h-4 w-4" /> Wstecz
+                  <ArrowLeft className="h-4 w-4" /> Back
                 </button>
                 <button
                   type="button"
@@ -276,11 +282,11 @@ export default function ReviewModal({ review }: { review: Review }) {
                   className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold disabled:opacity-60"
                 >
                   {qIndex < questions.length - 1 ? (
-                    <>{(answers[current.id] || "").trim() ? "Dalej" : "Pomiń pytanie"} <ArrowRight className="h-4 w-4" /></>
+                    <>{(answers[current.id] || "").trim() ? "Next" : "Skip question"} <ArrowRight className="h-4 w-4" /></>
                   ) : saving ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Zapisuję</>
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Saving</>
                   ) : (
-                    <><Check className="h-4 w-4" /> Zapisz</>
+                    <><Check className="h-4 w-4" /> Save</>
                   )}
                 </button>
               </div>
@@ -292,8 +298,8 @@ export default function ReviewModal({ review }: { review: Review }) {
               <div className="mx-auto h-12 w-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
                 <Check className="h-6 w-6 text-emerald-300" />
               </div>
-              <p className="text-lg font-bold text-foreground">Zapisane</p>
-              {review.streak > 0 && <p className="text-sm text-muted-foreground">🔥 {review.streak} {review.streak === 1 ? "dzień" : "dni"} z rzędu wiesz, na co idzie twój czas.</p>}
+              <p className="text-lg font-bold text-foreground">Saved</p>
+              {review.streak > 0 && <p className="text-sm text-muted-foreground">🔥 {review.streak} {review.streak === 1 ? "day" : "days"} in a row you know where your time goes.</p>}
               <div className="flex justify-center gap-2 pt-2">
                 {review.next && (
                   <button
@@ -301,11 +307,11 @@ export default function ReviewModal({ review }: { review: Review }) {
                     onClick={() => review.next && void review.start(review.next)}
                     className="px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold"
                   >
-                    {review.next.kind === "monthly" ? "Podsumuj miesiąc" : "Następne"}
+                    {review.next.kind === "monthly" ? "Review the month" : "Next"}
                   </button>
                 )}
                 <button type="button" onClick={() => review.setOpen(false)} className="px-4 py-2.5 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-foreground">
-                  Zamknij
+                  Close
                 </button>
               </div>
             </motion.div>
@@ -315,7 +321,7 @@ export default function ReviewModal({ review }: { review: Review }) {
         {step === "summary" && (
           <label className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer select-none">
             <input type="checkbox" checked={review.autoOpen} onChange={(e) => review.setAutoOpen(e.target.checked)} className="accent-[hsl(var(--primary))]" />
-            Otwieraj automatycznie każdego ranka
+            Open automatically every morning
           </label>
         )}
       </DialogContent>

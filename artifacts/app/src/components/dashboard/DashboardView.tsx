@@ -224,8 +224,8 @@ export default function DashboardView() {
               <button
                 type="button"
                 onClick={review.openLatest}
-                title={review.due.length > 0 ? "Podsumowanie czeka" : "Podsumowanie wczorajszego dnia"}
-                aria-label="Podsumowanie dnia"
+                title={review.due.length > 0 ? "A review is waiting" : "Review yesterday"}
+                aria-label="Daily review"
                 className="relative glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
               >
                 <span aria-hidden="true">📋</span>

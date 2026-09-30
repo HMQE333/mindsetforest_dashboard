@@ -110,7 +110,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
             <button
               onClick={() => {
                 // Same question as the "d" shortcut: this drops the custom list and today's ticks in it.
-                if (window.confirm("Przywrócić domyślne misje w tej kategorii? Twoja lista i dzisiejsze odhaczenia w niej zostaną usunięte.")) onResetCategory(categoryId);
+                if (window.confirm("Restore the default missions in this category? Your list and today's ticks in it will be removed.")) onResetCategory(categoryId);
               }}
               className="px-4 py-2 rounded-full bg-white/[0.09] border border-white/25 text-accent-foreground text-sm flex items-center gap-1.5 hover:bg-destructive/20 hover:border-destructive/70 transition-all"
               title="Revert to default missions"

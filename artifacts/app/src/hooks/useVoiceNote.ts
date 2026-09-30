@@ -7,7 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
  * function (Whisper) and the text comes back through `onText`. Same pipeline
  * as the assistant's microphone, packaged for any text field.
  */
-export function useVoiceNote(onText: (text: string) => void, language = "pl") {
+/** `language` ("pl", "en") forces the transcription language; left out, it is detected, so any language works. */
+export function useVoiceNote(onText: (text: string) => void, language?: string) {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -22,17 +23,17 @@ export function useVoiceNote(onText: (text: string) => void, language = "pl") {
       const CHUNK = 0x8000;
       for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
       const { data, error } = await supabase.functions.invoke("ai-transcribe", {
-        body: { audio: btoa(binary), format: "webm", language },
+        body: { audio: btoa(binary), format: "webm", ...(language ? { language } : {}) },
       });
       if (error) throw new Error(error.message || "Transcription failed");
       const text = String(data?.text || "").trim();
       if (!text) {
-        toast.error("Nic nie usłyszałem, spróbuj jeszcze raz");
+        toast.error("I didn't catch anything, try again");
         return;
       }
       onTextRef.current(text);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Nie udało się przepisać nagrania");
+      toast.error(e instanceof Error ? e.message : "Couldn't transcribe the recording");
     } finally {
       setTranscribing(false);
     }
@@ -47,7 +48,7 @@ export function useVoiceNote(onText: (text: string) => void, language = "pl") {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      toast.error("Brak dostępu do mikrofonu");
+      toast.error("No access to the microphone");
       return;
     }
     try {
@@ -65,7 +66,7 @@ export function useVoiceNote(onText: (text: string) => void, language = "pl") {
         stream.getTracks().forEach((t) => t.stop());
         recRef.current = null;
         setRecording(false);
-        toast.error("Nagrywanie nie działa");
+        toast.error("Recording isn't working");
       };
       recRef.current = rec;
       rec.start();
@@ -75,7 +76,7 @@ export function useVoiceNote(onText: (text: string) => void, language = "pl") {
       // microphone, or it stays on with nothing recording.
       stream.getTracks().forEach((t) => t.stop());
       recRef.current = null;
-      toast.error("Nie udało się rozpocząć nagrywania w tej przeglądarce");
+      toast.error("Couldn't start recording in this browser");
     }
   }, [transcribe]);
 
