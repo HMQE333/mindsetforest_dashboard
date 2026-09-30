@@ -58,31 +58,36 @@ export class ArchiveSaveError extends Error {
 const URL_CHAR = '[^\\s<>"{}|\\\\^`[\\]]';
 export const LINK_REGEX = new RegExp(`https?:\\/\\/${URL_CHAR}+`, "g");
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /** The title the inbox gives a note: its first 60 characters, on one line. */
 export const autoTitle = (content: string) => content.slice(0, 60).replace(/\n/g, " ");
 
 /**
- * The note without `url`: every occurrence of exactly that link (never a
- * longer link that starts with it), an "[image]" tag in front of it, and the
- * line or blank line it leaves behind. The rest of the text is untouched.
+ * The note without the given links: every occurrence of exactly those links
+ * as the Links view reads them (never a longer link that starts with one), an
+ * "[image]" tag in front of them, and the line or blank line each leaves
+ * behind. The rest of the text is untouched. One pass, however many links.
  */
-export function removeUrl(content: string, url: string): string {
-  const re = new RegExp(`(?:\\[image\\][ \\t]*)?${escapeRegExp(url)}(?!${URL_CHAR})`, "g");
+export function removeUrls(content: string, urls: Iterable<string>): string {
+  const drop = new Set(urls);
+  if (drop.size === 0) return content;
+  const re = new RegExp(`(?:\\[image\\][ \\t]*)?(https?:\\/\\/${URL_CHAR}+)`, "g");
   const out: string[] = [];
   let dropBlank = false;
   let changed = false;
   for (const line of content.split("\n")) {
-    const isBlank = line.trim() === "";
-    if (dropBlank && isBlank) { dropBlank = false; continue; }
+    if (dropBlank && line.trim() === "") { dropBlank = false; continue; }
     dropBlank = false;
-    re.lastIndex = 0;
-    if (!re.test(line)) { out.push(line); continue; }
+    let hit = false;
+    const rest = line.replace(re, (match, url: string) => {
+      if (!drop.has(url)) return match;
+      hit = true;
+      return "";
+    });
+    if (!hit) { out.push(line); continue; }
     changed = true;
-    const rest = line.replace(re, "").replace(/([^ \t])[ \t]{2,}/g, "$1 ").replace(/[ \t\r]+$/, "");
-    if (rest.trim() !== "") { out.push(rest); continue; }
-    // The whole line was the link: drop it, and one of the blank lines around it.
+    const tidy = rest.replace(/([^ \t])[ \t]{2,}/g, "$1 ").replace(/[ \t\r]+$/, "");
+    if (tidy.trim() !== "") { out.push(tidy); continue; }
+    // The whole line was links: drop it, and one of the blank lines around it.
     dropBlank = out.length === 0 || out[out.length - 1].trim() === "";
   }
   if (!changed) return content;
@@ -90,6 +95,8 @@ export function removeUrl(content: string, url: string): string {
   const result = out.join("\n").replace(/^(?:[ \t\r]*\n)+/, "").replace(/(?:\n[ \t\r]*)+$/, "");
   return result.trim() === "" ? "" : result;
 }
+
+export const removeUrl = (content: string, url: string) => removeUrls(content, [url]);
 
 /** Inbox items are separated by a line holding only ---, so text or a URL with --- inside stays whole. */
 export function splitInboxItems(text: string): string[] {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkForInsert, HASHTAG_REGEX, removeUrl, splitInboxItems } from "../lib/archive-data";
+import { chunkForInsert, HASHTAG_REGEX, removeUrl, removeUrls, splitInboxItems } from "../lib/archive-data";
 
 describe("splitInboxItems", () => {
   it("splits on a line holding only ---", () => {
@@ -68,5 +68,25 @@ describe("removeUrl", () => {
 
   it("handles links with regex characters", () => {
     expect(removeUrl("https://x.com/a?b=(1)+c\nhttps://x.com/a?b=(1)+\nok", "https://x.com/a?b=(1)+")).toBe("https://x.com/a?b=(1)+c\nok");
+  });
+});
+
+describe("removeUrls", () => {
+  it("takes several links out in one pass", () => {
+    const content = "a https://x.com/1\n\nhttps://x.com/2\n\nhttps://y.com\n\nhttps://x.com/1";
+    expect(removeUrls(content, ["https://x.com/1", "https://x.com/2"])).toBe("a\n\nhttps://y.com");
+  });
+
+  it("works on links as the Links view reads them, so a link inside another is not cut", () => {
+    expect(removeUrls("https://a.com/?u=https://b.com", ["https://b.com"])).toBe("https://a.com/?u=https://b.com");
+  });
+
+  it("clears thousands of links from a big pasted list quickly", () => {
+    const urls = Array.from({ length: 9830 }, (_, i) => (i % 5 < 3 ? `https://www.youtube.com/watch?v=${i}` : `https://site${i}.com/p`));
+    const drop = urls.filter((u) => u.includes("youtube"));
+    const started = Date.now();
+    const left = removeUrls(urls.join("\n\n"), drop);
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(left.split("\n\n")).toEqual(urls.filter((u) => !u.includes("youtube")));
   });
 });

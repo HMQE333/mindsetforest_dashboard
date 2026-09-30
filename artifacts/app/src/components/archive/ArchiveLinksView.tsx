@@ -3,7 +3,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { autoTitle, LINK_REGEX, removeUrl, type ArchiveBlock } from "@/lib/archive-data";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { autoTitle, LINK_REGEX, removeUrls, type ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
 import { safeUrl } from "@/lib/safe-url";
@@ -41,14 +42,14 @@ const URL_REGEX = LINK_REGEX;
 // all froze the page for seconds on every change.
 const PAGE = 200;
 
-/** Takes the link out of its note. Always visible on touch screens, on hover elsewhere. */
-function RemoveLinkButton({ onRemove, className }: { onRemove: () => void; className: string }) {
+/** Takes links out of their notes. Always visible on touch screens, on hover elsewhere. */
+function RemoveLinkButton({ onRemove, className, title = "Remove this link from its note", label = "Remove link" }: { onRemove: () => void; className: string; title?: string; label?: string }) {
   return (
     <button
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-      title="Remove this link from its note"
-      aria-label="Remove link"
+      title={title}
+      aria-label={label}
       className={`absolute z-10 rounded-md bg-background/80 border border-white/10 text-muted-foreground hover:text-destructive hover:border-destructive/40 opacity-0 group-hover/link:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity ${className}`}
     >
       <Trash2 size={12} />
@@ -253,7 +254,12 @@ function CompactRow({ link, onContextMenu, onRemove }: { link: ExtractedLink; on
   );
 }
 
-function DomainGroupView({ links, onContextMenu, onRemove }: { links: ExtractedLink[]; onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void; onRemove: (link: ExtractedLink) => void }) {
+function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain }: {
+  links: ExtractedLink[];
+  onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void;
+  onRemove: (link: ExtractedLink) => void;
+  onRemoveDomain: (domain: string, links: ExtractedLink[]) => void;
+}) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [groupsShown, setGroupsShown] = useState(PAGE);
   const [linksShown, setLinksShown] = useState<Record<string, number>>({});
@@ -278,21 +284,29 @@ function DomainGroupView({ links, onContextMenu, onRemove }: { links: ExtractedL
         const favicon = getFavicon(domainLinks[0].url);
         return (
           <div key={domain}>
-            <button
-              onClick={() => toggle(domain)}
-              className="w-full glass-card p-3 flex items-center gap-3 hover:border-primary/30 border border-transparent transition-all"
-            >
-              <div className="shrink-0 w-5 h-5 rounded overflow-hidden flex items-center justify-center">
-                {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
-              </div>
-              <span className="text-sm font-semibold text-foreground">{domain}</span>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10 ml-1">
-                {domainLinks.length}
-              </Badge>
-              <div className="ml-auto text-muted-foreground">
-                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </div>
-            </button>
+            <div className="relative group/link">
+              <button
+                onClick={() => toggle(domain)}
+                className="w-full glass-card p-3 pr-12 flex items-center gap-3 hover:border-primary/30 border border-transparent transition-all"
+              >
+                <div className="shrink-0 w-5 h-5 rounded overflow-hidden flex items-center justify-center">
+                  {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
+                </div>
+                <span className="text-sm font-semibold text-foreground">{domain}</span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10 ml-1">
+                  {domainLinks.length}
+                </Badge>
+                <div className="ml-auto text-muted-foreground">
+                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </div>
+              </button>
+              <RemoveLinkButton
+                onRemove={() => onRemoveDomain(domain, domainLinks)}
+                title={`Remove all ${domainLinks.length} links from ${domain}`}
+                label={`Remove all links from ${domain}`}
+                className="p-1.5 top-1/2 -translate-y-1/2 right-2.5"
+              />
+            </div>
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {domainLinks.slice(0, shown).map((link, i) => (
@@ -343,7 +357,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
     return c;
   }, [allLinks]);
 
-  // Removals run one at a time on the newest copy of the note, so two quick
+  // Removals run one at a time on the newest copy of each note, so two quick
   // clicks in one note never write back a link the first one took out.
   const blocksRef = useRef(blocks);
   const written = useRef(new Map<string, ArchiveBlock>());
@@ -351,46 +365,76 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
   const queue = useRef<Promise<void>>(Promise.resolve());
   const current = (id: string) => written.current.get(id) ?? blocksRef.current.find((b) => b.id === id);
 
-  const undoRemove = useCallback(async (before: ArchiveBlock, after: string) => {
-    const now = current(before.id);
-    if (!now || now.content !== after) {
-      toast.error("The note has changed since, so this can't be undone here. Edit the note instead.");
-      return;
+  /** A note as it was before a removal, and its content after (null: the note was deleted). */
+  type Change = { before: ArchiveBlock; after: string | null };
+
+  const undoChanges = useCallback(async (changes: Change[]) => {
+    let restored = 0;
+    let moved = 0;
+    for (const { before, after } of changes) {
+      if (after === null) {
+        if (await addBlock(before)) restored++;
+        continue;
+      }
+      const now = current(before.id);
+      if (!now || now.content !== after) { moved++; continue; }
+      const back = { content: before.content, title: before.title, source_url: before.source_url };
+      if ((await updateBlock(before.id, back)) === false) continue;
+      written.current.set(before.id, { ...now, ...back });
+      restored++;
     }
-    const restored = { content: before.content, title: before.title, source_url: before.source_url };
-    if ((await updateBlock(before.id, restored)) === false) return;
-    written.current.set(before.id, { ...now, ...restored });
-    toast.success("Link restored");
-  }, [updateBlock]);
+    if (moved === 0) toast.success(changes.length === 1 ? "Restored" : `Restored ${restored} notes`);
+    else toast.error(`Restored ${restored}. ${moved} ${moved === 1 ? "note has" : "notes have"} changed since and ${moved === 1 ? "was" : "were"} left as ${moved === 1 ? "it is" : "they are"}.`);
+  }, [updateBlock, addBlock]);
 
   /**
-   * Take one link out of its note: its text goes from the content (and from
-   * source_url). A note that was only this link, under the title the inbox
-   * gave it, is deleted instead of left empty. Both can be undone.
+   * Take links out of their notes: their text goes from the content (and from
+   * source_url). A note left with nothing, under the title the inbox gave it,
+   * is deleted instead of kept empty. Each note is written once, and the whole
+   * removal can be undone from its toast.
    */
-  const removeLink = useCallback((url: string, blockId: string) => {
+  const removeLinks = useCallback((targets: { url: string; blockId: string }[], domain?: string) => {
     queue.current = queue.current.then(async () => {
-      const block = current(blockId);
-      if (!block) return;
-      const content = removeUrl(block.content, url);
-      const source_url = block.source_url === url ? null : block.source_url;
-      if (content === block.content && source_url === block.source_url) return;
-      const titled = block.title === autoTitle(block.content);
-      if (!content && !source_url && titled) {
-        if ((await deleteBlock(block.id)) === false) return;
-        toast.success("Link removed. The note held only this link, so it was deleted.", {
-          action: { label: "Undo", onClick: () => void addBlock(block) },
-        });
-        return;
+      const byBlock = new Map<string, string[]>();
+      for (const t of targets) byBlock.set(t.blockId, [...(byBlock.get(t.blockId) ?? []), t.url]);
+      const changes: Change[] = [];
+      for (const [blockId, urls] of byBlock) {
+        const block = current(blockId);
+        if (!block) continue;
+        const content = removeUrls(block.content, urls);
+        const source_url = block.source_url && urls.includes(block.source_url) ? null : block.source_url;
+        if (content === block.content && source_url === block.source_url) continue;
+        const titled = block.title === autoTitle(block.content);
+        if (!content && !source_url && titled) {
+          if ((await deleteBlock(block.id)) === false) break;
+          changes.push({ before: block, after: null });
+          continue;
+        }
+        const next = { content, source_url, title: titled ? autoTitle(content) || block.title : block.title };
+        if ((await updateBlock(block.id, next)) === false) break;
+        written.current.set(block.id, { ...block, ...next });
+        changes.push({ before: block, after: content });
       }
-      const next = { content, source_url, title: titled ? autoTitle(content) || block.title : block.title };
-      if ((await updateBlock(block.id, next)) === false) return;
-      written.current.set(block.id, { ...block, ...next });
-      toast.success("Link removed from the note", {
-        action: { label: "Undo", onClick: () => void undoRemove(block, next.content) },
+      if (changes.length === 0) return;
+      const deleted = changes.filter((c) => c.after === null).length;
+      const message = domain
+        ? `Removed ${targets.length} ${targets.length === 1 ? "link" : "links"} from ${domain}` +
+          (deleted > 0 ? `. ${deleted} ${deleted === 1 ? "note" : "notes"} left empty ${deleted === 1 ? "was" : "were"} deleted.` : "")
+        : deleted > 0
+          ? "Link removed. The note held only this link, so it was deleted."
+          : "Link removed from the note";
+      toast.success(message, {
+        duration: domain ? 12000 : 6000,
+        action: { label: "Undo", onClick: () => void undoChanges(changes) },
       });
     }).catch(() => { /* the failure was toasted by the write */ });
-  }, [updateBlock, deleteBlock, addBlock, undoRemove]);
+  }, [updateBlock, deleteBlock, undoChanges]);
+
+  const removeLink = useCallback((url: string, blockId: string) => removeLinks([{ url, blockId }]), [removeLinks]);
+
+  // Removing a whole domain asks first.
+  const [confirmDomain, setConfirmDomain] = useState<{ domain: string; links: ExtractedLink[] } | null>(null);
+  const confirmNotes = confirmDomain ? new Set(confirmDomain.links.map((l) => l.blockId)).size : 0;
 
   const handleContextMenu = useCallback((e: React.MouseEvent, link: ExtractedLink) => {
     e.preventDefault();
@@ -480,8 +524,39 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
           {more}
         </div>
       ) : (
-        <DomainGroupView links={filtered} onContextMenu={handleContextMenu} onRemove={(link) => removeLink(link.url, link.blockId)} />
+        <DomainGroupView
+          links={filtered}
+          onContextMenu={handleContextMenu}
+          onRemove={(link) => removeLink(link.url, link.blockId)}
+          onRemoveDomain={(domain, links) => setConfirmDomain({ domain, links })}
+        />
       )}
+
+      <AlertDialog open={!!confirmDomain} onOpenChange={(open) => { if (!open) setConfirmDomain(null); }}>
+        <AlertDialogContent className="glass-card border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove all links from {confirmDomain?.domain}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDomain?.links.length} {confirmDomain?.links.length === 1 ? "link" : "links"} will be taken out of{" "}
+              {confirmNotes} {confirmNotes === 1 ? "note" : "notes"}. A note left with nothing in it is deleted.
+              {(search || typeFilter !== "all") && " Only the links your search and filter show here are removed."}
+              {" "}You can undo it right after.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmDomain) removeLinks(confirmDomain.links.map((l) => ({ url: l.url, blockId: l.blockId })), confirmDomain.domain);
+                setConfirmDomain(null);
+              }}
+            >
+              Remove {confirmDomain?.links.length} {confirmDomain?.links.length === 1 ? "link" : "links"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Context menu */}
       <LinkContextMenu
