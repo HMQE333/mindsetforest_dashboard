@@ -131,17 +131,12 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
         </button>
 
         {/* Tags */}
-        {(pillarObjs.length > 0 || seed.directions.length > 0 || seed.tags.length > 0) && (
+        {(pillarObjs.length > 0 || seed.tags.length > 0) && (
           <div className="flex flex-wrap gap-1">
             {pillarObjs.map((p) => (
               <span key={p!.id} className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5"
                     style={{ backgroundColor: p!.color + "22", color: p!.color }}>
                 <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={11} className="inline-block" /> {p!.name}
-              </span>
-            ))}
-            {seed.directions.slice(0, 3).map((d) => (
-              <span key={d} className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground font-semibold">
-                {d}
               </span>
             ))}
             {seed.tags.slice(0, 4).map((t) => (
@@ -282,15 +277,12 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
               </header>
               <div className="flex-1 overflow-y-auto px-6 py-5">
                 <h2 className="font-bold text-foreground text-xl mb-3">{seed.title || "Untitled"}</h2>
-                {(pillarObjs.length > 0 || seed.directions.length > 0) && (
+                {pillarObjs.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {pillarObjs.map((p) => (
                       <span key={p!.id} className="text-[11px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
                         <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
                       </span>
-                    ))}
-                    {seed.directions.map((d) => (
-                      <span key={d} className="text-[11px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground font-semibold">{d}</span>
                     ))}
                   </div>
                 )}

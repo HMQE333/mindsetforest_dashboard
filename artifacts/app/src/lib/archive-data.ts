@@ -12,17 +12,6 @@ export const PILLARS = CATEGORIES.map((c) => ({
   colorVar: c.colorVar,
 }));
 
-export const DIRECTIONS = [
-  { id: "direction", label: "Direction", icon: "🧭" },
-  { id: "goals", label: "Goals", icon: "🎯" },
-  { id: "wisdom", label: "Wisdom", icon: "📖" },
-  { id: "freedom", label: "Freedom", icon: "🕊️" },
-  { id: "protection", label: "Protection", icon: "🛡️" },
-  { id: "creation", label: "Creation", icon: "🔨" },
-  { id: "expression", label: "Expression", icon: "🎤" },
-  { id: "community", label: "Community", icon: "🤝" },
-] as const;
-
 /**
  * Rows for one insert: up to 100 blocks or about 1 MB, in order, so a big
  * import is a series of ordinary requests rather than one giant one. A single

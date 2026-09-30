@@ -31,8 +31,7 @@ const ArchiveSearchResults = ({ blocks, query, onNavigate, onClearSearch, skipFi
         b.title.toLowerCase().includes(q) ||
         b.content.toLowerCase().includes(q) ||
         b.tags.some((t) => t.toLowerCase().includes(q)) ||
-        b.pillars.some((p) => p.toLowerCase().includes(q)) ||
-        b.directions.some((d) => d.toLowerCase().includes(q))
+        b.pillars.some((p) => p.toLowerCase().includes(q))
     );
   }, [blocks, query]);
 

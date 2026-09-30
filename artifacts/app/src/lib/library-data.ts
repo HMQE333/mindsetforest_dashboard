@@ -63,7 +63,7 @@ export const COVER_COLORS = [
   "#EC4899", "#6366F1", "#14B8A6", "#F59E0B", "#64748B",
 ];
 
-export const DIRECTION_TAGS = [
+export const TAG_SUGGESTIONS = [
   "Self-Development", "Psychology", "Philosophy", "Science", "History",
   "Business", "Finance", "Health", "Spirituality", "Fiction",
   "Biography", "Technology", "Creativity", "Leadership", "Productivity",

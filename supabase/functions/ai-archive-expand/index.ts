@@ -29,10 +29,10 @@ serve(async (req) => {
     const plainTextRule = "\n\nFORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, `, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.";
 
     const actionPrompts: Record<string, string> = {
-      expand: "Deepen this insight — add actionable steps, connections to life pillars (mind, body, creation, exploration, networking, trading, spirit, order), and growth angles. Make it richer with practical wisdom the user can act on." + plainTextRule,
+      expand: "Deepen this insight — add actionable steps, connections to life pillars (mind, body, expression, exploration, people, money, spirit, order), and growth angles. Make it richer with practical wisdom the user can act on." + plainTextRule,
       shorten: "Distill to core actionable wisdom. Remove fluff, keep what moves the user forward. Every sentence should earn its place." + plainTextRule,
       summarize: "Extract the key takeaway and one clear next action. Be direct — what matters here and what should the user do about it?" + plainTextRule,
-      organize: "Suggest the best pillar categories (from: mind, body, creation, exploration, networking, trading, spirit, order) and direction tags (from: direction, goals, wisdom, freedom, protection, creation, expression, community) for this note.",
+      organize: "Suggest the best pillar categories (only these ids: mind, body, expression, exploration, people, money, spirit, order) and a few short lowercase topic tags for this note.",
     };
 
     const isOrganize = action === "organize";
@@ -46,10 +46,9 @@ serve(async (req) => {
               type: "object",
               properties: {
                 pillars: { type: "array", items: { type: "string" } },
-                directions: { type: "array", items: { type: "string" } },
                 tags: { type: "array", items: { type: "string" } },
               },
-              required: ["pillars", "directions"],
+              required: ["pillars"],
               additionalProperties: false,
             },
           },

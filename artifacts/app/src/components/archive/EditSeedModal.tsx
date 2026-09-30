@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { usePillars } from "@/hooks/usePillars";
-import { DIRECTIONS } from "@/lib/archive-data";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { useFriends } from "@/hooks/useFriends";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
@@ -24,7 +23,6 @@ const EditSeedModal = ({ open, seed, onClose }: Props) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
-  const [directions, setDirections] = useState<string[]>([]);
   const [tagsInput, setTagsInput] = useState("");
   const [visibility, setVisibility] = useState<"public" | "friends" | "custom">("friends");
   const [audience, setAud] = useState<Set<string>>(new Set());
@@ -35,7 +33,6 @@ const EditSeedModal = ({ open, seed, onClose }: Props) => {
     setTitle(seed.title);
     setContent(seed.content);
     setPillars(seed.pillars);
-    setDirections(seed.directions);
     setTagsInput(seed.tags.join(", "));
     setVisibility(seed.visibility);
     setAud(new Set());
@@ -46,12 +43,11 @@ const EditSeedModal = ({ open, seed, onClose }: Props) => {
   if (!seed) return null;
 
   const togglePillar = (id: string) => setPillars((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
-  const toggleDirection = (id: string) => setDirections((d) => d.includes(id) ? d.filter((x) => x !== id) : [...d, id]);
   const toggleAud = (uid: string) => setAud((s) => { const n = new Set(s); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
 
   const handleSave = async () => {
     setSaving(true);
-    await updateSeed(seed.id, { title, content, pillars, directions, tags, visibility });
+    await updateSeed(seed.id, { title, content, pillars, tags, visibility });
     if (visibility === "custom" && audience.size > 0) {
       await setAudience(seed.id, Array.from(audience));
     }
@@ -81,16 +77,6 @@ const EditSeedModal = ({ open, seed, onClose }: Props) => {
                 className="text-[11px] px-2.5 py-1 rounded-full font-semibold flex items-center gap-1"
                 style={{ backgroundColor: pillars.includes(p.id) ? p.color : p.color + "18", color: pillars.includes(p.id) ? "#fff" : p.color }}>
                 <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={12} className="inline-block" /> {p.name}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {DIRECTIONS.map((d) => (
-              <button key={d.id} onClick={() => toggleDirection(d.id)}
-                className={`text-[11px] px-2.5 py-1 rounded-full font-semibold ${
-                  directions.includes(d.id) ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground"
-                }`}>
-                {d.icon} {d.label}
               </button>
             ))}
           </div>

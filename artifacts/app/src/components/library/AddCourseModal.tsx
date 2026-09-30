@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { COVER_COLORS, DIRECTION_TAGS } from "@/lib/library-data";
+import { COVER_COLORS, TAG_SUGGESTIONS } from "@/lib/library-data";
 import { CourseStatus, PLATFORM_SUGGESTIONS } from "@/lib/course-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
@@ -107,7 +107,7 @@ export default function AddCourseModal({ open, onClose, onAdd }: AddCourseModalP
             )}
             <Input value={customTag} onChange={e => setCustomTag(e.target.value)} onKeyDown={handleCustomTagKey} placeholder="Type custom tag + Enter" className="bg-muted/30 border-white/10 text-sm mb-2" />
             <div className="flex flex-wrap gap-1.5">
-              {DIRECTION_TAGS.filter(t => !tags.includes(t)).slice(0, 8).map(t => (
+              {TAG_SUGGESTIONS.filter(t => !tags.includes(t)).slice(0, 8).map(t => (
                 <button key={t} onClick={() => addTag(t)} className="px-2 py-0.5 rounded-full bg-muted/30 text-muted-foreground text-xs hover:text-foreground hover:bg-muted/50 transition-all">+ {t}</button>
               ))}
             </div>

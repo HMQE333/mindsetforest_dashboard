@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import { useFriends } from "@/hooks/useFriends";
 import { usePillars } from "@/hooks/usePillars";
-import { DIRECTIONS } from "@/lib/archive-data";
 import { Input } from "@/components/ui/input";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ForestSeedCard from "./ForestSeedCard";
@@ -30,7 +29,6 @@ const ArchiveForestView = () => {
   const [semanticResults, setSemanticResults] = useState<SeedWithAuthor[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
-  const [filterDirection, setFilterDirection] = useState<string | null>(null);
   const [filterTag, setFilterTag] = useState("");
   const [hideSaved, setHideSaved] = useState(false);
   const [editSeed, setEditSeed] = useState<SeedWithAuthor | null>(null);
@@ -71,7 +69,7 @@ const ArchiveForestView = () => {
       const isMine = forest.mySeeds.some((s) => s.id === seedId);
       setTab(isMine ? "mine" : "discover");
       // Clear filters so the seed is reachable
-      setFilterPillar(null); setFilterDirection(null); setFilterTag(""); setHideSaved(false);
+      setFilterPillar(null); setFilterTag(""); setHideSaved(false);
       setSearch(""); setSemanticResults(null);
       // Defer scroll until after re-render
       setTimeout(() => {
@@ -110,7 +108,6 @@ const ArchiveForestView = () => {
   const applyFilters = (list: SeedWithAuthor[]) => {
     let l = list;
     if (filterPillar) l = l.filter((s) => s.pillars.includes(filterPillar));
-    if (filterDirection) l = l.filter((s) => s.directions.includes(filterDirection));
     if (filterTag.trim()) {
       const q = filterTag.trim().toLowerCase().replace(/^#/, "");
       l = l.filter((s) => s.tags.some((t) => t.toLowerCase().includes(q)));
@@ -141,7 +138,7 @@ const ArchiveForestView = () => {
       return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forest.discoverSeeds, sort, search, filterPillar, filterDirection, filterTag, hideSaved, smartSearch, semanticResults, friendIds]);
+  }, [forest.discoverSeeds, sort, search, filterPillar, filterTag, hideSaved, smartSearch, semanticResults, friendIds]);
 
   const filteredMine = useMemo(() => {
     let list = forest.mySeeds;
@@ -150,13 +147,12 @@ const ArchiveForestView = () => {
       list = list.filter((s) => s.title.toLowerCase().includes(q) || s.content.toLowerCase().includes(q));
     }
     if (filterPillar) list = list.filter((s) => s.pillars.includes(filterPillar));
-    if (filterDirection) list = list.filter((s) => s.directions.includes(filterDirection));
     if (filterTag.trim()) {
       const q = filterTag.trim().toLowerCase().replace(/^#/, "");
       list = list.filter((s) => s.tags.some((t) => t.toLowerCase().includes(q)));
     }
     return [...list].sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
-  }, [forest.mySeeds, search, filterPillar, filterDirection, filterTag]);
+  }, [forest.mySeeds, search, filterPillar, filterTag]);
 
   const list = tab === "discover" ? sortedDiscover : filteredMine;
 
@@ -472,20 +468,11 @@ const ArchiveForestView = () => {
         </div>
 
         <div className="flex flex-wrap gap-1.5 items-center">
-          {DIRECTIONS.map((d) => (
-            <button key={d.id} onClick={() => setFilterDirection(filterDirection === d.id ? null : d.id)}
-              className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all ${
-                filterDirection === d.id ? "gradient-purple text-primary-foreground" : "bg-muted/30 text-muted-foreground hover:text-foreground"
-              }`}>
-              {d.icon} {d.label}
-            </button>
-          ))}
-          <span className="w-px h-4 bg-white/10" />
           <Input value={filterTag} onChange={(e) => setFilterTag(e.target.value)}
             placeholder="#tag…"
             className="bg-background/50 border-white/10 h-7 text-[11px] w-24" />
-          {(filterPillar || filterDirection || filterTag || hideSaved) && (
-            <button onClick={() => { setFilterPillar(null); setFilterDirection(null); setFilterTag(""); setHideSaved(false); }}
+          {(filterPillar || filterTag || hideSaved) && (
+            <button onClick={() => { setFilterPillar(null); setFilterTag(""); setHideSaved(false); }}
               className="text-[11px] text-muted-foreground hover:text-foreground underline">
               Clear filters
             </button>

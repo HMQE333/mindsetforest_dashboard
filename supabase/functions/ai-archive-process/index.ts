@@ -29,12 +29,11 @@ serve(async (req) => {
 
     const systemPrompt = `You are a knowledge organization AI. For each note provided:
 1. Generate a concise, descriptive title
-2. Suggest relevant pillar categories (from: mind, body, creation, exploration, networking, trading, spirit, order)
-3. Suggest direction tags (from: direction, goals, wisdom, freedom, protection, creation, expression, community)
-4. Detect content type: note, link, video, code, quote, credentials
-5. Detect any URLs in the content
-6. Notes may have content type prefixes like [note], [link], [video] etc. — use these as hints but verify
-7. Preserve the actual content without modification
+2. Suggest relevant pillar categories (only these ids: mind, body, expression, exploration, people, money, spirit, order)
+3. Detect content type: note, link, video, code, quote, credentials
+4. Detect any URLs in the content
+5. Notes may have content type prefixes like [note], [link], [video] etc. — use these as hints but verify
+6. Preserve the actual content without modification
 
 FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text.
 
@@ -68,12 +67,11 @@ You MUST respond using the organize_notes tool.`;
                       title: { type: "string" },
                       content: { type: "string" },
                       pillars: { type: "array", items: { type: "string" } },
-                      directions: { type: "array", items: { type: "string" } },
                       tags: { type: "array", items: { type: "string" } },
                       source_url: { type: "string" },
                       content_type: { type: "string", enum: ["note", "link", "video", "code", "quote", "credentials"] },
                     },
-                    required: ["title", "content", "pillars", "directions"],
+                    required: ["title", "content", "pillars"],
                     additionalProperties: false,
                   },
                 },

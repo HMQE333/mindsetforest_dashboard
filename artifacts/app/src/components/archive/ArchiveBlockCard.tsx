@@ -32,23 +32,23 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
   const [readerOpen, setReaderOpen] = useState(false);
   const [previewData, setPreviewData] = useState<{
     action: string;
-    original: { title: string; content: string; pillars?: string[]; directions?: string[]; tags?: string[] };
-    proposed: { title?: string; content?: string; pillars?: string[]; directions?: string[]; tags?: string[] };
+    original: { title: string; content: string; pillars?: string[]; tags?: string[] };
+    proposed: { title?: string; content?: string; pillars?: string[]; tags?: string[] };
   } | null>(null);
 
   const handleAIAction = async (action: string) => {
     setAiLoading(action);
     try {
       const { data, error } = await supabase.functions.invoke("ai-archive-expand", {
-        body: { content: block.content, title: block.title, action, pillars: block.pillars, directions: block.directions },
+        body: { content: block.content, title: block.title, action, pillars: block.pillars },
       });
       if (error) throw error;
 
       if (action === "organize" && data?.pillars) {
         setPreviewData({
           action,
-          original: { title: block.title, content: block.content, pillars: block.pillars, directions: block.directions, tags: block.tags },
-          proposed: { pillars: data.pillars, directions: data.directions || [], tags: data.tags || [] },
+          original: { title: block.title, content: block.content, pillars: block.pillars, tags: block.tags },
+          proposed: { pillars: data.pillars, tags: data.tags || [] },
         });
       } else if (data?.content) {
         setPreviewData({
@@ -68,7 +68,6 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
     if (proposed.content) updates.content = proposed.content;
     if (proposed.title) updates.title = proposed.title;
     if (proposed.pillars) updates.pillars = proposed.pillars;
-    if (proposed.directions) updates.directions = proposed.directions;
     if (proposed.tags) updates.tags = proposed.tags;
     await onUpdate(block.id, updates);
     toast.success(`Block updated ✅`);
@@ -196,16 +195,11 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         })()}
 
         {/* Tags */}
-        {(pillarColors.length > 0 || block.directions.length > 0) && (
+        {pillarColors.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {pillarColors.map((p) => (
               <span key={p!.id} className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
                 <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
-              </span>
-            ))}
-            {block.directions.map((d) => (
-              <span key={d} className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground font-semibold">
-                {d}
               </span>
             ))}
           </div>
@@ -275,15 +269,12 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               </header>
 
               <div className="flex-1 overflow-y-auto px-6 py-5">
-                {(pillarColors.length > 0 || block.directions.length > 0) && (
+                {pillarColors.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {pillarColors.map((p) => (
                       <span key={p!.id} className="text-[11px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
                         <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
                       </span>
-                    ))}
-                    {block.directions.map((d) => (
-                      <span key={d} className="text-[11px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground font-semibold">{d}</span>
                     ))}
                   </div>
                 )}

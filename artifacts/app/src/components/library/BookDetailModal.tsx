@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Book, STATUS_LABELS, BookStatus, DIRECTION_TAGS, FORMAT_LABELS, BookFormat, formatFileSize, isScan } from "@/lib/library-data";
+import { Book, STATUS_LABELS, BookStatus, TAG_SUGGESTIONS, FORMAT_LABELS, BookFormat, formatFileSize, isScan } from "@/lib/library-data";
 import { uploadLabel, type UploadStage } from "@/lib/book-files";
 import type { BookReading } from "@/lib/reading-sessions";
 import type { ReadingSpeed } from "@/lib/reading-speed";
@@ -257,7 +257,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
             )}
             <Input value={customTag} onChange={e => setCustomTag(e.target.value)} onKeyDown={handleCustomTagKey} placeholder="Type custom tag + Enter" className="bg-muted/30 border-white/10 text-sm mb-2" />
             <div className="flex flex-wrap gap-1.5">
-              {DIRECTION_TAGS.filter(t => !tags.includes(t)).slice(0, 6).map(t => (
+              {TAG_SUGGESTIONS.filter(t => !tags.includes(t)).slice(0, 6).map(t => (
                 <button key={t} onClick={() => addTag(t)} className="px-2 py-0.5 rounded-full bg-muted/30 text-muted-foreground text-xs hover:text-foreground hover:bg-muted/50 transition-all">+ {t}</button>
               ))}
             </div>

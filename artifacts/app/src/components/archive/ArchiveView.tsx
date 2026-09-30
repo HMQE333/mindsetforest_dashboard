@@ -130,7 +130,6 @@ const ArchiveView = () => {
         title: `Merged (${selectedBlocks.length} notes)`,
         content: data?.content || "",
         pillars: [...new Set(selectedBlocks.flatMap((b) => b.pillars))],
-        directions: [...new Set(selectedBlocks.flatMap((b) => b.directions))],
         tags: ["ai-merged"],
       });
       if (merged) {
@@ -180,7 +179,6 @@ const ArchiveView = () => {
         if (data?.pillars) {
           await archive.updateBlock(block.id, {
             pillars: data.pillars,
-            directions: data.directions || block.directions,
             tags: data.tags || block.tags,
           });
           count++;

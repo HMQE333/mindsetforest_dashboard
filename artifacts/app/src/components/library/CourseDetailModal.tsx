@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Course, CourseStatus, COURSE_STATUS_LABELS, PLATFORM_SUGGESTIONS } from "@/lib/course-data";
-import { DIRECTION_TAGS } from "@/lib/library-data";
+import { TAG_SUGGESTIONS } from "@/lib/library-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Trash2, ExternalLink, X } from "lucide-react";
@@ -160,7 +160,7 @@ export default function CourseDetailModal({ course, open, onClose, onUpdate, onD
             )}
             <Input value={customTag} onChange={e => setCustomTag(e.target.value)} onKeyDown={handleCustomTagKey} placeholder="Type custom tag + Enter" className="bg-muted/30 border-white/10 text-sm mb-2" />
             <div className="flex flex-wrap gap-1.5">
-              {DIRECTION_TAGS.filter(t => !tags.includes(t)).slice(0, 6).map(t => (
+              {TAG_SUGGESTIONS.filter(t => !tags.includes(t)).slice(0, 6).map(t => (
                 <button key={t} onClick={() => addTag(t)} className="px-2 py-0.5 rounded-full bg-muted/30 text-muted-foreground text-xs hover:text-foreground hover:bg-muted/50 transition-all">+ {t}</button>
               ))}
             </div>

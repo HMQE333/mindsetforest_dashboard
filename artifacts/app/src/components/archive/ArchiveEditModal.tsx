@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { DIRECTIONS } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -28,7 +27,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
-  const [directions, setDirections] = useState<string[]>([]);
   const [tags, setTags] = useState("");
   const [saving, setSaving] = useState(false);
   const [relatedOpen, setRelatedOpen] = useState(false);
@@ -40,7 +38,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
       setTitle(block.title);
       setContent(block.content);
       setPillars(block.pillars);
-      setDirections(block.directions);
       setTags(block.tags.join(", "));
     }
   }, [block]);
@@ -57,9 +54,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
 
   const togglePillar = useCallback((id: string) =>
     setPillars((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id])), []);
-
-  const toggleDirection = useCallback((id: string) =>
-    setDirections((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id])), []);
 
   // Keyboard shortcuts for pillars (only when dialog is open and not typing)
   const handlePillarKey = useCallback((e: KeyboardEvent) => {
@@ -83,7 +77,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
       title,
       content,
       pillars,
-      directions,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
     });
     setSaving(false);
@@ -129,25 +122,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
                 >
                   <span className="w-4 h-4 rounded-full bg-black/30 text-[9px] font-bold flex items-center justify-center shrink-0">{p.name[0]}</span>
                   <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-2">Directions</p>
-            <div className="flex flex-wrap gap-1.5">
-              {DIRECTIONS.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => toggleDirection(d.id)}
-                  className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all ${
-                    directions.includes(d.id)
-                      ? "gradient-purple text-primary-foreground"
-                      : "bg-muted/40 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {d.icon} {d.label}
                 </button>
               ))}
             </div>

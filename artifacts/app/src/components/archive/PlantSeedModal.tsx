@@ -5,7 +5,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { usePillars } from "@/hooks/usePillars";
 import { useFriends } from "@/hooks/useFriends";
-import { DIRECTIONS } from "@/lib/archive-data";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { useForestState, type PlantInput } from "@/hooks/useForestState";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -28,7 +27,6 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pillars, setPillars] = useState<string[]>([]);
-  const [directions, setDirections] = useState<string[]>([]);
   const [tagsInput, setTagsInput] = useState("");
   const [visibility, setVisibility] = useState<"public" | "friends" | "custom">("friends");
   const [audience, setAudience] = useState<Set<string>>(new Set());
@@ -41,13 +39,11 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
       setTitle(single.title || "");
       setContent(single.content || "");
       setPillars(single.pillars || []);
-      setDirections(single.directions || []);
       setTagsInput((single.tags || []).join(", "));
     } else {
       setTitle("");
       setContent("");
       setPillars([]);
-      setDirections([]);
       setTagsInput("");
     }
     setVisibility("friends");
@@ -61,8 +57,6 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
 
   const togglePillar = (id: string) =>
     setPillars((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const toggleDirection = (id: string) =>
-    setDirections((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]));
   const toggleAudience = (uid: string) => {
     setAudience((s) => {
       const next = new Set(s);
@@ -86,7 +80,7 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
             blockId: block.id,
             visibility,
             audienceUserIds: visibility === "custom" ? Array.from(audience) : [],
-            edits: { title, content, pillars, directions, tags },
+            edits: { title, content, pillars, tags },
           }
         : {
             blockId: block.id,
@@ -163,25 +157,6 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
             </div>
 
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 block">Directions</label>
-              <div className="flex flex-wrap gap-1.5">
-                {DIRECTIONS.map((d) => (
-                  <button
-                    key={d.id}
-                    onClick={() => toggleDirection(d.id)}
-                    className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all ${
-                      directions.includes(d.id)
-                        ? "gradient-purple text-primary-foreground"
-                        : "bg-muted/40 text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {d.icon} {d.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Tags (comma-separated)</label>
               <Input
                 value={tagsInput}
@@ -202,7 +177,7 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
           </div>
         ) : (
           <div className="rounded-xl bg-muted/20 border border-white/5 p-3 space-y-1">
-            <p className="text-xs text-muted-foreground">Planting <b className="text-foreground">{blocks.length}</b> blocks at once. Each will keep its own pillars, directions, and tags.</p>
+            <p className="text-xs text-muted-foreground">Planting <b className="text-foreground">{blocks.length}</b> blocks at once. Each will keep its own pillars and tags.</p>
             <div className="text-[11px] text-muted-foreground/80 max-h-24 overflow-y-auto space-y-0.5 mt-1">
               {blocks.slice(0, 8).map((b) => (
                 <div key={b.id} className="truncate">• {b.title || "Untitled"}</div>

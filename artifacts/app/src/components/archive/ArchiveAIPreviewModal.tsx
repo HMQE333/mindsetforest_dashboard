@@ -2,13 +2,12 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { DIRECTIONS } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 
 interface PreviewData {
   action: string;
-  original: { title: string; content: string; pillars?: string[]; directions?: string[]; tags?: string[] };
-  proposed: { title?: string; content?: string; pillars?: string[]; directions?: string[]; tags?: string[] };
+  original: { title: string; content: string; pillars?: string[]; tags?: string[] };
+  proposed: { title?: string; content?: string; pillars?: string[]; tags?: string[] };
 }
 
 interface Props {
@@ -68,15 +67,7 @@ const ArchiveAIPreviewModal = ({ open, data, onAccept, onReject }: Props) => {
                     </span>
                   ) : null;
                 })}
-                {(data.original.directions || []).map((d) => {
-                  const dir = DIRECTIONS.find((x) => x.id === d);
-                  return (
-                    <span key={d} className="text-[11px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground font-semibold">
-                      {dir?.icon} {d}
-                    </span>
-                  );
-                })}
-                {(data.original.pillars || []).length === 0 && (data.original.directions || []).length === 0 && (
+                {(data.original.pillars || []).length === 0 && (
                   <span className="text-xs text-muted-foreground">None</span>
                 )}
               </div>
@@ -91,14 +82,6 @@ const ArchiveAIPreviewModal = ({ open, data, onAccept, onReject }: Props) => {
                       {pl.icon} {pl.name}
                     </span>
                   ) : null;
-                })}
-                {(data.proposed.directions || []).map((d) => {
-                  const dir = DIRECTIONS.find((x) => x.id === d);
-                  return (
-                    <span key={d} className="text-[11px] px-2.5 py-1 rounded-full font-semibold border-2 border-dashed border-accent text-accent-foreground">
-                      {dir?.icon} {d}
-                    </span>
-                  );
                 })}
               </div>
             </div>

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ExternalLink, Copy, Pencil, MessageSquarePlus, Tag, Trash2 } from "lucide-react";
-import { DIRECTIONS } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -99,13 +98,6 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock
     block.pillars = newPillars;
   };
 
-  const toggleDirection = async (dirId: string) => {
-    const newDirs = block.directions.includes(dirId)
-      ? block.directions.filter((d) => d !== dirId)
-      : [...block.directions, dirId];
-    await updateBlock(block.id, { directions: newDirs });
-    block.directions = newDirs;
-  };
 
   const menuItem = "flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-white/5 transition-colors text-left rounded-md";
   const separator = "border-t border-white/10 my-1";
@@ -158,25 +150,6 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock
           </div>
         </div>
 
-        <div>
-          <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">Directions</p>
-          <div className="flex flex-wrap gap-1">
-            {DIRECTIONS.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => toggleDirection(d.id)}
-                className={`text-[10px] px-2 py-1 rounded-full font-semibold transition-all ${
-                  block.directions.includes(d.id)
-                    ? "gradient-purple text-primary-foreground"
-                    : "bg-muted/40 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {d.icon} {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <button onClick={() => setSubView(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           ← Back
         </button>
@@ -202,7 +175,7 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock
         <MessageSquarePlus size={14} className="text-muted-foreground" /> Add Note
       </button>
       <button onClick={() => setSubView("tags")} className={menuItem}>
-        <Tag size={14} className="text-muted-foreground" /> Edit Tags
+        <Tag size={14} className="text-muted-foreground" /> Edit Pillars
       </button>
 
       <div className={separator} />

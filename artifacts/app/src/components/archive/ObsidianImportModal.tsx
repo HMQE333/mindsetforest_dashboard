@@ -233,7 +233,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
             title: n.title,
             content: n.content,
             pillars: Array.isArray(ai?.pillars) ? ai.pillars : [],
-            directions: Array.isArray(ai?.directions) ? ai.directions : [],
+            directions: [],
             tags: Array.from(new Set([...n.tags, ...(Array.isArray(ai?.tags) ? ai.tags : [])])),
             source_url: null,
           });
@@ -287,7 +287,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
           </DialogTitle>
           <DialogDescription>
             Bring markdown notes from your vault into the Archive. AI suggests which to keep,
-            then auto-tags them with pillars, directions & hashtags.
+            then auto-tags them with pillars & hashtags.
           </DialogDescription>
         </DialogHeader>
 

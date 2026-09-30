@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Link2Off, Download, Upload, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { ArchiveSaveError, DIRECTIONS } from "@/lib/archive-data";
+import { ArchiveSaveError } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
@@ -41,7 +41,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   const forest = useForestState();
   const [search, setSearch] = useState("");
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
-  const [filterDirection, setFilterDirection] = useState<string | null>(null);
   const [hideLinks, setHideLinks] = useState(false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("newest");
@@ -80,7 +79,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
     if (smartSearch && semanticResults !== null) {
       let list = semanticResults;
       if (filterPillar) list = list.filter((b) => b.pillars.includes(filterPillar));
-      if (filterDirection) list = list.filter((b) => b.directions.includes(filterDirection));
       if (hideLinks) list = list.filter((b) => !URL_REGEX.test(b.content) && !b.source_url);
       return [...list.filter((b) => b.is_pinned), ...list.filter((b) => !b.is_pinned)];
     }
@@ -94,7 +92,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         if (!matchTitle && !matchContent && !matchTags) return false;
       }
       if (filterPillar && !b.pillars.includes(filterPillar)) return false;
-      if (filterDirection && !b.directions.includes(filterDirection)) return false;
       if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
       return true;
     });
@@ -104,7 +101,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     })();
     return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
-  }, [blocks, search, filterPillar, filterDirection, hideLinks, sortMode, smartSearch, semanticResults]);
+  }, [blocks, search, filterPillar, hideLinks, sortMode, smartSearch, semanticResults]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -296,18 +293,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
           >
             <Link2Off size={12} /> Hide Links
           </button>
-          <span className="w-px h-4 bg-white/10" />
-          {DIRECTIONS.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setFilterDirection(filterDirection === d.id ? null : d.id)}
-              className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all ${
-                filterDirection === d.id ? "gradient-purple text-primary-foreground" : "bg-muted/30 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {d.icon} {d.label}
-            </button>
-          ))}
           <span className="w-px h-4 bg-white/10" />
           <button
             onClick={() => { setSmartSearch(!smartSearch); setSemanticResults(null); }}
