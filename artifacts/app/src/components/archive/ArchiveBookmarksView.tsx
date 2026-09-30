@@ -23,6 +23,9 @@ function getHostname(url: string) {
   }
 }
 
+const FIELD =
+  "flex-1 min-w-0 bg-transparent border-0 border-b border-white/10 rounded-none px-1 py-1 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-white/30 h-8";
+
 interface Props {
   bookmarks: ReturnType<typeof useBookmarks>;
   blocks: ArchiveBlock[];
@@ -122,39 +125,56 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
       </div>
 
       {/* Add / edit form */}
+      {/* URL first (the one required field); on a phone the title and buttons wrap to a second row. */}
       {showForm && (
-        <div className="glass-card border border-white/15 rounded-xl p-3 flex items-center gap-2 shadow-2xl">
-          <LinkIcon size={14} className="text-muted-foreground shrink-0" />
-          <Input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Title (optional)"
-            className="bg-transparent border-0 border-b border-white/10 rounded-none px-1 py-1 text-sm focus-visible:ring-0 focus-visible:border-white/30 h-8 min-w-0"
-            onKeyDown={(e) => e.key === "Enter" && url && handleSave()}
-          />
-          <Input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="URL (e.g. example.com)"
-            className="bg-transparent border-0 border-b border-white/10 rounded-none px-1 py-1 text-sm focus-visible:ring-0 focus-visible:border-white/30 h-8 min-w-0 flex-1"
-            onKeyDown={(e) => e.key === "Enter" && handleSave()}
-          />
-          <button
-            onClick={handleSave}
-            disabled={!normalizedUrl(url)}
-            className="text-xs px-3 py-1.5 rounded-lg gradient-purple text-primary-foreground font-semibold disabled:opacity-40 shrink-0"
-          >
-            {editingId ? "Save" : "Add"}
-          </button>
-          <button
-            onClick={closeForm}
-            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            title="Cancel"
-          >
-            <X size={16} />
-          </button>
-        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+          className="glass-card border border-white/15 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-2xl"
+        >
+          <div className="flex items-center gap-2 flex-[2_1_14rem] min-w-0">
+            <LinkIcon size={14} className="text-muted-foreground shrink-0" />
+            <Input
+              autoFocus
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Paste a URL (e.g. example.com)"
+              aria-label="URL"
+              inputMode="url"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className={FIELD}
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-[1_1_12rem] min-w-0">
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Title (optional)"
+              aria-label="Title"
+              className={FIELD}
+            />
+            <button
+              type="submit"
+              disabled={!normalizedUrl(url)}
+              className="text-xs px-3 py-1.5 rounded-lg gradient-purple text-primary-foreground font-semibold disabled:opacity-40 shrink-0"
+            >
+              {editingId ? "Save" : "Add"}
+            </button>
+            <button
+              type="button"
+              onClick={closeForm}
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              title="Cancel"
+              aria-label="Cancel"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </form>
       )}
 
       {nothingYet ? (
