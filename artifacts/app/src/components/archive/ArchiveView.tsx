@@ -240,6 +240,7 @@ const ArchiveView = () => {
             selectedIds={selectedIds}
             toggleSelect={toggleSelect}
             semanticSearch={archive.semanticSearch}
+            searchArchive={archive.searchArchive}
             embedAll={archive.embedAll}
             onPlant={(b) => setSinglePlantBlock(b)}
           />

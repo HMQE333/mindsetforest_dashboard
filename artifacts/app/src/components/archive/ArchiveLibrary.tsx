@@ -8,6 +8,8 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
 import ObsidianImportModal from "./ObsidianImportModal";
+import VideoSummaryPanel, { type VideoPanelTarget } from "./VideoSummaryPanel";
+import type { VideoMatch } from "@/hooks/useArchiveState";
 import { useForestState } from "@/hooks/useForestState";
 import {
   Dialog,
@@ -30,13 +32,15 @@ interface Props {
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
   semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
+  /** Search that also returns matching video summaries; used for Smart search when given. */
+  searchArchive?: (query: string) => Promise<{ blocks: ArchiveBlock[]; videos: VideoMatch[] }>;
   embedAll: () => Promise<any>;
   onPlant?: (block: ArchiveBlock) => void;
 }
 
 type SortMode = "newest" | "oldest" | "az";
 
-const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, embedAll, onPlant }: Props) => {
+const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, searchArchive, embedAll, onPlant }: Props) => {
   const pillars = usePillars();
   const forest = useForestState();
   const [search, setSearch] = useState("");
@@ -46,6 +50,8 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [smartSearch, setSmartSearch] = useState(false);
   const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
+  const [videoResults, setVideoResults] = useState<VideoMatch[]>([]);
+  const [video, setVideo] = useState<VideoPanelTarget | null>(null);
   const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -58,12 +64,20 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   useEffect(() => {
     if (!smartSearch || search.trim().length < 2) {
       setSemanticResults(null);
+      setVideoResults([]);
       setSimilarityScores({});
       return;
     }
     const timer = setTimeout(async () => {
       setSemanticLoading(true);
-      const results = await semanticSearch(search.trim());
+      let results: ArchiveBlock[];
+      if (searchArchive) {
+        const found = await searchArchive(search.trim());
+        results = found.blocks;
+        setVideoResults(found.videos);
+      } else {
+        results = await semanticSearch(search.trim());
+      }
       const scores: Record<string, number> = {};
       for (const r of results as any[]) {
         if (r.similarity !== undefined) scores[r.id] = r.similarity;
@@ -73,7 +87,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       setSemanticLoading(false);
     }, 500);
     return () => clearTimeout(timer);
-  }, [search, smartSearch, semanticSearch]);
+  }, [search, smartSearch, semanticSearch, searchArchive]);
 
   const filtered = useMemo(() => {
     if (smartSearch && semanticResults !== null) {
@@ -316,6 +330,26 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
           )}
         </div>
       </div>
+
+      {/* Video summaries that matched a smart search */}
+      {smartSearch && videoResults.length > 0 && (
+        <div className="glass-card p-3 space-y-1.5">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Videos</p>
+          {videoResults.map((v) => (
+            <button
+              key={v.id}
+              onClick={() => setVideo({ url: v.url, videoId: v.video_id })}
+              className="w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors"
+            >
+              <span className="text-sm">🎬</span>
+              <span className="text-sm text-foreground truncate flex-1">{v.title}</span>
+              <span className="text-[11px] text-muted-foreground truncate max-w-[30%]">{v.channel}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary shrink-0">{Math.round(v.similarity * 100)}%</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <VideoSummaryPanel target={video} onClose={() => setVideo(null)} />
 
       {/* Blocks grid */}
       {filtered.length === 0 ? (

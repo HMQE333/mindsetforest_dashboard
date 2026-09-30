@@ -116,18 +116,28 @@ serve(async (req) => {
       });
     }
 
-    // Action: semantic search
+    // Action: semantic search, over notes and over video summaries
+    // (link_summaries, which live with a link rather than in a note).
     if (action === "search" && query) {
       const queryEmbedding = await getEmbedding(query);
-      const { data, error } = await serviceClient.rpc("search_archive_blocks", {
-        query_embedding: JSON.stringify(queryEmbedding),
-        match_user_id: userId,
-        match_threshold: 0.3,
-        match_count: 20,
-      });
-      if (error) throw error;
+      const vector = JSON.stringify(queryEmbedding);
+      const [notes, videos] = await Promise.all([
+        serviceClient.rpc("search_archive_blocks", {
+          query_embedding: vector,
+          match_user_id: userId,
+          match_threshold: 0.3,
+          match_count: 20,
+        }),
+        serviceClient.rpc("search_link_summaries", {
+          query_embedding: vector,
+          match_user_id: userId,
+          match_threshold: 0.3,
+          match_count: 8,
+        }),
+      ]);
+      if (notes.error) throw notes.error;
 
-      return new Response(JSON.stringify({ results: data || [] }), {
+      return new Response(JSON.stringify({ results: notes.data || [], videos: videos.error ? [] : videos.data || [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

@@ -1,12 +1,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight, Trash2, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { autoTitle, LINK_REGEX, removeUrls, type ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
+import VideoSummaryPanel, { type VideoPanelTarget } from "./VideoSummaryPanel";
+import { summaryBusy, useLinkSummaryIndex, type LinkSummaryMeta } from "@/hooks/useLinkSummaries";
+import { youtubeId } from "@/lib/youtube";
 import { safeUrl } from "@/lib/safe-url";
 
 interface Props {
@@ -44,6 +47,23 @@ const PAGE = 200;
 
 /** A note with more links than this is a list, not a note (see allLinks). */
 const BULK_NOTE_LINKS = 100;
+
+/** Shown on a link whose video has a summary (or one being made); opens it. */
+function SummaryMarker({ summary, onOpen }: { summary?: LinkSummaryMeta; onOpen?: () => void }) {
+  if (!summary || !onOpen || (summary.status === "none" && summary.workshop_status === "none")) return null;
+  const busy = summaryBusy(summary);
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpen(); }}
+      title={busy ? "Summary in progress" : "Open the summary"}
+      aria-label="Open the video summary"
+      className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors shrink-0"
+    >
+      {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />} Summary
+    </button>
+  );
+}
 
 /** Takes links out of their notes. Always visible on touch screens, on hover elsewhere. */
 function RemoveLinkButton({ onRemove, className, title = "Remove this link from its note", label = "Remove link" }: { onRemove: () => void; className: string; title?: string; label?: string }) {
@@ -109,15 +129,6 @@ function extractLinks(block: ArchiveBlock): ExtractedLink[] {
   }));
 }
 
-function getYouTubeId(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
-    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
-  } catch {}
-  return null;
-}
-
 function getFavicon(url: string) {
   try {
     const u = new URL(url);
@@ -133,8 +144,8 @@ function getHostname(url: string) {
 
 // ── Sub-renderers ──────────────────────────────────────────────
 
-function ListItem({ link, onContextMenu, onRemove }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void }) {
-  const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
+function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void }) {
+  const ytId = link.type === "video" ? youtubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
@@ -168,6 +179,7 @@ function ListItem({ link, onContextMenu, onRemove }: { link: ExtractedLink; onCo
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10">
                 {link.type === "video" ? "🎬 Video" : link.type === "image" ? "🖼️ Image" : "🌐 Link"}
               </Badge>
+              <SummaryMarker summary={summary} onOpen={onOpenSummary} />
               <span className="text-[10px] text-muted-foreground truncate">from: {link.blockTitle}</span>
             </div>
             {link.note && (
@@ -181,8 +193,8 @@ function ListItem({ link, onContextMenu, onRemove }: { link: ExtractedLink; onCo
   );
 }
 
-function GridCard({ link, onContextMenu, onRemove }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void }) {
-  const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
+function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void }) {
+  const ytId = link.type === "video" ? youtubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
@@ -215,6 +227,7 @@ function GridCard({ link, onContextMenu, onRemove }: { link: ExtractedLink; onCo
             <Badge variant="outline" className="text-[9px] px-1 py-0 border-white/10">
               {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
             </Badge>
+            <SummaryMarker summary={summary} onOpen={onOpenSummary} />
             <span className="text-[9px] text-muted-foreground truncate">{link.blockTitle}</span>
           </div>
           {link.note && (
@@ -227,7 +240,7 @@ function GridCard({ link, onContextMenu, onRemove }: { link: ExtractedLink; onCo
   );
 }
 
-function CompactRow({ link, onContextMenu, onRemove }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void }) {
+function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void }) {
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
@@ -248,6 +261,7 @@ function CompactRow({ link, onContextMenu, onRemove }: { link: ExtractedLink; on
         {link.note && (
           <span className="text-[9px] text-muted-foreground/60 truncate max-w-[180px] italic shrink-0">{link.note}</span>
         )}
+        <SummaryMarker summary={summary} onOpen={onOpenSummary} />
         <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-white/10 shrink-0">
           {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
         </Badge>
@@ -257,11 +271,13 @@ function CompactRow({ link, onContextMenu, onRemove }: { link: ExtractedLink; on
   );
 }
 
-function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain }: {
+function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summaryOf, onOpenSummary }: {
   links: ExtractedLink[];
   onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void;
   onRemove: (link: ExtractedLink) => void;
   onRemoveDomain: (domain: string, links: ExtractedLink[]) => void;
+  summaryOf: (link: ExtractedLink) => LinkSummaryMeta | undefined;
+  onOpenSummary: (link: ExtractedLink) => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [groupsShown, setGroupsShown] = useState(PAGE);
@@ -313,7 +329,7 @@ function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain }: {
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {domainLinks.slice(0, shown).map((link, i) => (
-                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} onRemove={() => onRemove(link)} />
+                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} onRemove={() => onRemove(link)} summary={summaryOf(link)} onOpenSummary={() => onOpenSummary(link)} />
                 ))}
                 <ShowMore shown={shown} total={domainLinks.length} onMore={() => setLinksShown((p) => ({ ...p, [domain]: shown + PAGE }))} />
               </div>
@@ -441,6 +457,25 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
 
   const removeLink = useCallback((url: string, blockId: string) => removeLinks([{ url, blockId }]), [removeLinks]);
 
+  // Video summaries: which links have one, and the panel that shows them.
+  const { index: summaries, refresh: refreshSummaries } = useLinkSummaryIndex();
+  const summaryOf = useCallback((link: ExtractedLink) => {
+    if (link.type !== "video") return undefined;
+    const id = youtubeId(link.url);
+    return id ? summaries.get(id) : undefined;
+  }, [summaries]);
+  const [video, setVideo] = useState<VideoPanelTarget | null>(null);
+  /** Open a video's panel; with an action, start that pass unless it is done or running. */
+  const openVideo = useCallback((url: string, action?: "summarize" | "workshop") => {
+    const id = youtubeId(url);
+    if (!id) return;
+    const meta = summaries.get(id);
+    const done = action === "workshop"
+      ? meta?.workshop_status === "ready" || meta?.workshop_status === "running"
+      : meta?.status === "ready" || meta?.status === "transcribing" || meta?.status === "summarizing";
+    setVideo({ url, videoId: id, tab: action === "workshop" ? "workshop" : "summary", start: action && !done ? action : undefined });
+  }, [summaries]);
+
   // Removing a whole domain asks first.
   const [confirmDomain, setConfirmDomain] = useState<{ domain: string; links: ExtractedLink[] } | null>(null);
   const confirmNotes = confirmDomain ? new Set(confirmDomain.links.map((l) => l.blockId)).size : 0;
@@ -512,7 +547,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {visible.map((link, i) => (
-            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} />
+            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} />
           ))}
           {more}
         </div>
@@ -520,7 +555,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {visible.map((link, i) => (
-              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} />
+              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} />
             ))}
           </div>
           {more}
@@ -528,7 +563,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
       ) : viewMode === "compact" ? (
         <div className="space-y-1">
           {visible.map((link, i) => (
-            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} />
+            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} />
           ))}
           {more}
         </div>
@@ -537,6 +572,8 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
           links={filtered}
           onContextMenu={handleContextMenu}
           onRemove={(link) => removeLink(link.url, link.blockId)}
+          summaryOf={summaryOf}
+          onOpenSummary={(link) => openVideo(link.url)}
           onRemoveDomain={(domain, links) => setConfirmDomain({ domain, links })}
         />
       )}
@@ -567,12 +604,16 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
         </AlertDialogContent>
       </AlertDialog>
 
+      <VideoSummaryPanel target={video} onClose={() => setVideo(null)} onChange={refreshSummaries} />
+
       {/* Context menu */}
       <LinkContextMenu
         menu={contextMenu}
         onClose={() => setContextMenu(null)}
         onEditBlock={handleEditBlock}
         onRemoveLink={(url, block) => removeLink(url, block.id)}
+        summaryFor={(id) => summaries.get(id)}
+        onVideo={openVideo}
         updateBlock={updateBlock}
       />
 

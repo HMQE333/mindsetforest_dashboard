@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ExternalLink, Copy, Pencil, MessageSquarePlus, Tag, Trash2 } from "lucide-react";
+import { ExternalLink, Copy, Pencil, MessageSquarePlus, Tag, Trash2, FileText, Clapperboard } from "lucide-react";
+import type { LinkSummaryMeta } from "@/hooks/useLinkSummaries";
+import { youtubeId } from "@/lib/youtube";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -19,10 +21,13 @@ interface Props {
   onClose: () => void;
   onEditBlock: (block: ArchiveBlock) => void;
   onRemoveLink: (url: string, block: ArchiveBlock) => void;
+  /** A YouTube link's summary, if any (by video id). */
+  summaryFor?: (videoId: string) => LinkSummaryMeta | undefined;
+  onVideo?: (url: string, action: "summarize" | "workshop") => void;
   updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
-const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock }: Props) => {
+const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor, onVideo, updateBlock }: Props) => {
   const allPillars = usePillars();
   const [subView, setSubView] = useState<null | "note" | "tags">(null);
   const [noteText, setNoteText] = useState("");
@@ -52,11 +57,13 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock
   if (!menu) return null;
 
   const { x, y, url, block } = menu;
+  const videoId = youtubeId(url);
+  const summary = videoId ? summaryFor?.(videoId) : undefined;
 
   const style: React.CSSProperties = {
     position: "fixed",
     left: Math.min(x, window.innerWidth - 260),
-    top: Math.min(y, window.innerHeight - 350),
+    top: Math.max(8, Math.min(y, window.innerHeight - 420)),
     zIndex: 9999,
   };
 
@@ -174,6 +181,18 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock
       <button onClick={() => setSubView("note")} className={menuItem}>
         <MessageSquarePlus size={14} className="text-muted-foreground" /> Add Note
       </button>
+      {videoId && onVideo && (
+        <>
+          <button onClick={() => { onVideo(url, "summarize"); onClose(); }} className={menuItem}>
+            <FileText size={14} className="text-muted-foreground" />
+            {summary?.status === "ready" ? "Open summary" : summary?.status === "transcribing" || summary?.status === "summarizing" ? "Summarizing…" : "Summarize video"}
+          </button>
+          <button onClick={() => { onVideo(url, "workshop"); onClose(); }} className={menuItem}>
+            <Clapperboard size={14} className="text-muted-foreground" />
+            {summary?.workshop_status === "ready" ? "Open workshop" : summary?.workshop_status === "running" ? "Workshop…" : "Workshop"}
+          </button>
+        </>
+      )}
       <button onClick={() => setSubView("tags")} className={menuItem}>
         <Tag size={14} className="text-muted-foreground" /> Edit Pillars
       </button>

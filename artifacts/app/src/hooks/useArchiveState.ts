@@ -30,6 +30,16 @@ async function embedInBackground(ids: string[], concurrency = 3) {
 // each one is ~20 KB of text the list never shows.
 const BLOCK_COLUMNS = "id,user_id,title,content,pillars,directions,tags,source_url,is_pinned,created_at,updated_at,from_seed_id";
 
+/** A video summary that matched a meaning search. */
+export interface VideoMatch {
+  id: string;
+  video_id: string;
+  url: string;
+  title: string;
+  channel: string;
+  similarity: number;
+}
+
 const CACHE_MAX = 500;
 const cacheKey = (userId: string) => `archive_blocks_cache_${userId}`;
 
@@ -211,18 +221,21 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     return true;
   };
 
-  const semanticSearch = useCallback(async (query: string): Promise<ArchiveBlock[]> => {
+  /** Meaning search over notes, and over video summaries (which live with their link). */
+  const searchArchive = useCallback(async (query: string): Promise<{ blocks: ArchiveBlock[]; videos: VideoMatch[] }> => {
     try {
       const { data, error } = await supabase.functions.invoke("ai-embed-block", {
         body: { action: "search", query },
       });
       if (error) throw error;
-      return (data?.results || []) as ArchiveBlock[];
+      return { blocks: (data?.results || []) as ArchiveBlock[], videos: (data?.videos || []) as VideoMatch[] };
     } catch (e) {
       console.error("Semantic search error:", e);
-      return [];
+      return { blocks: [], videos: [] };
     }
   }, []);
+
+  const semanticSearch = useCallback(async (query: string) => (await searchArchive(query)).blocks, [searchArchive]);
 
   const embedAll = useCallback(async () => {
     try {
@@ -237,5 +250,5 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     }
   }, []);
 
-  return { blocks, loading, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, embedAll };
+  return { blocks, loading, fetchBlocks, addBlock, addBlocks, updateBlock, deleteBlock, semanticSearch, searchArchive, embedAll };
 }
