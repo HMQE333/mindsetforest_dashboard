@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ARCHIVE_BLOCKS_CHANGED_EVENT, type ArchiveBlock } from "@/lib/archive-data";
+import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError, chunkForInsert, type ArchiveBlock } from "@/lib/archive-data";
 import { toast } from "sonner";
 
 async function embedBlock(blockId: string) {
@@ -16,6 +16,19 @@ async function embedBlock(blockId: string) {
     console.error("Embedding failed for block:", blockId, e);
   }
 }
+
+/** Embed new blocks a few at a time: an import of hundreds must not fire hundreds of calls at once. */
+async function embedInBackground(ids: string[], concurrency = 3) {
+  let next = 0;
+  const worker = async () => {
+    while (next < ids.length) await embedBlock(ids[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+}
+
+// Every column but the embedding: the vectors are only read server-side, and
+// each one is ~20 KB of text the list never shows.
+const BLOCK_COLUMNS = "id,user_id,title,content,pillars,directions,tags,source_url,is_pinned,created_at,updated_at,from_seed_id";
 
 const CACHE_MAX = 500;
 const cacheKey = (userId: string) => `archive_blocks_cache_${userId}`;
@@ -35,14 +48,19 @@ function writeCache(userId: string, blocks: ArchiveBlock[]) {
   } catch { /* quota exceeded. Ignore */ }
 }
 
-export function useArchiveState() {
+/**
+ * `live: false` is for writers that never show the list (Quick Capture is
+ * mounted on every screen): no fetch, no polling, the writes still land in the
+ * cached list when the Archive has it.
+ */
+export function useArchiveState({ live = true }: { live?: boolean } = {}) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const queryKey = ["archive_blocks", user?.id];
 
   const query = useQuery<ArchiveBlock[]>({
     queryKey,
-    enabled: !!user,
+    enabled: !!user && live,
     staleTime: 0,
     gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: true,
@@ -50,7 +68,7 @@ export function useArchiveState() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("archive_blocks" as any)
-        .select("*")
+        .select(BLOCK_COLUMNS)
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -65,16 +83,31 @@ export function useArchiveState() {
     }
   }, [query.error]);
 
-  // Polling: refetch every 5s to keep archive in sync across devices/windows.
-  // Much simpler than Realtime subscriptions and avoids supabase-js channel API issues.
+  // Polling keeps the archive in sync across devices/windows (simpler than
+  // Realtime). Every 5 s it reads a fingerprint (row count + newest change) and
+  // refetches the list only when that moved: refetching every time re-downloaded
+  // the whole archive every 5 seconds, a pasted list of thousands of links included.
   useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      qc.invalidateQueries({ queryKey });
-    }, 5000);
+    if (!user || !live) return;
+    let last: string | null = null;
+    const check = async () => {
+      if (document.hidden) return;
+      const { data, count, error } = await supabase
+        .from("archive_blocks" as any)
+        .select("updated_at", { count: "exact" })
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      if (error) return;
+      const fingerprint = `${count ?? 0}:${(data as any)?.[0]?.updated_at ?? ""}`;
+      if (last !== null && fingerprint !== last) qc.invalidateQueries({ queryKey });
+      last = fingerprint;
+    };
+    void check();
+    const interval = setInterval(check, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, live]);
 
   // Refetch immediately when another part of the app (e.g. The AI assistant)
   // saves a note to the archive, so it shows up without waiting for the poll.
@@ -105,7 +138,7 @@ export function useArchiveState() {
     const { data, error } = await supabase
       .from("archive_blocks" as any)
       .insert({ ...block, user_id: user.id } as any)
-      .select()
+      .select(BLOCK_COLUMNS)
       .single();
     if (error) {
       toast.error("Failed to save block");
@@ -116,21 +149,33 @@ export function useArchiveState() {
     return data as any as ArchiveBlock;
   };
 
-  const addBlocks = async (newBlocks: Partial<ArchiveBlock>[]) => {
-    if (!user) return;
-    const rows = newBlocks.map((b) => ({ ...b, user_id: user.id }));
-    const { data, error } = await supabase
-      .from("archive_blocks" as any)
-      .insert(rows as any)
-      .select();
-    if (error) {
-      toast.error("Failed to save blocks");
-      return;
+  /**
+   * Insert in order, in requests of at most 100 blocks or ~1 MB. Throws
+   * ArchiveSaveError on the first failure, saying how many made it, so the
+   * caller can keep the rest instead of reporting a save that did not happen.
+   */
+  const addBlocks = async (newBlocks: Partial<ArchiveBlock>[]): Promise<ArchiveBlock[]> => {
+    if (!user) throw new ArchiveSaveError("Not signed in", 0);
+    const saved: ArchiveBlock[] = [];
+    let failure: ArchiveSaveError | null = null;
+    for (const batch of chunkForInsert(newBlocks)) {
+      const rows = batch.map((b) => ({ ...b, user_id: user.id }));
+      const { data, error } = await supabase
+        .from("archive_blocks" as any)
+        .insert(rows as any)
+        .select(BLOCK_COLUMNS);
+      if (error) {
+        failure = new ArchiveSaveError(error.message || "Save failed", saved.length);
+        break;
+      }
+      saved.push(...(((data as any) || []) as ArchiveBlock[]));
     }
-    setBlocks((prev) => [...((data as any) || []), ...prev]);
-    for (const d of (data as any) || []) {
-      embedBlock(d.id);
+    if (saved.length > 0) {
+      setBlocks((prev) => [...saved, ...prev]);
+      void embedInBackground(saved.map((b) => b.id));
     }
+    if (failure) throw failure;
+    return saved;
   };
 
   const updateBlock = async (id: string, updates: Partial<ArchiveBlock>) => {

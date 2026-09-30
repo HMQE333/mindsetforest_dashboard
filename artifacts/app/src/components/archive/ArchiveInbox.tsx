@@ -5,11 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Upload, X, Sparkles, MessageSquare, Hash, Save, Loader2 } from "lucide-react";
-import type { ArchiveBlock } from "@/lib/archive-data";
+import { ArchiveSaveError, HASHTAG_REGEX, splitInboxItems, type ArchiveBlock } from "@/lib/archive-data";
 
 interface Props {
   addBlock: (b: Partial<ArchiveBlock>) => Promise<ArchiveBlock | null>;
-  addBlocks: (b: Partial<ArchiveBlock>[]) => Promise<void>;
+  addBlocks: (b: Partial<ArchiveBlock>[]) => Promise<unknown>;
   existingTags?: string[];
 }
 
@@ -39,7 +39,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const processing = busy !== null;
-  const items = text.trim() ? text.split("---").map((s) => s.trim()).filter(Boolean) : [];
+  const items = splitInboxItems(text);
 
   const updateText = (val: string) => {
     setText(val);
@@ -125,14 +125,14 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
   }, [uploadImage, insertImageUrl]);
 
   const extractHashtags = (raw: string): { cleanContent: string; tags: string[] } => {
-    const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+    const tagRegex = new RegExp(HASHTAG_REGEX.source, "g");
     const tags: string[] = [];
     let match;
     while ((match = tagRegex.exec(raw)) !== null) {
-      const tag = match[1].toLowerCase();
+      const tag = match[2].toLowerCase();
       if (!tags.includes(tag)) tags.push(tag);
     }
-    const cleanContent = raw.replace(tagRegex, "").replace(/  +/g, " ").trim();
+    const cleanContent = raw.replace(tagRegex, "$1").replace(/  +/g, " ").trim();
     return { cleanContent, tags };
   };
 
@@ -140,21 +140,30 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
   const handleQuickSave = async () => {
     if (items.length === 0 || processing) return;
     setBusy("save");
+    const blocks: Partial<ArchiveBlock>[] = items.map((content) => {
+      const { cleanContent, tags } = extractHashtags(content);
+      return {
+        title: cleanContent.slice(0, 60).replace(/\n/g, " "),
+        content: cleanContent,
+        pillars: [],
+        directions: [],
+        tags,
+      };
+    });
     try {
-      const blocks: Partial<ArchiveBlock>[] = items.map((content) => {
-        const { cleanContent, tags } = extractHashtags(content);
-        return {
-          title: cleanContent.slice(0, 60).replace(/\n/g, " "),
-          content: cleanContent,
-          pillars: [],
-          directions: [],
-          tags,
-        };
-      });
       await addBlocks(blocks);
       toast.success(`${blocks.length} block(s) saved`);
       clearDraft();
-    } catch { toast.error("Save failed"); }
+    } catch (e) {
+      // A failed save never loses the paste: what did not make it stays in the draft.
+      const saved = e instanceof ArchiveSaveError ? e.saved : 0;
+      const reason = e instanceof Error ? e.message : "Save failed";
+      if (saved > 0) updateText(items.slice(saved).join("\n\n---\n\n"));
+      toast.error(
+        saved > 0 ? `Saved ${saved} of ${blocks.length}. The rest is still in the inbox.` : "Nothing was saved. Your text is still in the inbox.",
+        { description: reason },
+      );
+    }
     setBusy(null);
   };
 
@@ -203,7 +212,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
     if (!target.trim()) return;
     setBusy("tag");
     try {
-      const targetItems = target.split("---").map((s) => s.trim()).filter(Boolean);
+      const targetItems = splitInboxItems(target);
       const { data, error } = await supabase.functions.invoke("ai-suggest-tags", {
         body: { items: targetItems, existingTags },
       });
@@ -211,7 +220,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
       const suggested: string[][] = data?.tags || [];
       let added = 0;
       const tagged = targetItems.map((item, i) => {
-        const already = new Set((item.match(/#([a-zA-Z0-9_-]+)/g) || []).map((t) => t.slice(1).toLowerCase()));
+        const already = new Set(Array.from(item.matchAll(new RegExp(HASHTAG_REGEX.source, "g")), (m) => m[2].toLowerCase()));
         const fresh = (suggested[i] || [])
           .map(normalizeTag)
           .filter((t, idx, arr) => t && !already.has(t) && arr.indexOf(t) === idx);
@@ -285,7 +294,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
             onChange={(e) => updateText(e.target.value)}
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
-            placeholder="Paste notes, Discord logs, ideas, links, or images here...&#10;&#10;Separate items with --- and tag inline with #tags&#10;Paste images with Ctrl+V or drag & drop them here"
+            placeholder="Paste notes, Discord logs, ideas, links, or images here...&#10;&#10;Separate items with a line of --- and tag inline with #tags&#10;Paste images with Ctrl+V or drag & drop them here"
             className="min-h-[200px] bg-background/50 border-white/10 text-sm"
           />
         </div>

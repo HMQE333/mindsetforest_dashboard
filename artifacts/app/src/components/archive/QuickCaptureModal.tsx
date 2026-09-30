@@ -15,7 +15,7 @@ const QuickCaptureModal = ({ open, onClose }: Props) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
-  const { addBlock } = useArchiveState();
+  const { addBlock } = useArchiveState({ live: false });
 
   const handleSave = async () => {
     if (!content.trim() && !title.trim()) return;

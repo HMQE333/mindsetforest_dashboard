@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Link2Off, Download, Upload, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { DIRECTIONS } from "@/lib/archive-data";
+import { ArchiveSaveError, DIRECTIONS } from "@/lib/archive-data";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
@@ -26,7 +26,7 @@ interface Props {
   loading: boolean;
   updateBlock: (id: string, u: Partial<ArchiveBlock>) => Promise<void>;
   deleteBlock: (id: string) => Promise<void>;
-  addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<void>;
+  addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<unknown>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
   semanticSearch: (query: string) => Promise<ArchiveBlock[]>;
@@ -177,8 +177,15 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
     if (toImport.length === 0) {
       toast.info("All blocks are duplicates. Nothing to import");
     } else {
-      await addBlocks(toImport);
-      toast.success(`Imported ${toImport.length} blocks`);
+      try {
+        await addBlocks(toImport);
+        toast.success(`Imported ${toImport.length} blocks`);
+      } catch (e) {
+        const saved = e instanceof ArchiveSaveError ? e.saved : 0;
+        toast.error(`Imported ${saved} of ${toImport.length} blocks, then the save failed`, {
+          description: e instanceof Error ? e.message : undefined,
+        });
+      }
     }
     setImportConfirm(null);
   }, [importConfirm, filterDupes, blocks, addBlocks]);

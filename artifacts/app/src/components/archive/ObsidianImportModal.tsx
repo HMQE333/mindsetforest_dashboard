@@ -21,13 +21,13 @@ import {
   heuristicKeep,
   type ParsedObsidianNote,
 } from "@/lib/obsidian-import";
-import type { ArchiveBlock } from "@/lib/archive-data";
+import { ArchiveSaveError, type ArchiveBlock } from "@/lib/archive-data";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   existingBlocks: ArchiveBlock[];
-  addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<void>;
+  addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<unknown>;
 }
 
 interface ReviewNote extends ParsedObsidianNote {
@@ -258,7 +258,16 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
     let saved = 0;
     for (let i = 0; i < finalBlocks.length; i += SAVE_BATCH) {
       const chunk = finalBlocks.slice(i, i + SAVE_BATCH);
-      await addBlocks(chunk);
+      try {
+        await addBlocks(chunk);
+      } catch (e) {
+        saved += e instanceof ArchiveSaveError ? e.saved : 0;
+        toast.error(`Imported ${saved} of ${finalBlocks.length} notes, then the save failed`, {
+          description: `${e instanceof Error ? e.message : "Save failed"}. Import again with duplicates skipped to add the rest.`,
+        });
+        handleClose();
+        return;
+      }
       saved += chunk.length;
       setProgressLabel(`Saving ${saved} / ${finalBlocks.length}…`);
     }

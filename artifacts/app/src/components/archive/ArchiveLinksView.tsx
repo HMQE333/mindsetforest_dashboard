@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight } from "lucide-react";
@@ -33,6 +33,23 @@ const VIEW_MODES: { id: ViewMode; icon: typeof LayoutList; label: string }[] = [
 ];
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+
+// Rows rendered at a time. A pasted list can hold thousands of links, and this
+// view stays mounted (hidden) behind the other archive tabs, so rendering them
+// all froze the page for seconds on every change.
+const PAGE = 200;
+
+function ShowMore({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
+  if (shown >= total) return null;
+  return (
+    <button
+      onClick={onMore}
+      className="w-full text-xs py-2 rounded-lg bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
+    >
+      Show {Math.min(PAGE, total - shown)} more ({total - shown} left)
+    </button>
+  );
+}
 const VIDEO_DOMAINS = ["youtube.com", "youtu.be", "vimeo.com", "twitch.tv", "dailymotion.com"];
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"];
 
@@ -212,6 +229,8 @@ function CompactRow({ link, onContextMenu }: { link: ExtractedLink; onContextMen
 
 function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [groupsShown, setGroupsShown] = useState(PAGE);
+  const [linksShown, setLinksShown] = useState<Record<string, number>>({});
 
   const grouped = useMemo(() => {
     const map: Record<string, ExtractedLink[]> = {};
@@ -227,8 +246,9 @@ function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onC
 
   return (
     <div className="space-y-2">
-      {grouped.map(([domain, domainLinks]) => {
+      {grouped.slice(0, groupsShown).map(([domain, domainLinks]) => {
         const isOpen = expanded[domain] ?? false;
+        const shown = linksShown[domain] ?? PAGE;
         const favicon = getFavicon(domainLinks[0].url);
         return (
           <div key={domain}>
@@ -249,14 +269,16 @@ function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onC
             </button>
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
-                {domainLinks.map((link, i) => (
+                {domainLinks.slice(0, shown).map((link, i) => (
                   <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} />
                 ))}
+                <ShowMore shown={shown} total={domainLinks.length} onMore={() => setLinksShown((p) => ({ ...p, [domain]: shown + PAGE }))} />
               </div>
             )}
           </div>
         );
       })}
+      <ShowMore shown={groupsShown} total={grouped.length} onMore={() => setGroupsShown((n) => n + PAGE)} />
     </div>
   );
 }
@@ -280,6 +302,11 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
       return true;
     });
   }, [allLinks, typeFilter, search]);
+
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [typeFilter, search, viewMode]);
+  const visible = filtered.slice(0, shown);
+  const more = <ShowMore shown={shown} total={filtered.length} onMore={() => setShown((n) => n + PAGE)} />;
 
   const counts = useMemo(() => {
     const c = { all: allLinks.length, link: 0, video: 0, image: 0, other: 0 };
@@ -356,21 +383,26 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
         </div>
       ) : viewMode === "list" ? (
         <div className="space-y-2">
-          {filtered.map((link, i) => (
+          {visible.map((link, i) => (
             <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
           ))}
+          {more}
         </div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filtered.map((link, i) => (
-            <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
-          ))}
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {visible.map((link, i) => (
+              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
+            ))}
+          </div>
+          {more}
         </div>
       ) : viewMode === "compact" ? (
         <div className="space-y-1">
-          {filtered.map((link, i) => (
+          {visible.map((link, i) => (
             <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
           ))}
+          {more}
         </div>
       ) : (
         <DomainGroupView links={filtered} onContextMenu={handleContextMenu} />

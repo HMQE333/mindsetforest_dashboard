@@ -128,7 +128,8 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               )}
             </div>
             <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
-              {block.content.replace(IMAGE_TAG_REGEX, "").trim() || "Image block"}
+              {/* Three lines show; the rest of a long block (a pasted list of links) stays out of the page. */}
+              {block.content.replace(IMAGE_TAG_REGEX, "").trim().slice(0, 600) || "Image block"}
             </p>
           </div>
           <button
