@@ -130,6 +130,7 @@ class TrackerApp:
         self._last_purge = 0.0
         self._login_notified = False
         sync_worker.on_status = self.on_sync_status
+        sync_worker.on_private_keywords = self.on_private_keywords
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -274,6 +275,10 @@ class TrackerApp:
         self._refresh_menu()
         return None
 
+    def on_private_keywords(self, keywords: list[str]) -> None:
+        """The dashboard's never-record keywords, on top of config.json's own."""
+        self.tracker.set_private_keywords([*self.config.private_keywords, *keywords])
+
     def on_sync_status(self, status: SyncStatus) -> None:
         if status.needs_login and not self._login_notified:
             self._login_notified = True
@@ -288,7 +293,8 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     device_id = store.device_id()
     auth = SupabaseAuth(config.supabase_url, config.supabase_anon_key, data_dir / "session.bin")
     tracker = SessionTracker(tick_seconds=config.tick_seconds, idle_minutes=config.idle_minutes,
-                             min_seconds=config.min_session_seconds, ignored_apps=config.ignored_apps)
+                             min_seconds=config.min_session_seconds, ignored_apps=config.ignored_apps,
+                             private_keywords=config.private_keywords)
     client = SyncClient(config.supabase_url, config.supabase_anon_key, auth)
     worker = SyncWorker(store, client, interval_seconds=config.sync_seconds)
     return TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id)

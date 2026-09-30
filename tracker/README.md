@@ -70,7 +70,8 @@ good tick, not merged.
      "sync_seconds": 60,
      "device_name": "",
      "min_session_seconds": 2,
-     "ignored_apps": []
+     "ignored_apps": [],
+     "private_keywords": []
    }
    ```
 
@@ -114,6 +115,16 @@ good tick, not merged.
   `config.json`, closes the current session without uploading it (a partial
   upload already made for that session is deleted), and skips that app at
   capture time from then on. Edit `config.json` to un-ignore an app.
+
+## Private windows
+
+Adult sites and words (`mindsetforest_tracker/privacy.py`) are never recorded,
+not even locally: the open session closes and nothing is written while such a
+window is in front, exactly like an ignored app. Your own keywords come from
+the dashboard (Stats -> Computer -> Apps -> *Private: never tracked*) at every
+sync, plus any in `private_keywords` in `config.json`. The database refuses the
+same windows too (`20260930120000_app_usage_privacy.sql`), so an older copy of
+this agent cannot store them either.
 
 ## Where data lands
 

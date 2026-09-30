@@ -33,6 +33,9 @@ class Config:
     sync_seconds: float = 60.0
     device_name: str = field(default_factory=socket.gethostname)
     ignored_apps: list[str] = field(default_factory=list)
+    # Never-record keywords on top of the built-in adult list. The dashboard's
+    # list (Stats -> Computer -> Private) is pulled at every sync and added to it.
+    private_keywords: list[str] = field(default_factory=list)
     min_session_seconds: int = 2
     path: Path | None = field(default=None, compare=False)
 
@@ -91,6 +94,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg.sync_seconds = max(10.0, float(cfg.sync_seconds))
     cfg.min_session_seconds = max(0, int(cfg.min_session_seconds))
     cfg.ignored_apps = [str(a) for a in (cfg.ignored_apps or [])]
+    cfg.private_keywords = [str(k) for k in (cfg.private_keywords or [])]
     cfg.supabase_url = cfg.supabase_url.rstrip("/")
     return cfg
 

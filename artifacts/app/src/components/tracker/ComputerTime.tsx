@@ -13,6 +13,7 @@ import ComputerTimeAllTime from "./ComputerTimeAllTime";
 import ComputerTimeFolders from "./ComputerTimeFolders";
 import ComputerTimeApps from "./ComputerTimeApps";
 import TrackerDownload from "./TrackerDownload";
+import ComputerTimePrivacy from "./ComputerTimePrivacy";
 import { deviceLabel, pillActive, pillBase, pillIdle, relativeTime } from "./computer-time-shared";
 
 /**
@@ -336,6 +337,7 @@ export default function ComputerTime() {
                       rejectSuggestion={usage.rejectSuggestion}
                     />
                   )}
+                  {tab === "apps" && <ComputerTimePrivacy onForgotten={() => void usage.refetch()} />}
                 </>
               )}
             </div>

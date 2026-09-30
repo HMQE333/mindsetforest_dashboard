@@ -10,7 +10,7 @@ CASES = [
     ("chrome.exe", "Inbox (3) - jan@gmail.com - Gmail - Google Chrome", "Chrome", "Browser | Gmail"),
     ("chrome.exe", "New Tab - Google Chrome", "Chrome", "Browser | other"),
     ("chrome.exe", "(2) Facebook - Google Chrome", "Chrome", "Browser | Facebook"),
-    ("chrome.exe", "https://github.com/owner/repo/pull/12 - Google Chrome", "Chrome", "Browser | github.com"),
+    ("chrome.exe", "https://github.com/owner/repo/pull/12 - Google Chrome", "Chrome", "Browser | GitHub"),
     ("chrome.exe", "Login \u2013 www.example.com - Google Chrome", "Chrome", "Browser | example.com"),
     ("chrome.exe", "ChatGPT - Google Chrome", "Chrome", "Browser | ChatGPT"),
     ("firefox.exe", "Python 3.11 documentation \u2014 Mozilla Firefox", "Firefox", "Browser | other"),

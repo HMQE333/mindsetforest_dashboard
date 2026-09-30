@@ -21,6 +21,8 @@ one at the same instant. Rules worth knowing:
   is also emitted as a zero-length *tombstone* (``ended_at == started_at``):
   ``Store.upsert_session`` applies it only to a row it already holds, which
   zeroes a live-flushed copy that would otherwise keep its stale duration.
+* Private windows (``privacy.is_private``: adult sites and words, the user's
+  own keywords) and ignored apps record nothing; the open session closes.
 * ``local_date`` follows the 04:00 rule: a session that starts at 01:30 local
   time belongs to the previous calendar day.
 
@@ -35,6 +37,7 @@ from datetime import datetime, timedelta, timezone, tzinfo
 
 from .capture import Sample
 from .normalize import app_display_name, app_key, clean_title
+from .privacy import is_private, normalize_keywords
 
 LOCKED_APP = "Locked"
 DAY_START_HOUR = 4
@@ -99,6 +102,7 @@ class SessionTracker:
         min_seconds: int = 2,
         sleep_gap_seconds: float | None = None,
         ignored_apps: tuple[str, ...] | list[str] = (),
+        private_keywords: tuple[str, ...] | list[str] = (),
     ) -> None:
         self.idle_threshold = idle_minutes * 60.0
         self.min_seconds = min_seconds
@@ -107,6 +111,8 @@ class SessionTracker:
         self.sleep_gap = sleep_gap_seconds if sleep_gap_seconds is not None else max(3 * tick_seconds, 10.0)
         self._ignored: set[str] = set()
         self.set_ignored(ignored_apps)
+        self._private: tuple[str, ...] = ()
+        self.set_private_keywords(private_keywords)
         self._current: Session | None = None
         self._last_ts: float | None = None
         self._last_closed: Session | None = None
@@ -118,6 +124,10 @@ class SessionTracker:
     def set_ignored(self, names: tuple[str, ...] | list[str] | set[str]) -> None:
         """Replace the don't-track list (display names, case-insensitive)."""
         self._ignored = {n.strip().lower() for n in names}
+
+    def set_private_keywords(self, keywords: tuple[str, ...] | list[str] | set[str]) -> None:
+        """Replace the user's own never-record keywords (the built-in adult list always applies)."""
+        self._private = normalize_keywords(keywords)
 
     # -- inspection ----------------------------------------------------------
 
@@ -184,6 +194,9 @@ class SessionTracker:
             return None
         app = app_display_name(sample.exe, title)
         if app.lower() in self._ignored:
+            return None
+        # Private (adult sites, the user's keywords): not recorded at all, like an ignored app.
+        if is_private(title, sample.exe, keywords=self._private):
             return None
         return Activity(app, app_key(sample.exe, title), title, sample.idle_seconds >= self.idle_threshold)
 

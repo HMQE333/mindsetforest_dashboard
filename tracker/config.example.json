@@ -7,5 +7,6 @@
   "sync_seconds": 60,
   "device_name": "",
   "min_session_seconds": 2,
-  "ignored_apps": []
+  "ignored_apps": [],
+  "private_keywords": []
 }

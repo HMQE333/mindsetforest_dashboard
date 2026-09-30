@@ -7,11 +7,14 @@
 Rules for ``app_key`` (first match wins):
 
 1. Browsers -> ``"Browser | <site>"`` regardless of which browser it is.
-   ``site`` is a domain-like token found in the title (``github.com``) when
-   present; otherwise the LAST title segment after the browser's own name is
-   removed (``"Never Gonna Give You Up - YouTube - Google Chrome"`` ->
-   ``YouTube``); a one-word title (``"(2) Facebook"``) is taken as the site;
-   otherwise ``"Browser | other"``.
+   ``site`` is a well-known service named anywhere in the title (``youtube.com``
+   -> ``YouTube``); else a domain-like token (``github.com``); else the LAST
+   title segment after the browser's own name and profile are removed
+   (``"Never Gonna Give You Up - YouTube - Google Chrome"`` -> ``YouTube``).
+   Titles of a conversation (a ``@person`` or ``#channel`` segment, as in
+   ``"Discord | @Arnold"``) keep that last segment, so each chat is its own
+   key (``@Arnold``); a one-word
+   title (``"(2) Facebook"``) is taken as the site; otherwise ``"Browser | other"``.
 2. IDEs/editors -> ``"<App> | <project>"``. VS Code style titles are
    ``"file - project - App"`` (project = second to last segment); JetBrains
    and Visual Studio put the project first (``"project – file"``). Without a
@@ -42,8 +45,36 @@ BROWSER_TITLE_WORDS = {
     "google chrome", "chromium", "mozilla firefox", "firefox", "microsoft edge",
     "brave", "opera", "opera gx", "vivaldi", "waterfox", "librewolf", "floorp", "arc",
     "zen browser", "zen", "mozilla firefox private browsing",
-    "mozilla firefox (private browsing)", "personal", "work",
+    "mozilla firefox (private browsing)",
+    # profile names Chromium browsers put next to their own name
+    "personal", "work", "default", "osobisty", "prywatny", "praca", "służbowy", "domyślny",
+    "profile 1", "person 1", "osoba 1",
 }
+
+# Services named by their own title segment or domain, so every way a title
+# spells them lands on one key. A segment matching a name wins over the rest.
+KNOWN_SITES: dict[str, tuple[str, ...]] = {
+    "YouTube": ("youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com"),
+    "Discord": ("discord.com", "discordapp.com"),
+    "Instagram": ("instagram.com",),
+    "Facebook": ("facebook.com",),
+    "Messenger": ("messenger.com",),
+    "WhatsApp": ("web.whatsapp.com", "whatsapp.com"),
+    "X": ("x.com", "twitter.com"),
+    "Reddit": ("reddit.com",),
+    "LinkedIn": ("linkedin.com",),
+    "TikTok": ("tiktok.com",),
+    "Twitch": ("twitch.tv",),
+    "Netflix": ("netflix.com",),
+    "Spotify": ("open.spotify.com", "spotify.com"),
+    "Gmail": ("mail.google.com",),
+    "ChatGPT": ("chatgpt.com", "chat.openai.com"),
+    "Claude": ("claude.ai",),
+    "GitHub": ("github.com",),
+    "Notion": ("notion.so",),
+}
+_SITE_BY_NAME = {name.lower(): name for name in KNOWN_SITES}
+_SITE_BY_DOMAIN = {d: name for name, domains in KNOWN_SITES.items() for d in domains}
 
 # exe -> (display name, where the project sits in the title)
 EDITORS: dict[str, tuple[str, str]] = {
@@ -144,12 +175,20 @@ def app_display_name(exe: str, title: str) -> str:
 def browser_site(title: str) -> str | None:
     """Site identity of a browser window title, or None when there is none."""
     text = _COUNT_PREFIX_RE.sub("", clean_title(title))
-    match = _DOMAIN_RE.search(text)
-    if match:
-        return match.group(0).lower().removeprefix("www.")
     segments = split_title(text)
     while segments and segments[-1].lower() in BROWSER_TITLE_WORDS:
         segments.pop()
+    # A "@person" / "#channel" title (Discord) keeps its conversation as the key.
+    conversation = any(s.startswith(("@", "#")) for s in segments)
+    if not conversation:
+        for segment in reversed(segments):
+            known = _SITE_BY_NAME.get(_COUNT_PREFIX_RE.sub("", segment).lower())
+            if known:
+                return known
+    match = _DOMAIN_RE.search(text)
+    if match:
+        domain = match.group(0).lower().removeprefix("www.")
+        return _SITE_BY_DOMAIN.get(domain, domain)
     if len(segments) >= 2:
         candidate = segments[-1]
     elif len(segments) == 1 and " " not in segments[0]:

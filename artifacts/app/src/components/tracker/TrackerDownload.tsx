@@ -24,6 +24,7 @@ export default function TrackerDownload({ compact = false }: { compact?: boolean
       device_name: "",
       min_session_seconds: 2,
       ignored_apps: [] as string[],
+      private_keywords: [] as string[],
     };
     const blob = new Blob([JSON.stringify(config, null, 2) + "\n"], { type: "application/json" });
     const url = URL.createObjectURL(blob);

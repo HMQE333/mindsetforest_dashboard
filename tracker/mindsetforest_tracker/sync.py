@@ -28,6 +28,7 @@ from .store import SessionRow, Store
 log = logging.getLogger(__name__)
 
 TABLE = "app_usage_sessions"
+PRIVACY_TABLE = "app_tracking_privacy"
 MAX_BACKOFF = 600.0
 
 
@@ -68,6 +69,7 @@ class SyncClient:
     def __init__(self, supabase_url: str, anon_key: str, auth: SupabaseAuth,
                  http: Any | None = None, timeout: float = 20.0) -> None:
         self.base = f"{supabase_url.rstrip('/')}/rest/v1/{TABLE}"
+        self.privacy_url = f"{supabase_url.rstrip('/')}/rest/v1/{PRIVACY_TABLE}?select=keywords"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
@@ -103,10 +105,20 @@ class SyncClient:
         if resp.status_code not in (200, 204):
             raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
 
+    def private_keywords(self) -> list[str]:
+        """The user's never-record keywords from the dashboard ([] when none are set)."""
+        resp = self._request("get", self.privacy_url, self.auth.headers(), None)
+        if resp.status_code != 200:
+            raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        rows = resp.json() or []
+        return [str(k) for r in rows for k in (r.get("keywords") or [])]
+
     def _request(self, method: str, url: str, headers: dict, payload: list[dict] | None) -> Any:
         try:
             if method == "post":
                 return self.http.post(url, headers=headers, json=payload, timeout=self.timeout)
+            if method == "get":
+                return self.http.get(url, headers=headers, timeout=self.timeout)
             return self.http.delete(url, headers=headers, timeout=self.timeout)
         except requests.RequestException as exc:
             raise SyncError(f"network error: {exc}") from exc
@@ -134,6 +146,8 @@ class SyncWorker(threading.Thread):
         self.interval = interval_seconds
         self.batch_size = min(200, batch_size)
         self.on_status = on_status
+        # Called with the dashboard's private keywords after each good sync.
+        self.on_private_keywords: Callable[[list[str]], None] | None = None
         self.clock = clock
         self.status = SyncStatus()
         self._wake = threading.Event()
@@ -182,6 +196,7 @@ class SyncWorker(threading.Thread):
                 self.store.set_kv("last_sync_at", str(self.status.last_sync_at))
                 if uploaded:
                     log.info("Synced %d session row(s)", uploaded)
+                self._pull_private_keywords()
             except AuthRequired as exc:
                 self.status.needs_login = True
                 self.status.last_error = f"sign in required: {exc}"
@@ -203,6 +218,20 @@ class SyncWorker(threading.Thread):
                 except Exception:
                     log.exception("on_status callback failed")
             return uploaded
+
+    def _pull_private_keywords(self) -> None:
+        """Fetch the dashboard's private keywords; a failure keeps the last list."""
+        if not self.on_private_keywords:
+            return
+        try:
+            keywords = self.client.private_keywords()
+        except Exception as exc:  # the server copy of the filter still applies
+            log.warning("Could not fetch private keywords: %s", exc)
+            return
+        try:
+            self.on_private_keywords(keywords)
+        except Exception:
+            log.exception("on_private_keywords callback failed")
 
     def _upload_individually(self, rows: Sequence[SessionRow]) -> int:
         """Upsert rows one at a time; quarantine the ones the server rejects."""
