@@ -35,6 +35,7 @@ import {
   type AssistantAction,
 } from "@/lib/assistant-actions";
 import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
+import { playCheckSound } from "@/lib/ui-sounds";
 import { findMission, listTodayMissions } from "@/lib/mission-match";
 import { annotateHistory, keywordScopes } from "@/lib/scope-hints";
 import {
@@ -241,8 +242,12 @@ function useAssistantValue() {
     setSelectedScopes((prev) => (prev.length > 0 ? prev : [currentScope || "dashboard"]));
   }, [currentScope, autoContext]);
 
+  const openRef = useRef(open);
+  openRef.current = open;
   const openPanel = useCallback(() => {
     ensureDefaultScope();
+    // Every caller is a click (the launcher, "Ask AI" in Paths), so the browser lets it play.
+    if (!openRef.current) playCheckSound();
     setOpen(true);
   }, [ensureDefaultScope, setOpen]);
 
