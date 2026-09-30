@@ -42,6 +42,9 @@ const URL_REGEX = LINK_REGEX;
 // all froze the page for seconds on every change.
 const PAGE = 200;
 
+/** A note with more links than this is a list, not a note (see allLinks). */
+const BULK_NOTE_LINKS = 100;
+
 /** Takes links out of their notes. Always visible on touch screens, on hover elsewhere. */
 function RemoveLinkButton({ onRemove, className, title = "Remove this link from its note", label = "Remove link" }: { onRemove: () => void; className: string; title?: string; label?: string }) {
   return (
@@ -333,7 +336,13 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
 
-  const allLinks = useMemo(() => blocks.flatMap(extractLinks), [blocks]);
+  // A pasted list of thousands of links is one note, and the newest one; its
+  // links go after those of ordinary notes, or it buries them (and their
+  // previews) behind page after page of "show more".
+  const allLinks = useMemo(() => {
+    const perNote = blocks.map(extractLinks);
+    return [...perNote.filter((l) => l.length <= BULK_NOTE_LINKS), ...perNote.filter((l) => l.length > BULK_NOTE_LINKS)].flat();
+  }, [blocks]);
 
   const filtered = useMemo(() => {
     return allLinks.filter((link) => {
