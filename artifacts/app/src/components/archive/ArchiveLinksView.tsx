@@ -8,6 +8,7 @@ import { autoTitle, LINK_REGEX, removeUrls, type ArchiveBlock } from "@/lib/arch
 import ArchiveEditModal from "./ArchiveEditModal";
 import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
 import VideoSummaryPanel, { type VideoPanelTarget } from "./VideoSummaryPanel";
+import WorkshopLibraryPanel from "./WorkshopLibraryPanel";
 import { summaryBusy, useLinkSummaryIndex, type LinkSummaryMeta } from "@/hooks/useLinkSummaries";
 import { youtubeId } from "@/lib/youtube";
 import { safeUrl } from "@/lib/safe-url";
@@ -476,6 +477,10 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
     setVideo({ url, videoId: id, tab: action === "workshop" ? "workshop" : "summary", start: action && !done ? action : undefined });
   }, [summaries]);
 
+  // Every workshop in one place, once there is one.
+  const [workshopsOpen, setWorkshopsOpen] = useState(false);
+  const workshopCount = useMemo(() => [...summaries.values()].filter((s) => s.workshop_status === "ready").length, [summaries]);
+
   // Removing a whole domain asks first.
   const [confirmDomain, setConfirmDomain] = useState<{ domain: string; links: ExtractedLink[] } | null>(null);
   const confirmNotes = confirmDomain ? new Set(confirmDomain.links.map((l) => l.blockId)).size : 0;
@@ -518,6 +523,15 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
               <span className="ml-0.5 opacity-70">({counts[f.id]})</span>
             </button>
           ))}
+          {workshopCount > 0 && (
+            <button
+              onClick={() => setWorkshopsOpen(true)}
+              title="How your saved videos are made: every workshop in one place"
+              className="text-[11px] px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1 bg-muted/40 text-muted-foreground hover:text-foreground"
+            >
+              🎬 Workshops <span className="opacity-70">({workshopCount})</span>
+            </button>
+          )}
           <div className="ml-auto flex items-center gap-1">
             {VIEW_MODES.map((vm) => {
               const Icon = vm.icon;
@@ -604,7 +618,17 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock 
         </AlertDialogContent>
       </AlertDialog>
 
-      <VideoSummaryPanel target={video} onClose={() => setVideo(null)} onChange={refreshSummaries} />
+      <VideoSummaryPanel
+        target={video}
+        onClose={() => setVideo(null)}
+        onChange={refreshSummaries}
+        onOpenWorkshops={workshopCount > 0 ? () => { setVideo(null); setWorkshopsOpen(true); } : undefined}
+      />
+      <WorkshopLibraryPanel
+        open={workshopsOpen}
+        onClose={() => setWorkshopsOpen(false)}
+        onOpenVideo={(url) => { setWorkshopsOpen(false); openVideo(url); }}
+      />
 
       {/* Context menu */}
       <LinkContextMenu

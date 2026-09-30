@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { invokeVideo, loadSummary, summaryBusy, type LinkSummary } from "@/hooks/useLinkSummaries";
-import { splitStamps, videoAt } from "@/lib/youtube";
+import { videoAt } from "@/lib/youtube";
+import { Inline, Note } from "./VideoNote";
 
 export type VideoTab = "summary" | "workshop" | "transcript";
 
@@ -22,67 +23,8 @@ interface Props {
   onClose: () => void;
   /** Called whenever the row changes, so markers elsewhere can refresh. */
   onChange?: () => void;
-}
-
-// ── Inline rendering: **bold** and [mm:ss] links to that moment ─────────
-
-function Inline({ text, videoId }: { text: string; videoId: string }) {
-  const out: ReactNode[] = [];
-  splitStamps(text).forEach((part, i) => {
-    if ("stamp" in part) {
-      out.push(
-        <a key={i} href={videoAt(videoId, part.seconds)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline tabular-nums">
-          {part.stamp}
-        </a>,
-      );
-      return;
-    }
-    part.text.replace(/ ?-> ?/g, " → ").split(/(\*\*[^*]+\*\*)/g).forEach((chunk, j) => {
-      if (!chunk) return;
-      out.push(chunk.startsWith("**") && chunk.endsWith("**")
-        ? <strong key={`${i}-${j}`} className="font-semibold text-foreground">{chunk.slice(2, -2)}</strong>
-        : <span key={`${i}-${j}`}>{chunk}</span>);
-    });
-  });
-  return <>{out}</>;
-}
-
-/** The markdown the passes write: headings, bullets, numbered lines, paragraphs. */
-function Note({ text, videoId }: { text: string; videoId: string }) {
-  const blocks: ReactNode[] = [];
-  let list: { ordered: boolean; items: string[] } | null = null;
-  const flush = () => {
-    if (!list) return;
-    const items = list.items.map((it, i) => <li key={i}><Inline text={it} videoId={videoId} /></li>);
-    blocks.push(list.ordered
-      ? <ol key={blocks.length} className="list-decimal pl-5 space-y-1">{items}</ol>
-      : <ul key={blocks.length} className="list-disc pl-5 space-y-1">{items}</ul>);
-    list = null;
-  };
-  for (const raw of text.split("\n")) {
-    const line = raw.trimEnd();
-    const bullet = line.match(/^\s*[*-]\s+(.*)$/);
-    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (bullet || numbered) {
-      const ordered = !bullet;
-      if (list && list.ordered !== ordered) flush();
-      if (!list) list = { ordered, items: [] };
-      list.items.push((bullet || numbered)![1]);
-      continue;
-    }
-    flush();
-    if (!line.trim()) continue;
-    const heading = line.match(/^(#{1,4})\s+(.*)$/);
-    if (heading) {
-      blocks.push(heading[1].length === 1
-        ? <h3 key={blocks.length} className="text-base font-bold text-foreground"><Inline text={heading[2]} videoId={videoId} /></h3>
-        : <h4 key={blocks.length} className="text-sm font-semibold text-foreground pt-2"><Inline text={heading[2]} videoId={videoId} /></h4>);
-    } else {
-      blocks.push(<p key={blocks.length}><Inline text={line} videoId={videoId} /></p>);
-    }
-  }
-  flush();
-  return <div className="space-y-2 text-sm leading-relaxed text-foreground/85">{blocks}</div>;
+  /** Opens the workshop notes of every video. */
+  onOpenWorkshops?: () => void;
 }
 
 function Waiting({ label }: { label: string }) {
@@ -115,7 +57,7 @@ function Offer({ text, button, onClick, busy }: { text: string; button: string; 
  * transcript. Opened from a link's menu (which may start a pass) or from the
  * marker on a summarised link. Polls while a pass runs in the background.
  */
-const VideoSummaryPanel = ({ target, onClose, onChange }: Props) => {
+const VideoSummaryPanel = ({ target, onClose, onChange, onOpenWorkshops }: Props) => {
   const [row, setRow] = useState<LinkSummary | null>(null);
   const [tab, setTab] = useState<VideoTab>("summary");
   const [loading, setLoading] = useState(false);
@@ -238,6 +180,11 @@ const VideoSummaryPanel = ({ target, onClose, onChange }: Props) => {
                     onClick={() => target && void start("workshop", target.url)}
                   />
                 )}
+              {onOpenWorkshops && (
+                <button onClick={onOpenWorkshops} className="mt-6 text-xs text-primary hover:underline">
+                  All workshop notes →
+                </button>
+              )}
             </TabsContent>
 
             <TabsContent value="transcript" className="pt-2 space-y-4">
