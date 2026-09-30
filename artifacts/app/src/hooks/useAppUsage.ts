@@ -62,27 +62,33 @@ const DAILY_MAX_ROWS = 5000;
 
 type SessionFilter = { from: string; to: string } | { dates: string[] };
 
-/** All session rows matching the filter, one page of 1000 at a time, in started_at order. */
-async function fetchSessionPages(userId: string, filter: SessionFilter): Promise<{ rows: UsageSession[]; error: PgError }> {
+/**
+ * All session rows matching the filter, one page of 1000 at a time, returned
+ * in started_at order. Pages are read newest first, so when a very long range
+ * hits MAX_ROWS it is its oldest days that are left out, never today.
+ */
+async function fetchSessionPages(userId: string, filter: SessionFilter): Promise<{ rows: UsageSession[]; error: PgError; truncated?: boolean }> {
   const all: UsageSession[] = [];
   let offset = 0;
+  let truncated = false;
   for (;;) {
     const base = supabase.from("app_usage_sessions").select(SESSION_COLUMNS).eq("user_id", userId);
     const filtered = "dates" in filter ? base.in("local_date", filter.dates) : base.gte("local_date", filter.from).lte("local_date", filter.to);
     const { data, error } = await filtered
-      .order("started_at", { ascending: true })
-      .order("id", { ascending: true })
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
-    if (error) return { rows: all, error };
+    if (error) return { rows: all.reverse(), error };
     const rows = data || [];
     for (const r of rows) {
       const s = rowToSession(r);
       if (s) all.push(s);
     }
-    if (rows.length < PAGE_SIZE || all.length >= MAX_ROWS) break;
+    if (rows.length < PAGE_SIZE) break;
+    if (all.length >= MAX_ROWS) { truncated = true; break; }
     offset += PAGE_SIZE;
   }
-  return { rows: all, error: null };
+  return { rows: all.reverse(), error: null, truncated };
 }
 
 export interface ClassInput {
@@ -181,13 +187,18 @@ export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {})
       if (!userId) return;
       const id = ++sessionsReq.current;
       if (!silent) setLoading(true);
-      const { rows, error } = await fetchSessionPages(userId, { from: range.from, to: range.to });
+      const { rows, error, truncated } = await fetchSessionPages(userId, { from: range.from, to: range.to });
       if (sessionsReq.current !== id) return; // a newer range or refetch owns the state now
       if (error) {
         guard(error, "wczytać sesje");
       } else {
         setTableReady(true);
         setSessions(rows);
+        if (truncated && !silent) {
+          toast.warning("This range is too long to load in full", {
+            description: `Showing the newest ${rows.length.toLocaleString("en-US")} sessions, from ${rows[0]?.local_date ?? range.from}. Pick a shorter range to see earlier days.`,
+          });
+        }
       }
       setLoading(false);
     },

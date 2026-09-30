@@ -174,3 +174,22 @@ def test_backwards_clock_never_reuses_a_started_at():
     assert tr.current.ended_at == T0 + 2 and tr.current.seconds >= 0
     out = run(tr, ticks(SLACK, 3, 6))
     assert out[-1].app == "Chrome" and out[-1].ended_at == T0 + 3
+
+
+def test_session_is_split_at_four_am():
+    from datetime import datetime
+    from mindsetforest_tracker.capture import Sample
+    from mindsetforest_tracker.sessions import SessionTracker
+
+    t0 = datetime(2026, 9, 30, 3, 30).astimezone().timestamp()
+    tracker = SessionTracker(min_seconds=0)
+    sample = Sample(exe="code.exe", title="main.py - proj - Code", idle_seconds=0)
+    out = []
+    ts = t0
+    while ts <= t0 + 3600:  # 03:30 -> 04:30, one tick every 5 s
+        out += tracker.feed(ts, sample)
+        ts += 5
+    out += tracker.close_current(t0 + 3600)
+    rows = [s.to_row() for s in out if s.seconds > 0]
+    assert [r["local_date"] for r in rows] == ["2026-09-29", "2026-09-30"]
+    assert [r["seconds"] for r in rows] == [1800, 1800]

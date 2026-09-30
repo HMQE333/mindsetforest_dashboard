@@ -470,3 +470,30 @@ describe("row adapters", () => {
     expect(dailyRowToSession({ ...daily, seconds: 60 })?.seconds).toBe(60);
   });
 });
+
+describe("review fixes", () => {
+  it("a word in the app key beats an earlier class's word in the title", () => {
+    const s = sess({ app_key: "Browser | YouTube", window_title: "Claude Code in 10 minutes - YouTube" });
+    expect(classifySession(s, ctx()).classId).toBe("watch");
+  });
+
+  it("a title keyword still classifies when the key names nothing", () => {
+    const s = sess({ app_key: "Browser | other", window_title: "Python docs: asyncio" });
+    expect(classifySession(s, ctx()).classId).toBe("learn");
+  });
+
+  it("idle time in a watching class counts up to three hours per session", () => {
+    const s = sess({ app_key: "Browser | YouTube", idle: true, seconds: 5 * 3600 });
+    const agg = aggregateUsage([s], CLASSES, classifyAll([s], ctx()));
+    expect(agg.byKind.watching).toBe(3 * 3600);
+    expect(agg.idleSeconds).toBe(2 * 3600);
+  });
+
+  it("the weekday baseline only counts the part of a session before the cutoff", () => {
+    const at = (h: number, m = 0) => new Date(2026, 8, 21, h, m).toISOString();
+    const long = (date: string) => sess({ app_key: "Code", local_date: date, started_at: at(9, 50), ended_at: at(12), seconds: 7800 });
+    const sessions = [long("2026-09-21"), long("2026-09-14")];
+    // cutoff 10:00 local = 360 minutes after 04:00: 10 minutes of each session
+    expect(weekdayBaseline(sessions, CLASSES, classifyAll(sessions, ctx()), ["2026-09-21", "2026-09-14"], 360)?.byKind.work).toBe(600);
+  });
+});

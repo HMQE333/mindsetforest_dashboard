@@ -73,7 +73,10 @@ export default function ComputerTime() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [now, setNow] = useState(() => new Date());
 
-  const range = useMemo(() => presetRange(preset, custom), [preset, custom]);
+  // The app's day (04:00 boundary), re-read by the minute timer so a page left
+  // open overnight moves "Dziś" on instead of staying on yesterday.
+  const dayKey = useMemo(() => todayKey(), [now]); // eslint-disable-line react-hooks/exhaustive-deps
+  const range = useMemo(() => presetRange(preset, custom), [preset, custom, dayKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const weekDays = weekWindowDays(preset, range);
   // The week chart wants `weekDays` ending on range.to even when the range is one day,
   // so the loaded window is the wider of the two; the other tabs filter back to `range`.

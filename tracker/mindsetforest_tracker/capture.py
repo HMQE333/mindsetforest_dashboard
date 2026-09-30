@@ -39,6 +39,14 @@ except ImportError:  # pragma: no cover
     WIN32_AVAILABLE = False
 
 LOCK_PROCESSES = {"lockapp.exe", "logonui.exe"}
+# Windows shell overlays (Start, search, the emoji/clipboard picker, notifications)
+# open over the app in use for a moment. They are not an app of their own: the
+# sample keeps reporting the app underneath, so a glance at Start neither splits
+# a session nor adds unassigned time.
+SHELL_OVERLAYS = {
+    "searchhost.exe", "searchapp.exe", "searchui.exe", "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe", "shellhost.exe", "pickerhost.exe", "textinputhost.exe",
+}
 PID_CACHE_TTL_SAMPLES = 600
 
 
@@ -109,6 +117,8 @@ if WIN32_AVAILABLE:  # pragma: no cover - Windows only
                 exe = self._exe_name(pid)
                 if exe.lower() in LOCK_PROCESSES:
                     return Sample(exe=exe, idle_seconds=idle, locked=True)
+                if exe.lower() in SHELL_OVERLAYS and self._last_good.exe:
+                    return replace(self._last_good, idle_seconds=idle)
                 title = win32gui.GetWindowText(hwnd) or ""
                 self._last_good = Sample(exe=exe, title=title, idle_seconds=idle)
                 return self._last_good

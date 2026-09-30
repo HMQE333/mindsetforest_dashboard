@@ -106,6 +106,12 @@ export const PRIOR_MIN_SHARE = 0.7;
 /** A per-app prior needs this much classified, non-idle history before it applies. */
 export const PRIOR_MIN_HISTORY_SECONDS = 1800;
 export const KEYWORD_CONFIDENCE = 0.75;
+/**
+ * Most one idle session adds to a class that counts idle time ("watching").
+ * The agent cannot tell a film from a paused tab left open all night; a long
+ * film still fits, an evening away from the desk no longer counts in full.
+ */
+export const MAX_COUNTED_IDLE_SECONDS = 3 * 3600;
 
 /** Rule priorities by origin: manual > label > learned, unless the user says otherwise. */
 export const PRIORITY_MANUAL = 10;
@@ -476,22 +482,27 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
     };
   }
 
-  // (b) keywords: class keywords first, then project names
+  // (b) keywords: class keywords first, then project names. The app key is
+  // tried before the title, so "Claude Code in 10 minutes - YouTube" is
+  // YouTube (watching) rather than "code" (work) because of a word in the title.
   const index = buildKeywordIndex(ctx.classes, ctx.projects || NO_PROJECTS);
+  const keyText = session.app_key.toLowerCase();
   const text = `${session.app_key} ${session.window_title}`.toLowerCase();
-  for (const kw of index.classKeywords) {
-    if (!hasWholeWord(text, kw.needle)) continue;
-    let projectId = kw.projectId;
+  const keyword =
+    index.classKeywords.find((kw) => hasWholeWord(keyText, kw.needle)) ??
+    index.classKeywords.find((kw) => hasWholeWord(text, kw.needle));
+  if (keyword) {
+    let projectId = keyword.projectId;
     if (!projectId) {
       const proj = index.projectNames.find((p) => hasWholeWord(text, p.needle));
       if (proj) projectId = proj.projectId;
     }
     return {
-      classId: kw.classId,
+      classId: keyword.classId,
       projectId,
       confidence: KEYWORD_CONFIDENCE,
       source: "keyword",
-      why: `Słowo kluczowe "${kw.label}"`,
+      why: `Słowo kluczowe "${keyword.label}"`,
     };
   }
   for (const proj of index.projectNames) {
@@ -661,7 +672,8 @@ export function aggregateUsage(
       idleSeconds += s.seconds;
       return;
     }
-    const secs = s.seconds;
+    const secs = s.idle ? Math.min(s.seconds, MAX_COUNTED_IDLE_SECONDS) : s.seconds;
+    idleSeconds += s.seconds - secs;
     totalSeconds += secs;
     const kind: AppKind | null = cls ? cls.kind : null;
 
@@ -935,15 +947,23 @@ export function weekdayBaseline(
   cutoffMinutes: number | null,
 ): WeekdayBaseline | null {
   const keep: number[] = [];
+  const kept: UsageSession[] = [];
   sessions.forEach((s, i) => {
     if (cutoffMinutes === null) {
       keep.push(i);
+      kept.push(s);
       return;
     }
     const at = new Date(s.started_at);
-    if (Number.isFinite(at.getTime()) && logicalMinutesOfDay(at) <= cutoffMinutes) keep.push(i);
+    if (!Number.isFinite(at.getTime())) return;
+    const startMinutes = logicalMinutesOfDay(at) + at.getSeconds() / 60;
+    if (startMinutes > cutoffMinutes) return;
+    // Only the part before the cutoff: a 09:50-12:00 session is 10 minutes of a "by 10:00" day.
+    const allowed = Math.max(0, Math.round((cutoffMinutes - startMinutes) * 60));
+    keep.push(i);
+    kept.push(s.seconds > allowed ? { ...s, seconds: allowed } : s);
   });
-  const agg = aggregateUsage(keep.map((i) => sessions[i]), classes, keep.map((i) => classifications[i]));
+  const agg = aggregateUsage(kept, classes, keep.map((i) => classifications[i]));
   const byDate = new Map(agg.byDay.map((d) => [d.date, d]));
   const present = dates.filter((d) => (byDate.get(d)?.total ?? 0) > 0);
   if (present.length < 2) return null;

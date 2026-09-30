@@ -24,7 +24,8 @@ one at the same instant. Rules worth knowing:
 * Private windows (``privacy.is_private``: adult sites and words, the user's
   own keywords) and ignored apps record nothing; the open session closes.
 * ``local_date`` follows the 04:00 rule: a session that starts at 01:30 local
-  time belongs to the previous calendar day.
+  time belongs to the previous calendar day, and a session running across
+  04:00 is split there, so each day only holds its own time.
 
 All timestamps are unix seconds floored to whole seconds; ``to_row`` renders
 them as UTC ISO-8601 with a ``Z`` suffix.
@@ -46,6 +47,15 @@ DAY_START_HOUR = 4
 def iso_utc(ts: float) -> str:
     """``2026-09-28T10:00:00Z`` for a unix timestamp."""
     return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def day_start_for(ts: float, tz: tzinfo | None = None, day_start_hour: int = DAY_START_HOUR) -> float:
+    """Unix time the app's day containing ``ts`` began (the last 04:00 local at or before it)."""
+    local = datetime.fromtimestamp(ts, tz) if tz else datetime.fromtimestamp(ts).astimezone()
+    start = local.replace(hour=day_start_hour, minute=0, second=0, microsecond=0)
+    if local < start:
+        start -= timedelta(days=1)
+    return start.timestamp()
 
 
 def local_date_for(ts: float, tz: tzinfo | None = None, day_start_hour: int = DAY_START_HOUR) -> str:
@@ -159,6 +169,14 @@ class SessionTracker:
         if cur is None:
             self._open(activity, ts)
             return out
+        # A session never spans 04:00: the part after it belongs to the new day.
+        if local_date_for(ts) != local_date_for(cur.started_at):
+            boundary = float(math.floor(day_start_for(ts)))
+            if cur.started_at < boundary <= ts:
+                carried = Activity(cur.app, cur.app_key, cur.window_title, cur.idle)
+                out += self._close(boundary)
+                self._open(carried, boundary)
+                cur = self._current
         if (activity.app_key, activity.title, activity.idle) == (cur.app_key, cur.window_title, cur.idle):
             cur.ended_at = max(cur.started_at, ts)
             return out

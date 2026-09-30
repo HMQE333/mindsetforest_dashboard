@@ -109,7 +109,13 @@ function ClassForm({
       </label>
       <label className="space-y-1">
         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Rodzaj</span>
-        <Select value={d.kind} onValueChange={(v) => set("kind", v as AppKind)}>
+        <Select
+          value={d.kind}
+          onValueChange={(v) =>
+            // Watching keeps idle time (a film plays without input), so the switch follows the kind.
+            setD((p) => ({ ...p, kind: v as AppKind, count_idle: v === "watching" ? true : p.kind === "watching" ? false : p.count_idle }))
+          }
+        >
           <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
           <SelectContent>
             {APP_KINDS.map((k) => (

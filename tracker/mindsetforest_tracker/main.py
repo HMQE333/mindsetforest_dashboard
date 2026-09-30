@@ -277,7 +277,8 @@ class TrackerApp:
 
     def on_private_keywords(self, keywords: list[str]) -> None:
         """The dashboard's never-record keywords, on top of config.json's own."""
-        self.tracker.set_private_keywords([*self.config.private_keywords, *keywords])
+        with self._lock:  # the capture thread feeds the tracker under the same lock
+            self.tracker.set_private_keywords([*self.config.private_keywords, *keywords])
 
     def on_sync_status(self, status: SyncStatus) -> None:
         if status.needs_login and not self._login_notified:
