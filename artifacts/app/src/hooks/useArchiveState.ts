@@ -178,14 +178,15 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     return saved;
   };
 
-  const updateBlock = async (id: string, updates: Partial<ArchiveBlock>) => {
+  /** Resolves whether the change was saved (a failure is toasted here). */
+  const updateBlock = async (id: string, updates: Partial<ArchiveBlock>): Promise<boolean> => {
     const { error } = await supabase
       .from("archive_blocks" as any)
       .update(updates as any)
       .eq("id", id);
     if (error) {
       toast.error("Failed to update block");
-      return;
+      return false;
     }
     setBlocks((prev) =>
       prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
@@ -193,18 +194,21 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     if (updates.title !== undefined || updates.content !== undefined) {
       embedBlock(id);
     }
+    return true;
   };
 
-  const deleteBlock = async (id: string) => {
+  /** Resolves whether the block was deleted (a failure is toasted here). */
+  const deleteBlock = async (id: string): Promise<boolean> => {
     const { error } = await supabase
       .from("archive_blocks" as any)
       .delete()
       .eq("id", id);
     if (error) {
       toast.error("Failed to delete block");
-      return;
+      return false;
     }
     setBlocks((prev) => prev.filter((b) => b.id !== id));
+    return true;
   };
 
   const semanticSearch = useCallback(async (query: string): Promise<ArchiveBlock[]> => {

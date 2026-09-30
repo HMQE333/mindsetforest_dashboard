@@ -19,10 +19,11 @@ interface Props {
   menu: ContextMenuState | null;
   onClose: () => void;
   onEditBlock: (block: ArchiveBlock) => void;
-  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
+  onRemoveLink: (url: string, block: ArchiveBlock) => void;
+  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
-const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => {
+const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, updateBlock }: Props) => {
   const allPillars = usePillars();
   const [subView, setSubView] = useState<null | "note" | "tags">(null);
   const [noteText, setNoteText] = useState("");
@@ -85,10 +86,8 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, updateBlock }: Props) => 
     onClose();
   };
 
-  const handleRemoveLink = async () => {
-    const newContent = block.content.replace(url, "").replace(/\n{3,}/g, "\n\n").trim();
-    await updateBlock(block.id, { content: newContent });
-    toast.success("Link removed from block");
+  const handleRemoveLink = () => {
+    onRemoveLink(url, block);
     onClose();
   };
 

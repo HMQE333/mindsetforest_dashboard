@@ -18,7 +18,7 @@ interface Props {
   selected: boolean;
   onToggleSelect: () => void;
   onEdit: () => void;
-  onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
+  onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
   similarityScore?: number;
   onPlant?: (block: ArchiveBlock) => void;
   updateAvailable?: boolean;

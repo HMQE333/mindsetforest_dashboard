@@ -247,7 +247,7 @@ const ArchiveView = () => {
           />
         </div>
         <div className={subView === "links" ? "" : "hidden"}>
-          <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} />
         </div>
         <div className={subView === "images" ? "" : "hidden"}>
           <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />

@@ -1,8 +1,9 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight } from "lucide-react";
-import type { ArchiveBlock } from "@/lib/archive-data";
+import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { autoTitle, LINK_REGEX, removeUrl, type ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
 import { safeUrl } from "@/lib/safe-url";
@@ -10,8 +11,9 @@ import { safeUrl } from "@/lib/safe-url";
 interface Props {
   blocks: ArchiveBlock[];
   loading: boolean;
-  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
-  deleteBlock: (id: string) => Promise<void>;
+  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
+  deleteBlock: (id: string) => Promise<unknown>;
+  addBlock: (block: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
 type LinkType = "all" | "link" | "video" | "image" | "other";
@@ -32,12 +34,27 @@ const VIEW_MODES: { id: ViewMode; icon: typeof LayoutList; label: string }[] = [
   { id: "domain", icon: FolderOpen, label: "By Domain" },
 ];
 
-const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+const URL_REGEX = LINK_REGEX;
 
 // Rows rendered at a time. A pasted list can hold thousands of links, and this
 // view stays mounted (hidden) behind the other archive tabs, so rendering them
 // all froze the page for seconds on every change.
 const PAGE = 200;
+
+/** Takes the link out of its note. Always visible on touch screens, on hover elsewhere. */
+function RemoveLinkButton({ onRemove, className }: { onRemove: () => void; className: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+      title="Remove this link from its note"
+      aria-label="Remove link"
+      className={`absolute z-10 rounded-md bg-background/80 border border-white/10 text-muted-foreground hover:text-destructive hover:border-destructive/40 opacity-0 group-hover/link:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity ${className}`}
+    >
+      <Trash2 size={12} />
+    </button>
+  );
+}
 
 function ShowMore({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
   if (shown >= total) return null;
@@ -112,122 +129,131 @@ function getHostname(url: string) {
 
 // ── Sub-renderers ──────────────────────────────────────────────
 
-function ListItem({ link, onContextMenu }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void }) {
+function ListItem({ link, onContextMenu, onRemove }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void }) {
   const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
   return (
-    <a
-      href={safeUrl(link.url) ?? undefined}
-      target="_blank"
-      rel="noopener noreferrer"
-      onContextMenu={onContextMenu}
-      className="block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
-    >
-      {ytId && (
-        <div className="mb-3 rounded-lg overflow-hidden aspect-video bg-muted">
-          <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
+    <div className="relative group/link">
+      <a
+        href={safeUrl(link.url) ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        onContextMenu={onContextMenu}
+        className="pr-11 block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
+      >
+        {ytId && (
+          <div className="mb-3 rounded-lg overflow-hidden aspect-video bg-muted">
+            <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
+          </div>
+        )}
+        {link.type === "image" && (
+          <div className="mb-3 rounded-lg overflow-hidden max-h-48 bg-muted">
+            <img src={link.url} alt="Image preview" className="w-full h-full object-contain" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+          </div>
+        )}
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 shrink-0 w-5 h-5 rounded bg-muted/50 flex items-center justify-center overflow-hidden">
+            {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{link.url}</p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10">
+                {link.type === "video" ? "🎬 Video" : link.type === "image" ? "🖼️ Image" : "🌐 Link"}
+              </Badge>
+              <span className="text-[10px] text-muted-foreground truncate">from: {link.blockTitle}</span>
+            </div>
+            {link.note && (
+              <p className="text-[10px] text-muted-foreground/70 mt-1 line-clamp-2 italic">{link.note}</p>
+            )}
+          </div>
         </div>
-      )}
-      {link.type === "image" && (
-        <div className="mb-3 rounded-lg overflow-hidden max-h-48 bg-muted">
-          <img src={link.url} alt="Image preview" className="w-full h-full object-contain" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
-        </div>
-      )}
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0 w-5 h-5 rounded bg-muted/50 flex items-center justify-center overflow-hidden">
-          {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{link.url}</p>
-          <div className="flex items-center gap-2 mt-1.5">
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10">
-              {link.type === "video" ? "🎬 Video" : link.type === "image" ? "🖼️ Image" : "🌐 Link"}
+      </a>
+      <RemoveLinkButton onRemove={onRemove} className="p-1.5 top-2.5 right-2.5" />
+    </div>
+  );
+}
+
+function GridCard({ link, onContextMenu, onRemove }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void }) {
+  const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
+  const favicon = getFavicon(link.url);
+  const hostname = getHostname(link.url);
+
+  return (
+    <div className="relative group/link h-full">
+      <a
+        href={safeUrl(link.url) ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        onContextMenu={onContextMenu}
+        className="h-full glass-card overflow-hidden hover:border-primary/30 border border-transparent transition-all group flex flex-col"
+      >
+        {ytId ? (
+          <div className="aspect-video bg-muted">
+            <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
+          </div>
+        ) : link.type === "image" ? (
+          <div className="aspect-square bg-muted">
+            <img src={link.url} alt="Image preview" className="w-full h-full object-contain" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+          </div>
+        ) : (
+          <div className="aspect-video bg-muted/30 flex flex-col items-center justify-center gap-2">
+            {favicon ? <img src={favicon} alt="" className="w-12 h-12" loading="lazy" /> : <span className="text-3xl">🔗</span>}
+            <span className="text-xs text-muted-foreground font-medium">{hostname}</span>
+          </div>
+        )}
+        <div className="p-2.5 flex-1 min-w-0">
+          <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
+          <div className="flex items-center gap-1.5 mt-1">
+            <Badge variant="outline" className="text-[9px] px-1 py-0 border-white/10">
+              {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
             </Badge>
-            <span className="text-[10px] text-muted-foreground truncate">from: {link.blockTitle}</span>
+            <span className="text-[9px] text-muted-foreground truncate">{link.blockTitle}</span>
           </div>
           {link.note && (
-            <p className="text-[10px] text-muted-foreground/70 mt-1 line-clamp-2 italic">{link.note}</p>
+            <p className="text-[9px] text-muted-foreground/70 mt-1 line-clamp-1 italic">{link.note}</p>
           )}
         </div>
-      </div>
-    </a>
+      </a>
+      <RemoveLinkButton onRemove={onRemove} className="p-1.5 top-2 right-2" />
+    </div>
   );
 }
 
-function GridCard({ link, onContextMenu }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void }) {
-  const ytId = link.type === "video" ? getYouTubeId(link.url) : null;
+function CompactRow({ link, onContextMenu, onRemove }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void }) {
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
   return (
-    <a
-      href={safeUrl(link.url) ?? undefined}
-      target="_blank"
-      rel="noopener noreferrer"
-      onContextMenu={onContextMenu}
-      className="glass-card overflow-hidden hover:border-primary/30 border border-transparent transition-all group flex flex-col"
-    >
-      {ytId ? (
-        <div className="aspect-video bg-muted">
-          <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Video thumbnail" className="w-full h-full object-cover" loading="lazy" />
+    <div className="relative group/link">
+      <a
+        href={safeUrl(link.url) ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        onContextMenu={onContextMenu}
+        className="pr-10 flex items-center gap-2 px-3 py-1.5 glass-card hover:border-primary/30 border border-transparent transition-all group"
+      >
+        <div className="shrink-0 w-4 h-4 rounded overflow-hidden flex items-center justify-center">
+          {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-[10px]">🔗</span>}
         </div>
-      ) : link.type === "image" ? (
-        <div className="aspect-square bg-muted">
-          <img src={link.url} alt="Image preview" className="w-full h-full object-contain" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
-        </div>
-      ) : (
-        <div className="aspect-video bg-muted/30 flex flex-col items-center justify-center gap-2">
-          {favicon ? <img src={favicon} alt="" className="w-12 h-12" loading="lazy" /> : <span className="text-3xl">🔗</span>}
-          <span className="text-xs text-muted-foreground font-medium">{hostname}</span>
-        </div>
-      )}
-      <div className="p-2.5 flex-1 min-w-0">
-        <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{hostname}</p>
-        <div className="flex items-center gap-1.5 mt-1">
-          <Badge variant="outline" className="text-[9px] px-1 py-0 border-white/10">
-            {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
-          </Badge>
-          <span className="text-[9px] text-muted-foreground truncate">{link.blockTitle}</span>
-        </div>
+        <span className="text-xs font-semibold text-foreground w-28 truncate shrink-0 group-hover:text-primary transition-colors">{hostname}</span>
+        <span className="text-xs text-muted-foreground truncate flex-1">{link.url}</span>
         {link.note && (
-          <p className="text-[9px] text-muted-foreground/70 mt-1 line-clamp-1 italic">{link.note}</p>
+          <span className="text-[9px] text-muted-foreground/60 truncate max-w-[180px] italic shrink-0">{link.note}</span>
         )}
-      </div>
-    </a>
+        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-white/10 shrink-0">
+          {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
+        </Badge>
+      </a>
+      <RemoveLinkButton onRemove={onRemove} className="p-1 top-1/2 -translate-y-1/2 right-1.5" />
+    </div>
   );
 }
 
-function CompactRow({ link, onContextMenu }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void }) {
-  const favicon = getFavicon(link.url);
-  const hostname = getHostname(link.url);
-
-  return (
-    <a
-      href={safeUrl(link.url) ?? undefined}
-      target="_blank"
-      rel="noopener noreferrer"
-      onContextMenu={onContextMenu}
-      className="flex items-center gap-2 px-3 py-1.5 glass-card hover:border-primary/30 border border-transparent transition-all group"
-    >
-      <div className="shrink-0 w-4 h-4 rounded overflow-hidden flex items-center justify-center">
-        {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-[10px]">🔗</span>}
-      </div>
-      <span className="text-xs font-semibold text-foreground w-28 truncate shrink-0 group-hover:text-primary transition-colors">{hostname}</span>
-      <span className="text-xs text-muted-foreground truncate flex-1">{link.url}</span>
-      {link.note && (
-        <span className="text-[9px] text-muted-foreground/60 truncate max-w-[180px] italic shrink-0">{link.note}</span>
-      )}
-      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-white/10 shrink-0">
-        {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
-      </Badge>
-    </a>
-  );
-}
-
-function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void }) {
+function DomainGroupView({ links, onContextMenu, onRemove }: { links: ExtractedLink[]; onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void; onRemove: (link: ExtractedLink) => void }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [groupsShown, setGroupsShown] = useState(PAGE);
   const [linksShown, setLinksShown] = useState<Record<string, number>>({});
@@ -270,7 +296,7 @@ function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onC
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {domainLinks.slice(0, shown).map((link, i) => (
-                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} />
+                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} onRemove={() => onRemove(link)} />
                 ))}
                 <ShowMore shown={shown} total={domainLinks.length} onMore={() => setLinksShown((p) => ({ ...p, [domain]: shown + PAGE }))} />
               </div>
@@ -285,7 +311,7 @@ function DomainGroupView({ links, onContextMenu }: { links: ExtractedLink[]; onC
 
 // ── Main Component ─────────────────────────────────────────────
 
-const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) => {
+const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock }: Props) => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<LinkType>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -316,6 +342,55 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
     });
     return c;
   }, [allLinks]);
+
+  // Removals run one at a time on the newest copy of the note, so two quick
+  // clicks in one note never write back a link the first one took out.
+  const blocksRef = useRef(blocks);
+  const written = useRef(new Map<string, ArchiveBlock>());
+  useEffect(() => { blocksRef.current = blocks; written.current.clear(); }, [blocks]);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const current = (id: string) => written.current.get(id) ?? blocksRef.current.find((b) => b.id === id);
+
+  const undoRemove = useCallback(async (before: ArchiveBlock, after: string) => {
+    const now = current(before.id);
+    if (!now || now.content !== after) {
+      toast.error("The note has changed since, so this can't be undone here. Edit the note instead.");
+      return;
+    }
+    const restored = { content: before.content, title: before.title, source_url: before.source_url };
+    if ((await updateBlock(before.id, restored)) === false) return;
+    written.current.set(before.id, { ...now, ...restored });
+    toast.success("Link restored");
+  }, [updateBlock]);
+
+  /**
+   * Take one link out of its note: its text goes from the content (and from
+   * source_url). A note that was only this link, under the title the inbox
+   * gave it, is deleted instead of left empty. Both can be undone.
+   */
+  const removeLink = useCallback((url: string, blockId: string) => {
+    queue.current = queue.current.then(async () => {
+      const block = current(blockId);
+      if (!block) return;
+      const content = removeUrl(block.content, url);
+      const source_url = block.source_url === url ? null : block.source_url;
+      if (content === block.content && source_url === block.source_url) return;
+      const titled = block.title === autoTitle(block.content);
+      if (!content && !source_url && titled) {
+        if ((await deleteBlock(block.id)) === false) return;
+        toast.success("Link removed. The note held only this link, so it was deleted.", {
+          action: { label: "Undo", onClick: () => void addBlock(block) },
+        });
+        return;
+      }
+      const next = { content, source_url, title: titled ? autoTitle(content) || block.title : block.title };
+      if ((await updateBlock(block.id, next)) === false) return;
+      written.current.set(block.id, { ...block, ...next });
+      toast.success("Link removed from the note", {
+        action: { label: "Undo", onClick: () => void undoRemove(block, next.content) },
+      });
+    }).catch(() => { /* the failure was toasted by the write */ });
+  }, [updateBlock, deleteBlock, addBlock, undoRemove]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, link: ExtractedLink) => {
     e.preventDefault();
@@ -384,7 +459,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {visible.map((link, i) => (
-            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
+            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} />
           ))}
           {more}
         </div>
@@ -392,7 +467,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {visible.map((link, i) => (
-              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
+              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} />
             ))}
           </div>
           {more}
@@ -400,12 +475,12 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
       ) : viewMode === "compact" ? (
         <div className="space-y-1">
           {visible.map((link, i) => (
-            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} />
+            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} />
           ))}
           {more}
         </div>
       ) : (
-        <DomainGroupView links={filtered} onContextMenu={handleContextMenu} />
+        <DomainGroupView links={filtered} onContextMenu={handleContextMenu} onRemove={(link) => removeLink(link.url, link.blockId)} />
       )}
 
       {/* Context menu */}
@@ -413,6 +488,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock }: Props) 
         menu={contextMenu}
         onClose={() => setContextMenu(null)}
         onEditBlock={handleEditBlock}
+        onRemoveLink={(url, block) => removeLink(url, block.id)}
         updateBlock={updateBlock}
       />
 

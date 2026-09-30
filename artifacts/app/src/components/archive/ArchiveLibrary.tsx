@@ -24,8 +24,8 @@ import { todayKey } from "@/lib/today";
 interface Props {
   blocks: ArchiveBlock[];
   loading: boolean;
-  updateBlock: (id: string, u: Partial<ArchiveBlock>) => Promise<void>;
-  deleteBlock: (id: string) => Promise<void>;
+  updateBlock: (id: string, u: Partial<ArchiveBlock>) => Promise<unknown>;
+  deleteBlock: (id: string) => Promise<unknown>;
   addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<unknown>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;

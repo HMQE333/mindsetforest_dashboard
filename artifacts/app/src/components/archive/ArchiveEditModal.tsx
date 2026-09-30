@@ -17,8 +17,8 @@ interface Props {
   block: ArchiveBlock | null;
   open: boolean;
   onClose: () => void;
-  onSave: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onSave: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
+  onDelete: (id: string) => Promise<unknown>;
   semanticSearch?: (query: string) => Promise<ArchiveBlock[]>;
   onEditBlock?: (block: ArchiveBlock) => void;
 }

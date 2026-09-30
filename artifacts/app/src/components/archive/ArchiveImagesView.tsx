@@ -17,8 +17,8 @@ interface ImageItem {
 interface Props {
   blocks: ArchiveBlock[];
   loading: boolean;
-  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<void>;
-  deleteBlock: (id: string) => Promise<void>;
+  updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
+  deleteBlock: (id: string) => Promise<unknown>;
 }
 
 function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
