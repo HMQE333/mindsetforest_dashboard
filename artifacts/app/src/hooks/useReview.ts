@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { todayKey } from "@/lib/today";
 import { loadReviewSnapshot } from "@/lib/review-load";
+import { LAUNCH_SETTLED_EVENT, launchHoldsPopups } from "@/lib/launch";
 import {
   monthlyDue,
   previousMonth,
@@ -199,8 +200,16 @@ export function useReview() {
   }, [user, loadQuestions]);
 
   // Open the first due review once per day, unless "later" was chosen or auto-open is off.
+  // When the app was opened straight into the assistant by a link, it waits
+  // until the assistant is closed (it would cover it and block "Tap to talk").
+  const [launchHold, setLaunchHold] = useState(launchHoldsPopups);
   useEffect(() => {
-    if (!autoOpen || open || due.length === 0) return;
+    const release = () => setLaunchHold(false);
+    window.addEventListener(LAUNCH_SETTLED_EVENT, release);
+    return () => window.removeEventListener(LAUNCH_SETTLED_EVENT, release);
+  }, []);
+  useEffect(() => {
+    if (!autoOpen || open || due.length === 0 || launchHold) return;
     const first = due[0];
     if (readJson<string>(laterKey(first)) === today) return;
     const t = window.setTimeout(() => { autoTimer.current = null; void start(first); }, 900);
@@ -210,7 +219,7 @@ export function useReview() {
       if (autoTimer.current === t) autoTimer.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoOpen, due.length, due[0]?.kind, due[0]?.period]);
+  }, [autoOpen, due.length, due[0]?.kind, due[0]?.period, launchHold]);
 
   const write = useCallback(async (status: "done" | "skipped", qa: { question: string; answer: string }[]) => {
     if (!user || !target) return false;

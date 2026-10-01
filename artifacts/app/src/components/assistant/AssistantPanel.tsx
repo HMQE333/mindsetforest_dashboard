@@ -300,6 +300,8 @@ export default function AssistantPanel() {
     lastModel,
     budgetExceeded,
     prefillRequest,
+    voiceRequested,
+    clearVoiceRequest,
   } = useAssistant();
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -382,11 +384,7 @@ export default function AssistantPanel() {
     const pending = messages.find((m) => m.id === pendingId);
     if (!pending || pending.actionsResolved) awaitingConfirmRef.current = null;
   }, [messages]);
-  const toggleVoiceMode = () => {
-    if (voice.active) {
-      voice.stop();
-      return;
-    }
+  const startVoice = () => {
     if (!voice.supported) {
       toast.error("This browser has no speech recognition. Use Chrome, Edge or Safari.");
       return;
@@ -395,6 +393,29 @@ export default function AssistantPanel() {
     voiceActiveRef.current = true;
     voice.start();
   };
+  const toggleVoiceMode = () => {
+    if (voice.active) {
+      voice.stop();
+      return;
+    }
+    startVoice();
+  };
+
+  // A `?assistant=voice` link asked for the conversation. A page opened from
+  // a link may not use the microphone or play sound before the first tap, so
+  // unless the browser already allows it, the panel shows one big "Tap to
+  // talk" (a shortcut app can tap it too, e.g. MacroDroid's UI Interaction).
+  const [tapToTalk, setTapToTalk] = useState(false);
+  useEffect(() => {
+    if (!voiceRequested || !open) return;
+    clearVoiceRequest();
+    if (voice.active) return;
+    const activated = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive === true;
+    if (activated) startVoice();
+    else setTapToTalk(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceRequested, open]);
+  useEffect(() => { if (!open) setTapToTalk(false); }, [open]);
 
   useEffect(() => {
     // An empty chat stays at the top, where the robot and the welcome are.
@@ -576,6 +597,28 @@ export default function AssistantPanel() {
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
               className={`fixed top-0 right-0 bottom-0 z-[9999] w-full ${isWatch ? "" : "sm:w-[380px]"} flex flex-col bg-card/95 backdrop-blur-2xl border-l border-white/10 shadow-2xl`}
             >
+              {tapToTalk && (
+                <div className="absolute inset-0 z-20 flex flex-col bg-card/95 backdrop-blur-2xl">
+                  <button
+                    onClick={() => { setTapToTalk(false); startVoice(); }}
+                    className="flex-1 flex flex-col items-center justify-center gap-4 text-foreground"
+                  >
+                    <span className="w-28 h-28 rounded-full gradient-purple glow-sm flex items-center justify-center animate-pulse">
+                      <Mic className="w-12 h-12 text-primary-foreground" />
+                    </span>
+                    <span className="text-2xl font-bold">Tap to talk</span>
+                    <span className="text-xs text-muted-foreground max-w-[240px] text-center">
+                      Tap anywhere. The browser needs one tap before it can listen and speak.
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setTapToTalk(false)}
+                    className="py-4 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Type instead
+                  </button>
+                </div>
+              )}
               {/* Header */}
               <div className={`flex items-center justify-between gap-1.5 border-b border-white/10 ${isWatch ? "px-2 py-1.5" : "px-4 py-3"}`}>
                 <div className="flex items-center gap-1.5 min-w-0">

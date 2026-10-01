@@ -57,6 +57,7 @@ import { replaceDashes } from "@/lib/text-style";
 import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap, type MissionMap } from "@/lib/mission-presets";
+import { settleLaunch } from "@/lib/launch";
 
 export interface AssistantMessage {
   id: string;
@@ -183,6 +184,7 @@ function useAssistantValue() {
   // Persist panel open/closed across reloads.
   const setOpen = useCallback((v: boolean) => {
     setOpenState(v);
+    if (!v) settleLaunch(); // popups held for a link launch may show now
     try {
       localStorage.setItem(OPEN_KEY, v ? "1" : "0");
     } catch {
@@ -252,21 +254,29 @@ function useAssistantValue() {
   }, [ensureDefaultScope, setOpen]);
 
   // Deep link: `?assistant=1` (e.g. a phone shake shortcut) opens the panel
-  // on load. The parameter is dropped afterwards so a reload does not repeat it.
+  // on load; `?assistant=voice` also starts the voice conversation (the
+  // panel asks for one tap first when the browser needs it). The parameter
+  // is dropped afterwards so a reload does not repeat it.
+  const [voiceRequested, setVoiceRequested] = useState(false);
+  const clearVoiceRequest = useCallback(() => setVoiceRequested(false), []);
   useEffect(() => {
+    const openFromLink = (value: string | null) => {
+      ensureDefaultScope();
+      setOpen(true);
+      if (value === "voice") setVoiceRequested(true);
+    };
     // With hash routing the parameter may also sit before the "#" (".../?assistant=1#/").
     const outer = new URLSearchParams(window.location.search);
     if (outer.has("assistant")) {
+      const value = outer.get("assistant");
       outer.delete("assistant");
       const rest = outer.toString();
       window.history.replaceState(window.history.state, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
-      ensureDefaultScope();
-      setOpen(true);
+      openFromLink(value);
     }
     const params = new URLSearchParams(location.search);
     if (!params.has("assistant")) return;
-    ensureDefaultScope();
-    setOpen(true);
+    openFromLink(params.get("assistant"));
     params.delete("assistant");
     const rest = params.toString();
     navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" }, { replace: true, state: location.state });
@@ -986,6 +996,8 @@ function useAssistantValue() {
     dismissActions,
     prefill,
     prefillRequest,
+    voiceRequested,
+    clearVoiceRequest,
   };
 }
 
