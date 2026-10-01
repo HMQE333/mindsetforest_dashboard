@@ -57,6 +57,8 @@ export interface UserPreferences {
   focusPulseStyle?: FocusPulseStyle;
   completionEffect?: CompletionEffect;
   showCompletionBadge?: boolean;
+  /** Buttons hidden from the Home header row: "focus" | "presets" | "review" | "shortcuts". */
+  hiddenHomeButtons?: string[];
   customAccentHue?: number | null;
   cardOpacity?: number;
   backgroundIntensity?: number;
@@ -339,7 +341,11 @@ export function useUserSettings() {
     setPreferences(prefs);
     const { error } = await persistOnboarding(customCategories, prefs);
     if (error) toast.error("Failed to save preferences");
-    else toast.success("Preferences saved");
+    else {
+      toast.success("Preferences saved");
+      // Every other open copy of the settings (Home, the header) re-reads, so a change shows at once.
+      emitAppEvent(USER_SETTINGS_CHANGED_EVENT);
+    }
   }, [user, customCategories, persistOnboarding]);
 
   const saveEnabledModules = useCallback(async (modules: string[], order?: string[]) => {
@@ -369,9 +375,8 @@ export function useUserSettings() {
     const newPrefs = { ...preferences, customKeybinds: keybinds || undefined };
     if (hotkeys !== undefined) newPrefs.hotkeys = hotkeys || undefined;
     await savePreferences(newPrefs);
+    // savePreferences told the other copies; the desktop tracker reads it on its next sync.
     if (user && hotkeys !== undefined) setHotkeysCache(user.id, hotkeys);
-    // Other open copies of the settings re-read; the desktop tracker reads it on its next sync.
-    emitAppEvent(USER_SETTINGS_CHANGED_EVENT);
   }, [savePreferences, preferences, user]);
 
   return {

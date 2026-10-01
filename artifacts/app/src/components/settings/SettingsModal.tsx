@@ -133,6 +133,14 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
                       onSaveCompletionBadge={(val) => {
                         settings.savePreferences({ ...settings.preferences, showCompletionBadge: val });
                       }}
+                      hiddenHomeButtons={settings.preferences.hiddenHomeButtons}
+                      onSaveHomeButtons={(hidden, enableFocus) => {
+                        const prefs = settings.preferences;
+                        const modules = enableFocus && prefs.enabledModules.length > 0 && !prefs.enabledModules.includes("monthly-focus")
+                          ? [...prefs.enabledModules, "monthly-focus"]
+                          : prefs.enabledModules;
+                        settings.savePreferences({ ...prefs, hiddenHomeButtons: hidden, enabledModules: modules });
+                      }}
                     />
                   )}
                   {activeTab === "theme" && (

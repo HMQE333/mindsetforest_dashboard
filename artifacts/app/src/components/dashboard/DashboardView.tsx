@@ -34,7 +34,9 @@ export default function DashboardView() {
   const { getCategories, preferences } = useUserSettings();
   const categories = getCategories();
   const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
-  const showMonthlyFocus = !preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus");
+  // Header buttons the user turned off in Settings -> Modules -> Buttons on Home.
+  const hiddenButtons = new Set(preferences.hiddenHomeButtons || []);
+  const showMonthlyFocus = (!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")) && !hiddenButtons.has("focus");
   const review = useReview();
   // Hiding Paths in Settings -> Modules hides its steps on Home too.
   const showPaths = !preferences.enabledModules.length || preferences.enabledModules.includes("paths");
@@ -217,14 +219,14 @@ export default function DashboardView() {
       <DashboardHero
         state={state}
         onResetDay={resetDay}
-        onShowShortcuts={() => setShowShortcuts(true)}
+        onShowShortcuts={hiddenButtons.has("shortcuts") ? undefined : () => setShowShortcuts(true)}
         heroLayout={preferences.heroLayout}
         extraActions={
           // Header controls next to Reset Day: monthly focus + the mission presets trigger.
           <>
             {showMonthlyFocus && <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} />}
-            <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />
-            {review.tableReady && (
+            {!hiddenButtons.has("presets") && <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />}
+            {review.tableReady && !hiddenButtons.has("review") && (
               <button
                 type="button"
                 onClick={review.openLatest}

@@ -5,7 +5,8 @@ import { HeroLayout } from "@/hooks/useUserSettings";
 interface DashboardHeroProps {
   state: DashboardState;
   onResetDay: () => void;
-  onShowShortcuts: () => void;
+  /** Left out when the shortcuts button is turned off (the "?" key still opens the panel). */
+  onShowShortcuts?: () => void;
   heroLayout?: HeroLayout;
   extraActions?: React.ReactNode;
 }
@@ -16,16 +17,18 @@ const stats = (state: DashboardState) => [
   { value: state.categoriesEngaged.size, label: "Categories" },
 ];
 
-function ActionButtons({ onResetDay, onShowShortcuts, extraActions }: { onResetDay: () => void; onShowShortcuts: () => void; extraActions?: React.ReactNode }) {
+function ActionButtons({ onResetDay, onShowShortcuts, extraActions }: { onResetDay: () => void; onShowShortcuts?: () => void; extraActions?: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-3">
       <button onClick={onResetDay} className="glass-card px-6 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Click to reset today's progress">
         🔄 Reset Day
       </button>
       {extraActions}
-      <button onClick={onShowShortcuts} className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Keyboard shortcuts (?)">
-        ⌨️
-      </button>
+      {onShowShortcuts && (
+        <button onClick={onShowShortcuts} className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Keyboard shortcuts (?)">
+          ⌨️
+        </button>
+      )}
     </div>
   );
 }
