@@ -24,9 +24,10 @@ import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
 import MonthlyFocusBanner from "./MonthlyFocusBanner";
+import OfflineNotice from "@/components/OfflineNotice";
 
 export default function DashboardView() {
-  const { state, loading, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -207,6 +208,9 @@ export default function DashboardView() {
       </div>
     );
   }
+
+  // Never show default missions in place of the real ones that could not load.
+  if (loadFailed) return <OfflineNotice onRetry={retryLoad} what="your missions" />;
 
   return (
     <div className="relative">

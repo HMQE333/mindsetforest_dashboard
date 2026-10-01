@@ -13,6 +13,7 @@ import DashboardView from "@/components/dashboard/DashboardView";
 import PathsView from "@/components/paths/PathsView";
 import OracleView from "@/components/oracle/OracleView";
 import OnboardingView from "@/components/onboarding/OnboardingView";
+import OfflineNotice from "@/components/OfflineNotice";
 import GuideSection from "@/components/landing/GuideSection";
 import ArchiveView from "@/components/archive/ArchiveView";
 import LibraryView from "@/components/library/LibraryView";
@@ -66,7 +67,7 @@ const Index = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const { needsOnboarding, loading: onboardingLoading, completeOnboarding } = useOnboarding();
+  const { needsOnboarding, loading: onboardingLoading, failed: onboardingFailed, retry: retryOnboarding, completeOnboarding } = useOnboarding();
   const quickCapture = useQuickCapture();
   const { preferences } = useUserSettings();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -151,6 +152,12 @@ const Index = () => {
     finance: "Finance", breathing: "Breathe", calendar: "Calendar", planning: "Planning",
     health: "Health",
   };
+
+  // No connection on the first read: say so, rather than run the app on
+  // defaults or offer the first-run setup to an existing account.
+  if (user && onboardingFailed) {
+    return <OfflineNotice fullScreen onRetry={retryOnboarding} />;
+  }
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {

@@ -15,17 +15,33 @@ export function useOnboarding() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  // The read failed (offline, server down). Not the same as "no row yet": a
+  // failed read must never show the first-run setup, whose choices would
+  // overwrite the real categories and missions.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
 
+    let cancelled = false;
     const check = async () => {
-      const { data } = await supabase
+      setLoading(true);
+      const { data, error } = await supabase
         .from("user_onboarding" as any)
         .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
+      if (cancelled) return;
 
+      if (error) {
+        setFailed(true);
+        setNeedsOnboarding(false);
+        setLoading(false);
+        return;
+      }
+      setFailed(false);
       if (!data) {
         setNeedsOnboarding(true);
       } else {
@@ -34,8 +50,9 @@ export function useOnboarding() {
       }
       setLoading(false);
     };
-    check();
-  }, [user]);
+    void check();
+    return () => { cancelled = true; };
+  }, [user, attempt]);
 
   const completeOnboarding = useCallback(async (categories?: CustomCategory[], customMissions?: Record<string, Mission[]>) => {
     if (!user) return;
@@ -59,5 +76,5 @@ export function useOnboarding() {
     if (categories) setCustomCategories(categories);
   }, [user]);
 
-  return { needsOnboarding, loading, customCategories, completeOnboarding };
+  return { needsOnboarding, loading, failed, retry, customCategories, completeOnboarding };
 }

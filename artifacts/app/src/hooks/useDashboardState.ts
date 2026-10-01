@@ -109,6 +109,8 @@ function useDashboardStateValue() {
   const userId = user?.id ?? null;
   const [state, setState] = useState<DashboardState>({ ...defaultState, dayKey: todayKey() });
   const [loading, setLoading] = useState(true);
+  // The last load failed: the view shows a notice instead of default missions.
+  const [loadFailed, setLoadFailed] = useState(false);
   // Bumped to read the row again once the app's day has moved on (see below).
   const [reloadNonce, setReloadNonce] = useState(0);
   // Days with a mission or XP logged (from daily_completions), plus today once a
@@ -142,6 +144,14 @@ function useDashboardStateValue() {
     if (error) toast({ title: "Save failed", description: "Could not save dashboard state.", variant: "destructive" });
   }, [userId]);
 
+  const retryLoad = useCallback(() => setReloadNonce(n => n + 1), []);
+  // After a failed load, read again as soon as the browser is back online.
+  useEffect(() => {
+    if (!loadFailed) return;
+    window.addEventListener("online", retryLoad);
+    return () => window.removeEventListener("online", retryLoad);
+  }, [loadFailed, retryLoad]);
+
   // Load from DB
   useEffect(() => {
     loadedRef.current = false;
@@ -172,12 +182,9 @@ function useDashboardStateValue() {
         // Transient load failure. Do NOT mark loaded . keeping loadedRef false
         // leaves persist() blocked so a subsequent mutation can't overwrite the
         // real (unread) row with default/stale state.
+        // Home shows a notice and the load is retried on reconnect.
+        setLoadFailed(true);
         setLoading(false);
-        toast({
-          title: "Load failed",
-          description: "Could not load your dashboard state. Please refresh.",
-          variant: "destructive",
-        });
         return;
       }
 
@@ -216,6 +223,7 @@ function useDashboardStateValue() {
         setState({ ...defaultState, dayKey: todayKey() });
       }
       loadedRef.current = true;
+      setLoadFailed(false);
       setLoading(false);
       // Save the rollover, or every reload until the first completion of the
       // day would roll today's variants again.
@@ -605,6 +613,8 @@ function useDashboardStateValue() {
   return {
     state,
     loading,
+    loadFailed,
+    retryLoad,
     completeMission,
     uncompleteMission,
     removeMission,
