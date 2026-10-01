@@ -160,6 +160,7 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
                   {activeTab === "keybinds" && (
                     <KeybindsTab
                       customKeybinds={settings.preferences.customKeybinds}
+                      customHotkeys={settings.preferences.hotkeys}
                       onSave={settings.saveKeybinds}
                     />
                   )}

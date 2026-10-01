@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import psutil
 
@@ -112,7 +113,8 @@ class TrackerApp:
     def __init__(self, config: Config, store: Store, auth: SupabaseAuth, sampler: Sampler,
                  tracker: SessionTracker, client: SyncClient, sync_worker: SyncWorker,
                  device_id: str, clock: Callable[[], float] = time.time,
-                 archive: ArchiveClient | None = None) -> None:
+                 archive: ArchiveClient | None = None,
+                 hotkey_factory: Callable[..., Any] | None = None) -> None:
         self.clock = clock
         self.config = config
         self.store = store
@@ -134,7 +136,13 @@ class TrackerApp:
         self._login_notified = False
         self.archive = archive
         self._private_keywords = list(config.private_keywords)
+        # The save-to-Archive hotkey: config.json's until the dashboard sets one.
+        self._hotkey_factory = hotkey_factory
+        self._hotkey_listener: Any = None
+        self._hotkey_spec: str | None = None
+        self._hotkey_lock = threading.Lock()
         sync_worker.on_status = self.on_sync_status
+        sync_worker.on_capture_hotkey = self.on_capture_hotkey
         sync_worker.on_private_keywords = self.on_private_keywords
 
     # -- lifecycle -----------------------------------------------------------
@@ -142,6 +150,7 @@ class TrackerApp:
     def start(self) -> None:
         self.sync_worker.start()
         self._thread.start()
+        self.apply_capture_hotkey(self.config.capture_hotkey)
         log.info("Tracking started (device %s, %s)", self.device_id, self.config.device_name)
 
     def _capture_loop(self) -> None:  # pragma: no cover - threads
@@ -195,6 +204,7 @@ class TrackerApp:
         with self._lock:
             for session in self.tracker.close_current(self.clock()):
                 self.store.upsert_session(session, self.device_id)
+        self.apply_capture_hotkey("")
         self.sync_worker.stop()
         self.sync_worker.sync_once()
         self.store.close()
@@ -290,8 +300,30 @@ class TrackerApp:
 
     def capture_hint(self) -> str | None:
         """Tray line naming the hotkey, or None when it is off."""
-        hotkey = self.config.capture_hotkey
+        hotkey = self._hotkey_spec if self._hotkey_spec is not None else self.config.capture_hotkey
         return f"Save selection to Archive: {hotkey.title()}" if hotkey and self.archive else None
+
+    def on_capture_hotkey(self, spec: str | None) -> None:
+        """The dashboard's hotkey after a sync; None (never set there) falls back to config.json."""
+        self.apply_capture_hotkey(self.config.capture_hotkey if spec is None else spec)
+
+    def apply_capture_hotkey(self, spec: str) -> None:
+        """Switch the global hotkey to ``spec`` ("" turns it off); no-op when unchanged."""
+        spec = (spec or "").strip().lower()
+        with self._hotkey_lock:
+            if spec == self._hotkey_spec:
+                return
+            if self._hotkey_listener is not None:
+                self._hotkey_listener.stop()
+                self._hotkey_listener = None
+            self._hotkey_spec = spec
+            if spec and self.archive is not None and self._hotkey_factory is not None:
+                listener = self._hotkey_factory(spec, self.capture_selection,
+                                                on_fail=lambda msg: tray.notify(self.icon, msg))
+                listener.start()
+                self._hotkey_listener = listener
+        log.info("Save-to-Archive hotkey: %s", spec or "off")
+        self._refresh_menu()
 
     def save_text(self, text: str | None, window_title: str) -> str:
         """Save captured text as an Archive note; returns the balloon message.
@@ -347,7 +379,7 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     worker = SyncWorker(store, client, interval_seconds=config.sync_seconds)
     archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
     return TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
-                      archive=archive)
+                      archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -374,9 +406,6 @@ def main(argv: list[str] | None = None) -> int:
         else:
             log.info("No saved session: sign in from the tray menu")
         app.start()
-        if config.capture_hotkey and app.archive is not None and sys.platform == "win32":
-            HotkeyListener(config.capture_hotkey, app.capture_selection,
-                           on_fail=lambda msg: tray.notify(app.icon, msg)).start()
         if tray.TRAY_AVAILABLE and not args.no_tray:
             icon = tray.build_icon(app)
             app.icon = icon

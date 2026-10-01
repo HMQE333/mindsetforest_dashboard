@@ -8,7 +8,9 @@ import { TRACKER_METRICS, TrackerMetric } from "@/lib/tracker-data";
 import { REWARDS, Reward } from "@/lib/oracle-data";
 import { toast } from "sonner";
 import type { TrackerXpConfig } from "@/lib/tracker-xp";
-import { USER_SETTINGS_CHANGED_EVENT, onAppEvent } from "@/lib/app-events";
+import { USER_SETTINGS_CHANGED_EVENT, emitAppEvent, onAppEvent } from "@/lib/app-events";
+import type { HotkeyMap } from "@/lib/hotkeys";
+import { setHotkeysCache } from "@/hooks/useHotkeys";
 
 export interface CustomCategory {
   id: string;
@@ -46,6 +48,8 @@ export interface UserPreferences {
   accentColor?: AccentColor;
   frameStyle?: FrameStyle;
   customKeybinds?: Partial<KeybindMap>;
+  /** Shortcuts with a modifier (lib/hotkeys.ts); only the ones changed from the defaults. */
+  hotkeys?: Partial<HotkeyMap>;
   heroLayout?: HeroLayout;
   fontPair?: FontPair;
   backgroundPattern?: BackgroundPattern;
@@ -360,10 +364,15 @@ export function useUserSettings() {
     applyThemePreview(theme, accentColor, frameStyle || preferences.frameStyle || "default", fontPair || preferences.fontPair || "default", cardStyle || preferences.cardStyle || "default", newPrefs.customAccentHue, newPrefs.borderRadius, newPrefs.cardOpacity);
   }, [savePreferences, preferences]);
 
-  const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null) => {
+  /** Both kinds of shortcut in one write, so neither save can undo the other. */
+  const saveKeybinds = useCallback(async (keybinds: Partial<KeybindMap> | null, hotkeys?: Partial<HotkeyMap> | null) => {
     const newPrefs = { ...preferences, customKeybinds: keybinds || undefined };
+    if (hotkeys !== undefined) newPrefs.hotkeys = hotkeys || undefined;
     await savePreferences(newPrefs);
-  }, [savePreferences, preferences]);
+    if (user && hotkeys !== undefined) setHotkeysCache(user.id, hotkeys);
+    // Other open copies of the settings re-read; the desktop tracker reads it on its next sync.
+    emitAppEvent(USER_SETTINGS_CHANGED_EVENT);
+  }, [savePreferences, preferences, user]);
 
   return {
     loading,

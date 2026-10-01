@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 
 TABLE = "app_usage_sessions"
 PRIVACY_TABLE = "app_tracking_privacy"
+SETTINGS_TABLE = "user_onboarding"  # the dashboard's preferences (Settings -> Keybinds)
 MAX_BACKOFF = 600.0
 
 
@@ -70,6 +71,7 @@ class SyncClient:
                  http: Any | None = None, timeout: float = 20.0) -> None:
         self.base = f"{supabase_url.rstrip('/')}/rest/v1/{TABLE}"
         self.privacy_url = f"{supabase_url.rstrip('/')}/rest/v1/{PRIVACY_TABLE}?select=keywords"
+        self.settings_url = f"{supabase_url.rstrip('/')}/rest/v1/{SETTINGS_TABLE}?select=preferences"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
@@ -113,6 +115,20 @@ class SyncClient:
         rows = resp.json() or []
         return [str(k) for r in rows for k in (r.get("keywords") or [])]
 
+    def capture_hotkey(self) -> str | None:
+        """The save-to-Archive hotkey set in the dashboard, or None when it was never changed there.
+
+        "" means the user turned it off.
+        """
+        resp = self._request("get", self.settings_url, self.auth.headers(), None)
+        if resp.status_code != 200:
+            raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        rows = resp.json() or []
+        prefs = (rows[0].get("preferences") if rows else None) or {}
+        hotkeys = prefs.get("hotkeys") if isinstance(prefs, dict) else None
+        value = hotkeys.get("trackerCapture") if isinstance(hotkeys, dict) else None
+        return value.strip().lower() if isinstance(value, str) else None
+
     def _request(self, method: str, url: str, headers: dict, payload: list[dict] | None) -> Any:
         try:
             if method == "post":
@@ -148,6 +164,8 @@ class SyncWorker(threading.Thread):
         self.on_status = on_status
         # Called with the dashboard's private keywords after each good sync.
         self.on_private_keywords: Callable[[list[str]], None] | None = None
+        # Called with the dashboard's save-to-Archive hotkey (None: not set there).
+        self.on_capture_hotkey: Callable[[str | None], None] | None = None
         self.clock = clock
         self.status = SyncStatus()
         self._wake = threading.Event()
@@ -197,6 +215,7 @@ class SyncWorker(threading.Thread):
                 if uploaded:
                     log.info("Synced %d session row(s)", uploaded)
                 self._pull_private_keywords()
+                self._pull_capture_hotkey()
             except AuthRequired as exc:
                 self.status.needs_login = True
                 self.status.last_error = f"sign in required: {exc}"
@@ -232,6 +251,20 @@ class SyncWorker(threading.Thread):
             self.on_private_keywords(keywords)
         except Exception:
             log.exception("on_private_keywords callback failed")
+
+    def _pull_capture_hotkey(self) -> None:
+        """Fetch the hotkey set in the dashboard; a failure keeps the current one."""
+        if not self.on_capture_hotkey:
+            return
+        try:
+            spec = self.client.capture_hotkey()
+        except Exception as exc:
+            log.warning("Could not fetch the capture hotkey: %s", exc)
+            return
+        try:
+            self.on_capture_hotkey(spec)
+        except Exception:
+            log.exception("on_capture_hotkey callback failed")
 
     def _upload_individually(self, rows: Sequence[SessionRow]) -> int:
         """Upsert rows one at a time; quarantine the ones the server rejects."""

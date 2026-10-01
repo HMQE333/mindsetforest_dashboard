@@ -195,13 +195,18 @@ class HotkeyListener(threading.Thread):  # pragma: no cover - Windows only
         self.on_press = on_press
         self.on_fail = on_fail
         self._thread_id = 0
+        self._stopped = threading.Event()
 
     def run(self) -> None:
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
+        msg = wintypes.MSG()
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)  # create the queue before stop() can post to it
         self._thread_id = kernel32.GetCurrentThreadId()
+        if self._stopped.is_set():  # replaced before it got going
+            return
         try:
             mods, vk = parse_hotkey(self.spec)
         except ValueError as exc:
@@ -214,8 +219,6 @@ class HotkeyListener(threading.Thread):  # pragma: no cover - Windows only
             if self.on_fail:
                 self.on_fail(f"{self.spec} is taken by another app; set capture_hotkey in config.json")
             return
-        log.info("Save-to-Archive hotkey: %s", self.spec)
-        msg = wintypes.MSG()
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == WM_HOTKEY:
@@ -230,5 +233,6 @@ class HotkeyListener(threading.Thread):  # pragma: no cover - Windows only
             log.exception("capture failed")
 
     def stop(self) -> None:
+        self._stopped.set()
         if self._thread_id:
             ctypes.windll.user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)

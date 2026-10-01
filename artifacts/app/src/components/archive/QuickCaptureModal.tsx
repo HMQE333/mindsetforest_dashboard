@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import { toast } from "sonner";
+import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
+import { useHotkeys } from "@/hooks/useHotkeys";
 
 interface Props {
   open: boolean;
@@ -16,6 +18,7 @@ const QuickCaptureModal = ({ open, onClose }: Props) => {
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
   const { addBlock } = useArchiveState({ live: false });
+  const hotkeys = useHotkeys();
 
   const handleSave = async () => {
     if (!content.trim() && !title.trim()) return;
@@ -37,7 +40,7 @@ const QuickCaptureModal = ({ open, onClose }: Props) => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    if (matchesHotkey(e.nativeEvent, hotkeys.inboxSave)) {
       e.preventDefault();
       handleSave();
     }
@@ -64,7 +67,7 @@ const QuickCaptureModal = ({ open, onClose }: Props) => {
             className="min-h-[100px] bg-background/50 border-white/10 text-sm"
           />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground">⌘/Ctrl + Enter to save</span>
+            <span className="text-[10px] text-muted-foreground">{hotkeys.inboxSave ? `${formatHotkey(hotkeys.inboxSave)} to save` : ""}</span>
             <Button
               onClick={handleSave}
               disabled={saving || (!content.trim() && !title.trim())}

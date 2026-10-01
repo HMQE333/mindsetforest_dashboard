@@ -29,7 +29,9 @@ import BackgroundPattern from "@/components/BackgroundPattern";
 import FriendsButton from "@/components/friends/FriendsButton";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import { useFriends } from "@/hooks/useFriends";
-import { useAssistantCurrentScope } from "@/hooks/useAssistant";
+import { useAssistant, useAssistantCurrentScope } from "@/hooks/useAssistant";
+import { useHotkeys } from "@/hooks/useHotkeys";
+import { matchesHotkey } from "@/lib/hotkeys";
 import type { ScopeId } from "@/lib/assistant-context";
 
 type Tab = "dashboard" | "tracker" | "paths" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning" | "health";
@@ -78,6 +80,30 @@ const Index = () => {
   const [friendsOpen, setFriendsOpen] = useState(false);
   const { badgeCount } = useFriends();
   useAssistantCurrentScope(TAB_TO_SCOPE[activeTab] ?? null);
+  const assistant = useAssistant();
+  const hotkeys = useHotkeys();
+
+  // The user's own shortcuts that work anywhere in the app (Settings -> Keybinds).
+  useEffect(() => {
+    const goTo: [string, string][] = [
+      [hotkeys.goHome, "dashboard"], [hotkeys.goPaths, "paths"], [hotkeys.goArchive, "archive"], [hotkeys.goLibrary, "library"],
+    ];
+    const handler = (e: KeyboardEvent) => {
+      if (matchesHotkey(e, hotkeys.toggleAssistant)) {
+        e.preventDefault();
+        if (assistant.open) assistant.setOpen(false);
+        else assistant.openPanel();
+        return;
+      }
+      const target = goTo.find(([combo]) => matchesHotkey(e, combo));
+      if (target) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: target[1] } }));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [hotkeys, assistant]);
 
   // Cross-module navigation: Planning mentions and the Home strip jump to Paths,
   // and the assistant's `navigate` action opens any section or the settings.

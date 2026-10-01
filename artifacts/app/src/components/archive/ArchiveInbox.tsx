@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Upload, X, Sparkles, MessageSquare, Hash, Save, Loader2 } from "lucide-react";
 import { ArchiveSaveError, HASHTAG_REGEX, splitInboxItems, type ArchiveBlock } from "@/lib/archive-data";
+import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
+import { useHotkeys } from "@/hooks/useHotkeys";
 
 interface Props {
   addBlock: (b: Partial<ArchiveBlock>) => Promise<ArchiveBlock | null>;
@@ -28,6 +30,7 @@ const Kbd = ({ children }: { children: ReactNode }) => (
 
 const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
   const { user } = useAuth();
+  const hotkeys = useHotkeys();
   const [text, setText] = useState(() => {
     try { return localStorage.getItem(DRAFT_KEY) || ""; } catch { return ""; }
   });
@@ -238,21 +241,16 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
     setBusy(null);
   };
 
-  // Keyboard shortcuts. Scoped to textarea
+  // Keyboard shortcuts, scoped to the textarea; set in Settings -> Keybinds.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     e.stopPropagation();
-    const key = e.key.toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && key === "enter") {
-      e.preventDefault();
-      handleQuickSave();
-      return;
-    }
-    if (e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (key === "t") { e.preventDefault(); handleAITag(); }
-      else if (key === "c") { e.preventDefault(); handleAIClean(); }
-      else if (key === "p") { e.preventDefault(); setShowPromptInput((v) => !v); }
-    }
+    const ev = e.nativeEvent;
+    if (matchesHotkey(ev, hotkeys.inboxSave)) { e.preventDefault(); handleQuickSave(); }
+    else if (matchesHotkey(ev, hotkeys.inboxTags)) { e.preventDefault(); handleAITag(); }
+    else if (matchesHotkey(ev, hotkeys.inboxClean)) { e.preventDefault(); handleAIClean(); }
+    else if (matchesHotkey(ev, hotkeys.inboxPrompt)) { e.preventDefault(); setShowPromptInput((v) => !v); }
   };
+  const keyHint = (combo: string) => (combo ? ` (${formatHotkey(combo)})` : "");
 
   const actionBtn =
     "inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border transition-all duration-200 disabled:opacity-35 disabled:pointer-events-none";
@@ -325,7 +323,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
           <button
             onClick={() => handleAIClean()}
             disabled={!text.trim() || processing}
-            title="AI Clean + Split (Alt+C)"
+            title={`AI Clean + Split${keyHint(hotkeys.inboxClean)}`}
             className={ghostBtn}
           >
             {busy === "clean" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
@@ -334,7 +332,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
           <button
             onClick={handleAITag}
             disabled={!text.trim() || processing}
-            title="AI Tags (Alt+T). Appends #tags inline"
+            title={`AI Tags${keyHint(hotkeys.inboxTags)}. Appends #tags inline`}
             className={ghostBtn}
           >
             {busy === "tag" ? <Loader2 size={13} className="animate-spin" /> : <Hash size={13} />}
@@ -343,7 +341,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
           <button
             onClick={() => setShowPromptInput((v) => !v)}
             disabled={!text.trim() || processing}
-            title="AI by custom prompt (Alt+P)"
+            title={`AI by custom prompt${keyHint(hotkeys.inboxPrompt)}`}
             className={`${actionBtn} ${
               showPromptInput
                 ? "text-foreground border-primary/40 bg-primary/10"
@@ -356,7 +354,7 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
           <button
             onClick={handleQuickSave}
             disabled={items.length === 0 || processing}
-            title="Save (Ctrl+Enter)"
+            title={`Save${keyHint(hotkeys.inboxSave)}`}
             className={`${actionBtn} ml-auto px-4 font-semibold text-primary-foreground border-transparent bg-primary/85 hover:bg-primary hover:shadow-[0_0_16px_hsl(var(--primary)/0.35)]`}
           >
             {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
@@ -389,10 +387,13 @@ const ArchiveInbox = ({ addBlock, addBlocks, existingTags = [] }: Props) => {
 
         {/* Shortcut hints */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground/50">
-          <span className="flex items-center gap-1"><Kbd>Ctrl</Kbd><Kbd>↵</Kbd> save</span>
-          <span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>T</Kbd> tags</span>
-          <span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>C</Kbd> clean</span>
-          <span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>P</Kbd> prompt</span>
+          {([[hotkeys.inboxSave, "save"], [hotkeys.inboxTags, "tags"], [hotkeys.inboxClean, "clean"], [hotkeys.inboxPrompt, "prompt"]] as const)
+            .filter(([combo]) => combo)
+            .map(([combo, what]) => (
+              <span key={what} className="flex items-center gap-1">
+                {formatHotkey(combo).split("+").map((k) => <Kbd key={k}>{k === "Enter" ? "↵" : k}</Kbd>)} {what}
+              </span>
+            ))}
           <span className="ml-auto hidden sm:inline">highlight text to run AI on that part only</span>
         </div>
       </div>

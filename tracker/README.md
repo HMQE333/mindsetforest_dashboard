@@ -9,7 +9,7 @@
 > 5. `install-autostart.bat` - tracker bedzie startowal razem z Windows. `build.bat` buduje `dist\MindsetForestTracker\MindsetForestTracker.exe`, ktory nie wymaga Pythona.
 > 6. Statystyki, klasy i reguly ustawiasz tylko w panelu www (**Open dashboard** w menu ikonki). Z menu mozesz tez wstrzymac sledzenie (**Pause**) i wykluczyc aktualna aplikacje (**Don't track ...**).
 >
-> 7. **Zapis do Archive:** zaznacz tekst w dowolnym programie (Chrome, PDF, Word) i wcisnij **Alt+Shift+S**. Tekst trafia do Archive jako notatka z tagiem `quick-capture` i tytulem okna jako zrodlem. Skrot zmienisz w `config.json` (`capture_hotkey`, pusty = wylaczony).
+> 7. **Zapis do Archive:** zaznacz tekst w dowolnym programie (Chrome, PDF, Word) i wcisnij **Alt+Shift+S**. Tekst trafia do Archive jako notatka z tagiem `quick-capture` i tytulem okna jako zrodlem. Skrot zmienisz w panelu www (**Settings -> Keybinds**, tracker pobiera go w ciagu minuty) albo w `config.json` (`capture_hotkey`, pusty = wylaczony).
 >
 > Dane: `%APPDATA%\MindsetForest\` (baza `tracker.db`, log `tracker.log`, sesja `session.bin`).
 
@@ -140,9 +140,13 @@ A balloon confirms it, and the note is indexed for semantic search.
 * The copied text stays on the clipboard. If the save fails (offline), paste
   it into the Archive inbox later; nothing is lost.
 * A window the tracker treats as private gets no `Source:` line.
+* Set the hotkey in the dashboard (**Settings -> Keybinds -> On your PC**).
+  The tracker reads it at every sync (once a minute) and switches without a
+  restart; `""` there turns it off. Until it is set in the dashboard,
+  `capture_hotkey` in `config.json` applies.
 * Ctrl+Alt combinations are avoided: on Polish (AltGr) keyboards Ctrl+Alt+S
   types "s with an accent" and a global hotkey would swallow it. Any
-  `modifier+key` works (`ctrl+shift+f9`, `win+shift+s`, ...); `""` turns it off.
+  `modifier+key` works (`ctrl+shift+f9`, `win+shift+s`, ...).
   If another app already owns the combination, a balloon says so.
 
 ## Where data lands

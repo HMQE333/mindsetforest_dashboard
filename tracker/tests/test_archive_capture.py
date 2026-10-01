@@ -124,3 +124,85 @@ def test_save_text_messages(tmp_path):
     assert "clipboard" in app.save_text("hello", "Page")
     assert app.capture_hint() == "Save selection to Archive: Alt+Shift+S"
     app.store.close()
+
+
+class GetHttp:
+    """Answers GETs with one response."""
+
+    def __init__(self, response):
+        self.response = response
+        self.urls = []
+
+    def get(self, url, headers=None, timeout=None):
+        self.urls.append(url)
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+def test_capture_hotkey_from_the_dashboard(tmp_path):
+    from mindsetforest_tracker.sync import SyncClient
+
+    def client(body, status=200):
+        http = GetHttp(FakeResponse(status, body))
+        return SyncClient(URL, "anon", make_auth(tmp_path, http), http=http), http
+
+    c, http = client([{"preferences": {"hotkeys": {"trackerCapture": " Ctrl+Shift+F9 "}}}])
+    assert c.capture_hotkey() == "ctrl+shift+f9"
+    assert http.urls == [f"{URL}/rest/v1/user_onboarding?select=preferences"]
+    assert client([{"preferences": {"hotkeys": {"trackerCapture": ""}}}])[0].capture_hotkey() == ""
+    assert client([{"preferences": {"hotkeys": {"quickCapture": "alt+q"}}}])[0].capture_hotkey() is None
+    assert client([{"preferences": None}])[0].capture_hotkey() is None
+    assert client([])[0].capture_hotkey() is None
+    with pytest.raises(SyncError):
+        client({"message": "boom"}, status=500)[0].capture_hotkey()
+
+
+class FakeListener:
+    def __init__(self, spec, on_press, on_fail=None):
+        self.spec = spec
+        self.started = self.stopped = False
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+def test_hotkey_follows_the_dashboard(tmp_path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"supabase_url": URL, "supabase_anon_key": "anon", "capture_hotkey": "alt+shift+s"}))
+    app = build_app(load_config(cfg_path), tmp_path)
+    made = []
+    app._hotkey_factory = lambda spec, on_press, on_fail=None: made.append(FakeListener(spec, on_press, on_fail)) or made[-1]
+
+    app.apply_capture_hotkey(app.config.capture_hotkey)  # what start() does
+    assert [l.spec for l in made] == ["alt+shift+s"] and made[0].started
+    app.on_capture_hotkey(None)  # not set in the dashboard: config.json's stays, nothing restarts
+    assert len(made) == 1
+    app.on_capture_hotkey("ctrl+shift+f9")
+    assert made[0].stopped and made[1].spec == "ctrl+shift+f9" and made[1].started
+    assert app.capture_hint() == "Save selection to Archive: Ctrl+Shift+F9"
+    app.on_capture_hotkey("")  # turned off in the dashboard
+    assert made[1].stopped and len(made) == 2 and app.capture_hint() is None
+    app.store.close()
+
+
+def test_sync_pulls_the_hotkey(tmp_path):
+    from mindsetforest_tracker.store import Store
+    from mindsetforest_tracker.sync import SyncClient, SyncWorker
+
+    class Http(GetHttp):
+        def get(self, url, headers=None, timeout=None):
+            self.urls.append(url)
+            if "user_onboarding" in url:
+                return FakeResponse(200, [{"preferences": {"hotkeys": {"trackerCapture": "alt+shift+x"}}}])
+            return FakeResponse(200, [])
+
+    http = Http(None)
+    worker = SyncWorker(Store(), SyncClient(URL, "anon", make_auth(tmp_path, http), http=http), clock=lambda: 5000.0)
+    got = []
+    worker.on_capture_hotkey = got.append
+    worker.sync_once()
+    assert got == ["alt+shift+x"]
