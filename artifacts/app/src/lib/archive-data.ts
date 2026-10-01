@@ -104,7 +104,10 @@ export type ArchiveBlock = {
   directions: string[];
   tags: string[];
   source_url: string | null;
+  /** Kept at the top of the Library. */
   is_pinned: boolean;
+  /** Bookmarked: listed in Bookmarks. Missing on rows from the search RPC. */
+  is_starred?: boolean;
   created_at: string;
   updated_at: string;
   from_seed_id?: string | null;

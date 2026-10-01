@@ -61,9 +61,9 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
   const q = search.trim().toLowerCase();
 
   const notes = useMemo(() => {
-    const pinned = blocks.filter((b) => b.is_pinned);
-    if (!q) return pinned;
-    return pinned.filter((b) => b.title.toLowerCase().includes(q) || b.content.slice(0, 5000).toLowerCase().includes(q));
+    const starred = blocks.filter((b) => b.is_starred);
+    if (!q) return starred;
+    return starred.filter((b) => b.title.toLowerCase().includes(q) || b.content.slice(0, 5000).toLowerCase().includes(q));
   }, [blocks, q]);
 
   const links = useMemo(() => {
@@ -104,7 +104,7 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
     deleteBookmark(id);
   };
 
-  const nothingYet = bookmarks.length === 0 && !blocks.some((b) => b.is_pinned);
+  const nothingYet = bookmarks.length === 0 && !blocks.some((b) => b.is_starred);
 
   return (
     <div className="space-y-4">
@@ -204,7 +204,7 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{b.content.slice(0, 300)}</p>
                     </button>
                     <button
-                      onClick={() => updateBlock(b.id, { is_pinned: false })}
+                      onClick={() => updateBlock(b.id, { is_starred: false })}
                       className="absolute top-3 right-3 text-amber-400 hover:opacity-70 transition-opacity"
                       title="Remove bookmark"
                       aria-label="Remove bookmark"

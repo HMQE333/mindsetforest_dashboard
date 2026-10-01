@@ -256,6 +256,7 @@ export type Database = {
           from_seed_id: string | null
           id: string
           is_pinned: boolean
+          is_starred: boolean
           pillars: string[]
           source_url: string | null
           tags: string[]
@@ -271,6 +272,7 @@ export type Database = {
           from_seed_id?: string | null
           id?: string
           is_pinned?: boolean
+          is_starred?: boolean
           pillars?: string[]
           source_url?: string | null
           tags?: string[]
@@ -286,6 +288,7 @@ export type Database = {
           from_seed_id?: string | null
           id?: string
           is_pinned?: boolean
+          is_starred?: boolean
           pillars?: string[]
           source_url?: string | null
           tags?: string[]

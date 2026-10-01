@@ -130,14 +130,22 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               {block.content.replace(IMAGE_TAG_REGEX, "").trim().slice(0, 600) || "Image block"}
             </p>
           </div>
-          {/* A bookmarked note (is_pinned) is listed in Bookmarks and shown first here. */}
+          {/* Two separate things: the pin keeps a note at the top here, the star lists it in Bookmarks. */}
           <button
             onClick={(e) => { e.stopPropagation(); onUpdate(block.id, { is_pinned: !block.is_pinned }); }}
-            className={`mt-1 text-sm transition-opacity ${block.is_pinned ? "opacity-100 text-amber-400" : "opacity-0 group-hover:opacity-60 [@media(hover:none)]:opacity-40 hover:!opacity-100 text-muted-foreground"}`}
-            title={block.is_pinned ? "Remove bookmark" : "Bookmark"}
-            aria-label={block.is_pinned ? "Remove bookmark" : "Bookmark this note"}
+            className={`mt-1 text-sm transition-opacity ${block.is_pinned ? "opacity-100" : "opacity-0 grayscale group-hover:opacity-60 [@media(hover:none)]:opacity-40 hover:!opacity-100"}`}
+            title={block.is_pinned ? "Unpin" : "Pin to the top"}
+            aria-label={block.is_pinned ? "Unpin" : "Pin this note"}
           >
-            {block.is_pinned ? "★" : "☆"}
+            📌
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdate(block.id, { is_starred: !block.is_starred }); }}
+            className={`mt-1 text-sm transition-opacity ${block.is_starred ? "opacity-100 text-amber-400" : "opacity-0 group-hover:opacity-60 [@media(hover:none)]:opacity-40 hover:!opacity-100 text-muted-foreground"}`}
+            title={block.is_starred ? "Remove bookmark" : "Bookmark"}
+            aria-label={block.is_starred ? "Remove bookmark" : "Bookmark this note"}
+          >
+            {block.is_starred ? "★" : "☆"}
           </button>
           {onPlant && (
             <button
@@ -257,7 +265,8 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             >
               <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  {block.is_pinned && <span className="text-base shrink-0 text-amber-400">★</span>}
+                  {block.is_pinned && <span className="text-base shrink-0" title="Pinned">📌</span>}
+                  {block.is_starred && <span className="text-base shrink-0 text-amber-400" title="Bookmarked">★</span>}
                   <h2 className="font-bold text-foreground text-lg truncate">{displayTitle}</h2>
                 </div>
                 <button

@@ -7,7 +7,7 @@ import { youtubeId } from "@/lib/youtube";
 /**
  * A bookmarked URL: added by hand, or a link bookmarked from a note (then
  * `blockId` is that note). Bookmarked notes themselves are archive blocks
- * with is_pinned set; the Bookmarks tab shows both.
+ * with is_starred set; the Bookmarks tab shows both.
  */
 export interface Bookmark {
   id: string;

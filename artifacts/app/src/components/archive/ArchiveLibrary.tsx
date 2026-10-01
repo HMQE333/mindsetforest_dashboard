@@ -91,7 +91,9 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
 
   const filtered = useMemo(() => {
     if (smartSearch && semanticResults !== null) {
-      let list = semanticResults;
+      // Search rows are a snapshot; the live block carries the current pin and star.
+      const live = new Map(blocks.map((b) => [b.id, b]));
+      let list = semanticResults.map((r) => live.get(r.id) ?? r);
       if (filterPillar) list = list.filter((b) => b.pillars.includes(filterPillar));
       if (hideLinks) list = list.filter((b) => !URL_REGEX.test(b.content) && !b.source_url);
       return [...list.filter((b) => b.is_pinned), ...list.filter((b) => !b.is_pinned)];

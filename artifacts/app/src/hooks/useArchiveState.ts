@@ -28,7 +28,7 @@ async function embedInBackground(ids: string[], concurrency = 3) {
 
 // Every column but the embedding: the vectors are only read server-side, and
 // each one is ~20 KB of text the list never shows.
-const BLOCK_COLUMNS = "id,user_id,title,content,pillars,directions,tags,source_url,is_pinned,created_at,updated_at,from_seed_id";
+const BLOCK_COLUMNS = "id,user_id,title,content,pillars,directions,tags,source_url,is_pinned,is_starred,created_at,updated_at,from_seed_id";
 
 /** A video summary that matched a meaning search. */
 export interface VideoMatch {

@@ -1,18 +1,19 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight, Trash2, FileText, Loader2 } from "lucide-react";
+import { LayoutList, LayoutGrid, AlignJustify, FolderOpen, ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { autoTitle, LINK_REGEX, removeUrls, type ArchiveBlock } from "@/lib/archive-data";
 import type { useBookmarks } from "@/hooks/useBookmarks";
 import ArchiveEditModal from "./ArchiveEditModal";
-import LinkContextMenu, { type ContextMenuState } from "./LinkContextMenu";
+import LinkContextMenu, { DomainContextMenu, type ContextMenuState, type DomainMenuState } from "./LinkContextMenu";
 import VideoSummaryPanel, { type VideoPanelTarget } from "./VideoSummaryPanel";
 import WorkshopLibraryPanel from "./WorkshopLibraryPanel";
 import { summaryBusy, useLinkSummaryIndex, type LinkSummaryMeta } from "@/hooks/useLinkSummaries";
 import { youtubeId } from "@/lib/youtube";
 import { safeUrl } from "@/lib/safe-url";
+import { hasMouse } from "@/lib/pointer";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -67,21 +68,6 @@ function SummaryMarker({ summary, onOpen }: { summary?: LinkSummaryMeta; onOpen?
       className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors shrink-0"
     >
       {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />} Summary
-    </button>
-  );
-}
-
-/** Takes links out of their notes. Always visible on touch screens, on hover elsewhere. */
-function RemoveLinkButton({ onRemove, className, title = "Remove this link from its note", label = "Remove link" }: { onRemove: () => void; className: string; title?: string; label?: string }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-      title={title}
-      aria-label={label}
-      className={`absolute z-10 rounded-md bg-background/80 border border-white/10 text-muted-foreground hover:text-destructive hover:border-destructive/40 opacity-0 group-hover/link:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity ${className}`}
-    >
-      <Trash2 size={12} />
     </button>
   );
 }
@@ -150,19 +136,19 @@ function getHostname(url: string) {
 
 // ── Sub-renderers ──────────────────────────────────────────────
 
-function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
+function ListItem({ link, onContextMenu, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
   const ytId = link.type === "video" ? youtubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
   return (
-    <div className="relative group/link">
+    <div>
       <a
         href={safeUrl(link.url) ?? undefined}
         target="_blank"
         rel="noopener noreferrer"
         onContextMenu={onContextMenu}
-        className="pr-11 block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
+        className="block glass-card p-3 hover:border-primary/30 border border-transparent transition-all group"
       >
         {ytId && (
           <div className="mb-3 rounded-lg overflow-hidden aspect-video bg-muted">
@@ -194,18 +180,17 @@ function ListItem({ link, onContextMenu, onRemove, summary, onOpenSummary, bookm
           </div>
         </div>
       </a>
-      <RemoveLinkButton onRemove={onRemove} className="p-1.5 top-2.5 right-2.5" />
     </div>
   );
 }
 
-function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
+function GridCard({ link, onContextMenu, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
   const ytId = link.type === "video" ? youtubeId(link.url) : null;
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
   return (
-    <div className="relative group/link h-full">
+    <div className="h-full">
       <a
         href={safeUrl(link.url) ?? undefined}
         target="_blank"
@@ -241,23 +226,22 @@ function GridCard({ link, onContextMenu, onRemove, summary, onOpenSummary, bookm
           )}
         </div>
       </a>
-      <RemoveLinkButton onRemove={onRemove} className="p-1.5 top-2 right-2" />
     </div>
   );
 }
 
-function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; onRemove: () => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
+function CompactRow({ link, onContextMenu, summary, onOpenSummary, bookmarked }: { link: ExtractedLink; onContextMenu: (e: React.MouseEvent) => void; summary?: LinkSummaryMeta; onOpenSummary?: () => void; bookmarked?: boolean }) {
   const favicon = getFavicon(link.url);
   const hostname = getHostname(link.url);
 
   return (
-    <div className="relative group/link">
+    <div>
       <a
         href={safeUrl(link.url) ?? undefined}
         target="_blank"
         rel="noopener noreferrer"
         onContextMenu={onContextMenu}
-        className="pr-10 flex items-center gap-2 px-3 py-1.5 glass-card hover:border-primary/30 border border-transparent transition-all group"
+        className="flex items-center gap-2 px-3 py-1.5 glass-card hover:border-primary/30 border border-transparent transition-all group"
       >
         <div className="shrink-0 w-4 h-4 rounded overflow-hidden flex items-center justify-center">
           {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-[10px]">🔗</span>}
@@ -272,16 +256,15 @@ function CompactRow({ link, onContextMenu, onRemove, summary, onOpenSummary, boo
           {link.type === "video" ? "🎬" : link.type === "image" ? "🖼️" : "🌐"}
         </Badge>
       </a>
-      <RemoveLinkButton onRemove={onRemove} className="p-1 top-1/2 -translate-y-1/2 right-1.5" />
     </div>
   );
 }
 
-function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summaryOf, onOpenSummary, isBookmarked }: {
+function DomainGroupView({ links, onContextMenu, onDomainMenu, summaryOf, onOpenSummary, isBookmarked }: {
   links: ExtractedLink[];
   onContextMenu: (e: React.MouseEvent, link: ExtractedLink) => void;
-  onRemove: (link: ExtractedLink) => void;
-  onRemoveDomain: (domain: string, links: ExtractedLink[]) => void;
+  /** Right-click on a domain (PC only): the menu that removes all its links. */
+  onDomainMenu: (e: React.MouseEvent, domain: string, links: ExtractedLink[]) => void;
   summaryOf: (link: ExtractedLink) => LinkSummaryMeta | undefined;
   onOpenSummary: (link: ExtractedLink) => void;
   isBookmarked: (url: string) => boolean;
@@ -310,10 +293,11 @@ function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summa
         const favicon = getFavicon(domainLinks[0].url);
         return (
           <div key={domain}>
-            <div className="relative group/link">
+            <div>
               <button
                 onClick={() => toggle(domain)}
-                className="w-full glass-card p-3 pr-12 flex items-center gap-3 hover:border-primary/30 border border-transparent transition-all"
+                onContextMenu={(e) => onDomainMenu(e, domain, domainLinks)}
+                className="w-full glass-card p-3 flex items-center gap-3 hover:border-primary/30 border border-transparent transition-all"
               >
                 <div className="shrink-0 w-5 h-5 rounded overflow-hidden flex items-center justify-center">
                   {favicon ? <img src={favicon} alt="" className="w-4 h-4" loading="lazy" /> : <span className="text-xs">🔗</span>}
@@ -326,17 +310,11 @@ function DomainGroupView({ links, onContextMenu, onRemove, onRemoveDomain, summa
                   {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </div>
               </button>
-              <RemoveLinkButton
-                onRemove={() => onRemoveDomain(domain, domainLinks)}
-                title={`Remove all ${domainLinks.length} links from ${domain}`}
-                label={`Remove all links from ${domain}`}
-                className="p-1.5 top-1/2 -translate-y-1/2 right-2.5"
-              />
             </div>
             {isOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {domainLinks.slice(0, shown).map((link, i) => (
-                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} onRemove={() => onRemove(link)} summary={summaryOf(link)} onOpenSummary={() => onOpenSummary(link)} bookmarked={isBookmarked(link.url)} />
+                  <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => onContextMenu(e, link)} summary={summaryOf(link)} onOpenSummary={() => onOpenSummary(link)} bookmarked={isBookmarked(link.url)} />
                 ))}
                 <ShowMore shown={shown} total={domainLinks.length} onMore={() => setLinksShown((p) => ({ ...p, [domain]: shown + PAGE }))} />
               </div>
@@ -498,8 +476,14 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock,
   const [workshopsOpen, setWorkshopsOpen] = useState(false);
   const workshopCount = useMemo(() => [...summaries.values()].filter((s) => s.workshop_status === "ready").length, [summaries]);
 
-  // Removing a whole domain asks first.
+  // Removing a whole domain: right-click on it (PC only), then confirm.
+  const [domainMenu, setDomainMenu] = useState<(DomainMenuState & { links: ExtractedLink[] }) | null>(null);
   const [confirmDomain, setConfirmDomain] = useState<{ domain: string; links: ExtractedLink[] } | null>(null);
+  const handleDomainMenu = useCallback((e: React.MouseEvent, domain: string, links: ExtractedLink[]) => {
+    if (!hasMouse()) return;
+    e.preventDefault();
+    setDomainMenu({ x: e.clientX, y: e.clientY, domain, count: links.length, links });
+  }, []);
   const confirmNotes = confirmDomain ? new Set(confirmDomain.links.map((l) => l.blockId)).size : 0;
 
   const handleContextMenu = useCallback((e: React.MouseEvent, link: ExtractedLink) => {
@@ -578,7 +562,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock,
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {visible.map((link, i) => (
-            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
+            <ListItem key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
           ))}
           {more}
         </div>
@@ -586,7 +570,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock,
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {visible.map((link, i) => (
-              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
+              <GridCard key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
             ))}
           </div>
           {more}
@@ -594,7 +578,7 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock,
       ) : viewMode === "compact" ? (
         <div className="space-y-1">
           {visible.map((link, i) => (
-            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} onRemove={() => removeLink(link.url, link.blockId)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
+            <CompactRow key={`${link.url}-${i}`} link={link} onContextMenu={(e) => handleContextMenu(e, link)} summary={summaryOf(link)} onOpenSummary={() => openVideo(link.url)} bookmarked={isMarked(link.url)} />
           ))}
           {more}
         </div>
@@ -602,11 +586,10 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock,
         <DomainGroupView
           links={filtered}
           onContextMenu={handleContextMenu}
-          onRemove={(link) => removeLink(link.url, link.blockId)}
+          onDomainMenu={handleDomainMenu}
           summaryOf={summaryOf}
           onOpenSummary={(link) => openVideo(link.url)}
           isBookmarked={isMarked}
-          onRemoveDomain={(domain, links) => setConfirmDomain({ domain, links })}
         />
       )}
 
@@ -648,7 +631,12 @@ const ArchiveLinksView = ({ blocks, loading, updateBlock, deleteBlock, addBlock,
         onOpenVideo={(url) => { setWorkshopsOpen(false); openVideo(url); }}
       />
 
-      {/* Context menu */}
+      {/* Context menus */}
+      <DomainContextMenu
+        menu={domainMenu}
+        onClose={() => setDomainMenu(null)}
+        onRemoveAll={() => domainMenu && setConfirmDomain({ domain: domainMenu.domain, links: domainMenu.links })}
+      />
       <LinkContextMenu
         menu={contextMenu}
         onClose={() => setContextMenu(null)}

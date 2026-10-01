@@ -8,6 +8,7 @@ import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { safeUrl } from "@/lib/safe-url";
+import { hasMouse } from "@/lib/pointer";
 
 interface ContextMenuState {
   x: number;
@@ -29,14 +30,13 @@ interface Props {
   updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
-const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor, onVideo, isBookmarked, onToggleBookmark, updateBlock }: Props) => {
-  const allPillars = usePillars();
-  const [subView, setSubView] = useState<null | "note" | "tags">(null);
-  const [noteText, setNoteText] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+const menuItem = "flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-white/5 transition-colors text-left rounded-md";
+const separator = "border-t border-white/10 my-1";
 
+/** Closes a menu on a click outside it or on Escape. */
+function useDismiss(open: boolean, ref: React.RefObject<HTMLDivElement>, onClose: () => void) {
   useEffect(() => {
-    if (!menu) return;
+    if (!open) return;
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
@@ -49,7 +49,16 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor,
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [menu, onClose]);
+  }, [open, ref, onClose]);
+}
+
+const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor, onVideo, isBookmarked, onToggleBookmark, updateBlock }: Props) => {
+  const allPillars = usePillars();
+  const [subView, setSubView] = useState<null | "note" | "tags">(null);
+  const [noteText, setNoteText] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useDismiss(!!menu, ref, onClose);
 
   useEffect(() => {
     setSubView(null);
@@ -107,9 +116,6 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor,
     block.pillars = newPillars;
   };
 
-
-  const menuItem = "flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-white/5 transition-colors text-left rounded-md";
-  const separator = "border-t border-white/10 my-1";
 
   if (subView === "note") {
     return (
@@ -205,14 +211,45 @@ const LinkContextMenu = ({ menu, onClose, onEditBlock, onRemoveLink, summaryFor,
         <Tag size={14} className="text-muted-foreground" /> Edit Pillars
       </button>
 
-      <div className={separator} />
+      {hasMouse() && (
+        <>
+          <div className={separator} />
+          <button onClick={handleRemoveLink} className={`${menuItem} text-destructive hover:bg-destructive/10`}>
+            <Trash2 size={14} /> Remove Link
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
 
-      <button onClick={handleRemoveLink} className={`${menuItem} text-destructive hover:bg-destructive/10`}>
-        <Trash2 size={14} /> Remove Link
+interface DomainMenuState {
+  x: number;
+  y: number;
+  domain: string;
+  count: number;
+}
+
+/** The right-click menu on a domain in the By Domain view (PC only). */
+export const DomainContextMenu = ({ menu, onClose, onRemoveAll }: { menu: DomainMenuState | null; onClose: () => void; onRemoveAll: (domain: string) => void }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(!!menu, ref, onClose);
+  if (!menu) return null;
+  const style: React.CSSProperties = {
+    position: "fixed",
+    left: Math.min(menu.x, window.innerWidth - 300),
+    top: Math.max(8, Math.min(menu.y, window.innerHeight - 80)),
+    zIndex: 9999,
+  };
+  return (
+    <div ref={ref} style={style} className="w-72 glass-card border border-white/15 rounded-xl py-1.5 shadow-2xl">
+      <button onClick={() => { onRemoveAll(menu.domain); onClose(); }} className={`${menuItem} text-destructive hover:bg-destructive/10`}>
+        <Trash2 size={14} className="shrink-0" />
+        <span className="truncate">Remove all {menu.count} {menu.count === 1 ? "link" : "links"} from {menu.domain}…</span>
       </button>
     </div>
   );
 };
 
 export default LinkContextMenu;
-export type { ContextMenuState };
+export type { ContextMenuState, DomainMenuState };
