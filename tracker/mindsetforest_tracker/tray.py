@@ -1,8 +1,8 @@
 """System tray icon (pystray) and the one tiny tkinter dialog for signing in.
 
 The tray is the only local UI: a status line, Pause/Resume, "Don't track
-<app>", "Open dashboard", "Sign in..." (only when no session is saved) and
-Quit. Everything it does goes through ``TrayController`` so the tray has no
+<app>", "Open dashboard", "Sign in..." (only when no session is saved), a
+line naming the save-to-Archive hotkey and Quit. Everything it does goes through ``TrayController`` so the tray has no
 state of its own. pystray/tkinter are optional imports so tests run on Linux.
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ class TrayController(Protocol):
     def ignore_current_app(self) -> None: ...
     def needs_login(self) -> bool: ...
     def sign_in(self, email: str, password: str) -> str | None: ...
+    def capture_hint(self) -> str | None: ...
     def quit(self) -> None: ...
 
 
@@ -100,6 +101,8 @@ def build_icon(controller: TrayController) -> Any:
         pystray.MenuItem("Open dashboard", lambda _i, _it: webbrowser.open(controller.dashboard_url),
                          enabled=lambda _i: bool(controller.dashboard_url)),
         pystray.MenuItem("Sign in...", on_sign_in, visible=lambda _i: controller.needs_login()),
+        pystray.MenuItem(lambda _i: controller.capture_hint() or "", None, enabled=False,
+                         visible=lambda _i: bool(controller.capture_hint())),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", on_quit),
     )

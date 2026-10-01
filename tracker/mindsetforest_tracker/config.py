@@ -37,6 +37,8 @@ class Config:
     # list (Stats -> Computer -> Private) is pulled at every sync and added to it.
     private_keywords: list[str] = field(default_factory=list)
     min_session_seconds: int = 2
+    # Global hotkey that saves the selected text to the Archive ("" turns it off).
+    capture_hotkey: str = "alt+shift+s"
     path: Path | None = field(default=None, compare=False)
 
     def is_ignored(self, app_name: str) -> bool:
@@ -96,6 +98,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg.ignored_apps = [str(a) for a in (cfg.ignored_apps or [])]
     cfg.private_keywords = [str(k) for k in (cfg.private_keywords or [])]
     cfg.supabase_url = cfg.supabase_url.rstrip("/")
+    cfg.capture_hotkey = str(cfg.capture_hotkey or "").strip().lower()
     return cfg
 
 

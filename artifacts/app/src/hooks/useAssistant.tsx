@@ -251,6 +251,28 @@ function useAssistantValue() {
     setOpen(true);
   }, [ensureDefaultScope, setOpen]);
 
+  // Deep link: `?assistant=1` (e.g. a phone shake shortcut) opens the panel
+  // on load. The parameter is dropped afterwards so a reload does not repeat it.
+  useEffect(() => {
+    // With hash routing the parameter may also sit before the "#" (".../?assistant=1#/").
+    const outer = new URLSearchParams(window.location.search);
+    if (outer.has("assistant")) {
+      outer.delete("assistant");
+      const rest = outer.toString();
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
+      ensureDefaultScope();
+      setOpen(true);
+    }
+    const params = new URLSearchParams(location.search);
+    if (!params.has("assistant")) return;
+    ensureDefaultScope();
+    setOpen(true);
+    params.delete("assistant");
+    const rest = params.toString();
+    navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" }, { replace: true, state: location.state });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
+
   const sendMessage = useCallback(
     async (text: string, opts?: { voice?: boolean }): Promise<AssistantMessage | null> => {
       const trimmed = text.trim();

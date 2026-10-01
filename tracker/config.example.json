@@ -8,5 +8,6 @@
   "device_name": "",
   "min_session_seconds": 2,
   "ignored_apps": [],
-  "private_keywords": []
+  "private_keywords": [],
+  "capture_hotkey": "alt+shift+s"
 }

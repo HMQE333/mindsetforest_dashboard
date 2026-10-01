@@ -9,6 +9,8 @@
 > 5. `install-autostart.bat` - tracker bedzie startowal razem z Windows. `build.bat` buduje `dist\MindsetForestTracker\MindsetForestTracker.exe`, ktory nie wymaga Pythona.
 > 6. Statystyki, klasy i reguly ustawiasz tylko w panelu www (**Open dashboard** w menu ikonki). Z menu mozesz tez wstrzymac sledzenie (**Pause**) i wykluczyc aktualna aplikacje (**Don't track ...**).
 >
+> 7. **Zapis do Archive:** zaznacz tekst w dowolnym programie (Chrome, PDF, Word) i wcisnij **Alt+Shift+S**. Tekst trafia do Archive jako notatka z tagiem `quick-capture` i tytulem okna jako zrodlem. Skrot zmienisz w `config.json` (`capture_hotkey`, pusty = wylaczony).
+>
 > Dane: `%APPDATA%\MindsetForest\` (baza `tracker.db`, log `tracker.log`, sesja `session.bin`).
 
 A headless Windows agent that records which application (and window) is in the
@@ -126,6 +128,23 @@ sync, plus any in `private_keywords` in `config.json`. The database refuses the
 same windows too (`20260930120000_app_usage_privacy.sql`), so an older copy of
 this agent cannot store them either.
 
+## Save selection to Archive
+
+Select text in any app and press **Alt+Shift+S** (`capture_hotkey`). The
+tracker copies the selection the way Ctrl+C does and saves it as an Archive
+note (`archive_blocks`) under your account: the first 60 characters become
+the title, the window title (without the browser's name) is added as
+`Source:`, and the note is tagged `quick-capture` so it is easy to review.
+A balloon confirms it, and the note is indexed for semantic search.
+
+* The copied text stays on the clipboard. If the save fails (offline), paste
+  it into the Archive inbox later; nothing is lost.
+* A window the tracker treats as private gets no `Source:` line.
+* Ctrl+Alt combinations are avoided: on Polish (AltGr) keyboards Ctrl+Alt+S
+  types "s with an accent" and a global hotkey would swallow it. Any
+  `modifier+key` works (`ctrl+shift+f9`, `win+shift+s`, ...); `""` turns it off.
+  If another app already owns the combination, a balloon says so.
+
 ## Where data lands
 
 | what | where |
@@ -185,6 +204,7 @@ tracker/
     store.py      SQLite queue (sessions + kv)
     auth.py       Supabase password/refresh auth, DPAPI-encrypted session file
     sync.py       background upload thread with back-off
+    archive_capture.py  hotkey that saves the selected text to the Archive
     tray.py       pystray icon, menu, sign-in dialog
     main.py       wiring, single-instance guard, logging
   tests/          pytest suite (runs on Linux)

@@ -20,12 +20,14 @@ from pathlib import Path
 import psutil
 
 from . import tray
-from .auth import AuthError, SupabaseAuth
+from .archive_capture import ArchiveClient, HotkeyListener, clean_source, foreground_title, read_selection
+from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .capture import Sampler, default_sampler
 from .config import Config, app_data_dir, load_config, save_config
+from .privacy import is_private
 from .sessions import LOCKED_APP, SessionTracker, iso_utc
 from .store import Store
-from .sync import SyncClient, SyncStatus, SyncWorker
+from .sync import SyncClient, SyncError, SyncStatus, SyncWorker
 
 log = logging.getLogger("mindsetforest_tracker")
 PURGE_EVERY_SECONDS = 24 * 3600
@@ -109,7 +111,8 @@ class TrackerApp:
 
     def __init__(self, config: Config, store: Store, auth: SupabaseAuth, sampler: Sampler,
                  tracker: SessionTracker, client: SyncClient, sync_worker: SyncWorker,
-                 device_id: str, clock: Callable[[], float] = time.time) -> None:
+                 device_id: str, clock: Callable[[], float] = time.time,
+                 archive: ArchiveClient | None = None) -> None:
         self.clock = clock
         self.config = config
         self.store = store
@@ -129,6 +132,8 @@ class TrackerApp:
         self._last_menu_refresh = clock()
         self._last_purge = 0.0
         self._login_notified = False
+        self.archive = archive
+        self._private_keywords = list(config.private_keywords)
         sync_worker.on_status = self.on_sync_status
         sync_worker.on_private_keywords = self.on_private_keywords
 
@@ -278,7 +283,49 @@ class TrackerApp:
     def on_private_keywords(self, keywords: list[str]) -> None:
         """The dashboard's never-record keywords, on top of config.json's own."""
         with self._lock:  # the capture thread feeds the tracker under the same lock
-            self.tracker.set_private_keywords([*self.config.private_keywords, *keywords])
+            self._private_keywords = [*self.config.private_keywords, *keywords]
+            self.tracker.set_private_keywords(self._private_keywords)
+
+    # -- save selection to Archive ---------------------------------------------
+
+    def capture_hint(self) -> str | None:
+        """Tray line naming the hotkey, or None when it is off."""
+        hotkey = self.config.capture_hotkey
+        return f"Save selection to Archive: {hotkey.title()}" if hotkey and self.archive else None
+
+    def save_text(self, text: str | None, window_title: str) -> str:
+        """Save captured text as an Archive note; returns the balloon message.
+
+        The source line is the window title without the browser name, left
+        out for a window the tracker treats as private.
+        """
+        if self.archive is None:
+            return "Saving to Archive is not set up (supabase_url in config.json)"
+        if self.needs_login():
+            return "Sign in from the tray menu to save to Archive"
+        if not text or not text.strip():
+            return "Nothing selected: select some text, then press the hotkey"
+        source = "" if is_private(window_title, keywords=self._private_keywords) else clean_source(window_title)
+        try:
+            saved = self.archive.save(text, source)
+        except AuthUnavailable as exc:
+            log.warning("Save to Archive failed: %s", exc)
+            return "Couldn't save (no connection?). The text is still on your clipboard."
+        except AuthError:
+            return "Sign in again from the tray menu to save to Archive"
+        except SyncError as exc:
+            log.warning("Save to Archive failed: %s", exc)
+            return "Couldn't save (no connection?). The text is still on your clipboard."
+        if saved and saved.get("id"):
+            threading.Thread(target=self.archive.embed, args=(saved["id"],), name="mf-embed", daemon=True).start()
+        title = (saved or {}).get("title") or "note"
+        log.info("Saved selection to Archive (%d chars)", len(text))
+        return f"Saved to Archive: {title}"
+
+    def capture_selection(self) -> None:  # pragma: no cover - Windows only (hotkey thread)
+        title = foreground_title()
+        message = self.save_text(read_selection(), title)
+        tray.notify(self.icon, message)
 
     def on_sync_status(self, status: SyncStatus) -> None:
         if status.needs_login and not self._login_notified:
@@ -298,7 +345,9 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
                              private_keywords=config.private_keywords)
     client = SyncClient(config.supabase_url, config.supabase_anon_key, auth)
     worker = SyncWorker(store, client, interval_seconds=config.sync_seconds)
-    return TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id)
+    archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
+    return TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
+                      archive=archive)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -325,6 +374,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             log.info("No saved session: sign in from the tray menu")
         app.start()
+        if config.capture_hotkey and app.archive is not None and sys.platform == "win32":
+            HotkeyListener(config.capture_hotkey, app.capture_selection,
+                           on_fail=lambda msg: tray.notify(app.icon, msg)).start()
         if tray.TRAY_AVAILABLE and not args.no_tray:
             icon = tray.build_icon(app)
             app.icon = icon
