@@ -212,7 +212,7 @@ export default function KeybindsTab({ customKeybinds, customHotkeys, onSave }: K
       </div>
 
       <p className="text-xs text-muted-foreground border-t border-white/10 pt-4">
-        Single keys on the Home screen. Click a key badge then press any key to rebind. Press Escape to cancel.
+        Single keys on the Home screen (press ? there to see them all). Click a key badge then press any key to rebind. Press Escape to cancel.
       </p>
 
       <div>

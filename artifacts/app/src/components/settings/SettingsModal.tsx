@@ -121,10 +121,6 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
                       enabledModules={settings.preferences.enabledModules}
                       moduleOrder={settings.preferences.moduleOrder}
                       onSave={settings.saveEnabledModules}
-                      focusPulseStyle={settings.preferences.focusPulseStyle || "glow"}
-                      onSavePulseStyle={(style) => {
-                        settings.savePreferences({ ...settings.preferences, focusPulseStyle: style });
-                      }}
                       completionEffect={settings.preferences.completionEffect || "burst"}
                       onSaveCompletionEffect={(effect) => {
                         settings.savePreferences({ ...settings.preferences, completionEffect: effect });
@@ -132,14 +128,6 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
                       showCompletionBadge={settings.preferences.showCompletionBadge !== false}
                       onSaveCompletionBadge={(val) => {
                         settings.savePreferences({ ...settings.preferences, showCompletionBadge: val });
-                      }}
-                      hiddenHomeButtons={settings.preferences.hiddenHomeButtons}
-                      onSaveHomeButtons={(hidden, enableFocus) => {
-                        const prefs = settings.preferences;
-                        const modules = enableFocus && prefs.enabledModules.length > 0 && !prefs.enabledModules.includes("monthly-focus")
-                          ? [...prefs.enabledModules, "monthly-focus"]
-                          : prefs.enabledModules;
-                        settings.savePreferences({ ...prefs, hiddenHomeButtons: hidden, enabledModules: modules });
                       }}
                     />
                   )}

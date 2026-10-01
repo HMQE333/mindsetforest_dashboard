@@ -23,7 +23,6 @@ import LevelUpModal from "./LevelUpModal";
 import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
-import MonthlyFocusBanner from "./MonthlyFocusBanner";
 import OfflineNotice from "@/components/OfflineNotice";
 
 export default function DashboardView() {
@@ -34,9 +33,7 @@ export default function DashboardView() {
   const { getCategories, preferences } = useUserSettings();
   const categories = getCategories();
   const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
-  // Header buttons the user turned off in Settings -> Modules -> Buttons on Home.
-  const hiddenButtons = new Set(preferences.hiddenHomeButtons || []);
-  const showMonthlyFocus = (!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")) && !hiddenButtons.has("focus");
+
   const review = useReview();
   // Hiding Paths in Settings -> Modules hides its steps on Home too.
   const showPaths = !preferences.enabledModules.length || preferences.enabledModules.includes("paths");
@@ -218,28 +215,7 @@ export default function DashboardView() {
     <div className="relative">
       <DashboardHero
         state={state}
-        onResetDay={resetDay}
-        onShowShortcuts={hiddenButtons.has("shortcuts") ? undefined : () => setShowShortcuts(true)}
         heroLayout={preferences.heroLayout}
-        extraActions={
-          // Header controls next to Reset Day: monthly focus + the mission presets trigger.
-          <>
-            {showMonthlyFocus && <MonthlyFocusBanner pulseStyle={preferences.focusPulseStyle || "glow"} />}
-            {!hiddenButtons.has("presets") && <MissionPresets customMissions={state.customMissions} onApply={applyMissionPreset} />}
-            {review.tableReady && !hiddenButtons.has("review") && (
-              <button
-                type="button"
-                onClick={review.openLatest}
-                title={review.due.length > 0 ? "A review is waiting" : "Review yesterday"}
-                aria-label="Daily review"
-                className="relative glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
-              >
-                <span aria-hidden="true">📋</span>
-                {review.due.length > 0 && <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />}
-              </button>
-            )}
-          </>
-        }
       />
 
       {/* Weekly Progress - moved to bottom */}
@@ -305,6 +281,9 @@ export default function DashboardView() {
               categories={categories}
               showCompletionBadge={preferences.showCompletionBadge !== false}
             />
+            <div className="flex justify-end mt-2 px-1">
+              <MissionPresets variant="link" customMissions={state.customMissions} onApply={applyMissionPreset} />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

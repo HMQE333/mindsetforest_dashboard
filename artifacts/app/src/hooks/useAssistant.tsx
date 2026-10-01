@@ -58,6 +58,7 @@ import { todayKey } from "@/lib/today";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap, type MissionMap } from "@/lib/mission-presets";
 import { settleLaunch } from "@/lib/launch";
+import { REMINDERS_CHANGED_EVENT } from "@/hooks/useReminders";
 
 export interface AssistantMessage {
   id: string;
@@ -143,6 +144,7 @@ function useAssistantValue() {
     saveCustomMissions,
     completeExternal,
     addXP,
+    resetDay,
     state: dashboardState,
   } = useDashboardState();
   // Missions are addressed by their position in a list, so each action in a
@@ -655,6 +657,18 @@ function useAssistantValue() {
               }),
             );
             ok++;
+          } else if (action.type === "add_reminder") {
+            const at = new Date(action.at);
+            const { error } = await supabase.from("reminders").insert({ user_id: user.id, message: action.message, deliver_at: at.toISOString() });
+            if (error) failed++;
+            else {
+              ok++;
+              window.dispatchEvent(new CustomEvent(REMINDERS_CHANGED_EVENT));
+            }
+          } else if (action.type === "reset_day") {
+            // Same as the "r" key on Home; the confirm step already happened.
+            flushSync(() => resetDay());
+            ok++;
           } else if (action.type === "apply_preset") {
             // Same write as the "Załaduj" chip on Home: replace every mission
             // list with the saved snapshot. Exact name first, then a unique
@@ -913,7 +927,7 @@ function useAssistantValue() {
       }
       return failed === 0 && ok > 0;
     },
-    [user, addMission, applyMissionPreset, completeMission, uncompleteMission, removeMission, saveCustomMissions, completeExternal, addXP, navigate, location.pathname],
+    [user, addMission, applyMissionPreset, completeMission, uncompleteMission, removeMission, saveCustomMissions, completeExternal, addXP, resetDay, navigate, location.pathname],
   );
   const runActionRef = useRef(runAction);
   useEffect(() => { runActionRef.current = runAction; }, [runAction]);

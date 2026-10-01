@@ -25,6 +25,8 @@ interface Props {
   customMissions: MissionMap;
   /** Replaces every mission list on Home with the given map. */
   onApply: (missions: MissionMap) => void;
+  /** "link": a small "Open presets" text under the category grid instead of the icon button. */
+  variant?: "button" | "link";
 }
 
 type Editing = { mode: "create" } | { mode: "edit"; preset: MissionPreset };
@@ -177,7 +179,7 @@ function PresetCard({ preset, active, isFirst, isLast, onLoad, onUpdateFromCurre
  * Renders as a single header control (next to Reset Day) that opens a picker
  * of selection cards; loading a card overwrites every mission list.
  */
-export default function MissionPresets({ customMissions, onApply }: Props) {
+export default function MissionPresets({ customMissions, onApply, variant = "button" }: Props) {
   const { presets, loading, tableReady, createPreset, updatePreset, deletePreset, markApplied, movePreset } = useMissionPresets();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [applying, setApplying] = useState<MissionPreset | null>(null);
@@ -266,17 +268,30 @@ export default function MissionPresets({ customMissions, onApply }: Props) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setPickerOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={pickerOpen}
-        aria-label={triggerLabel}
-        title={triggerLabel}
-        className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
-      >
-        <span aria-hidden="true">⚡</span>
-      </button>
+      {variant === "link" ? (
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={pickerOpen}
+          title={triggerLabel}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {lastApplied ? `Presets · ${lastApplied.name}` : "Open presets"} <span aria-hidden="true">⚡</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={pickerOpen}
+          aria-label={triggerLabel}
+          title={triggerLabel}
+          className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
+        >
+          <span aria-hidden="true">⚡</span>
+        </button>
+      )}
 
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent className="max-h-[85vh] w-[calc(100%-1.5rem)] max-w-3xl gap-5 overflow-y-auto rounded-2xl border-white/10 bg-card/95 p-5 backdrop-blur-xl sm:rounded-2xl sm:p-6">

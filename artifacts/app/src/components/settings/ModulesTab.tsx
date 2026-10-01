@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { GripVertical } from "lucide-react";
-import type { FocusPulseStyle, CompletionEffect } from "@/hooks/useUserSettings";
+import type { CompletionEffect } from "@/hooks/useUserSettings";
 
 export interface ModuleConfig {
   id: string;
@@ -25,23 +25,7 @@ const ALL_MODULES: ModuleConfig[] = [
   { id: "calendar", label: "Calendar", icon: "📅", description: "Monthly calendar with events, tags & filters" },
   { id: "planning", label: "Planning", icon: "🧠", description: "Mind-board with project maps, tasks, actions" },
    { id: "health", label: "Health", icon: "❤️", description: "Vitals, bloodwork & quarterly check-ins with AI " },
-  { id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Monthly theme reminders on dashboard" },
-];
-
-/** Buttons in the Home header row that can be turned off (stored in preferences.hiddenHomeButtons). */
-const HOME_BUTTONS: { id: string; label: string; icon: string; description: string }[] = [
-  { id: "focus", label: "Monthly Focus", icon: "🎯", description: "Your goals for the month, in a popover" },
-  { id: "presets", label: "Mission presets", icon: "⚡", description: "Load a saved set of missions" },
-  { id: "review", label: "Daily review", icon: "📋", description: "Reopen a review (it still opens by itself in the morning)" },
-  { id: "shortcuts", label: "Keyboard shortcuts", icon: "⌨️", description: "The cheat sheet; the ? key opens it too" },
-];
-/** Shown under Buttons on Home instead of in the module list. */
-const HOME_BUTTON_MODULES = new Set(["monthly-focus"]);
-
-const PULSE_OPTIONS: { value: FocusPulseStyle; label: string; desc: string }[] = [
-  { value: "glow", label: "✨ Soft Glow", desc: "Gentle box-shadow pulse" },
-  { value: "ping", label: "📡 Ping", desc: "Expanding ring effect" },
-  { value: "none", label: "🚫 None", desc: "No animation" },
+  { id: "monthly-focus", label: "Monthly Focus", icon: "🎯", description: "Goals for the month: set in the monthly review, shown in daily reviews and the 🔔 inbox" },
 ];
 
 const COMPLETION_EFFECT_OPTIONS: { value: CompletionEffect; label: string; desc: string }[] = [
@@ -55,19 +39,14 @@ interface ModulesTabProps {
   enabledModules: string[];
   moduleOrder?: string[];
   onSave: (modules: string[], order: string[]) => Promise<void>;
-  focusPulseStyle?: FocusPulseStyle;
-  onSavePulseStyle?: (style: FocusPulseStyle) => void;
   completionEffect?: CompletionEffect;
   onSaveCompletionEffect?: (effect: CompletionEffect) => void;
   showCompletionBadge?: boolean;
   onSaveCompletionBadge?: (val: boolean) => void;
-  hiddenHomeButtons?: string[];
-  /** Saves the hidden buttons; `enableFocus` also turns the Monthly Focus module back on. */
-  onSaveHomeButtons?: (hidden: string[], enableFocus: boolean) => void;
 }
 
 function getOrderedModules(order?: string[]): ModuleConfig[] {
-  if (!order || order.length === 0) return ALL_MODULES.filter(mod => !HOME_BUTTON_MODULES.has(mod.id));
+  if (!order || order.length === 0) return ALL_MODULES;
   const byId = new Map(ALL_MODULES.map(m => [m.id, m]));
   const ordered: ModuleConfig[] = [];
   for (const id of order) {
@@ -76,10 +55,10 @@ function getOrderedModules(order?: string[]): ModuleConfig[] {
   }
   // Append any new modules not in order
   byId.forEach(mod => ordered.push(mod));
-  return ordered.filter(mod => !HOME_BUTTON_MODULES.has(mod.id));
+  return ordered;
 }
 
-export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusPulseStyle = "glow", onSavePulseStyle, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge, hiddenHomeButtons = [], onSaveHomeButtons }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, moduleOrder, onSave, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [orderedModules, setOrderedModules] = useState<ModuleConfig[]>(() => getOrderedModules(moduleOrder));
   const [dirty, setDirty] = useState(false);
@@ -166,16 +145,6 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
       }
     }
     touchIdx.current = null;
-  };
-
-  const hiddenButtons = new Set(hiddenHomeButtons);
-  const buttonOn = (id: string) => (id === "focus" ? enabled.has("monthly-focus") && !hiddenButtons.has("focus") : !hiddenButtons.has(id));
-  const toggleButton = (id: string) => {
-    const turningOn = !buttonOn(id);
-    const next = new Set(hiddenButtons);
-    if (turningOn) next.delete(id);
-    else next.add(id);
-    onSaveHomeButtons?.([...next], id === "focus" && turningOn);
   };
 
   const handleSave = async () => {
@@ -275,58 +244,6 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, focusP
           );
         })}
       </div>
-
-      {/* Buttons in the Home header row */}
-      <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-1">
-        <div className="text-xs font-semibold text-foreground">Buttons on Home</div>
-        <p className="text-[11px] text-muted-foreground pb-1">The small buttons next to Reset Day. Turn off the ones you don't use.</p>
-        {HOME_BUTTONS.map(btn => {
-          const on = buttonOn(btn.id);
-          return (
-            <button
-              key={btn.id}
-              onClick={() => toggleButton(btn.id)}
-              className="w-full flex items-center gap-3 text-left py-1.5"
-              aria-pressed={on}
-              aria-label={`${btn.label} button on Home`}
-            >
-              <span className="text-xl w-7 text-center">{btn.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-foreground">{btn.label}</div>
-                <div className="text-xs text-muted-foreground truncate">{btn.description}</div>
-              </div>
-              <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 shrink-0 ${on ? "bg-primary justify-end" : "bg-muted/50 justify-start"}`}>
-                <motion.div layout className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${on ? "bg-white" : "bg-white/80"}`}>
-                  <span className={`block w-2 h-2 rounded-full transition-colors ${on ? "bg-primary" : "bg-muted-foreground/40"}`} />
-                </motion.div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Focus Pulse Style picker */}
-      {buttonOn("focus") && (
-        <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">
-          <div className="text-xs font-semibold text-foreground">🎯 Focus Reminder Effect</div>
-          <div className="flex gap-2">
-            {PULSE_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => onSavePulseStyle?.(opt.value)}
-                className={`flex-1 p-2 rounded-lg border text-center transition-all text-xs ${
-                  focusPulseStyle === opt.value
-                    ? "border-primary/50 bg-primary/10 text-foreground"
-                    : "border-border bg-muted/20 text-muted-foreground hover:border-white/20"
-                }`}
-              >
-                <div className="font-medium">{opt.label}</div>
-                <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Mission Complete Effect picker */}
       <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 space-y-2">

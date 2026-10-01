@@ -27,6 +27,8 @@ import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
 import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
 import FriendsButton from "@/components/friends/FriendsButton";
+import InboxBell from "@/components/inbox/InboxBell";
+import { resolveInboxSettings } from "@/lib/inbox";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import { useFriends } from "@/hooks/useFriends";
 import { useAssistant, useAssistantCurrentScope } from "@/hooks/useAssistant";
@@ -71,14 +73,14 @@ const Index = () => {
   const isMobile = useIsMobile();
   const { needsOnboarding, loading: onboardingLoading, failed: onboardingFailed, retry: retryOnboarding, completeOnboarding } = useOnboarding();
   const quickCapture = useQuickCapture();
-  const { preferences } = useUserSettings();
+  const { preferences, savePreferences } = useUserSettings();
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);
   const [moreOpen, setMoreOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
-  const { badgeCount } = useFriends();
+  const { badgeCount, incomingRequests } = useFriends();
   useAssistantCurrentScope(TAB_TO_SCOPE[activeTab] ?? null);
   const assistant = useAssistant();
   const hotkeys = useHotkeys();
@@ -241,6 +243,13 @@ const Index = () => {
             <div className="flex justify-between items-center mb-2">
               <div className="flex items-center gap-2">
                 <FriendsButton badgeCount={badgeCount} onClick={() => setFriendsOpen(true)} />
+                <InboxBell
+                  settings={resolveInboxSettings(preferences.inbox)}
+                  onSaveSettings={(inbox) => void savePreferences({ ...preferences, inbox })}
+                  focusEnabled={!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")}
+                  friendRequests={incomingRequests.length}
+                  onOpenFriends={() => setFriendsOpen(true)}
+                />
               </div>
               <div className="flex items-center gap-2">
                 <button

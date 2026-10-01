@@ -1725,6 +1725,33 @@ export type Database = {
           },
         ]
       }
+      reminders: {
+        Row: {
+          created_at: string
+          deliver_at: string
+          dismissed_at: string | null
+          id: string
+          message: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deliver_at: string
+          dismissed_at?: string | null
+          id?: string
+          message: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deliver_at?: string
+          dismissed_at?: string | null
+          id?: string
+          message?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       reviews: {
         Row: {
           created_at: string

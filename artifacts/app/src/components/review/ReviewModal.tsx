@@ -8,6 +8,7 @@ import { useKindPalette } from "@/components/tracker/computer-time-shared";
 import type { AppKind } from "@/lib/app-usage-classify";
 import { formatDuration as formatHm, periodLabel, reviewTiles, type ReviewSnapshot, type ReviewTile } from "@/lib/review-data";
 import type { useReview } from "@/hooks/useReview";
+import { monthName, useMonthlyFocus, FOCUS_SHOWN } from "@/hooks/useMonthlyFocus";
 
 type Review = ReturnType<typeof useReview>;
 
@@ -161,15 +162,21 @@ function QuestionStep({
  */
 export default function ReviewModal({ review }: { review: Review }) {
   const { open, target, snapshot, headline, questions, initialAnswers, questionsLoading, questionsError } = review;
-  const [step, setStep] = useState<"summary" | number | "done">("summary");
+  const [step, setStep] = useState<"summary" | number | "focus" | "done">("summary");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // This month's goals: shown on the daily summary, set in the monthly review.
+  const focus = useMonthlyFocus();
+  const [focusDraft, setFocusDraft] = useState<string[]>(["", "", ""]);
 
   // A review reopened after saving comes back with its answers (initialAnswers
   // arrives with its questions, before the first question can be reached).
   useEffect(() => {
     if (open) { setStep("summary"); setAnswers(initialAnswers); }
   }, [open, target?.kind, target?.period, initialAnswers]);
+  useEffect(() => {
+    if (open) setFocusDraft(Array.from({ length: FOCUS_SHOWN }, (_, i) => focus.items[i]?.title ?? ""));
+  }, [open, focus.items]);
 
   const tiles = useMemo(() => (snapshot ? reviewTiles(snapshot) : []), [snapshot]);
   const monthly = target?.kind === "monthly";
@@ -177,11 +184,16 @@ export default function ReviewModal({ review }: { review: Review }) {
   const finish = async () => {
     setSaving(true);
     const qa = questions.map((q) => ({ question: q.question, answer: (answers[q.id] || "").trim() })).filter((x) => x.answer);
+    const goals = monthly ? focusDraft.map((g) => g.trim()).filter(Boolean) : [];
+    if (goals.length > 0) qa.push({ question: `What do you want to achieve in ${monthName()}?`, answer: goals.join("; ") });
     const ok = await review.save(qa);
+    // Blank lines never wipe goals that were already set.
+    if (ok && goals.length > 0 && !(await focus.setAll(goals))) toast.error("Couldn't save the month's focus");
     setSaving(false);
     if (ok) setStep("done");
     else toast.error("Couldn't save the review");
   };
+  const lastQuestion = questions.length - 1;
 
   const qIndex = typeof step === "number" ? step : -1;
   const current = qIndex >= 0 ? questions[qIndex] : null;
@@ -208,6 +220,20 @@ export default function ReviewModal({ review }: { review: Review }) {
                 <p className="text-sm text-foreground/90 leading-relaxed">{headline}</p>
               ) : (
                 <div className="h-5 w-4/5 rounded-md bg-white/[0.06] animate-pulse" aria-hidden="true" />
+              )}
+
+              {!monthly && focus.top.length > 0 && (
+                <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] px-4 py-3">
+                  <span className="text-[11px] uppercase tracking-wider text-primary">🎯 {monthName()} focus</span>
+                  <ol className="mt-1.5 space-y-1">
+                    {focus.top.map((f, i) => (
+                      <li key={f.id} className="flex gap-2 text-sm text-foreground/90">
+                        <span className="text-primary/70 tabular-nums">{i + 1}.</span>
+                        <span>{f.title}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               )}
 
               {!snapshot ? (
@@ -277,17 +303,56 @@ export default function ReviewModal({ review }: { review: Review }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => (qIndex < questions.length - 1 ? setStep(qIndex + 1) : void finish())}
+                  onClick={() => (qIndex < lastQuestion ? setStep(qIndex + 1) : monthly ? setStep("focus") : void finish())}
                   disabled={saving}
                   className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold disabled:opacity-60"
                 >
-                  {qIndex < questions.length - 1 ? (
+                  {qIndex < lastQuestion || monthly ? (
                     <>{(answers[current.id] || "").trim() ? "Next" : "Skip question"} <ArrowRight className="h-4 w-4" /></>
                   ) : saving ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Saving</>
                   ) : (
                     <><Check className="h-4 w-4" /> Save</>
                   )}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === "focus" && (
+            <motion.div key="focus" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} className="space-y-4">
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wider text-primary">🎯 Monthly focus</p>
+                <p className="text-lg font-bold text-foreground leading-snug">What do you want to achieve in {monthName()}?</p>
+                <p className="text-xs text-muted-foreground">Up to three goals, most important first. They show in every daily review and in the 🔔 inbox.</p>
+              </div>
+              <div className="space-y-2">
+                {focusDraft.map((g, i) => (
+                  <input
+                    key={i}
+                    value={g}
+                    onChange={(e) => setFocusDraft((d) => d.map((x, j) => (j === i ? e.target.value : x)))}
+                    placeholder={i === 0 ? "The one that matters most" : `Goal ${i + 1} (optional)`}
+                    aria-label={`Goal ${i + 1}`}
+                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(lastQuestion >= 0 ? lastQuestion : "summary")}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void finish()}
+                  disabled={saving}
+                  className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-bold disabled:opacity-60"
+                >
+                  {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving</> : <><Check className="h-4 w-4" /> Save</>}
                 </button>
               </div>
             </motion.div>

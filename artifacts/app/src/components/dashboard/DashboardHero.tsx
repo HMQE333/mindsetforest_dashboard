@@ -4,11 +4,7 @@ import { HeroLayout } from "@/hooks/useUserSettings";
 
 interface DashboardHeroProps {
   state: DashboardState;
-  onResetDay: () => void;
-  /** Left out when the shortcuts button is turned off (the "?" key still opens the panel). */
-  onShowShortcuts?: () => void;
   heroLayout?: HeroLayout;
-  extraActions?: React.ReactNode;
 }
 
 const stats = (state: DashboardState) => [
@@ -17,24 +13,8 @@ const stats = (state: DashboardState) => [
   { value: state.categoriesEngaged.size, label: "Categories" },
 ];
 
-function ActionButtons({ onResetDay, onShowShortcuts, extraActions }: { onResetDay: () => void; onShowShortcuts?: () => void; extraActions?: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-3">
-      <button onClick={onResetDay} className="glass-card px-6 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Click to reset today's progress">
-        🔄 Reset Day
-      </button>
-      {extraActions}
-      {onShowShortcuts && (
-        <button onClick={onShowShortcuts} className="glass-card px-4 py-3 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors" title="Keyboard shortcuts (?)">
-          ⌨️
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ─── DEFAULT ───
-function HeroDefault({ state, onResetDay, onShowShortcuts, extraActions }: Omit<DashboardHeroProps, "heroLayout">) {
+function HeroDefault({ state }: Omit<DashboardHeroProps, "heroLayout">) {
   const xpForLevel = state.currentXP % 100;
   return (
     <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }} className="text-center mb-8">
@@ -61,13 +41,12 @@ function HeroDefault({ state, onResetDay, onShowShortcuts, extraActions }: Omit<
           </motion.div>
         ))}
       </div>
-      <ActionButtons onResetDay={onResetDay} onShowShortcuts={onShowShortcuts} extraActions={extraActions} />
     </motion.div>
   );
 }
 
 // ─── COMPACT ───
-function HeroCompact({ state, onResetDay, onShowShortcuts, extraActions }: Omit<DashboardHeroProps, "heroLayout">) {
+function HeroCompact({ state }: Omit<DashboardHeroProps, "heroLayout">) {
   const xpForLevel = state.currentXP % 100;
   return (
     <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-8 space-y-3">
@@ -94,13 +73,12 @@ function HeroCompact({ state, onResetDay, onShowShortcuts, extraActions }: Omit<
           </span>
         ))}
       </div>
-      <ActionButtons onResetDay={onResetDay} onShowShortcuts={onShowShortcuts} extraActions={extraActions} />
     </motion.div>
   );
 }
 
 // ─── MINIMAL ───
-function HeroMinimal({ state, onResetDay, onShowShortcuts, extraActions }: Omit<DashboardHeroProps, "heroLayout">) {
+function HeroMinimal({ state }: Omit<DashboardHeroProps, "heroLayout">) {
   const xpForLevel = state.currentXP % 100;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="mb-8">
@@ -125,14 +103,13 @@ function HeroMinimal({ state, onResetDay, onShowShortcuts, extraActions }: Omit<
         <span>📂 {state.categoriesEngaged.size}</span>
       </div>
       <div className="mt-3">
-        <ActionButtons onResetDay={onResetDay} onShowShortcuts={onShowShortcuts} extraActions={extraActions} />
       </div>
     </motion.div>
   );
 }
 
 // ─── COMMAND CENTER ───
-function HeroCommand({ state, onResetDay, onShowShortcuts, extraActions }: Omit<DashboardHeroProps, "heroLayout">) {
+function HeroCommand({ state }: Omit<DashboardHeroProps, "heroLayout">) {
   const xpForLevel = state.currentXP % 100;
   const circumference = 2 * Math.PI * 42;
   const strokeDashoffset = circumference - (xpForLevel / 100) * circumference;
@@ -188,13 +165,12 @@ function HeroCommand({ state, onResetDay, onShowShortcuts, extraActions }: Omit<
           </div>
         </div>
       </div>
-      <ActionButtons onResetDay={onResetDay} onShowShortcuts={onShowShortcuts} extraActions={extraActions} />
     </motion.div>
   );
 }
 
 // ─── SOLID ───
-function HeroSolid({ state, onResetDay, onShowShortcuts, extraActions }: Omit<DashboardHeroProps, "heroLayout">) {
+function HeroSolid({ state }: Omit<DashboardHeroProps, "heroLayout">) {
   const xpForLevel = state.currentXP % 100;
   return (
     <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }} className="text-center mb-8">
@@ -225,14 +201,13 @@ function HeroSolid({ state, onResetDay, onShowShortcuts, extraActions }: Omit<Da
           </motion.div>
         ))}
       </div>
-      <ActionButtons onResetDay={onResetDay} onShowShortcuts={onShowShortcuts} extraActions={extraActions} />
     </motion.div>
   );
 }
 
 export default function DashboardHero(props: DashboardHeroProps) {
   const layout = props.heroLayout || "default";
-  const passProps = { state: props.state, onResetDay: props.onResetDay, onShowShortcuts: props.onShowShortcuts, extraActions: props.extraActions };
+  const passProps = { state: props.state };
 
   switch (layout) {
     case "compact": return <HeroCompact {...passProps} />;

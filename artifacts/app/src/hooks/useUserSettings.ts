@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import type { TrackerXpConfig } from "@/lib/tracker-xp";
 import { USER_SETTINGS_CHANGED_EVENT, emitAppEvent, onAppEvent } from "@/lib/app-events";
 import type { HotkeyMap } from "@/lib/hotkeys";
+import type { InboxSettings } from "@/lib/inbox";
 import { setHotkeysCache } from "@/hooks/useHotkeys";
 
 export interface CustomCategory {
@@ -57,8 +58,8 @@ export interface UserPreferences {
   focusPulseStyle?: FocusPulseStyle;
   completionEffect?: CompletionEffect;
   showCompletionBadge?: boolean;
-  /** Buttons hidden from the Home header row: "focus" | "presets" | "review" | "shortcuts". */
-  hiddenHomeButtons?: string[];
+  /** What the bell inbox may show and whether it rings (lib/inbox.ts). */
+  inbox?: Partial<InboxSettings>;
   customAccentHue?: number | null;
   cardOpacity?: number;
   backgroundIntensity?: number;

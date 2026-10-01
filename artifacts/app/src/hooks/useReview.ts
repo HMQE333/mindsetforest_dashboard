@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { todayKey } from "@/lib/today";
+import { monthKey, todayKey } from "@/lib/today";
 import { loadReviewSnapshot } from "@/lib/review-load";
 import { LAUNCH_SETTLED_EVENT, launchHoldsPopups } from "@/lib/launch";
+import { REVIEWS_CHANGED_EVENT, emitAppEvent } from "@/lib/app-events";
 import {
   monthlyDue,
   previousMonth,
@@ -26,6 +27,17 @@ export interface ReviewTarget {
 }
 
 const MISSING_TABLE = /PGRST205|42P01|schema cache/;
+/** Window event asking Home to open a review: detail = ReviewTarget. */
+export const OPEN_REVIEW_EVENT = "lov:open-review";
+let pendingReview: ReviewTarget | null = null;
+/**
+ * Open a review from outside Home (the bell). Home may not be mounted yet,
+ * so the request waits until it is.
+ */
+export function requestReview(t: ReviewTarget): void {
+  pendingReview = t;
+  window.dispatchEvent(new CustomEvent(OPEN_REVIEW_EVENT));
+}
 const qKey = (t: ReviewTarget) => `mf-review-q-${t.kind}-${t.period}`;
 const laterKey = (t: ReviewTarget) => `mf-review-later-${t.kind}-${t.period}`;
 const AUTO_KEY = "mf-review-auto";
@@ -129,12 +141,23 @@ export function useReview() {
     setQuestionsError(false);
     try {
       const now = new Date();
+      // This month's goals go along; every third day one daily question is about them.
+      const { data: focusRows } = await supabase
+        .from("user_notifications")
+        .select("title,created_at")
+        .eq("month", monthKey())
+        .eq("is_active", true)
+        .order("created_at", { ascending: true })
+        .limit(3);
+      const focus = (focusRows || []).map((r) => r.title);
       const { data, error } = await supabase.functions.invoke("ai-review", {
         body: {
           kind: t.kind,
           period: t.period,
           snapshot: snap,
           moment: { date: today, hour: now.getHours(), tzOffsetMinutes: -now.getTimezoneOffset() },
+          focus,
+          mentionFocus: Number(today.slice(8, 10)) % 3 === 0,
         },
       });
       if (error || !data || !Array.isArray(data.questions) || data.questions.length === 0) throw new Error("no questions");
@@ -241,6 +264,7 @@ export function useReview() {
     if (error) return false;
     try { localStorage.removeItem(qKey(target)); } catch { /* ignore */ }
     await refresh();
+    emitAppEvent(REVIEWS_CHANGED_EVENT);
     return true;
   }, [user, target, headline, snapshot, refresh]);
 
@@ -258,6 +282,19 @@ export function useReview() {
     setAutoOpenState(v);
     writeJson(AUTO_KEY, v);
   }, []);
+
+  // The bell inbox asks for a review (it navigates to Home first, so the
+  // request may be waiting when this mounts).
+  useEffect(() => {
+    const take = () => {
+      const t = pendingReview;
+      pendingReview = null;
+      if (t) void start(t);
+    };
+    take();
+    window.addEventListener(OPEN_REVIEW_EVENT, take);
+    return () => window.removeEventListener(OPEN_REVIEW_EVENT, take);
+  }, [start]);
 
   /** What the review button on Home opens: the first due review, else yesterday's again. */
   const openLatest = useCallback(() => {

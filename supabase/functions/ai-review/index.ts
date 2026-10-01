@@ -32,6 +32,12 @@ serve(async (req) => {
     const period = String(body.period || "").slice(0, 10);
     const snapshot = JSON.stringify(body.snapshot ?? {}).slice(0, 12000);
     const moment: LocalMoment = body.moment || {};
+    // This month's goals ("monthly focus"), set by the user in the monthly review.
+    const focus: string[] = Array.isArray(body.focus)
+      ? body.focus.filter((f: unknown): f is string => typeof f === "string" && f.trim() !== "").slice(0, 3).map((f: string) => f.trim().slice(0, 200))
+      : [];
+    // The client asks for a question about them now and then, not every morning.
+    const mentionFocus = kind === "daily" && body.mentionFocus === true && focus.length > 0;
 
     const [{ profile, situation }, recentRes] = await Promise.all([
       buildPlannerContext(auth.client, auth.userId, moment),
@@ -60,7 +66,9 @@ Produce:
 - headline: one sentence (max 20 words) naming the single most telling fact in the numbers, concrete, no praise inflation, no moralising.
 - questions: exactly ${count}. Each question is short (max 16 words), about something specific in the numbers or in what the user said recently, and answerable in one sentence.${kind === "daily"
       ? " Cover: one question about where the time actually went (use the computer/app data when present), one about a win or a miss, and one forward-looking question about today."
-      : " Cover: what got done this month (name concrete things from the data), where the time went, what did not happen that was planned, one pattern worth keeping or dropping, and the one focus for next month."}
+      : " Cover: what got done this month (name concrete things from the data), where the time went, what did not happen that was planned, one pattern worth keeping or dropping, and what to carry into the new month. Do not ask for next month's goals: the review asks for them on its own last screen."}${mentionFocus
+      ? " Today, make the forward-looking question about progress on one of this month's focus goals (named in the context), the one the numbers say least about."
+      : ""}
 - For every question 2-4 suggestions: plausible answers IN THE USER'S VOICE (first person), max 10 words each, grounded in the data, different from each other; at least one may be the honest uncomfortable answer. The user taps one instead of writing from scratch, so make them specific, not generic ("Rest" is too vague; "YouTube in the evening instead of training" is right).
 
 If the numbers are thin (little data), ask about what the data cannot show instead of inventing numbers. Never invent facts that are not in the numbers or the context.`;
@@ -70,7 +78,7 @@ If the numbers are thin (little data), ask about what the data cannot show inste
 ${profile}
 
 ${situation}
-
+${focus.length ? `\nTHIS MONTH'S FOCUS (the user's own goals, most important first):\n${focus.map((f, i) => `${i + 1}. ${f}`).join("\n")}\n` : ""}
 NUMBERS SHOWN ON THE SUMMARY SCREEN (JSON):
 ${snapshot}
 

@@ -65,6 +65,23 @@ export type AssistantAction =
       presetName: string;
     }
   | {
+      /**
+       * Reset today on Home: unticks today's missions, clears today's counters
+       * and drops missions added only for today (persistent ones stay; XP is
+       * kept). Destructive, so it is always confirmed and only on request.
+       */
+      type: "reset_day";
+    }
+  | {
+      /**
+       * A reminder for the 🔔 inbox at any moment, hours or years ahead
+       * ("a message from the past"). `at` is local time, "YYYY-MM-DDTHH:mm".
+       */
+      type: "add_reminder";
+      message: string;
+      at: string;
+    }
+  | {
       /** Open a section of the app. Harmless and instant, so it needs no confirm step. */
       type: "navigate";
       module: AppModule;
@@ -181,10 +198,13 @@ export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
   add_transaction: "finance",
   // Adding a book needs no Library context: duplicates are skipped when it runs.
   add_book: null,
+  // Reminders are not tied to a section: always offered.
+  add_reminder: null,
   complete_mission: "dashboard",
   add_task: "planning",
   add_mission: "dashboard",
   apply_preset: "dashboard",
+  reset_day: "dashboard",
   add_note: "archive",
   add_mindmap_nodes: "planning",
   extend_mindmap: "planning",
@@ -251,6 +271,12 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
       `accent (optional, one of ${ACCENTS.map((a) => `"${a}"`).join(", ")}). Runs immediately; use when the user asks for a darker/lighter look or a colour.`,
   );
   specs.push(
+    "- add_reminder: schedule a reminder the user will find in the bell inbox at a given moment, any distance ahead " +
+      '(in an hour, next Monday, in 5 years). Use it when they ask to be reminded or to leave a message for their future self ' +
+      '("przypomnij mi jutro o 9", "message to me in 5 years"). Fields: message (string - their words, addressed to their future self), ' +
+      'at (local date-time "YYYY-MM-DDTHH:mm", worked out from Now in the context; 09:00 when they name a day but no time).',
+  );
+  specs.push(
     '- add_book: put one or more books on the Library shelf. Field: books (array, max 20) of { title (required, the real title), ' +
       'author (the actual author; fill it in when you know it), status (optional "to-read" | "reading" | "finished", default "to-read"), ' +
       "totalPages (optional, only if the user gave it), tags (optional, short lowercase), notes (optional, e.g. why the user wants it) }. " +
@@ -313,6 +339,10 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         'Use when the user asks to switch to / turn on / load a preset by name ("włącz monk mode", "load lock in"). ' +
         "Field: presetName (string - must be one of the names under \"Saved mission presets\" in the context; " +
         "never invent a preset and never use this to add single missions - that is add_mission).",
+    );
+    specs.push(
+      "- reset_day: reset today on Home (unticks today's missions, clears today's counters, drops missions added only for today; XP is kept). " +
+        'No fields. Only when the user explicitly asks to reset or restart the day ("zresetuj dzień", "reset day"); never on your own.',
     );
     specs.push(
       "- complete_mission: tick one of today's missions on Home as done (awards its XP). Fields: " +
@@ -654,6 +684,16 @@ function coerceAction(raw: unknown): AssistantAction | null {
     return { type: "complete_mission", title: title.slice(0, 200), categoryId };
   }
 
+  if (type === "reset_day") return { type: "reset_day" };
+
+  if (type === "add_reminder") {
+    const message = typeof o.message === "string" ? o.message.trim() : "";
+    const at = typeof o.at === "string" ? o.at.trim() : "";
+    // Local "YYYY-MM-DDTHH:mm" (seconds and an offset are tolerated).
+    if (!message || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(at) || Number.isNaN(new Date(at).getTime())) return null;
+    return { type: "add_reminder", message: message.slice(0, 2000), at: at.slice(0, 25) };
+  }
+
   if (type === "apply_preset") {
     const presetName = typeof o.presetName === "string" ? o.presetName.trim() : "";
     if (!presetName) return null;
@@ -901,6 +941,13 @@ export function describeAction(action: AssistantAction): string {
   }
   if (action.type === "apply_preset") {
     return `Load mission preset "${action.presetName}" (replaces every mission list on Home)`;
+  }
+  if (action.type === "add_reminder") {
+    const when = new Date(action.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return `Reminder for ${when}: "${action.message}"`;
+  }
+  if (action.type === "reset_day") {
+    return "Reset today: untick today's missions and clear today's counters (XP stays)";
   }
   if (action.type === "add_mindmap_nodes") {
     const breakdown = nodesLevelBreakdown(action.nodes);

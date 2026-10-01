@@ -43,3 +43,35 @@ export function playCheckSound(): void {
     // Sound is a nicety; never let it break opening the panel.
   }
 }
+
+/**
+ * The inbox chime: a clear two-note "ding-dong" (E6, then A5) that rings for
+ * about half a second. Loud enough to notice in another window, short and
+ * soft-edged enough not to jar.
+ */
+export function playNotifySound(): void {
+  try {
+    const ac = audio();
+    if (!ac) return;
+    const t = ac.currentTime + 0.01;
+    const bell = (freq: number, start: number, peak: number) => {
+      // A sine with a quiet overtone sounds like a small bell rather than a beep.
+      for (const [mult, share] of [[1, 1], [2.76, 0.18]] as const) {
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq * mult, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(peak * share, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55);
+        osc.connect(gain).connect(ac.destination);
+        osc.start(start);
+        osc.stop(start + 0.6);
+      }
+    };
+    bell(1318.5, t, 0.32);
+    bell(880, t + 0.16, 0.36);
+  } catch {
+    /* no audio: stay silent */
+  }
+}

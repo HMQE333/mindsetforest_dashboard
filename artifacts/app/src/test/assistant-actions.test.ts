@@ -291,3 +291,30 @@ describe("mindmap node trees", () => {
     expect(preview).toBe('+ Attach to "X"\n✅ A');
   });
 });
+
+describe("assistant reset_day action", () => {
+  it("parses only with the dashboard scope and always asks to confirm", async () => {
+    const { isAutoApply } = await import("../lib/assistant-actions");
+    expect(parseActions(block([{ type: "reset_day" }]), ["dashboard"]).actions).toEqual([{ type: "reset_day" }]);
+    expect(parseActions(block([{ type: "reset_day" }]), ["archive"]).actions).toEqual([]);
+    expect(isAutoApply({ type: "reset_day" })).toBe(false);
+    expect(describeAction({ type: "reset_day" })).toMatch(/Reset today/);
+    expect(buildActionInstructions(["dashboard"])).toContain("reset_day");
+  });
+});
+
+describe("assistant add_reminder action", () => {
+  it("takes a message and a local date-time, any distance ahead, in any section", () => {
+    const { actions } = parseActions(block([{ type: "add_reminder", message: " Did you ship it? ", at: "2031-10-02T09:00" }]), ["archive"]);
+    expect(actions).toEqual([{ type: "add_reminder", message: "Did you ship it?", at: "2031-10-02T09:00" }]);
+    expect(describeAction(actions[0])).toMatch(/^Reminder for 2 Oct 2031/);
+    expect(ACTION_SCOPE.add_reminder).toBeNull();
+    expect(buildActionInstructions([])).toContain("add_reminder");
+  });
+
+  it("drops a reminder without a message or with a date it cannot read", () => {
+    expect(parseActions(block([{ type: "add_reminder", message: "", at: "2031-10-02T09:00" }]), []).actions).toEqual([]);
+    expect(parseActions(block([{ type: "add_reminder", message: "x", at: "in 5 years" }]), []).actions).toEqual([]);
+    expect(parseActions(block([{ type: "add_reminder", message: "x", at: "2031-13-45T99:99" }]), []).actions).toEqual([]);
+  });
+});

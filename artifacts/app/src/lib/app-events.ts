@@ -9,6 +9,8 @@ export const FINANCE_CHANGED_EVENT = "finance-changed";
 export const USER_SETTINGS_CHANGED_EVENT = "user-settings-changed";
 export const WATCH_ENTRIES_CHANGED_EVENT = "watch-entries-changed";
 export const LIBRARY_CHANGED_EVENT = "library-changed";
+/** A review was saved or skipped (the bell inbox re-reads what is due). */
+export const REVIEWS_CHANGED_EVENT = "reviews-changed";
 
 export function emitAppEvent(name: string): void {
   window.dispatchEvent(new CustomEvent(name));
