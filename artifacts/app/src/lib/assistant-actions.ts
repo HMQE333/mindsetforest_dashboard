@@ -121,6 +121,13 @@ export type AssistantAction =
   | { type: "complete_task"; title: string }
   | { type: "add_event"; title: string; date: string; time?: string; notes?: string }
   | { type: "add_book"; books: BookDraft[] }
+  | {
+      /** Pages read in a book on the shelf: moves its bookmark to `toPage` (never back). */
+      type: "log_reading";
+      bookTitle: string;
+      toPage: number;
+      fromPage?: number;
+    }
   | { type: "add_transaction"; kind: "expense" | "income"; amount: number; title: string; category?: string; date?: string }
   | {
       /** Tick one of today's missions on Home. Matched by title against the list in the context. */
@@ -198,6 +205,7 @@ export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
   add_transaction: "finance",
   // Adding a book needs no Library context: duplicates are skipped when it runs.
   add_book: null,
+  log_reading: "library",
   // Reminders are not tied to a section: always offered.
   add_reminder: null,
   complete_mission: "dashboard",
@@ -276,6 +284,14 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
       '("przypomnij mi jutro o 9", "message to me in 5 years"). Fields: message (string - their words, addressed to their future self), ' +
       'at (local date-time "YYYY-MM-DDTHH:mm", worked out from Now in the context; 09:00 when they name a day but no time).',
   );
+  if (scopes.includes("library")) {
+    specs.push(
+      '- log_reading: record pages read in a book already on the shelf ("read pages 77 to 100 of Influence"). ' +
+        "Fields: bookTitle (copy the title from the Books list in the context), toPage (number, the last page read), fromPage (optional). " +
+        "Use it instead of saying the book is missing when its title is anywhere in the Books or Other books lists. " +
+        "If a Pages Read stat exists, also emit log_metric with the page count (toPage - fromPage + 1).",
+    );
+  }
   specs.push(
     '- add_book: put one or more books on the Library shelf. Field: books (array, max 20) of { title (required, the real title), ' +
       'author (the actual author; fill it in when you know it), status (optional "to-read" | "reading" | "finished", default "to-read"), ' +
@@ -644,6 +660,14 @@ function coerceAction(raw: unknown): AssistantAction | null {
     return { type: "add_event", title, date, time, notes };
   }
 
+  if (type === "log_reading") {
+    const bookTitle = typeof o.bookTitle === "string" ? o.bookTitle.trim() : "";
+    const toPage = Number(o.toPage);
+    const fromPage = o.fromPage === undefined || o.fromPage === null ? undefined : Number(o.fromPage);
+    if (!bookTitle || !Number.isFinite(toPage) || toPage < 1 || toPage > 100000) return null;
+    return { type: "log_reading", bookTitle: bookTitle.slice(0, 200), toPage: Math.round(toPage), fromPage: fromPage !== undefined && Number.isFinite(fromPage) ? Math.round(fromPage) : undefined };
+  }
+
   if (type === "add_book") {
     // Accept a single book at the top level as well as a books array.
     const list = Array.isArray(o.books) ? o.books : typeof o.title === "string" ? [o] : [];
@@ -941,6 +965,9 @@ export function describeAction(action: AssistantAction): string {
   }
   if (action.type === "apply_preset") {
     return `Load mission preset "${action.presetName}" (replaces every mission list on Home)`;
+  }
+  if (action.type === "log_reading") {
+    return `Reading: "${action.bookTitle}" ${action.fromPage ? `pages ${action.fromPage}-${action.toPage}` : `up to page ${action.toPage}`}`;
   }
   if (action.type === "add_reminder") {
     const when = new Date(action.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });

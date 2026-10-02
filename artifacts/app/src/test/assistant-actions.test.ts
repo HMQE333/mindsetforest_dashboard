@@ -318,3 +318,13 @@ describe("assistant add_reminder action", () => {
     expect(parseActions(block([{ type: "add_reminder", message: "x", at: "2031-13-45T99:99" }]), []).actions).toEqual([]);
   });
 });
+
+describe("assistant log_reading action", () => {
+  it("parses pages for a book with the library scope", () => {
+    const { actions } = parseActions(block([{ type: "log_reading", bookTitle: "Influence", fromPage: 77, toPage: 100 }]), ["library"]);
+    expect(actions).toEqual([{ type: "log_reading", bookTitle: "Influence", fromPage: 77, toPage: 100 }]);
+    expect(describeAction(actions[0])).toBe('Reading: "Influence" pages 77-100');
+    expect(parseActions(block([{ type: "log_reading", bookTitle: "Influence", toPage: 100 }]), ["archive"]).actions).toEqual([]);
+    expect(parseActions(block([{ type: "log_reading", bookTitle: "", toPage: 100 }]), ["library"]).actions).toEqual([]);
+  });
+});

@@ -657,6 +657,26 @@ function useAssistantValue() {
               }),
             );
             ok++;
+          } else if (action.type === "log_reading") {
+            // Exact title first, then a unique partial match ("influence" finds "Influence").
+            const { data: books } = await supabase.from("user_books").select("id,title,status,pages_read,total_pages").eq("user_id", user.id);
+            const wanted = action.bookTitle.trim().toLowerCase();
+            const list = books || [];
+            const exact = list.filter((b) => b.title.toLowerCase() === wanted);
+            const partial = list.filter((b) => b.title.toLowerCase().includes(wanted) || wanted.includes(b.title.toLowerCase()));
+            const book = exact[0] ?? (partial.length === 1 ? partial[0] : undefined);
+            if (!book) {
+              failed++;
+              toast.error(`Nie znaleziono książki „${action.bookTitle}”`);
+            } else {
+              const pages = Math.max(book.pages_read || 0, action.toPage);
+              const { error } = await supabase
+                .from("user_books")
+                .update({ pages_read: pages, status: book.status === "to-read" ? "reading" : book.status })
+                .eq("id", book.id);
+              if (error) failed++;
+              else { ok++; window.dispatchEvent(new CustomEvent("library-changed")); }
+            }
           } else if (action.type === "add_reminder") {
             const at = new Date(action.at);
             const { error } = await supabase.from("reminders").insert({ user_id: user.id, message: action.message, deliver_at: at.toISOString() });

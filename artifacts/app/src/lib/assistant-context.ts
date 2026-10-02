@@ -592,7 +592,7 @@ async function gatherLibrary(userId: string): Promise<string> {
       .select("title,author,status,pages_read,total_pages")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
-      .limit(20),
+      .limit(400),
     supabase
       .from("user_courses")
       .select("title,platform,progress_pct,status")
@@ -605,11 +605,16 @@ async function gatherLibrary(userId: string): Promise<string> {
   if (bookList.length === 0 && courseList.length === 0) return "No books or courses in the library yet.";
   const parts: string[] = [];
   if (bookList.length > 0) {
-    const lines = bookList.slice(0, 10).map((b) => {
-      const progress = b.total_pages > 0 ? ` ${b.pages_read}/${b.total_pages} pages` : "";
+    // Every book, so the assistant can find any of them by name: the ones in
+    // progress (or recently touched) in full, the rest as a compact title list.
+    const detailed = bookList.filter((b, i) => b.status === "reading" || i < 10);
+    const lines = detailed.map((b) => {
+      const progress = b.total_pages > 0 ? ` ${b.pages_read}/${b.total_pages} pages` : b.pages_read > 0 ? ` ${b.pages_read} pages read` : "";
       return `- ${b.title}${b.author ? ` by ${b.author}` : ""} [${b.status}]${progress}`;
     });
-    parts.push(`Books (${bookList.length}):`, ...lines);
+    const rest = bookList.filter((b) => !detailed.includes(b)).map((b) => `${b.title}${b.author ? ` (${b.author})` : ""} [${b.status}]`);
+    parts.push(`Books (${bookList.length}, log reading with log_reading):`, ...lines);
+    if (rest.length) parts.push(`Other books on the shelf: ${rest.join("; ")}`);
   }
   if (courseList.length > 0) {
     const lines = courseList.slice(0, 10).map((c) =>
