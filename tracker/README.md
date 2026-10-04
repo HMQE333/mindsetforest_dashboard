@@ -6,7 +6,7 @@
 > 2. Skopiuj `config.example.json` do `config.json` i wpisz `supabase_url` oraz `supabase_anon_key` swojego projektu (Supabase -> Project Settings -> API).
 > 3. Uruchom `run-dev.bat` - w zasobniku systemowym (przy zegarze) pojawi sie zielona ikonka drzewa.
 > 4. Kliknij ikonke -> **Sign in...** i zaloguj sie tym samym e-mailem i haslem co w MindsetForest. Logujesz sie raz; token jest zapisany zaszyfrowany (DPAPI).
-> 5. `install-autostart.bat` - tracker bedzie startowal razem z Windows. `build.bat` buduje `dist\MindsetForestTracker\MindsetForestTracker.exe`, ktory nie wymaga Pythona.
+> 5. `install-autostart.bat` - doinstalowuje zaleznosci, od razu uruchamia tracker (bez konsoli) i dodaje go do autostartu Windows. Folder trzymaj w stalym miejscu (np. `C:\Tools\mindsetforest-tracker`), bo skrot wskazuje wlasnie na niego; po przeniesieniu uruchom skrypt jeszcze raz. Aktualizacja: zamknij stary tracker (ikonka -> **Quit**), podmien pliki i uruchom `install-autostart.bat`; logowanie zostaje. `build.bat` buduje `dist\MindsetForestTracker\MindsetForestTracker.exe`, ktory nie wymaga Pythona.
 > 6. Statystyki, klasy i reguly ustawiasz tylko w panelu www (**Open dashboard** w menu ikonki). Z menu mozesz tez wstrzymac sledzenie (**Pause**) i wykluczyc aktualna aplikacje (**Don't track ...**).
 >
 > 7. **Zapis do Archive:** zaznacz tekst w dowolnym programie (Chrome, PDF, Word) i wcisnij **Alt+Shift+S**. Tekst trafia do Archive jako notatka z tagiem `quick-capture` i tytulem okna jako zrodlem. Skrot zmienisz w panelu www (**Settings -> Keybinds**, tracker pobiera go w ciagu minuty) albo w `config.json` (`capture_hotkey`, pusty = wylaczony).
@@ -92,7 +92,10 @@ good tick, not merged.
    tracker refreshes its token by itself.
 6. **Autostart**: run `install-autostart.bat`. It creates *MindsetForest
    Tracker.lnk* in your Startup folder pointing at the built exe if it exists,
-   otherwise at `pythonw run_tracker.py`. `uninstall-autostart.bat` removes it.
+   otherwise at `pythonw run_tracker.py` (installing `requirements.txt` into
+   that Python first), and starts the tracker right away. A tracker that is
+   already running keeps going (the new one exits), so to update, quit the old
+   one from the tray first. `uninstall-autostart.bat` removes the shortcut.
 7. **Build a standalone exe** (optional): `build.bat` installs PyInstaller and
    produces `dist\MindsetForestTracker\MindsetForestTracker.exe` (`--noconsole
    --onedir`). Copy your `config.json` next to the exe (the script does that

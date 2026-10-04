@@ -70,15 +70,18 @@ export default function TrackerDownload({ compact = false }: { compact?: boolean
       </div>
       <ol className="list-decimal list-inside text-muted-foreground space-y-0.5">
         <li>
-          Rozpakuj zip, wrzuć pobrany <code className="font-mono text-foreground/80">config.json</code> do folderu{" "}
+          Rozpakuj zip w stałym miejscu (np. <code className="font-mono text-foreground/80">C:\Tools</code>), wrzuć pobrany{" "}
+          <code className="font-mono text-foreground/80">config.json</code> do folderu{" "}
           <code className="font-mono text-foreground/80">mindsetforest-tracker</code>.
         </li>
         <li>
-          Uruchom <code className="font-mono text-foreground/80">run-dev.bat</code> (pierwszy raz z konsolą, żeby widzieć logi), zaloguj się z menu ikonki.
+          Uruchom <code className="font-mono text-foreground/80">install-autostart.bat</code>: instaluje, od razu włącza tracker i dodaje go do
+          autostartu Windows.
         </li>
         <li>
-          Gdy działa, uruchom <code className="font-mono text-foreground/80">install-autostart.bat</code>, żeby startował z Windowsem. Szczegóły w{" "}
-          <code className="font-mono text-foreground/80">README.md</code> w paczce.
+          Kliknij zieloną ikonkę drzewa przy zegarze → <span className="text-foreground/80">Sign in…</span> i zaloguj się jak tutaj. Aktualizacja:
+          zamknij stary tracker (ikonka → Quit), podmień pliki, uruchom skrypt jeszcze raz. Logi widać po uruchomieniu{" "}
+          <code className="font-mono text-foreground/80">run-dev.bat</code>.
         </li>
       </ol>
       {!compact && <p className="text-muted-foreground">Ta sekcja odświeży się sama, gdy pojawią się pierwsze sesje. Pierwszy sync wysyła ostatnie 30 dni.</p>}
