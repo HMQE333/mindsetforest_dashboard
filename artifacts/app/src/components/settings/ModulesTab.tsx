@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { GripVertical } from "lucide-react";
 import type { CompletionEffect } from "@/hooks/useUserSettings";
+import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
 
 export interface ModuleConfig {
   id: string;
@@ -43,6 +44,8 @@ interface ModulesTabProps {
   onSaveCompletionEffect?: (effect: CompletionEffect) => void;
   showCompletionBadge?: boolean;
   onSaveCompletionBadge?: (val: boolean) => void;
+  completionSound?: boolean;
+  onSaveCompletionSound?: (val: boolean) => void;
 }
 
 function getOrderedModules(order?: string[]): ModuleConfig[] {
@@ -58,7 +61,7 @@ function getOrderedModules(order?: string[]): ModuleConfig[] {
   return ordered;
 }
 
-export default function ModulesTab({ enabledModules, moduleOrder, onSave, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge }: ModulesTabProps) {
+export default function ModulesTab({ enabledModules, moduleOrder, onSave, completionEffect = "burst", onSaveCompletionEffect, showCompletionBadge = true, onSaveCompletionBadge, completionSound = true, onSaveCompletionSound }: ModulesTabProps) {
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [orderedModules, setOrderedModules] = useState<ModuleConfig[]>(() => getOrderedModules(moduleOrder));
   const [dirty, setDirty] = useState(false);
@@ -263,6 +266,26 @@ export default function ModulesTab({ enabledModules, moduleOrder, onSave, comple
               <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Completion sound */}
+      <div className="mt-4 p-3 rounded-xl border border-border bg-muted/10 flex items-center gap-3">
+        <button onClick={() => onSaveCompletionSound?.(!completionSound)} className="flex-1 flex items-center gap-3 text-left" aria-pressed={completionSound}>
+          <span className="text-xl">🔔</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-foreground">Sound when a mission is done</div>
+            <div className="text-xs text-muted-foreground">A short "pop-ding"; a fanfare for a cleared category or a new level</div>
+          </div>
+          <div className={`w-11 h-6 rounded-full flex items-center transition-all px-0.5 shrink-0 ${completionSound ? "bg-primary justify-end" : "bg-muted/50 justify-start"}`}>
+            <motion.div layout className={`w-5 h-5 rounded-full shadow-sm flex items-center justify-center ${completionSound ? "bg-white" : "bg-white/80"}`}>
+              <span className={`block w-2 h-2 rounded-full transition-colors ${completionSound ? "bg-primary" : "bg-muted-foreground/40"}`} />
+            </motion.div>
+          </div>
+        </button>
+        <div className="flex flex-col gap-1 shrink-0">
+          <button onClick={() => playMissionSound()} className="text-[11px] text-primary hover:underline text-left">▶ Mission</button>
+          <button onClick={() => playFanfareSound()} className="text-[11px] text-primary hover:underline text-left">▶ Fanfare</button>
         </div>
       </div>
 

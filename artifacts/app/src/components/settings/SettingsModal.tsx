@@ -129,6 +129,10 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
                       onSaveCompletionBadge={(val) => {
                         settings.savePreferences({ ...settings.preferences, showCompletionBadge: val });
                       }}
+                      completionSound={settings.preferences.completionSound !== false}
+                      onSaveCompletionSound={(val) => {
+                        settings.savePreferences({ ...settings.preferences, completionSound: val });
+                      }}
                     />
                   )}
                   {activeTab === "theme" && (

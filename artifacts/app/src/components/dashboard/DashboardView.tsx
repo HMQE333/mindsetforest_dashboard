@@ -24,6 +24,7 @@ import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
 import OfflineNotice from "@/components/OfflineNotice";
+import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
 
 export default function DashboardView() {
   const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
@@ -83,9 +84,13 @@ export default function DashboardView() {
     return () => window.removeEventListener("lov:add-friend-mission", handler as EventListener);
   }, [addMission]);
 
+  // Settings -> Modules -> sound on completion (on unless turned off).
+  const soundOn = preferences.completionSound !== false;
+
   const handleComplete = useCallback((categoryId: string, index: number, xp: number) => {
     const prevLvl = state.currentLevel;
     completeMission(categoryId, index, xp);
+    if (soundOn) playMissionSound();
 
     // Floating XP
     setFloatingXP({ id: Date.now(), xp });
@@ -97,6 +102,7 @@ export default function DashboardView() {
       const newLevel = Math.floor(newXP / 100) + 1;
       if (newLevel > prevLvl) {
         setLevelUpTrigger({ level: newLevel, key: Date.now() });
+        if (soundOn) playFanfareSound(0.3);
       }
     }, 100);
 
@@ -111,9 +117,12 @@ export default function DashboardView() {
       if (alreadyDone + 1 === missions.length && missions.length > 0) {
         const cat = categories.find(c => c.id === categoryId);
         setCategoryComplete({ categoryId, color: cat?.color || "hsl(var(--primary))", key: Date.now() });
+        // One fanfare even when the same tick also levels up.
+        const levelledUp = Math.floor((state.currentXP + xp) / 100) + 1 > prevLvl;
+        if (soundOn && !levelledUp) playFanfareSound(0.25);
       }
     }, 150);
-  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories]);
+  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories, soundOn]);
 
   // Keyboard shortcuts
   const shortcutContext = selectedCategory === null ? "grid" as const
@@ -186,11 +195,12 @@ export default function DashboardView() {
   const handleLogPathStep = useCallback(async ({ path, step }: TodayStep) => {
     const xp = await logStep(step.id);
     if (xp > 0) {
+      if (soundOn) playMissionSound();
       completeExternal(path.category_id, xp);
       setFloatingXP({ id: Date.now(), xp });
       setTimeout(() => setFloatingXP(null), 1500);
     }
-  }, [logStep, completeExternal]);
+  }, [logStep, completeExternal, soundOn]);
 
   const handleUndoPathStep = useCallback(async (stepId: string) => {
     const xp = await undoToday(stepId);

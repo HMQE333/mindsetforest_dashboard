@@ -57,6 +57,8 @@ export interface UserPreferences {
   cardStyle?: CardStyle;
   focusPulseStyle?: FocusPulseStyle;
   completionEffect?: CompletionEffect;
+  /** Play a sound when a mission (or a path step on Home) is done. On unless false. */
+  completionSound?: boolean;
   showCompletionBadge?: boolean;
   /** What the bell inbox may show and whether it rings (lib/inbox.ts). */
   inbox?: Partial<InboxSettings>;
