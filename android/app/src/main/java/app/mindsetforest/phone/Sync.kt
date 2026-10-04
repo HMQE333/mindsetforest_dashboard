@@ -14,6 +14,7 @@ import java.time.ZoneId
 /** The Android side of a sync: usage access, events, app names. The rest is SyncCore. */
 object Sync {
     private val lock = Any()
+    private const val SETTINGS = "com.android.settings"
 
     fun hasUsageAccess(context: Context): Boolean {
         val ops = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -84,12 +85,20 @@ object Sync {
         return out
     }
 
-    /** The home screen and the system UI end a session but are not time in an app. */
+    /**
+     * The home screen and the system UI end a session but are not time in an
+     * app. Only the launcher in use counts as the home screen: Settings answers
+     * HOME too (FallbackHome, shown while the phone boots), and taking every
+     * HOME app hid all time spent in Settings.
+     */
     private fun ignoredPackages(context: Context): Set<String> {
+        val pm = context.packageManager
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        val launchers = context.packageManager.queryIntentActivities(home, PackageManager.MATCH_ALL)
-            .map { it.activityInfo.packageName }
-        return launchers.toSet() + setOf("com.android.systemui", "android")
+        val current = pm.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        val launchers =
+            if (current != null && current != "android") setOf(current)
+            else pm.queryIntentActivities(home, 0).map { it.activityInfo.packageName }.toSet() - SETTINGS
+        return launchers + setOf("com.android.systemui", "android")
     }
 
     private fun label(context: Context, pkg: String): String = try {
