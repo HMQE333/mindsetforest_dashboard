@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MindsetForest</string>
+    <string name="title">Czas na telefonie</string>
+    <string name="intro">Zapisuje, w jakich aplikacjach spędzasz czas, i wysyła to do Twojego dashboardu (Stats → Komputer i telefon). Działa w tle, bez powiadomień.</string>
+
+    <string name="step_connect">1. Połączenie z dashboardem</string>
+    <string name="connect_missing">Otwórz dashboard na tym telefonie: Stats → Komputer i telefon → „Połącz telefon”. Link sam wpisze adres bazy.</string>
+    <string name="connect_ok">Połączono z %1$s</string>
+    <string name="connect_manual">Wpisz adres ręcznie</string>
+    <string name="hint_url">Adres Supabase (https://….supabase.co)</string>
+    <string name="hint_key">Klucz publiczny (anon / publishable)</string>
+    <string name="save">Zapisz</string>
+    <string name="connect_invalid">Adres musi zaczynać się od https://, a klucz nie może być pusty.</string>
+
+    <string name="step_access">2. Dostęp do statystyk użycia</string>
+    <string name="access_missing">Android pokazuje tę informację tylko aplikacjom, którym na to pozwolisz. Na liście wybierz MindsetForest i włącz dostęp.</string>
+    <string name="access_ok">Dostęp nadany.</string>
+    <string name="access_grant">Nadaj dostęp</string>
+
+    <string name="step_account">3. Konto</string>
+    <string name="account_hint">Ten sam e-mail i hasło co w dashboardzie. Logujesz się raz.</string>
+    <string name="hint_email">E-mail</string>
+    <string name="hint_password">Hasło</string>
+    <string name="sign_in">Zaloguj</string>
+    <string name="signing_in">Logowanie…</string>
+    <string name="signed_in_as">Zalogowano jako %1$s</string>
+    <string name="sign_out">Wyloguj</string>
+
+    <string name="today">Dziś na telefonie</string>
+    <string name="today_empty">Jeszcze nic dziś (dzień zaczyna się o 4:00).</string>
+    <string name="today_total">Razem: %1$s</string>
+
+    <string name="status">Synchronizacja</string>
+    <string name="status_never">Jeszcze nic nie wysłano.</string>
+    <string name="status_last">Ostatnio: %1$s · %2$d sesji</string>
+    <string name="status_note">W tle co około 15 minut. Telefon pamięta kilka dni historii, więc gdy nie ma internetu, nic nie ginie.</string>
+    <string name="sync_now">Synchronizuj teraz</string>
+    <string name="syncing">Synchronizuję…</string>
+    <string name="sync_done">Wysłano %1$d sesji.</string>
+</resources>

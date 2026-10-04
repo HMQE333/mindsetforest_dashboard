@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A pine on a 108dp adaptive-icon canvas; the safe zone is the middle 66dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#34D399" android:pathData="M54,27 L68,47 L61,47 L72,61 L64,61 L76,76 L32,76 L44,61 L36,61 L47,47 L40,47 Z" />
+    <path android:fillColor="#A7F3D0" android:pathData="M50.5,76 L57.5,76 L57.5,84 L50.5,84 Z" />
+</vector>

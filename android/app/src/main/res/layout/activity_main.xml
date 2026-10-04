@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/title"
+            android:textColor="@color/text"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView style="@style/Body" android:text="@string/intro" />
+
+        <!-- 1. Connection -->
+        <LinearLayout style="@style/Card">
+            <TextView android:id="@+id/connectTitle" style="@style/CardTitle" android:text="@string/step_connect" />
+            <TextView android:id="@+id/connectText" style="@style/Body" />
+            <Button android:id="@+id/connectManual" style="@style/Quiet" android:text="@string/connect_manual" />
+            <LinearLayout
+                android:id="@+id/connectForm"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <EditText android:id="@+id/url" style="@style/Field" android:hint="@string/hint_url" android:inputType="textUri" android:importantForAutofill="no" />
+                <EditText android:id="@+id/key" style="@style/Field" android:hint="@string/hint_key" android:inputType="text" android:importantForAutofill="no" />
+                <Button android:id="@+id/saveConnection" style="@style/Action" android:text="@string/save" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 2. Usage access -->
+        <LinearLayout style="@style/Card">
+            <TextView android:id="@+id/accessTitle" style="@style/CardTitle" android:text="@string/step_access" />
+            <TextView android:id="@+id/accessText" style="@style/Body" />
+            <Button android:id="@+id/grantAccess" style="@style/Action" android:text="@string/access_grant" />
+        </LinearLayout>
+
+        <!-- Today, read on the phone (shown once usage access is granted) -->
+        <LinearLayout android:id="@+id/todayCard" style="@style/Card" android:visibility="gone">
+            <TextView style="@style/CardTitle" android:text="@string/today" />
+            <TextView android:id="@+id/todayText" style="@style/Body" android:textColor="@color/text" />
+            <TextView android:id="@+id/todayTotal" style="@style/Body" />
+        </LinearLayout>
+
+        <!-- 3. Account -->
+        <LinearLayout style="@style/Card">
+            <TextView android:id="@+id/accountTitle" style="@style/CardTitle" android:text="@string/step_account" />
+            <TextView android:id="@+id/accountText" style="@style/Body" />
+            <LinearLayout
+                android:id="@+id/signInForm"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <EditText android:id="@+id/email" style="@style/Field" android:hint="@string/hint_email" android:inputType="textEmailAddress" android:autofillHints="emailAddress" />
+                <EditText android:id="@+id/password" style="@style/Field" android:hint="@string/hint_password" android:inputType="textPassword" android:autofillHints="password" />
+                <Button android:id="@+id/signIn" style="@style/Action" android:text="@string/sign_in" />
+            </LinearLayout>
+            <Button android:id="@+id/signOut" style="@style/Quiet" android:text="@string/sign_out" />
+        </LinearLayout>
+
+        <!-- Status -->
+        <LinearLayout style="@style/Card">
+            <TextView style="@style/CardTitle" android:text="@string/status" />
+            <TextView android:id="@+id/statusText" style="@style/Body" android:textColor="@color/text" />
+            <TextView android:id="@+id/errorText" style="@style/Body" android:textColor="@color/warn" android:visibility="gone" />
+            <TextView style="@style/Body" android:text="@string/status_note" />
+            <Button android:id="@+id/syncNow" style="@style/Action" android:text="@string/sync_now" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
