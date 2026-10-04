@@ -13,6 +13,7 @@ import ComputerTimeAllTime from "./ComputerTimeAllTime";
 import ComputerTimeFolders from "./ComputerTimeFolders";
 import ComputerTimeApps from "./ComputerTimeApps";
 import TrackerDownload from "./TrackerDownload";
+import PhoneDownload from "./PhoneDownload";
 import ComputerTimePrivacy from "./ComputerTimePrivacy";
 import { deviceLabel, pillActive, pillBase, pillIdle, relativeTime } from "./computer-time-shared";
 
@@ -155,7 +156,7 @@ export default function ComputerTime() {
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-lg" aria-hidden="true">💻</span>
-          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Komputer</h3>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Komputer i telefon</h3>
           {!collapsed && usage.lastSync && (
             <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
               Ostatni sync: {relativeTime(usage.lastSync.at, now)} z {deviceLabel(usage.lastSync.device)}
@@ -251,7 +252,10 @@ export default function ComputerTime() {
               ) : usage.loading && usage.sessions.length === 0 ? (
                 <div className="py-10 text-center text-sm text-muted-foreground animate-pulse" role="status">Wczytywanie sesji…</div>
               ) : noDataAtAll ? (
-                <TrackerDownload />
+                <div className="space-y-3">
+                  <TrackerDownload />
+                  <PhoneDownload />
+                </div>
               ) : (
                 <>
                   <div className="flex justify-end -mt-1 mb-2">
@@ -261,12 +265,19 @@ export default function ComputerTime() {
                       aria-expanded={showInstall}
                       className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
                     >
-                      {showInstall ? "Ukryj instalację agenta" : "Zainstaluj agenta na innym komputerze"}
+                      {showInstall ? "Ukryj instalację" : "Dodaj komputer lub telefon"}
                     </button>
                   </div>
                   {showInstall && (
-                    <div className="mb-5 rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-xs text-foreground/80">
-                      <TrackerDownload compact />
+                    <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-xs text-foreground/80">
+                        <div className="font-semibold text-foreground mb-2">💻 Komputer (Windows)</div>
+                        <TrackerDownload compact />
+                      </div>
+                      <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-xs text-foreground/80">
+                        <div className="font-semibold text-foreground mb-2">📱 Telefon (Android)</div>
+                        <PhoneDownload compact />
+                      </div>
                     </div>
                   )}
                   {/* Tabs */}

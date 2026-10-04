@@ -134,9 +134,13 @@ export function dayNumericLabel(key: string): string {
   return `${key.slice(8, 10)}.${key.slice(5, 7)}`;
 }
 
-/** Shortens a device id for the filter: "a1b2c3d4…". */
+/**
+ * A device for the filter: "📱 Pixel 8" for the phone app (device ids
+ * "android:<model>:<id>"), "💻 a1b2c3d4…" for a computer (a random id).
+ */
 export function deviceLabel(id: string): string {
-  return id.length > 10 ? `${id.slice(0, 8)}…` : id;
+  if (id.startsWith("android:")) return `📱 ${id.split(":")[1] || "Telefon"}`;
+  return `💻 ${id.length > 10 ? `${id.slice(0, 8)}…` : id}`;
 }
 
 export const pillBase = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border";

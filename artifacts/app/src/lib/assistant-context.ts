@@ -181,7 +181,7 @@ function focusText(ratio: number | null): string {
 }
 
 /**
- * Screen time from the desktop agent, summarised from the daily rollup view
+ * Screen time from the desktop agent and the phone app, summarised from the daily rollup view
  * (no window titles, so title rules do not apply here; the Stats page has the
  * exact numbers). Same classifier and aggregation as the Stats section.
  */
@@ -203,7 +203,7 @@ async function gatherComputer(userId: string): Promise<string> {
       .maybeSingle(),
   ]);
   if (classRes.error || syncRes.error) return "Computer time is not set up yet (usage tables missing).";
-  if (!syncRes.data) return "No computer sessions yet: the desktop agent has not synced anything.";
+  if (!syncRes.data) return "No screen-time sessions yet: neither the desktop agent nor the phone app has synced anything.";
 
   // A failed rules or projects read must not masquerade as "everything is unassigned".
   const caveats: string[] = [];
@@ -280,7 +280,7 @@ async function gatherComputer(userId: string): Promise<string> {
   const worst = byFocus[byFocus.length - 1];
 
   const lines = [
-    `Screen time from the desktop agent. Last sync: ${syncRes.data.ended_at} (device ${syncRes.data.device_id.slice(0, 8)}).`,
+    `Screen time from the desktop agent and the phone app (device ids starting "android:" are the phone). Last sync: ${syncRes.data.ended_at} (device ${syncRes.data.device_id.slice(0, 24)}).`,
     ...caveats,
     `Today so far: ${formatHm(aggToday.totalSeconds)}, focus ${focusText(aggToday.focusRatio)} (${kindLine(aggToday)}).`,
     `Last 7 days: ${formatHm(agg7.totalSeconds)} total, focus ratio ${focusText(agg7.focusRatio)} (work+learning over all active non-neutral time).`,
