@@ -859,8 +859,9 @@ export function applyThemePreview(theme: ThemeMode, accent: AccentColor, frame: 
     }
     link.href = `https://fonts.googleapis.com/css2?${fp.googleImport}&display=swap`;
   }
-  document.body.style.fontFamily = `'${fp.body}', system-ui, -apple-system, sans-serif`;
-  root.style.setProperty("--font-display", `'${fp.display}'`);
+  // Fluent Emoji after the text font, as in index.css: Windows 11 emoji with any font pair.
+  document.body.style.fontFamily = `'${fp.body}', 'Fluent Emoji Color', system-ui, -apple-system, sans-serif`;
+  root.style.setProperty("--font-display", `'${fp.display}', 'Fluent Emoji Color'`);
 
   const setDarkVars = (bg: string, fg: string, card: string, cardFg: string, sec: string, secFg: string, mut: string, mutFg: string, brd: string, glass: string) => {
     root.style.setProperty("--background", bg);

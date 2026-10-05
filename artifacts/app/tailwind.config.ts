@@ -14,8 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        // Fluent Emoji right after the text font: emoji look as on Windows 11 everywhere.
+        sans: ["Inter", "Fluent Emoji Color", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["JetBrains Mono", "Fluent Emoji Color", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",

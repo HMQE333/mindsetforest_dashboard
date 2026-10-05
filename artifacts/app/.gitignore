@@ -5,3 +5,6 @@
 !.env.example
 
 dist-preview/
+
+# Fluent Emoji subsets: downloaded by scripts/fetch-emoji-font.mjs before a build (37 MB)
+public/fonts/fluent-emoji/*.woff2

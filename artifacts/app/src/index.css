@@ -74,7 +74,7 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', 'Fluent Emoji Color', system-ui, -apple-system, sans-serif;
   }
 
   /* Reinforce body scroll lock when a Radix dialog/popup sets data-scroll-locked.
