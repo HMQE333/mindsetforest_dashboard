@@ -55,9 +55,15 @@ expect today "Settings"
 
 # 4. Text selected in another app -> "Zapisz w Archive" (and Share): the menu offers it,
 #    and without a sign-in the card says what to do instead of losing the text silently.
-adb shell cmd package query-activities -a android.intent.action.PROCESS_TEXT -t text/plain | grep -q "$PKG/.CaptureActivity" \
-  && echo "ok: the text-selection menu offers Zapisz w Archive" \
-  || { echo "FAIL: PROCESS_TEXT does not resolve to the capture screen"; exit 1; }
+# Matched in the shell, not piped into grep -q: an early-closed pipe fails under pipefail.
+handlers="$(adb shell cmd package query-activities --brief -a android.intent.action.PROCESS_TEXT -t text/plain)"
+if [[ "$handlers" == *CaptureActivity* ]]; then
+  echo "ok: the text-selection menu offers Zapisz w Archive"
+else
+  echo "FAIL: PROCESS_TEXT does not resolve to the capture screen. Handlers:"
+  echo "$handlers"
+  exit 1
+fi
 adb shell "am start -W -a android.intent.action.PROCESS_TEXT -t text/plain --es android.intent.extra.PROCESS_TEXT 'A really important thing' -n $PKG/.CaptureActivity"
 sleep 2
 dump capture
