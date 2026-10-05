@@ -7,6 +7,7 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Link2, FileText, Loader2 } from "lucide-react";
 import { EMPTY } from "@/lib/utils";
 import { safeUrl } from "@/lib/safe-url";
+import { describeEntry, type ReadingLogEntry } from "@/lib/reading-log";
 
 interface BookCardProps {
   book: Book;
@@ -17,11 +18,13 @@ interface BookCardProps {
   onDropFile?: (file: File) => void;
   onRead?: () => void;
   uploading?: UploadStage;
+  /** The newest reading-log entry for this book. */
+  lastLog?: ReadingLogEntry;
 }
 
 const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
-export default function BookCard({ book, index, onClick, view, onDropFile, onRead, uploading }: BookCardProps) {
+export default function BookCard({ book, index, onClick, view, onDropFile, onRead, uploading, lastLog }: BookCardProps) {
   const [dropOver, setDropOver] = useState(false);
   const allPillars = usePillars();
   const progress = book.total_pages > 0 ? Math.round((book.pages_read / book.total_pages) * 100) : 0;
@@ -98,13 +101,15 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
             </div>
           )}
           <span className="text-[10px] text-muted-foreground shrink-0">{formatLabel.split(" ")[0]}</span>
-          {book.total_pages > 0 && (
-            <div className="w-16 shrink-0">
+          {book.total_pages > 0 ? (
+            <div className="w-16 shrink-0" title={lastLog ? describeEntry(lastLog) : undefined}>
               <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
                 <div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: book.cover_color }} />
               </div>
               <p className="text-[9px] text-muted-foreground text-right mt-0.5">{progress}%</p>
             </div>
+          ) : book.pages_read > 0 && (
+            <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums" title={lastLog ? describeEntry(lastLog) : undefined}>p. {book.pages_read}</span>
           )}
           <span className="text-xs px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground shrink-0">
             {STATUS_LABELS[book.status].split(" ")[0]}
@@ -173,7 +178,7 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
               </div>
             )}
 
-            {book.total_pages > 0 && (
+            {book.total_pages > 0 ? (
               <div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
                   <span>{book.pages_read}/{book.total_pages} pages</span>
@@ -183,7 +188,10 @@ export default function BookCard({ book, index, onClick, view, onDropFile, onRea
                   <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: book.cover_color }} />
                 </div>
               </div>
+            ) : book.pages_read > 0 && (
+              <p className="text-[10px] text-muted-foreground tabular-nums">Page {book.pages_read}</p>
             )}
+            {lastLog && <p className="text-[10px] text-muted-foreground/80 mt-1 tabular-nums">{describeEntry(lastLog)}</p>}
           </div>
 
           {bookPillars.length > 0 && (

@@ -122,11 +122,13 @@ export type AssistantAction =
   | { type: "add_event"; title: string; date: string; time?: string; notes?: string }
   | { type: "add_book"; books: BookDraft[] }
   | {
-      /** Pages read in a book on the shelf: moves its bookmark to `toPage` (never back). */
+      /** Pages read in a book on the shelf: a reading-log entry, and the bookmark moves to `toPage` (never back). */
       type: "log_reading";
       bookTitle: string;
       toPage: number;
       fromPage?: number;
+      /** The day it was read, YYYY-MM-DD; today when missing. */
+      date?: string;
     }
   | { type: "add_transaction"; kind: "expense" | "income"; amount: number; title: string; category?: string; date?: string }
   | {
@@ -287,7 +289,8 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
   if (scopes.includes("library")) {
     specs.push(
       '- log_reading: record pages read in a book already on the shelf ("read pages 77 to 100 of Influence"). ' +
-        "Fields: bookTitle (copy the title from the Books list in the context), toPage (number, the last page read), fromPage (optional). " +
+        "Fields: bookTitle (copy the title from the Books list in the context), toPage (number, the last page read), fromPage (optional, the first page read), " +
+        'date (optional "YYYY-MM-DD" when it was not today, e.g. yesterday). It is kept in the book\'s reading log, so the user can see later where each sitting began and ended. ' +
         "Use it instead of saying the book is missing when its title is anywhere in the Books or Other books lists. " +
         "If a Pages Read stat exists, also emit log_metric with the page count (toPage - fromPage + 1).",
     );
@@ -665,7 +668,14 @@ function coerceAction(raw: unknown): AssistantAction | null {
     const toPage = Number(o.toPage);
     const fromPage = o.fromPage === undefined || o.fromPage === null ? undefined : Number(o.fromPage);
     if (!bookTitle || !Number.isFinite(toPage) || toPage < 1 || toPage > 100000) return null;
-    return { type: "log_reading", bookTitle: bookTitle.slice(0, 200), toPage: Math.round(toPage), fromPage: fromPage !== undefined && Number.isFinite(fromPage) ? Math.round(fromPage) : undefined };
+    const date = typeof o.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : undefined;
+    return {
+      type: "log_reading",
+      bookTitle: bookTitle.slice(0, 200),
+      toPage: Math.round(toPage),
+      fromPage: fromPage !== undefined && Number.isFinite(fromPage) && fromPage >= 1 ? Math.round(fromPage) : undefined,
+      date,
+    };
   }
 
   if (type === "add_book") {
@@ -967,7 +977,7 @@ export function describeAction(action: AssistantAction): string {
     return `Load mission preset "${action.presetName}" (replaces every mission list on Home)`;
   }
   if (action.type === "log_reading") {
-    return `Reading: "${action.bookTitle}" ${action.fromPage ? `pages ${action.fromPage}-${action.toPage}` : `up to page ${action.toPage}`}`;
+    return `Reading: "${action.bookTitle}" ${action.fromPage ? `pages ${action.fromPage}-${action.toPage}` : `up to page ${action.toPage}`}${action.date ? ` on ${action.date}` : ""}`;
   }
   if (action.type === "add_reminder") {
     const when = new Date(action.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });

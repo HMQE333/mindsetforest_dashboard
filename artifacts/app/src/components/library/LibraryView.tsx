@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, lazy, Suspense } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Sparkles, Filter, Tag, LayoutGrid, List, Link2, FileText } from "lucide-react";
 import { useLibraryState } from "@/hooks/useLibraryState";
+import { useReadingLog } from "@/hooks/useReadingLog";
 import { useCoursesState } from "@/hooks/useCoursesState";
 import { BookStatus, STATUS_LABELS, BookFormat, FORMAT_LABELS } from "@/lib/library-data";
 import { CourseStatus, COURSE_STATUS_LABELS } from "@/lib/course-data";
@@ -35,6 +36,7 @@ export default function LibraryView() {
     books, loading: booksLoading, addBook, updateBook, deleteBook,
     uploads, attachFile, detachFile, saveReadingPosition, patchFile,
   } = useLibraryState();
+  const readingLog = useReadingLog();
   const reading = useReadingStats();
   const usualSpeed = useMemo(() => speedOf(reading.overall), [reading.overall]);
   const { courses, loading: coursesLoading, addCourse, updateCourse, deleteCourse } = useCoursesState();
@@ -145,6 +147,22 @@ export default function LibraryView() {
     } else {
       toast.success("Book updated");
     }
+  };
+
+  /** A stretch read ("100 → 123"): kept in the log, and the bookmark moves forward (never back). */
+  const logReading = async (id: string, fromPage: number, toPage: number) => {
+    const book = books.find(b => b.id === id);
+    if (!book) return false;
+    if (!(await readingLog.add({ bookId: id, fromPage, toPage }))) {
+      toast.error("Could not save the reading log");
+      return false;
+    }
+    const updates: Partial<Book> = {};
+    if (toPage > (book.pages_read || 0)) updates.pages_read = toPage;
+    if (book.status === "to-read") updates.status = "reading";
+    if (Object.keys(updates).length > 0 && !(await updateBook(id, updates))) return false;
+    toast.success(`Logged pages ${fromPage}–${toPage}`);
+    return true;
   };
 
   const closeReader = (id: string, reachedEnd: boolean) => {
@@ -370,13 +388,13 @@ export default function LibraryView() {
           ) : viewMode === "block" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredBooks.map((book, i) => (
-                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBookId(book.id)} view="block" onDropFile={f => void attachFile(book.id, f)} onRead={() => openReader(book.id)} uploading={uploads[book.id]} />
+                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBookId(book.id)} view="block" onDropFile={f => void attachFile(book.id, f)} onRead={() => openReader(book.id)} uploading={uploads[book.id]} lastLog={readingLog.perBook[book.id]?.[0]} />
               ))}
             </div>
           ) : (
             <div className="space-y-2">
               {filteredBooks.map((book, i) => (
-                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBookId(book.id)} view="list" onDropFile={f => void attachFile(book.id, f)} onRead={() => openReader(book.id)} uploading={uploads[book.id]} />
+                <BookCard key={book.id} book={book} index={i} onClick={() => setSelectedBookId(book.id)} view="list" onDropFile={f => void attachFile(book.id, f)} onRead={() => openReader(book.id)} uploading={uploads[book.id]} lastLog={readingLog.perBook[book.id]?.[0]} />
               ))}
             </div>
           )}
@@ -416,6 +434,9 @@ export default function LibraryView() {
         onDelete={deleteBook}
         reading={selectedBook ? reading.byBook[selectedBook.id] : undefined}
         usualSpeed={usualSpeed}
+        log={selectedBook ? readingLog.perBook[selectedBook.id] || [] : []}
+        onLog={(from, to) => (selectedBook ? logReading(selectedBook.id, from, to) : Promise.resolve(false))}
+        onRemoveLog={id => void readingLog.remove(id)}
         uploading={selectedBook ? uploads[selectedBook.id] : undefined}
         onAttachFile={f => selectedBook && void attachFile(selectedBook.id, f)}
         onRemoveFile={() => selectedBook && void detachFile(selectedBook.id)}

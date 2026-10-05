@@ -1675,6 +1675,47 @@ export type Database = {
         }
         Relationships: []
       }
+      reading_log: {
+        Row: {
+          book_id: string
+          created_at: string
+          from_page: number
+          id: string
+          read_on: string
+          source: string
+          to_page: number
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          from_page: number
+          id?: string
+          read_on: string
+          source?: string
+          to_page: number
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          from_page?: number
+          id?: string
+          read_on?: string
+          source?: string
+          to_page?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_log_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "user_books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reading_sessions: {
         Row: {
           book_id: string

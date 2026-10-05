@@ -586,10 +586,10 @@ async function gatherCalendar(userId: string): Promise<string> {
 }
 
 async function gatherLibrary(userId: string): Promise<string> {
-  const [{ data: books }, { data: courses }] = await Promise.all([
+  const [{ data: books }, { data: courses }, { data: log }] = await Promise.all([
     supabase
       .from("user_books")
-      .select("title,author,status,pages_read,total_pages")
+      .select("id,title,author,status,pages_read,total_pages")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
       .limit(400),
@@ -599,7 +599,17 @@ async function gatherLibrary(userId: string): Promise<string> {
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
       .limit(20),
+    supabase
+      .from("reading_log")
+      .select("book_id,read_on,from_page,to_page")
+      .eq("user_id", userId)
+      .order("read_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(300),
   ]);
+  // The newest reading-log entry per book: "where did I stop?"
+  const lastRead = new Map<string, string>();
+  for (const e of log || []) if (!lastRead.has(e.book_id)) lastRead.set(e.book_id, `${e.read_on}: pages ${e.from_page}-${e.to_page}`);
   const bookList = books || [];
   const courseList = courses || [];
   if (bookList.length === 0 && courseList.length === 0) return "No books or courses in the library yet.";
@@ -610,7 +620,8 @@ async function gatherLibrary(userId: string): Promise<string> {
     const detailed = bookList.filter((b, i) => b.status === "reading" || i < 10);
     const lines = detailed.map((b) => {
       const progress = b.total_pages > 0 ? ` ${b.pages_read}/${b.total_pages} pages` : b.pages_read > 0 ? ` ${b.pages_read} pages read` : "";
-      return `- ${b.title}${b.author ? ` by ${b.author}` : ""} [${b.status}]${progress}`;
+      const last = lastRead.get(b.id);
+      return `- ${b.title}${b.author ? ` by ${b.author}` : ""} [${b.status}]${progress}${last ? ` (last logged ${last})` : ""}`;
     });
     const rest = bookList.filter((b) => !detailed.includes(b)).map((b) => `${b.title}${b.author ? ` (${b.author})` : ""} [${b.status}]`);
     parts.push(`Books (${bookList.length}, log reading with log_reading):`, ...lines);

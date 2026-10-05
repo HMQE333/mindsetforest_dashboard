@@ -7,6 +7,8 @@ import { uploadLabel, type UploadStage } from "@/lib/book-files";
 import type { BookReading } from "@/lib/reading-sessions";
 import type { ReadingSpeed } from "@/lib/reading-speed";
 import ReadingStatsPanel from "./ReadingStatsPanel";
+import ReadingLogSection from "./ReadingLogSection";
+import type { ReadingLogEntry } from "@/lib/reading-log";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { Star, Trash2, Sparkles, Loader2, X, FileText, Upload, BookOpen } from "lucide-react";
@@ -29,14 +31,19 @@ interface BookDetailModalProps {
   /** What the reader measured for this book, if anything. */
   reading?: BookReading;
   usualSpeed?: ReadingSpeed;
+  /** This book's reading log, newest first. */
+  log: ReadingLogEntry[];
+  onLog: (fromPage: number, toPage: number) => Promise<boolean>;
+  onRemoveLog: (id: string) => void;
 }
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
-export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete, uploading, onAttachFile, onRemoveFile, onRead, reading, usualSpeed }: BookDetailModalProps) {
+export default function BookDetailModal({ book, open, onClose, onUpdate, onDelete, uploading, onAttachFile, onRemoveFile, onRead, reading, usualSpeed, log, onLog, onRemoveLog }: BookDetailModalProps) {
   const allPillars = usePillars();
   const [notes, setNotes] = useState("");
   const [pagesRead, setPagesRead] = useState("");
+  const [totalPages, setTotalPages] = useState("");
   const [rating, setRating] = useState<number | null>(null);
   const [status, setStatus] = useState<BookStatus>("to-read");
   const [tags, setTags] = useState<string[]>([]);
@@ -61,6 +68,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
     if (book) {
       setNotes(book.notes);
       setPagesRead(String(book.pages_read));
+      setTotalPages(book.total_pages ? String(book.total_pages) : "");
       setRating(book.rating);
       setStatus(book.status);
       setTags(book.tags || []);
@@ -81,7 +89,7 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
 
   const handleSave = () => {
     // The parent reports success or failure (and may open the finish screen).
-    onUpdate(book.id, { notes, pages_read: parseInt(pagesRead) || 0, rating, status, tags, pillars, format, url: url.trim() });
+    onUpdate(book.id, { notes, pages_read: parseInt(pagesRead) || 0, total_pages: parseInt(totalPages) || 0, rating, status, tags, pillars, format, url: url.trim() });
   };
 
   const handleAskAI = async () => {
@@ -104,7 +112,14 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
   };
   const file = book.file;
 
-  const progress = book.total_pages > 0 ? Math.round(((parseInt(pagesRead) || 0) / book.total_pages) * 100) : 0;
+  const total = parseInt(totalPages) || 0;
+  const progress = total > 0 ? Math.round(((parseInt(pagesRead) || 0) / total) * 100) : 0;
+  /** A logged stretch moves the bookmark here as well, so Save does not put it back. */
+  const handleLog = async (from: number, to: number) => {
+    const ok = await onLog(from, to);
+    if (ok) setPagesRead(p => String(Math.max(parseInt(p) || 0, to)));
+    return ok;
+  };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -217,16 +232,31 @@ export default function BookDetailModal({ book, open, onClose, onUpdate, onDelet
             </div>
           </div>
 
-          {/* Pages */}
-          {book.total_pages > 0 && (
+          {/* Pages: the bookmark, the book's length (optional), and the log of what was read when */}
+          <div className="space-y-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Pages read / {book.total_pages}</label>
-              <Input type="number" value={pagesRead} onChange={e => setPagesRead(e.target.value)} max={book.total_pages} className="bg-muted/30 border-white/10 w-32" />
-              <div className="h-2 rounded-full bg-muted/50 overflow-hidden mt-2">
-                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(progress, 100)}%`, backgroundColor: book.cover_color }} />
+              <label className="text-xs text-muted-foreground mb-1 block">Pages read</label>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Input type="number" min={0} value={pagesRead} onChange={e => setPagesRead(e.target.value)} max={total || undefined} aria-label="Pages read" className="bg-muted/30 border-white/10 w-24" />
+                <span>of</span>
+                <Input type="number" min={0} value={totalPages} onChange={e => setTotalPages(e.target.value)} placeholder="?" aria-label="Pages in the book" className="bg-muted/30 border-white/10 w-24" />
+                {total > 0 && <span className="ml-1 tabular-nums">{Math.min(progress, 100)}%</span>}
               </div>
+              {total > 0 && (
+                <div className="h-2 rounded-full bg-muted/50 overflow-hidden mt-2">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(progress, 100)}%`, backgroundColor: book.cover_color }} />
+                </div>
+              )}
             </div>
-          )}
+            <ReadingLogSection
+              bookId={book.id}
+              pagesRead={book.pages_read}
+              totalPages={total}
+              entries={log}
+              onLog={handleLog}
+              onRemove={onRemoveLog}
+            />
+          </div>
 
           {/* Pillars */}
           <div>

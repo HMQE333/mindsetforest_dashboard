@@ -327,4 +327,12 @@ describe("assistant log_reading action", () => {
     expect(parseActions(block([{ type: "log_reading", bookTitle: "Influence", toPage: 100 }]), ["archive"]).actions).toEqual([]);
     expect(parseActions(block([{ type: "log_reading", bookTitle: "", toPage: 100 }]), ["library"]).actions).toEqual([]);
   });
+
+  it("keeps the day it was read, and drops a malformed day or first page", () => {
+    const [a] = parseActions(block([{ type: "log_reading", bookTitle: "Influence", fromPage: 100, toPage: 123, date: "2026-10-04" }]), ["library"]).actions;
+    expect(a).toEqual({ type: "log_reading", bookTitle: "Influence", fromPage: 100, toPage: 123, date: "2026-10-04" });
+    expect(describeAction(a)).toBe('Reading: "Influence" pages 100-123 on 2026-10-04');
+    const [b] = parseActions(block([{ type: "log_reading", bookTitle: "Influence", fromPage: 0, toPage: 50, date: "yesterday" }]), ["library"]).actions;
+    expect(b).toEqual({ type: "log_reading", bookTitle: "Influence", toPage: 50 });
+  });
 });

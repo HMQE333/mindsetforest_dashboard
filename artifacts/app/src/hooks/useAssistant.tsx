@@ -59,6 +59,7 @@ import { ARCHIVE_BLOCKS_CHANGED_EVENT } from "@/lib/archive-data";
 import { MISSION_PRESETS_CHANGED_EVENT, missionsForApply, parseMissionMap, type MissionMap } from "@/lib/mission-presets";
 import { settleLaunch } from "@/lib/launch";
 import { REMINDERS_CHANGED_EVENT } from "@/hooks/useReminders";
+import { addReadingLog, nextFromPage } from "@/lib/reading-log";
 
 export interface AssistantMessage {
   id: string;
@@ -669,12 +670,15 @@ function useAssistantValue() {
               failed++;
               toast.error(`Nie znaleziono książki „${action.bookTitle}”`);
             } else {
+              // The stretch goes into the reading log; without a first page it starts after the bookmark.
+              const fromPage = Math.min(action.fromPage ?? nextFromPage(book.pages_read || 0), action.toPage);
+              const entry = await addReadingLog(user.id, { bookId: book.id, fromPage, toPage: action.toPage, readOn: action.date, source: "assistant" });
               const pages = Math.max(book.pages_read || 0, action.toPage);
               const { error } = await supabase
                 .from("user_books")
                 .update({ pages_read: pages, status: book.status === "to-read" ? "reading" : book.status })
                 .eq("id", book.id);
-              if (error) failed++;
+              if (error || !entry) failed++;
               else { ok++; window.dispatchEvent(new CustomEvent("library-changed")); }
             }
           } else if (action.type === "add_reminder") {
