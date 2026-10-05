@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { pickRecorderMime, transcribeBlob } from "@/lib/transcribe";
 
 /**
  * Tap to record, tap again to stop: the audio goes to the ai-transcribe
- * function (Whisper) and the text comes back through `onText`. Same pipeline
- * as the assistant's microphone, packaged for any text field.
+ * function (GPT-4o Transcribe) and the text comes back through `onText`. Same
+ * pipeline as the assistant's microphone, packaged for any text field.
  */
 /** `language` ("pl", "en") forces the transcription language; left out, it is detected, so any language works. */
 export function useVoiceNote(onText: (text: string) => void, language?: string) {
@@ -18,15 +18,7 @@ export function useVoiceNote(onText: (text: string) => void, language?: string) 
   const transcribe = useCallback(async (blob: Blob) => {
     setTranscribing(true);
     try {
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      let binary = "";
-      const CHUNK = 0x8000;
-      for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-      const { data, error } = await supabase.functions.invoke("ai-transcribe", {
-        body: { audio: btoa(binary), format: "webm", ...(language ? { language } : {}) },
-      });
-      if (error) throw new Error(error.message || "Transcription failed");
-      const text = String(data?.text || "").trim();
+      const text = await transcribeBlob(blob, language);
       if (!text) {
         toast.error("I didn't catch anything, try again");
         return;
@@ -52,15 +44,15 @@ export function useVoiceNote(onText: (text: string) => void, language?: string) 
       return;
     }
     try {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-      const rec = new MediaRecorder(stream, { mimeType });
+      const mimeType = pickRecorderMime();
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       const chunks: BlobPart[] = [];
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         recRef.current = null;
         setRecording(false);
-        if (chunks.length > 0) void transcribe(new Blob(chunks, { type: mimeType }));
+        if (chunks.length > 0) void transcribe(new Blob(chunks, { type: rec.mimeType || mimeType }));
       };
       rec.onerror = () => {
         stream.getTracks().forEach((t) => t.stop());

@@ -15,12 +15,12 @@ import {
 } from "@/lib/assistant-context";
 import { describeAction, mindmapPreview } from "@/lib/assistant-actions";
 import { processVoiceTranscript } from "@/lib/voice-format";
+import { pickRecorderMime, transcribeBlob } from "@/lib/transcribe";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
 import { VOICE_PROMPTS, isStopPhrase, parseYesNo, voiceLabel, type VoiceLang } from "@/lib/voice-mode";
 import { prettyModelName } from "@/lib/assistant-api";
 import { robotSignal } from "@/lib/assistant-robot";
 import AssistantRobot from "./AssistantRobot";
-import { supabase } from "@/integrations/supabase/client";
 import type { AssistantMessage } from "@/hooks/useAssistant";
 
 function ScopeMenu({ isWatch }: { isWatch: boolean }) {
@@ -469,26 +469,12 @@ export default function AssistantPanel() {
     }
   }, []);
 
-  // Send a recorded audio blob to the ai-transcribe edge function (Whisper via
-  // OpenRouter), then format + append the result.
+  // Send a recorded audio blob to the ai-transcribe edge function (GPT-4o
+  // Transcribe via OpenRouter), then format + append the result.
   const transcribeAndAppend = useCallback(async (blob: Blob) => {
     setTranscribing(true);
     try {
-      // Blob -> base64 (chunked to avoid stack overflow on large buffers)
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      let binary = "";
-      const CHUNK = 0x8000;
-      for (let i = 0; i < bytes.length; i += CHUNK) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-      }
-      const base64 = btoa(binary);
-
-      const { data, error } = await supabase.functions.invoke("ai-transcribe", {
-        body: { audio: base64, format: "webm" },
-      });
-      if (error) throw new Error(error.message || "Transcription failed");
-
-      const rawText: string = data?.text || "";
+      const rawText = await transcribeBlob(blob);
       if (!rawText.trim()) {
         toast.error("Couldn't hear anything. Try again");
         return;
@@ -517,10 +503,8 @@ export default function AssistantPanel() {
       return;
     }
     try {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const rec = new MediaRecorder(stream, { mimeType });
+      const mimeType = pickRecorderMime();
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       const chunks: BlobPart[] = [];
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
@@ -529,7 +513,7 @@ export default function AssistantPanel() {
         stream.getTracks().forEach((t) => t.stop());
         setListening(false);
         if (chunks.length === 0) return;
-        const blob = new Blob(chunks, { type: mimeType });
+        const blob = new Blob(chunks, { type: rec.mimeType || mimeType });
         await transcribeAndAppend(blob);
       };
       rec.onerror = () => {
@@ -899,7 +883,7 @@ export default function AssistantPanel() {
                           ? "bg-amber-500/20 text-amber-400 animate-pulse"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     }`}
-                    title={listening ? "Stop recording" : transcribing ? "Transcribing…" : "Voice input (Whisper)"}
+                    title={listening ? "Stop recording" : transcribing ? "Transcribing…" : "Voice input"}
                   >
                     {listening ? <MicOff className={isWatch ? "w-3 h-3" : "w-4 h-4"} /> : <Mic className={isWatch ? "w-3 h-3" : "w-4 h-4"} />}
                   </button>

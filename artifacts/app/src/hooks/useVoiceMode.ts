@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSpeech, fetchVoices } from "@/lib/assistant-api";
+import { transcribeBlob } from "@/lib/transcribe";
+import { recordUtterance, recorderSupported, type UtteranceHandle } from "@/lib/utterance";
 import {
   VOICE_LANG_KEY,
   cleanForSpeech,
@@ -14,10 +16,14 @@ import {
 } from "@/lib/voice-mode";
 
 /**
- * Hands-free conversation loop on the browser's own speech APIs (free, no
- * server): listen -> hand the utterance to `onUtterance` -> speak what it
- * returns -> listen again. Ends itself after a few silent rounds so the
- * microphone never stays open unattended.
+ * Hands-free conversation loop: listen -> hand the utterance to
+ * `onUtterance` -> speak what it returns -> listen again. Ends itself after a
+ * few silent rounds so the microphone never stays open unattended.
+ *
+ * Listening records each turn and sends it to ai-transcribe (GPT-4o
+ * Transcribe), which detects the language itself, so Polish and English mix
+ * freely. The browser's own recognizer (one fixed language, weaker with an
+ * accent) is only the fallback when recording or the server is unavailable.
  */
 export type VoicePhase = "idle" | "listening" | "thinking" | "speaking";
 /** Which synthesizer produced the last reply. */
@@ -44,6 +50,7 @@ function recognitionCtor(): RecognitionCtor | null {
 }
 
 export function voiceModeSupported(): boolean {
+  if (recorderSupported()) return true;
   return !!recognitionCtor() && typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
@@ -82,6 +89,9 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   const activeRef = useRef(false);
   const langRef = useRef(lang);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const utteranceRef = useRef<UtteranceHandle | null>(null);
+  // Off for the rest of a conversation once the server could not transcribe.
+  const serverSttRef = useRef(true);
   const silentRef = useRef(0);
   // Bumped on every start/interrupt so a continuation from an older cycle
   // (e.g. the cancelled utterance's onend) never starts a second listener.
@@ -141,6 +151,8 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
   }), []);
 
   const stopRecognition = useCallback(() => {
+    utteranceRef.current?.cancel();
+    utteranceRef.current = null;
     const rec = recRef.current;
     recRef.current = null;
     if (rec) {
@@ -212,11 +224,41 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     await speakBrowser(clean, chosenLang);
   }, [cancelSpeech, playBlob, speakBrowser]);
 
-  const listen = useCallback(() => {
-    if (!activeRef.current) return;
+  // `listen` and `respond` call each other; the ref breaks the cycle in their deps.
+  const listenRef = useRef<() => void>(() => undefined);
+
+  /** A silent turn: listen again, or give up after a few in a row. */
+  const silentTurn = useCallback(() => {
+    silentRef.current += 1;
+    if (silentRef.current >= maxSilentRounds) { finish("silence"); return; }
+    listenRef.current();
+  }, [finish, maxSilentRounds]);
+
+  /** Hand the words to the caller, speak the reply, and listen again. */
+  const respond = useCallback(async (text: string, generation: number) => {
+    silentRef.current = 0;
+    setPhase("thinking");
+    let reply: UtteranceReply = null;
+    try {
+      reply = await onUtteranceRef.current(text);
+    } catch {
+      reply = null;
+    }
+    if (!activeRef.current || generation !== generationRef.current) return;
+    const replyText = typeof reply === "string" ? reply : reply?.text ?? null;
+    const endAfter = typeof reply === "object" && reply !== null && reply.end === true;
+    setInterim("");
+    if (replyText) await speak(replyText);
+    // An interrupt (or stop/start) while speaking already started its own listener.
+    if (!activeRef.current || generation !== generationRef.current) return;
+    if (endAfter) { finish("manual"); return; }
+    listenRef.current();
+  }, [finish, speak]);
+
+  /** The browser's recognizer: the fallback, in the language picked in the strip. */
+  const listenBrowser = useCallback(() => {
     const Ctor = recognitionCtor();
     if (!Ctor) { finish("error"); return; }
-    stopRecognition();
     const rec = new Ctor();
     rec.lang = langRef.current;
     rec.continuous = false;
@@ -239,35 +281,14 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
       if (e.error === "not-allowed" || e.error === "service-not-allowed") finish("error");
       // "no-speech" / "aborted" fall through to onend.
     };
-    rec.onend = async () => {
+    rec.onend = () => {
       if (recRef.current !== rec) return;
       recRef.current = null;
       if (!activeRef.current) return;
       const text = finalText.trim();
       setInterim("");
-      if (!text || !gotResult) {
-        silentRef.current += 1;
-        if (silentRef.current >= maxSilentRounds) { finish("silence"); return; }
-        listen();
-        return;
-      }
-      silentRef.current = 0;
-      const generation = generationRef.current;
-      setPhase("thinking");
-      let reply: UtteranceReply = null;
-      try {
-        reply = await onUtteranceRef.current(text);
-      } catch {
-        reply = null;
-      }
-      if (!activeRef.current || generation !== generationRef.current) return;
-      const replyText = typeof reply === "string" ? reply : reply?.text ?? null;
-      const endAfter = typeof reply === "object" && reply !== null && reply.end === true;
-      if (replyText) await speak(replyText);
-      // An interrupt (or stop/start) while speaking already started its own listener.
-      if (!activeRef.current || generation !== generationRef.current) return;
-      if (endAfter) { finish("manual"); return; }
-      listen();
+      if (!text || !gotResult) { silentTurn(); return; }
+      void respond(text, generationRef.current);
     };
     recRef.current = rec;
     setPhase("listening");
@@ -276,12 +297,65 @@ export function useVoiceMode({ onUtterance, onEnd, maxSilentRounds = 3 }: UseVoi
     } catch {
       finish("error");
     }
-  }, [finish, speak, stopRecognition, maxSilentRounds]);
+  }, [finish, respond, silentTurn]);
+
+  /** Record one turn and have the server write it down. */
+  const listenRecorded = useCallback(() => {
+    const generation = generationRef.current;
+    const stale = () => !activeRef.current || generation !== generationRef.current;
+    const handle = recordUtterance({ onSpeech: () => { if (!stale()) setInterim("…"); } });
+    utteranceRef.current = handle;
+    setPhase("listening");
+    handle.promise.then(
+      async (blob) => {
+        if (utteranceRef.current !== handle) return;
+        utteranceRef.current = null;
+        if (stale()) return;
+        if (!blob) { setInterim(""); silentTurn(); return; }
+        setPhase("thinking");
+        setInterim("");
+        let text: string;
+        try {
+          text = await transcribeBlob(blob);
+        } catch {
+          if (stale()) return;
+          // The server could not write it down: the browser listens for the rest of this conversation.
+          serverSttRef.current = false;
+          listenRef.current();
+          return;
+        }
+        if (stale()) return;
+        if (!text) { silentTurn(); return; }
+        setInterim(text);
+        await respond(text, generation);
+      },
+      () => {
+        if (utteranceRef.current === handle) utteranceRef.current = null;
+        if (stale()) return;
+        // No microphone for the recorder (blocked, or busy): try the browser's recognizer once.
+        if (serverSttRef.current && recognitionCtor()) {
+          serverSttRef.current = false;
+          listenRef.current();
+          return;
+        }
+        finish("error");
+      },
+    );
+  }, [finish, respond, silentTurn]);
+
+  const listen = useCallback(() => {
+    if (!activeRef.current) return;
+    stopRecognition();
+    if (serverSttRef.current && recorderSupported()) listenRecorded();
+    else listenBrowser();
+  }, [stopRecognition, listenRecorded, listenBrowser]);
+  useEffect(() => { listenRef.current = listen; }, [listen]);
 
   const start = useCallback(() => {
     if (!supported || activeRef.current) return;
     activeRef.current = true;
     silentRef.current = 0;
+    serverSttRef.current = true;
     generationRef.current += 1;
     setActive(true);
     // Warm the voice lists (Chrome loads the browser one lazily).
