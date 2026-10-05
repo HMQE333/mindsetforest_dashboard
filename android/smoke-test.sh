@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Installs the APK on a running emulator and checks it the way a person would:
-# first launch, the dashboard's setup link, usage access, the "today" card.
+# first launch, the dashboard's setup link, usage access, the "today" card,
+# and saving selected or shared text to the Archive.
 # Run by .github/workflows/android.yml; screenshots and UI dumps go to smoke/.
 set -euo pipefail
 APK="$1"
@@ -52,7 +53,22 @@ expect today "Dostęp nadany"
 expect today "Dziś na telefonie"
 expect today "Settings"
 
-# 4. No crash at any point.
+# 4. Text selected in another app -> "Zapisz w Archive" (and Share): the menu offers it,
+#    and without a sign-in the card says what to do instead of losing the text silently.
+adb shell cmd package query-activities -a android.intent.action.PROCESS_TEXT -t text/plain | grep -q "$PKG/.CaptureActivity" \
+  && echo "ok: the text-selection menu offers Zapisz w Archive" \
+  || { echo "FAIL: PROCESS_TEXT does not resolve to the capture screen"; exit 1; }
+adb shell "am start -W -a android.intent.action.PROCESS_TEXT -t text/plain --es android.intent.extra.PROCESS_TEXT 'A really important thing' -n $PKG/.CaptureActivity"
+sleep 2
+dump capture
+expect capture "Najpierw połącz i zaloguj"
+adb shell input keyevent KEYCODE_BACK
+adb shell "am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://example.com/deep' --es android.intent.extra.SUBJECT 'Deep Work' -n $PKG/.CaptureActivity"
+sleep 2
+dump share
+expect share "Otwórz MindsetForest"
+
+# 5. No crash at any point.
 if adb logcat -d | grep -E "FATAL EXCEPTION|Process: $PKG"; then
   echo "FAIL: the app crashed"
   exit 1

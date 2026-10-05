@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Granted by the user in Settings -> Usage access, not at install. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- Reminders as notifications (asked on the app's screen, Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Lets the persisted sync job survive a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -47,6 +49,30 @@
                 <data android:scheme="mindsetforest" android:host="setup" />
             </intent-filter>
         </activity>
+
+        <!-- "Zapisz w Archive" in the text-selection menu, and MindsetForest in the Share sheet. -->
+        <activity
+            android:name=".CaptureActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/capture_label"
+            android:taskAffinity=""
+            android:theme="@style/CaptureTheme">
+            <intent-filter android:label="@string/capture_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter android:label="@string/capture_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".ReminderReceiver"
+            android:exported="false" />
 
         <service
             android:name=".SyncJob"

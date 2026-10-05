@@ -51,6 +51,14 @@ class SyncCoreTest {
             if (upsertFails.isNotEmpty()) throw upsertFails.removeAt(0)
             uploads += json to accessToken
         }
+        val archived = mutableListOf<String>()
+        var archiveFails = mutableListOf<Exception?>()
+        override fun insertArchive(json: String, accessToken: String): String? {
+            archiveFails.removeFirstOrNull()?.let { throw it }
+            archived += json
+            return "block-${archived.size}"
+        }
+        override fun dueReminders(until: Long, accessToken: String): List<Reminder> = emptyList()
     }
 
     private val events = listOf(
@@ -143,6 +151,28 @@ class SyncCoreTest {
         val api = FakeApi(upsertFails = mutableListOf(IOException("offline")))
         assertTrue(runCatching { SyncCore(api, state) { now }.upload(events, now, { false }, utc) { it } }.isFailure)
         assertEquals(42L, state.cursor)
+    }
+
+    @Test
+    fun capturesGoOutInOrderAndOfflineKeepsTheRest() {
+        val state = FakeState().apply { accessExpiresAt = Long.MAX_VALUE }
+        val queue = listOf(PendingCapture("one", "Chrome"), PendingCapture("two", ""), PendingCapture("three", ""))
+        val api = FakeApi().apply { archiveFails = mutableListOf(null, IOException("offline")) }
+        val r = SyncCore(api, state) { now }.sendCaptures(queue)
+        assertEquals(listOf("block-1"), r.savedIds)
+        assertEquals(listOf("two", "three"), r.remaining.map { it.text })
+        assertTrue(api.archived.single().contains("\"content\":\"one\\n\\nSource: Chrome\""))
+    }
+
+    @Test
+    fun aCaptureTheServerRefusesIsDroppedNotRetriedForever() {
+        val state = FakeState().apply { accessExpiresAt = Long.MAX_VALUE }
+        val api = FakeApi().apply { archiveFails = mutableListOf(HttpError(400, "bad"), null) }
+        val r = SyncCore(api, state) { now }.sendCaptures(listOf(PendingCapture("bad", ""), PendingCapture("good", "")))
+        assertEquals(listOf("block-1"), r.savedIds)
+        assertTrue(r.remaining.isEmpty())
+        val outage = FakeApi().apply { archiveFails = mutableListOf(HttpError(503, "down")) }
+        assertEquals(1, SyncCore(outage, state) { now }.sendCaptures(listOf(PendingCapture("x", ""))).remaining.size)
     }
 
     @Test

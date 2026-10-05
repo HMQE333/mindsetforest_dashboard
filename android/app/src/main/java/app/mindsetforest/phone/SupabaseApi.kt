@@ -51,6 +51,55 @@ class SupabaseApi(private val url: String, private val anonKey: String) : Sessio
         return OffsetDateTime.parse(rows.getJSONObject(0).getString("ended_at")).toInstant().toEpochMilli()
     }
 
+    override fun insertArchive(json: String, accessToken: String): String? {
+        val text = request(
+            "POST",
+            "$url/rest/v1/archive_blocks?select=id",
+            json,
+            mapOf("Authorization" to "Bearer $accessToken", "Prefer" to "return=representation"),
+        )
+        val rows = try { JSONArray(text) } catch (_: Exception) { return null }
+        return rows.optJSONObject(0)?.optString("id")?.ifEmpty { null }
+    }
+
+    /** Best effort: index a note for the Archive's semantic search, as the web app and the tracker do. */
+    fun embedBlock(blockId: String, accessToken: String) {
+        try {
+            request(
+                "POST",
+                "$url/functions/v1/ai-embed-block",
+                JSONObject().put("action", "embed").put("blockId", blockId).toString(),
+                mapOf("Authorization" to "Bearer $accessToken"),
+            )
+        } catch (_: Exception) {
+            // The note is saved; the Archive indexes unindexed notes later.
+        }
+    }
+
+    override fun dueReminders(until: Long, accessToken: String): List<Reminder> {
+        val iso = URLEncoder.encode(java.time.Instant.ofEpochMilli(until).toString(), "UTF-8")
+        val text = request(
+            "GET",
+            "$url/rest/v1/reminders?select=id,message,deliver_at,created_at&dismissed_at=is.null&deliver_at=lte.$iso&order=deliver_at.asc&limit=50",
+            null,
+            mapOf("Authorization" to "Bearer $accessToken"),
+        )
+        val rows = JSONArray(text)
+        return (0 until rows.length()).mapNotNull { i ->
+            val o = rows.optJSONObject(i) ?: return@mapNotNull null
+            try {
+                Reminder(
+                    id = o.getString("id"),
+                    message = o.optString("message"),
+                    deliverAt = OffsetDateTime.parse(o.getString("deliver_at")).toInstant().toEpochMilli(),
+                    createdAt = OffsetDateTime.parse(o.getString("created_at")).toInstant().toEpochMilli(),
+                )
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     private fun tokens(grant: String, body: JSONObject): Tokens {
         val json = JSONObject(request("POST", "$url/auth/v1/token?grant_type=$grant", body.toString(), emptyMap()))
         val user = json.getJSONObject("user")

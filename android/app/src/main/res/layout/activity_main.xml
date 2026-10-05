@@ -43,6 +43,7 @@
             <TextView android:id="@+id/accessTitle" style="@style/CardTitle" android:text="@string/step_access" />
             <TextView android:id="@+id/accessText" style="@style/Body" />
             <Button android:id="@+id/grantAccess" style="@style/Action" android:text="@string/access_grant" />
+            <Button android:id="@+id/appInfo" style="@style/Quiet" android:text="@string/access_app_info" />
         </LinearLayout>
 
         <!-- Today, read on the phone (shown once usage access is granted) -->
@@ -68,12 +69,21 @@
             <Button android:id="@+id/signOut" style="@style/Quiet" android:text="@string/sign_out" />
         </LinearLayout>
 
+        <!-- Notifications for reminders (Android 13+ asks) -->
+        <LinearLayout android:id="@+id/notifyCard" style="@style/Card" android:visibility="gone">
+            <TextView style="@style/CardTitle" android:text="@string/notify_title" />
+            <TextView style="@style/Body" android:text="@string/notify_text" />
+            <Button android:id="@+id/enableNotify" style="@style/Action" android:text="@string/notify_enable" />
+        </LinearLayout>
+
         <!-- Status -->
         <LinearLayout style="@style/Card">
             <TextView style="@style/CardTitle" android:text="@string/status" />
             <TextView android:id="@+id/statusText" style="@style/Body" android:textColor="@color/text" />
             <TextView android:id="@+id/errorText" style="@style/Body" android:textColor="@color/warn" android:visibility="gone" />
+            <TextView android:id="@+id/pendingText" style="@style/Body" android:visibility="gone" />
             <TextView style="@style/Body" android:text="@string/status_note" />
+            <TextView style="@style/Body" android:text="@string/capture_hint" />
             <Button android:id="@+id/syncNow" style="@style/Action" android:text="@string/sync_now" />
         </LinearLayout>
     </LinearLayout>

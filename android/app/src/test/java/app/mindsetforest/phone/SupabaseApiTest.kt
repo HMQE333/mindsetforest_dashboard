@@ -124,6 +124,24 @@ class SupabaseApiTest {
     }
 
     @Test
+    fun capturesAndRemindersUseTheRightTables() {
+        status = 201
+        reply = """[{"id":"b-1"}]"""
+        assertEquals("b-1", api().insertArchive("{}", "acc"))
+        assertEquals("/rest/v1/archive_blocks?select=id", seen.last()["uri"])
+        assertEquals("return=representation", seen.last()["prefer"])
+
+        status = 200
+        reply = """[{"id":"r1","message":"Did you ship it?","deliver_at":"2026-10-05T07:00:00+00:00","created_at":"2021-10-05T07:00:00.5+00:00"},{"id":"bad"}]"""
+        val list = api().dueReminders(1_791_183_600_000L, "acc")
+        assertEquals(listOf(Reminder("r1", "Did you ship it?", 1_791_183_600_000L, 1_633_417_200_500L)), list)
+        assertEquals(
+            "/rest/v1/reminders?select=id,message,deliver_at,created_at&dismissed_at=is.null&deliver_at=lte.2026-10-05T07%3A00%3A00Z&order=deliver_at.asc&limit=50",
+            seen.last()["uri"],
+        )
+    }
+
+    @Test
     fun errorsCarryTheStatusAndTheServersMessage() {
         status = 400
         reply = """{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}"""

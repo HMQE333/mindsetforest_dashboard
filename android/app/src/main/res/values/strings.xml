@@ -14,7 +14,8 @@
     <string name="connect_invalid">Adres musi zaczynać się od https://, a klucz nie może być pusty.</string>
 
     <string name="step_access">2. Dostęp do statystyk użycia</string>
-    <string name="access_missing">Android pokazuje tę informację tylko aplikacjom, którym na to pozwolisz. Na liście wybierz MindsetForest i włącz dostęp.</string>
+    <string name="access_missing">Android pokazuje tę informację tylko aplikacjom, którym na to pozwolisz. Na liście wybierz MindsetForest i włącz dostęp.\n\nPrzełącznik jest wyszarzony („ustawienie ograniczone”)? Android tak blokuje aplikacje spoza Sklepu Play: otwórz Informacje o aplikacji → ⋮ (prawy górny róg) → „Zezwól na ustawienia z ograniczonym dostępem”, potem włącz dostęp jeszcze raz.</string>
+    <string name="access_app_info">Informacje o aplikacji</string>
     <string name="access_ok">Dostęp nadany.</string>
     <string name="access_grant">Nadaj dostęp</string>
 
@@ -30,6 +31,25 @@
     <string name="today">Dziś na telefonie</string>
     <string name="today_empty">Jeszcze nic dziś (dzień zaczyna się o 4:00).</string>
     <string name="today_total">Razem: %1$s</string>
+
+    <string name="notify_title">Powiadomienia</string>
+    <string name="notify_text">Przypomnienia z dashboardu („wiadomość z przeszłości”) przyjdą jako powiadomienie, także przy zamkniętej stronie.</string>
+    <string name="notify_enable">Włącz powiadomienia</string>
+
+    <string name="capture_label">Zapisz w Archive</string>
+    <string name="capture_title">MindsetForest · Archive</string>
+    <string name="capture_saving">Zapisuję…</string>
+    <string name="capture_saved">✓ Zapisano w Archive</string>
+    <string name="capture_queued">Brak internetu: zapiszę przy najbliższej synchronizacji.</string>
+    <string name="capture_refused">Serwer nie przyjął tej notatki.</string>
+    <string name="capture_sign_in">Najpierw połącz i zaloguj aplikację MindsetForest, potem spróbuj jeszcze raz.</string>
+    <string name="capture_open">Otwórz MindsetForest</string>
+    <string name="capture_hint">Zapis do Archive: zaznacz tekst w dowolnej aplikacji → „Zapisz w Archive” w menu zaznaczenia (czasem pod ⋮), albo Udostępnij → MindsetForest.</string>
+    <string name="status_pending">Czeka na wysłanie: %1$d notatek.</string>
+
+    <string name="reminders_channel">Przypomnienia</string>
+    <string name="reminder_title">Przypomnienie</string>
+    <string name="reminder_from">Wiadomość z %1$s</string>
 
     <string name="status">Synchronizacja</string>
     <string name="status_never">Jeszcze nic nie wysłano.</string>

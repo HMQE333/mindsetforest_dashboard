@@ -34,6 +34,27 @@ class Store(context: Context) : SyncState {
 
     val configured: Boolean get() = supabaseUrl.startsWith("https://") && anonKey.isNotEmpty()
 
+    /** The dashboard's address (from the setup link), opened by a reminder's notification. */
+    var siteUrl: String
+        get() = prefs.getString("site_url", "") ?: ""
+        set(v) = prefs.edit().putString("site_url", v.trim()).apply()
+
+    /** Text captured while offline, waiting for the next sync. */
+    var pendingCaptures: List<PendingCapture>
+        get() = decodeQueue(prefs.getString("pending_captures", null))
+        set(v) {
+            prefs.edit().putString("pending_captures", encodeQueue(v)).commit()
+        }
+
+    /** Reminders this phone already showed (newest last, capped). */
+    val shownReminders: Set<String>
+        get() = prefs.getString("shown_reminders", "").orEmpty().split(',').filter { it.isNotEmpty() }.toSet()
+
+    fun markReminderShown(id: String) {
+        val list = prefs.getString("shown_reminders", "").orEmpty().split(',').filter { it.isNotEmpty() && it != id } + id
+        prefs.edit().putString("shown_reminders", list.takeLast(300).joinToString(",")).apply()
+    }
+
     var email: String
         get() = prefs.getString("email", "") ?: ""
         set(v) = prefs.edit().putString("email", v).apply()

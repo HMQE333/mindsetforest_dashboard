@@ -1,5 +1,6 @@
 package app.mindsetforest.phone
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -23,6 +24,13 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private companion object {
         const val TODAY_SHOWN = 8
+        const val NOTIFY_REQUEST = 7
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // Allowed: the next sync shows reminders that are already due.
+        if (requestCode == NOTIFY_REQUEST) { render(); if (Reminders.canNotify(this)) syncNow() }
     }
 
     private val io = Executors.newSingleThreadExecutor()
@@ -49,6 +57,13 @@ class MainActivity : Activity() {
         }
         find<Button>(R.id.grantAccess).setOnClickListener {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        }
+        // Where "Allow restricted settings" lives, for apps installed from a browser.
+        find<Button>(R.id.appInfo).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
+        find<Button>(R.id.enableNotify).setOnClickListener {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFY_REQUEST)
         }
         find<Button>(R.id.signIn).setOnClickListener { signIn() }
         find<Button>(R.id.signOut).setOnClickListener {
@@ -85,7 +100,9 @@ class MainActivity : Activity() {
     private fun handleSetupLink(intent: Intent?) {
         val uri: Uri = intent?.data ?: return
         if (uri.scheme != "mindsetforest" || uri.host != "setup") return
-        saveConnection(uri.getQueryParameter("url").orEmpty(), uri.getQueryParameter("key").orEmpty())
+        if (saveConnection(uri.getQueryParameter("url").orEmpty(), uri.getQueryParameter("key").orEmpty())) {
+            uri.getQueryParameter("site")?.takeIf { it.startsWith("https://") }?.let { store.siteUrl = it }
+        }
         render()
     }
 
@@ -171,6 +188,13 @@ class MainActivity : Activity() {
         find<TextView>(R.id.accessTitle).text = mark(access, getString(R.string.step_access))
         find<TextView>(R.id.accessText).text = getString(if (access) R.string.access_ok else R.string.access_missing)
         find<View>(R.id.grantAccess).visibility = if (access) View.GONE else View.VISIBLE
+        find<View>(R.id.appInfo).visibility = if (access) View.GONE else View.VISIBLE
+        find<View>(R.id.notifyCard).visibility = if (signedIn && !Reminders.canNotify(this)) View.VISIBLE else View.GONE
+        val pending = store.pendingCaptures.size
+        find<TextView>(R.id.pendingText).apply {
+            text = getString(R.string.status_pending, pending)
+            visibility = if (pending > 0) View.VISIBLE else View.GONE
+        }
 
         find<TextView>(R.id.accountTitle).text = mark(signedIn, getString(R.string.step_account))
         find<TextView>(R.id.accountText).text =

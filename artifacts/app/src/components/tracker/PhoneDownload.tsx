@@ -14,9 +14,12 @@ export default function PhoneDownload({ compact = false }: { compact?: boolean }
   const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
   const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
   const fallback = typeof window !== "undefined" ? new URL(apkHref, window.location.href).toString() : apkHref;
+  // The dashboard's own address: a reminder's notification opens it.
+  const site = typeof window !== "undefined" ? new URL(base, window.location.origin).toString() : "";
   const setupHref =
     supabaseUrl && anonKey
       ? `intent://setup?url=${encodeURIComponent(supabaseUrl)}&key=${encodeURIComponent(anonKey)}` +
+        (site ? `&site=${encodeURIComponent(site)}` : "") +
         `#Intent;scheme=mindsetforest;package=app.mindsetforest.phone;S.browser_fallback_url=${encodeURIComponent(fallback)};end`
       : null;
 
@@ -27,7 +30,8 @@ export default function PhoneDownload({ compact = false }: { compact?: boolean }
           <div className="font-semibold text-sm">Telefon z Androidem</div>
           <p className="text-muted-foreground">
             Mała aplikacja odczytuje, ile czasu spędzasz w każdej aplikacji (te same dane co „Czas przed ekranem” w ustawieniach), i wysyła je
-            tutaj co kwadrans. Działa w tle, bez powiadomień; czas z telefonu i komputera się sumuje.
+            tutaj co kwadrans; czas z telefonu i komputera się sumuje. Zaznaczony tekst z dowolnej aplikacji zapiszesz w Archive („Zapisz w
+            Archive” w menu zaznaczenia albo Udostępnij), a przypomnienia z 🔔 przyjdą jako powiadomienie.
           </p>
         </>
       )}

@@ -18,7 +18,14 @@ interface SessionApi {
     fun upsertSessions(json: String, accessToken: String)
     /** Epoch ms of the latest ended_at among this user's rows whose device_id starts with `prefix`, or null. */
     fun latestEnd(devicePrefix: String, accessToken: String): Long?
+    /** Inserts one archive_blocks row; returns its id. */
+    fun insertArchive(json: String, accessToken: String): String?
+    /** Reminders not dismissed whose time is at or before `until` (epoch ms). */
+    fun dueReminders(until: Long, accessToken: String): List<Reminder>
 }
+
+/** Captures that went out (their ids, for search indexing) and the ones still waiting. */
+data class CaptureResult(val savedIds: List<String>, val remaining: List<PendingCapture>)
 
 /** What a sync reads and writes between runs (Store; a fake in tests). */
 interface SyncState {
@@ -76,6 +83,38 @@ class SyncCore(
         state.cursor = nextCursor(sessions, now)
         return rows.size
     }
+
+    /**
+     * Sends queued captures in order. Offline or a server hiccup stops the
+     * run and keeps the rest for next time; a capture the server refuses
+     * outright (it never will take it) is dropped so it cannot block the queue.
+     */
+    fun sendCaptures(queue: List<PendingCapture>): CaptureResult {
+        val saved = ArrayList<String>()
+        if (queue.isEmpty()) return CaptureResult(saved, queue)
+        var token = accessToken()
+        for ((i, c) in queue.withIndex()) {
+            val json = captureJson(c, state.userId) ?: continue
+            try {
+                val id = try {
+                    api.insertArchive(json, token)
+                } catch (e: HttpError) {
+                    if (e.code != 401) throw e
+                    token = accessToken(force = true)
+                    api.insertArchive(json, token)
+                }
+                if (id != null) saved += id
+            } catch (e: HttpError) {
+                if (e.code >= 500 || e.code == 429 || e.code == 401 || e.code == 403) return CaptureResult(saved, queue.drop(i))
+            } catch (e: IOException) {
+                return CaptureResult(saved, queue.drop(i))
+            }
+        }
+        return CaptureResult(saved, emptyList())
+    }
+
+    /** Reminders due from now until the alarm horizon (and any overdue). */
+    fun reminders(now: Long): List<Reminder> = api.dueReminders(now + REMINDER_HORIZON_MS, accessToken())
 
     /** The stored access token, refreshed when it is about to expire (or was just rejected). */
     fun accessToken(force: Boolean = false): String {

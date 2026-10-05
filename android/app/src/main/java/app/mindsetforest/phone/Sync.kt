@@ -52,10 +52,23 @@ object Sync {
     private fun runLocked(context: Context, store: Store): SyncResult {
         if (!store.configured) return SyncResult.Blocked("Brak połączenia z bazą")
         if (!store.signedIn) return SyncResult.Blocked("Zaloguj się")
-        if (!hasUsageAccess(context)) return SyncResult.Blocked("Brak dostępu do statystyk użycia")
 
-        val core = SyncCore(SupabaseApi(store.supabaseUrl, store.anonKey), store)
+        val api = SupabaseApi(store.supabaseUrl, store.anonKey)
+        val core = SyncCore(api, store)
         val now = System.currentTimeMillis()
+
+        // 1. Text captured while offline (needs no usage access).
+        sendQueued(store, api, core)
+
+        // 2. Reminders as notifications. A missing table or a refused query must not stop the rest.
+        try {
+            Reminders.apply(context, store, planReminders(core.reminders(now), now, store.shownReminders))
+        } catch (e: HttpError) {
+            if (e.code == 401) throw e
+        }
+
+        // 3. Time in apps.
+        if (!hasUsageAccess(context)) return SyncResult.Blocked("Brak dostępu do statystyk użycia")
         val events = readEvents(context, core.since(now) - 1000, now)
         val ignored = ignoredPackages(context)
         val labels = HashMap<String, String>()
@@ -63,6 +76,39 @@ object Sync {
             labels.getOrPut(pkg) { label(context, pkg) }
         }
         return SyncResult.Done(rows)
+    }
+
+    private fun sendQueued(store: Store, api: SupabaseApi, core: SyncCore): CaptureResult {
+        val result = core.sendCaptures(store.pendingCaptures)
+        store.pendingCaptures = result.remaining
+        for (id in result.savedIds) api.embedBlock(id, store.accessToken)
+        return result
+    }
+
+    /** How saving one capture went, for the capture screen. */
+    enum class CaptureOutcome { SAVED, QUEUED, SIGNED_OUT, REFUSED }
+
+    /**
+     * Saves text to the Archive now, or queues it (offline) for the next sync.
+     * Runs off the main thread.
+     */
+    fun capture(context: Context, c: PendingCapture): CaptureOutcome = synchronized(lock) {
+        val store = Store(context)
+        if (!store.configured || !store.signedIn) return CaptureOutcome.SIGNED_OUT
+        store.pendingCaptures = store.pendingCaptures + c
+        val api = SupabaseApi(store.supabaseUrl, store.anonKey)
+        return try {
+            val result = sendQueued(store, api, SyncCore(api, store))
+            when {
+                result.remaining.isNotEmpty() -> CaptureOutcome.QUEUED
+                result.savedIds.isNotEmpty() -> CaptureOutcome.SAVED
+                else -> CaptureOutcome.REFUSED
+            }
+        } catch (e: HttpError) {
+            if (e.code == 401) CaptureOutcome.SIGNED_OUT else CaptureOutcome.QUEUED
+        } catch (e: IOException) {
+            CaptureOutcome.QUEUED
+        }
     }
 
     /** Today's time per app (since 04:00), most used first. Read on the phone, nothing is sent. */
