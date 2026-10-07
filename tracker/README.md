@@ -11,6 +11,8 @@
 >
 > 7. **Zapis do Archive:** zaznacz tekst w dowolnym programie (Chrome, PDF, Word) i wcisnij **Alt+Shift+S**. Tekst trafia do Archive jako notatka z tagiem `quick-capture` i tytulem okna jako zrodlem. Skrot zmienisz w panelu www (**Settings -> Keybinds**, tracker pobiera go w ciagu minuty) albo w `config.json` (`capture_hotkey`, pusty = wylaczony).
 >
+> 8. **Nagrania → Obsidian (Knowledge OS):** każde nowe MP3 w `Documents\Bandicam` jest transkrybowane (Whisper large-v3-turbo w chmurze, ze znacznikami czasu) i trafia do vaulta `Documents\MindsetForest Vault` jako notatka w `Recordings/` plus sesja w `Sessions/` (`status: new`). Nagrania zaczęte do 20 min po końcu poprzedniego to ta sama sesja (części jednego wykładu). Oryginalne pliki nie są ruszane. Ścieżki zmienisz w `config.json`: `recordings_dir`, `vault_dir`, `session_gap_minutes` (po zmianie zrestartuj tracker). W vaulcie `_SYSTEM/processing-rules.md` to zasady dla Claude, a `_SYSTEM/routine-prompt.md` to treść do wklejenia jako rutyna w Claude Desktop.
+>
 > Dane: `%APPDATA%\MindsetForest\` (baza `tracker.db`, log `tracker.log`, sesja `session.bin`).
 
 A headless Windows agent that records which application (and window) is in the

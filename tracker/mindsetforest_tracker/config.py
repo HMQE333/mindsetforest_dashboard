@@ -39,6 +39,12 @@ class Config:
     min_session_seconds: int = 2
     # Global hotkey that saves the selected text to the Archive ("" turns it off).
     capture_hotkey: str = "alt+shift+s"
+    # Knowledge OS: MP3s in this folder are transcribed and written to the Obsidian vault.
+    # Empty recordings_dir turns it off. Change vault_dir any time; new notes go there.
+    recordings_dir: str = field(default_factory=lambda: str(Path.home() / "Documents" / "Bandicam"))
+    vault_dir: str = field(default_factory=lambda: str(Path.home() / "Documents" / "MindsetForest Vault"))
+    # Recordings starting within this many minutes of the previous one's end are one session.
+    session_gap_minutes: float = 20.0
     path: Path | None = field(default=None, compare=False)
 
     def is_ignored(self, app_name: str) -> bool:
@@ -99,6 +105,9 @@ def load_config(path: Path | None = None) -> Config:
     cfg.private_keywords = [str(k) for k in (cfg.private_keywords or [])]
     cfg.supabase_url = cfg.supabase_url.rstrip("/")
     cfg.capture_hotkey = str(cfg.capture_hotkey or "").strip().lower()
+    cfg.recordings_dir = os.path.expandvars(os.path.expanduser(str(cfg.recordings_dir or "").strip()))
+    cfg.vault_dir = os.path.expandvars(os.path.expanduser(str(cfg.vault_dir or "").strip()))
+    cfg.session_gap_minutes = max(1.0, float(cfg.session_gap_minutes))
     return cfg
 
 

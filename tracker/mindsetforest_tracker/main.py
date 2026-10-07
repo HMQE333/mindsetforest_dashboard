@@ -21,6 +21,7 @@ from typing import Any
 import psutil
 
 from . import tray
+from .recordings import IntakeState, IntakeWorker, KosClient
 from .archive_capture import ArchiveClient, HotkeyListener, clean_source, foreground_title, read_selection
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .capture import Sampler, default_sampler
@@ -141,6 +142,7 @@ class TrackerApp:
         self._hotkey_listener: Any = None
         self._hotkey_spec: str | None = None
         self._hotkey_lock = threading.Lock()
+        self.intake: Any = None
         sync_worker.on_status = self.on_sync_status
         sync_worker.on_capture_hotkey = self.on_capture_hotkey
         sync_worker.on_private_keywords = self.on_private_keywords
@@ -149,6 +151,8 @@ class TrackerApp:
 
     def start(self) -> None:
         self.sync_worker.start()
+        if self.intake is not None:
+            self.intake.start()
         self._thread.start()
         self.apply_capture_hotkey(self.config.capture_hotkey)
         log.info("Tracking started (device %s, %s)", self.device_id, self.config.device_name)
@@ -378,8 +382,16 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     client = SyncClient(config.supabase_url, config.supabase_anon_key, auth)
     worker = SyncWorker(store, client, interval_seconds=config.sync_seconds)
     archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
-    return TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
-                      archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None)
+    app = TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
+                     archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None)
+    if config.supabase_url and config.recordings_dir and config.vault_dir:
+        app.intake = IntakeWorker(
+            Path(config.recordings_dir), Path(config.vault_dir), config.session_gap_minutes,
+            KosClient(config.supabase_url, config.supabase_anon_key, auth),
+            IntakeState.load(data_dir / "recordings.json"),
+            notify=lambda msg: tray.notify(app.icon, msg) if app.icon is not None else None,
+        )
+    return app
 
 
 def main(argv: list[str] | None = None) -> int:
