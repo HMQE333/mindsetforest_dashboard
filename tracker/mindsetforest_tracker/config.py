@@ -19,6 +19,51 @@ log = logging.getLogger(__name__)
 APP_DIR_NAME = "MindsetForest"
 CONFIG_FILE_NAME = "config.json"
 DEFAULT_DASHBOARD_URL = "https://mindsetforest.app"
+FOLDERID_DOCUMENTS = "{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"
+FOLDERID_VIDEOS = "{18989B1D-99B5-455B-841C-AB7C74E4DDFC}"
+
+
+def _known_folder(guid: str) -> Path | None:
+    """``SHGetKnownFolderPath`` for ``guid``; None off Windows or on any failure.
+
+    Documents may be redirected to OneDrive or moved by the user, so
+    ``~/Documents`` is only a guess; the shell knows the real folder.
+    """
+    if sys.platform != "win32":
+        return None
+    try:  # pragma: no cover - Windows only
+        import ctypes
+        import uuid
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
+                        ("Data4", ctypes.c_ubyte * 8)]
+
+        folder_id = GUID.from_buffer_copy(uuid.UUID(guid).bytes_le)
+        out = ctypes.c_wchar_p()
+        shell32 = ctypes.WinDLL("shell32")  # own instance: argtypes stay local to this call
+        fn = shell32.SHGetKnownFolderPath
+        fn.argtypes = [ctypes.POINTER(GUID), wintypes.DWORD, wintypes.HANDLE, ctypes.POINTER(ctypes.c_wchar_p)]
+        fn.restype = ctypes.c_long
+        hr = fn(ctypes.byref(folder_id), 0, None, ctypes.byref(out))
+        try:
+            return Path(out.value) if hr == 0 and out.value else None
+        finally:
+            ctypes.WinDLL("ole32").CoTaskMemFree(out)  # freed whether or not the call succeeded
+    except Exception:  # pragma: no cover
+        log.debug("SHGetKnownFolderPath(%s) failed", guid, exc_info=True)
+        return None
+
+
+def documents_dir() -> Path:
+    """The user's Documents folder, following OneDrive or a moved folder on Windows."""
+    return _known_folder(FOLDERID_DOCUMENTS) or Path.home() / "Documents"
+
+
+def videos_dir() -> Path:
+    """The user's Videos folder (Bandicam 6.1+ records there when Documents is on OneDrive)."""
+    return _known_folder(FOLDERID_VIDEOS) or Path.home() / "Videos"
 
 
 @dataclass
@@ -39,11 +84,14 @@ class Config:
     min_session_seconds: int = 2
     # Global hotkey that saves the selected text to the Archive ("" turns it off).
     capture_hotkey: str = "alt+shift+s"
+    # Set by the setup window: the tracker pushes capture_hotkey to the dashboard once and
+    # clears it (the dashboard's value wins at every sync, so a new choice must reach it).
+    capture_hotkey_push: bool = False
     # Knowledge OS: MP3s in this folder are transcribed and written to the Obsidian vault, and
     # the vault's Knowledge/ and Sessions/ notes are copied to the dashboard. Empty
     # recordings_dir turns transcription off. Change vault_dir any time; new notes go there.
-    recordings_dir: str = field(default_factory=lambda: str(Path.home() / "Documents" / "Bandicam"))
-    vault_dir: str = field(default_factory=lambda: str(Path.home() / "Documents" / "MindsetForest Vault"))
+    recordings_dir: str = field(default_factory=lambda: str(documents_dir() / "Bandicam"))
+    vault_dir: str = field(default_factory=lambda: str(documents_dir() / "MindsetForest Vault"))
     # Recordings starting within this many minutes of the previous one's end are one session.
     session_gap_minutes: float = 20.0
     path: Path | None = field(default=None, compare=False)
@@ -106,6 +154,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg.private_keywords = [str(k) for k in (cfg.private_keywords or [])]
     cfg.supabase_url = cfg.supabase_url.rstrip("/")
     cfg.capture_hotkey = str(cfg.capture_hotkey or "").strip().lower()
+    cfg.capture_hotkey_push = str(cfg.capture_hotkey_push).strip().lower() in ("true", "1")
     cfg.recordings_dir = os.path.expandvars(os.path.expanduser(str(cfg.recordings_dir or "").strip()))
     cfg.vault_dir = os.path.expandvars(os.path.expanduser(str(cfg.vault_dir or "").strip()))
     cfg.session_gap_minutes = max(1.0, float(cfg.session_gap_minutes))
