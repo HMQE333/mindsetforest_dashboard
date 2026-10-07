@@ -3,7 +3,7 @@ import json
 import pytest
 import requests
 
-from mindsetforest_tracker.auth import AuthError, AuthRequired, SupabaseAuth, Tokens
+from mindsetforest_tracker.auth import DPAPI_AVAILABLE, AuthError, AuthRequired, SupabaseAuth, Tokens
 from mindsetforest_tracker.sessions import Session
 from mindsetforest_tracker.store import Store
 from mindsetforest_tracker.sync import MAX_BACKOFF, SyncClient, SyncWorker, build_payload
@@ -179,7 +179,8 @@ def test_sign_in_saves_and_reloads_session(tmp_path, caplog):
     again = SupabaseAuth(URL, "anon", tmp_path / "session.bin", http=http)
     assert again.load_saved() is True
     assert (again.tokens.refresh_token, again.user_id, again.email, again.tokens.access_token) == ("ref", "user-1", "a@b.c", "")
-    assert "unencrypted" in caplog.text  # Linux fallback warns
+    if not DPAPI_AVAILABLE:
+        assert "unencrypted" in caplog.text  # the off-Windows fallback warns; Windows encrypts with DPAPI
     again.sign_out()
     assert not (tmp_path / "session.bin").exists() and again.has_session is False
 

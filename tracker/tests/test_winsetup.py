@@ -284,8 +284,9 @@ def test_dev_mode_runs_from_the_sources(env):
     result = install(choices(env), data_dir=env.data, source_exe=None, ops=env.ops)
     script = Path(winsetup.__file__).resolve().parent.parent / "run_tracker.py"
     assert not installed_exe().exists() and result.exe == script
-    assert env.ops.launched == [([sys.executable, str(script)], script.parent)]
-    assert env.ops.run[RUN_VALUE] == f'"{sys.executable}" "{script}"'
+    python = winsetup._dev_python()  # pythonw.exe on Windows, so no console window opens
+    assert env.ops.launched == [([python, str(script)], script.parent)]
+    assert env.ops.run[RUN_VALUE] == f'"{python}" "{script}"'
     assert env.ops.uninstall_entry is None and env.ops.shortcuts == {}
     assert (env.data / "config.json").is_file() and result.started
 

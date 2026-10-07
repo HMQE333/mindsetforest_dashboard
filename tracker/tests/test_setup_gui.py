@@ -534,4 +534,5 @@ def test_typed_credentials_sign_in_before_installing(gui, monkeypatch, tmp_path,
         assert installed == [] and window.page_name == "form"
     ((url, key, session_path), email, password), = signed
     assert (url, key, email, password) == ("https://x.supabase.co", "anon", "ola@example.com", "secret")
-    assert session_path == tmp_path / "data" / "session.bin"
+    # The new login waits beside session.bin until install() has stopped the running tracker.
+    assert session_path == tmp_path / "data" / winsetup.PENDING_SESSION
