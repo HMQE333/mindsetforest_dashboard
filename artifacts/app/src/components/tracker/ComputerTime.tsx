@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, MonitorSmartphone, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppUsage, type UsageRange } from "@/hooks/useAppUsage";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import { useTrackerDevices } from "@/hooks/useTrackerDevices";
 import { addDays, daysBetween, todayKey } from "@/lib/today";
 import { aggregateUsage, PRIORITY_LEARNED, type Classification, type RuleProposal, type UsageSession } from "@/lib/app-usage-classify";
 import ComputerTimeDashboard from "./ComputerTimeDashboard";
@@ -15,6 +16,7 @@ import ComputerTimeApps from "./ComputerTimeApps";
 import TrackerDownload from "./TrackerDownload";
 import PhoneDownload from "./PhoneDownload";
 import ComputerTimePrivacy from "./ComputerTimePrivacy";
+import TrackerDevicesDialog from "./TrackerDevicesDialog";
 import { deviceLabel, pillActive, pillBase, pillIdle, relativeTime } from "./computer-time-shared";
 
 /**
@@ -86,6 +88,9 @@ export default function ComputerTime() {
     return { from: weekFrom < range.from ? weekFrom : range.from, to: range.to };
   }, [range, weekDays]);
   const usage = useAppUsage(loadRange, { enabled: everExpanded });
+  const trackerDevices = useTrackerDevices(everExpanded);
+  const names = trackerDevices.names;
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -159,7 +164,7 @@ export default function ComputerTime() {
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Komputer i telefon</h3>
           {!collapsed && usage.lastSync && (
             <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
-              Ostatni sync: {relativeTime(usage.lastSync.at, now)} z {deviceLabel(usage.lastSync.device)}
+              Ostatni sync: {relativeTime(usage.lastSync.at, now)} z {deviceLabel(usage.lastSync.device, names)}
             </span>
           )}
         </div>
@@ -220,12 +225,23 @@ export default function ComputerTime() {
                         <SelectItem value={ALL_DEVICES}>Wszystkie urządzenia</SelectItem>
                         {usage.devices.map((d) => (
                           <SelectItem key={d} value={d}>
-                            {deviceLabel(d)}
+                            {deviceLabel(d, names)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   )}
+                  <button
+                    onClick={() => {
+                      setDevicesOpen(true);
+                      void trackerDevices.refresh();
+                    }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                    title="Urządzenia: nazwy, łączenie, usuwanie"
+                    aria-label="Urządzenia"
+                  >
+                    <MonitorSmartphone className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => usage.refetch()}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
@@ -236,9 +252,23 @@ export default function ComputerTime() {
                   </button>
                 </span>
               </div>
+              <TrackerDevicesDialog
+                open={devicesOpen}
+                onOpenChange={setDevicesOpen}
+                devices={trackerDevices.devices}
+                names={names}
+                loading={trackerDevices.loading}
+                rename={trackerDevices.rename}
+                merge={trackerDevices.merge}
+                forget={trackerDevices.forget}
+                onChanged={() => {
+                  setDevice(ALL_DEVICES);
+                  usage.refetch();
+                }}
+              />
               {usage.lastSync && (
                 <p className="text-[11px] text-muted-foreground mb-4 sm:hidden">
-                  Ostatni sync: {relativeTime(usage.lastSync.at, now)} z {deviceLabel(usage.lastSync.device)}
+                  Ostatni sync: {relativeTime(usage.lastSync.at, now)} z {deviceLabel(usage.lastSync.device, names)}
                 </p>
               )}
 

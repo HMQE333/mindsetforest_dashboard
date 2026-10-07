@@ -337,6 +337,45 @@ def _local_appdata() -> Path:
     return Path(value) if value else Path.home() / "AppData" / "Local"
 
 
+# What a tracker keeps per install: losing it makes the same PC a new device in the dashboard.
+STATE_FILES = ("tracker.db", "tracker.db-wal", "tracker.db-shm", "session.bin", "recordings.json", "recordings-index.json")
+
+
+def store_python_data_dirs() -> list[Path]:
+    """Data folders of a zip tracker that ran on Microsoft Store Python.
+
+    That Python quietly redirects writes to %APPDATA% into its package folder
+    (%LOCALAPPDATA%\\Packages\\PythonSoftwareFoundation.Python.*\\LocalCache\\Roaming),
+    so the old tracker's device id, login and transcription state are there,
+    and its lock file is invisible from the real data folder.
+    """
+    base = _local_appdata() / "Packages"
+    try:
+        found = [p / "LocalCache" / "Roaming" / "MindsetForest" for p in base.glob("PythonSoftwareFoundation.Python.*")]
+    except OSError:
+        return []
+    return sorted((p for p in found if p.is_dir()), key=lambda p: str(p))
+
+
+def migrate_store_python_data(data_dir: Path, sources: list[Path] | None = None) -> Path | None:
+    """Copy the old tracker's state into data_dir when data_dir has none yet; returns where it came from.
+
+    Never overwrites: a data folder that already has a tracker.db keeps it.
+    Call only with every tracker stopped.
+    """
+    if (data_dir / "tracker.db").exists():
+        return None
+    for src in sources if sources is not None else store_python_data_dirs():
+        if not (src / "tracker.db").is_file():
+            continue
+        data_dir.mkdir(parents=True, exist_ok=True)
+        for name in STATE_FILES:
+            if (src / name).is_file() and not (data_dir / name).exists():
+                shutil.copy2(src / name, data_dir / name)
+        return src
+    return None
+
+
 def _roaming_appdata() -> Path:
     value = os.environ.get("APPDATA")
     return Path(value) if value else Path.home() / "AppData" / "Roaming"
@@ -982,9 +1021,15 @@ def install(choices: SetupChoices, *, data_dir: Path, source_exe: Path | None, o
 
     step("Zatrzymuję działający tracker...")
     stopped = stop_running_tracker(data_dir)
+    for old_dir in store_python_data_dirs():  # a zip tracker on Store Python keeps its lock there
+        stopped = stop_running_tracker(old_dir) or stopped
     if stopped:
         messages.append("Zatrzymano działający tracker.")
     try:
+        moved_from = migrate_store_python_data(data_dir)
+        if moved_from is not None:
+            messages.append("Przeniesiono dane starej wersji (Python ze Sklepu Microsoft): to samo urządzenie, "
+                            "logowanie i przetworzone nagrania zostają.")
         if adopt_pending_session(data_dir, pending_session):
             messages.append("Zapisano nowe logowanie.")
         _drop_stale_pending_sessions(data_dir)

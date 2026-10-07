@@ -784,3 +784,8 @@ def test_uninstall_deletes_the_program_only_after_the_last_dialog(tmp_path, monk
     assert main_mod.run_uninstall(args, tmp_path / "data", frozen=True, ops=Ops(), confirm=lambda: True,
                                   show=lambda kind, text: events.append(("show", kind))) == 0
     assert events == [("show", "info"), ("delete_later", [exe, folder])]
+
+
+def test_the_app_reports_its_device_name_once_signed_in(tmp_path):
+    app = make_app(tmp_path, [])
+    assert app.sync_worker.pending_device_name == ("dev-1", app.config.device_name)

@@ -394,3 +394,38 @@ def test_no_push_while_signed_out(tmp_path):
     worker.sync_once()
     assert not any(RPC in c[1] for c in http.calls)
     assert worker.pending_hotkey == "ctrl+alt+k" and pushed == []
+
+
+# -- the dashboard shows the computer's name, not its random id ----------------
+
+DEVICES = "/rest/v1/tracker_devices"
+
+
+def test_the_device_name_is_reported_once_and_only_as_reported_name(tmp_path):
+    http = FakeHttpWithGet()
+    http.add(DEVICES, FakeResponse(500, text="boom"), FakeResponse(201))
+    worker = SyncWorker(Store(), SyncClient(URL, "anon", make_auth(tmp_path, http), http=http))
+    worker.pending_device_name = ("dev-1", "  Laptop  ")
+    worker.sync_once()  # a failure keeps it for the next sync, and the sync itself still succeeds
+    assert worker.pending_device_name == ("dev-1", "  Laptop  ") and worker.status.last_error is None
+    worker.sync_once()
+    sent = [c for c in http.calls if DEVICES in c[1]]
+    method, url, headers, body = sent[-1]
+    assert url == f"{URL}{DEVICES}?on_conflict=user_id,device_id"
+    assert headers["Prefer"] == "resolution=merge-duplicates,return=minimal"
+    # Only reported_name: a name given in the dashboard (the name column) is never overwritten.
+    assert body == [{"user_id": "user-1", "device_id": "dev-1", "reported_name": "Laptop"}]
+    assert worker.pending_device_name is None
+    worker.sync_once()
+    assert len([c for c in http.calls if DEVICES in c[1]]) == 2  # sent once per run
+
+
+def test_no_device_report_while_signed_out_or_without_a_name(tmp_path):
+    http = FakeHttpWithGet()
+    worker = SyncWorker(Store(), SyncClient(URL, "anon", make_auth(tmp_path, http), http=http))
+    worker.pending_device_name = ("dev-1", "   ")
+    worker.sync_once()
+    worker.pending_device_name = ("dev-1", "Laptop")
+    worker.client.auth.tokens = None
+    worker.sync_once()
+    assert not any(DEVICES in c[1] for c in http.calls)

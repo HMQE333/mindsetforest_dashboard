@@ -31,6 +31,7 @@ TABLE = "app_usage_sessions"
 PRIVACY_TABLE = "app_tracking_privacy"
 SETTINGS_TABLE = "user_onboarding"  # the dashboard's preferences (Settings -> Keybinds)
 HOTKEY_RPC = "set_tracker_capture_hotkey"  # writes only preferences.hotkeys.trackerCapture
+DEVICES_TABLE = "tracker_devices"  # the dashboard's device names; the tracker writes only reported_name
 MAX_BACKOFF = 600.0
 
 
@@ -74,6 +75,7 @@ class SyncClient:
         self.privacy_url = f"{supabase_url.rstrip('/')}/rest/v1/{PRIVACY_TABLE}?select=keywords"
         self.settings_url = f"{supabase_url.rstrip('/')}/rest/v1/{SETTINGS_TABLE}?select=preferences"
         self.hotkey_rpc_url = f"{supabase_url.rstrip('/')}/rest/v1/rpc/{HOTKEY_RPC}"
+        self.devices_url = f"{supabase_url.rstrip('/')}/rest/v1/{DEVICES_TABLE}?on_conflict=user_id,device_id"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
@@ -144,6 +146,19 @@ class SyncClient:
         if resp.status_code not in (200, 204):
             raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
 
+    def report_device(self, device_id: str, name: str) -> None:
+        """Tell the dashboard what this computer is called (its device_name).
+
+        Only reported_name is sent, so a name given in the dashboard (the name
+        column) is never overwritten; the dashboard shows that one first.
+        """
+        headers = {**self.auth.headers(), "Content-Type": "application/json",
+                   "Prefer": "resolution=merge-duplicates,return=minimal"}
+        body = [{"user_id": self.auth.user_id, "device_id": device_id, "reported_name": name.strip()[:60]}]
+        resp = self._request("post", self.devices_url, headers, body)
+        if resp.status_code not in (200, 201, 204):
+            raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+
     def _request(self, method: str, url: str, headers: dict, payload: Any) -> Any:
         try:
             if method == "post":
@@ -184,6 +199,8 @@ class SyncWorker(threading.Thread):
         # A hotkey chosen in the setup window, sent to the dashboard before the next
         # pull (which would otherwise bring back the old one); kept until it gets there.
         self.pending_hotkey: str | None = None
+        # (device_id, device_name) to report once per run, so the dashboard shows a name, not an id.
+        self.pending_device_name: tuple[str, str] | None = None
         self.on_hotkey_pushed: Callable[[], None] | None = None
         self.clock = clock
         self.status = SyncStatus()
@@ -234,6 +251,7 @@ class SyncWorker(threading.Thread):
                 if uploaded:
                     log.info("Synced %d session row(s)", uploaded)
                 self._pull_private_keywords()
+                self._report_device_name()
                 self._push_capture_hotkey()
                 self._pull_capture_hotkey()
             except AuthRequired as exc:
@@ -271,6 +289,19 @@ class SyncWorker(threading.Thread):
             self.on_private_keywords(keywords)
         except Exception:
             log.exception("on_private_keywords callback failed")
+
+    def _report_device_name(self) -> None:
+        """Send this computer's name once per run; a failure keeps it for the next sync."""
+        pending = self.pending_device_name
+        if pending is None or not pending[1].strip() or not self.client.auth.has_session:
+            return
+        try:
+            self.client.report_device(*pending)
+        except Exception as exc:
+            log.warning("Could not send the device name to the dashboard (will retry): %s", exc)
+            return
+        self.pending_device_name = None
+        log.info("Device name sent to the dashboard: %s", pending[1])
 
     def _push_capture_hotkey(self) -> None:
         """Send the setup window's hotkey once; a failure keeps it for the next sync."""

@@ -217,6 +217,8 @@ class TrackerApp:
         if getattr(config, "capture_hotkey_push", False):
             # Chosen in the setup window: the dashboard's value would win at the next pull.
             sync_worker.pending_hotkey = config.capture_hotkey
+        # The dashboard names devices by this (unless the user named it there); else it shows the random id.
+        sync_worker.pending_device_name = (device_id, config.device_name or "")
 
     # -- lifecycle -----------------------------------------------------------
 

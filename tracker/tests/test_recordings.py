@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from datetime import datetime, timedelta
@@ -67,8 +68,13 @@ class FakeResp:
 class FakeHttp:
     def __init__(self):
         self.calls = []
+        self.stored = []  # kos_recordings rows the "server" already has
 
     def request(self, method, url, headers=None, json=None, timeout=None):
+        if method == "GET":  # the duplicate check before transcribing
+            self.calls.append((url, None))
+            sha = url.split("sha256=eq.", 1)[1].split("&", 1)[0]
+            return FakeResp(200, [r for r in self.stored if r["sha256"] == sha][:1])
         assert method == "POST"
         self.calls.append((url, json))
         if url.endswith("/kos-transcribe"):
@@ -474,3 +480,26 @@ def test_an_empty_vault_never_empties_the_dashboard(tmp_path, caplog):
     (empty / "Sessions" / "2026-10-07 14-03.md").write_text("---\nstatus: new\n---\n", encoding="utf-8")
     assert moved.sync(2 * recordings.RELOAD_SECONDS) == (1, 2)
     assert sorted(server.rows) == ["Sessions/2026-10-07 14-03.md"]
+
+
+def test_a_recording_the_server_already_has_is_not_transcribed_again(tmp_path):
+    # A reinstall that lost recordings.json (or a second PC) finds the file's hash on the server.
+    folder, vault = tmp_path / "Bandicam", tmp_path / "Vault"
+    folder.mkdir()
+    audio = folder / "bandicam 2026-10-07 14-03-12-123.mp3"
+    audio.write_bytes(mp3(60))
+    sha = hashlib.sha256(audio.read_bytes()).hexdigest()
+    client = Client(tmp_path)
+    client.http.stored.append({"sha256": sha, "note_name": "2026-10-07 14-03-12 lecture", "file_name": audio.name,
+                               "recorded_at": "2026-10-07T12:03:12+00:00", "duration_seconds": 60,
+                               "session_key": "2026-10-07 14-03", "part": 2})
+    state = IntakeState.load(tmp_path / "recordings.json")
+    note, fresh = process_recording(audio, client.kos, state, vault, 20)
+    assert (note, fresh) == ("2026-10-07 14-03-12 lecture", False)
+    assert client.transcribed() == 0 and not (vault / "Recordings").exists()  # nothing sent, the vault untouched
+    known = state.known[sha]
+    assert (known.session, known.part) == ("2026-10-07 14-03", 2) and known.end - known.start == timedelta(seconds=60)
+    # Remembered locally from now on: no second question to the server.
+    asked = len(client.http.calls)
+    assert process_recording(audio, client.kos, IntakeState.load(tmp_path / "recordings.json"), vault, 20)[1] is False
+    assert len(client.http.calls) == asked

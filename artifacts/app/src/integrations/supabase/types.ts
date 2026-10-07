@@ -1917,6 +1917,30 @@ export type Database = {
         }
         Relationships: []
       }
+      tracker_devices: {
+        Row: {
+          device_id: string
+          name: string | null
+          reported_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          device_id: string
+          name?: string | null
+          reported_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          device_id?: string
+          name?: string | null
+          reported_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracker_entries: {
         Row: {
           created_at: string
@@ -2441,6 +2465,18 @@ export type Database = {
       are_friends: { Args: { _a: string; _b: string }; Returns: boolean }
       can_view_seed: { Args: { _seed_id: string }; Returns: boolean }
       decline_friend_request: { Args: { request_id: string }; Returns: Json }
+      forget_tracker_device: { Args: { device: string }; Returns: number }
+      merge_tracker_devices: { Args: { from_device: string; into_device: string }; Returns: number }
+      tracker_device_summary: {
+        Args: never
+        Returns: {
+          device_id: string
+          first_at: string
+          last_at: string
+          seconds: number
+          sessions: number
+        }[]
+      }
       ensure_user_profile: {
         Args: never
         Returns: {

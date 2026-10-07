@@ -421,6 +421,16 @@ class KosClient:
     def transcribe(self, chunk: bytes) -> dict:
         return self._post(self.fn_url, {"audio": base64.b64encode(chunk).decode("ascii"), "format": "mp3"})
 
+    def find_recording(self, sha256: str) -> dict | None:
+        """The stored recording with this audio hash, or None.
+
+        Asked before transcribing, so a PC whose local state was lost (a
+        reinstall, a new data folder) never pays to transcribe a file twice.
+        """
+        got = self._request("GET", f"{self.table_url}?select=note_name,file_name,recorded_at,duration_seconds,"
+                                   f"session_key,part&sha256=eq.{sha256}&limit=1", timeout=60)
+        return got[0] if isinstance(got, list) and got else None
+
     def store(self, row: dict) -> str | None:
         got = self._post(f"{self.table_url}?select=id", {**row, "user_id": self.auth.user_id},
                          {"Prefer": "return=representation"}, timeout=60)
@@ -564,6 +574,17 @@ def ensure_system_notes(vault: Path) -> None:
             p.write_text(text, encoding="utf-8")
 
 
+def known_from_row(sha: str, row: dict, path: Path) -> Known:
+    """A kos_recordings row as the local state remembers it (local, naive times like recorded_at())."""
+    start = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+    if start.tzinfo is not None:
+        start = start.astimezone().replace(tzinfo=None)
+    duration = float(row.get("duration_seconds") or 0)
+    note = row.get("note_name") or f"{start.strftime('%Y-%m-%d %H-%M-%S')} {path.stem}".replace("/", "-")
+    return Known(sha, start, start + timedelta(seconds=duration), str(row.get("session_key") or ""),
+                 int(row.get("part") or 1), note)
+
+
 def process_recording(path: Path, client: KosClient, state: IntakeState, vault: Path,
                       gap_minutes: float) -> tuple[str, bool]:
     """One recording end to end: (note name, True when it was transcribed just now).
@@ -583,6 +604,11 @@ def process_recording(path: Path, client: KosClient, state: IntakeState, vault: 
     state.remember(key, st.st_size, st.st_mtime_ns, sha)
     if sha in state.known:
         return state.known[sha].note, False
+    remote = client.find_recording(sha)
+    if remote is not None:  # transcribed before, by this PC with other local state or by another one
+        known = known_from_row(sha, remote, path)
+        state.add(known)
+        return known.note, False
     segments, model, language, duration = transcribe_file(client, data)
     start = recorded_at(path, duration, st.st_mtime)
     session, part = assign_session(start, list(state.known.values()), gap_minutes)

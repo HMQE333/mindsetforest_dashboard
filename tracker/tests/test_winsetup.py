@@ -1154,3 +1154,24 @@ def test_capture_hotkey_push_round_trip(tmp_path):
     assert load_config(tmp_path / "config.json").capture_hotkey_push is True
     (tmp_path / "config.json").write_text(json.dumps({"capture_hotkey_push": "false"}))
     assert load_config(tmp_path / "config.json").capture_hotkey_push is False
+
+
+def test_a_zip_tracker_on_store_python_keeps_its_device_id_login_and_recordings(env, monkeypatch):
+    # Microsoft Store Python redirected the old tracker's %APPDATA% writes into its package folder.
+    old = env.local / "Packages" / "PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0" / "LocalCache" / "Roaming" / "MindsetForest"
+    old.mkdir(parents=True)
+    for name, data in {"tracker.db": b"db with device id", "session.bin": b"MFPLAIN1old", "recordings.json": b"[]",
+                       "tracker.lock": b"4242"}.items():
+        (old / name).write_bytes(data)
+    stopped = []
+    monkeypatch.setattr(winsetup, "stop_running_tracker", lambda d, *a, **k: stopped.append(d) or False)
+    result = install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops)
+    assert old in stopped  # the old tracker's lock lives there, so it is stopped there too
+    assert (env.data / "tracker.db").read_bytes() == b"db with device id"
+    assert (env.data / "session.bin").read_bytes() == b"MFPLAIN1old" and (env.data / "recordings.json").exists()
+    assert not (env.data / "tracker.lock").exists()  # state only, never the lock
+    assert any("Python ze Sklepu" in m for m in result.messages)
+    # A data folder with its own tracker.db is never overwritten.
+    (env.data / "tracker.db").write_bytes(b"newer")
+    assert winsetup.migrate_store_python_data(env.data) is None
+    assert (env.data / "tracker.db").read_bytes() == b"newer"
