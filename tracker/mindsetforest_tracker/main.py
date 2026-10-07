@@ -3,13 +3,21 @@
 ``TrackerApp`` owns the capture thread and implements ``tray.TrayController``.
 ``main()`` adds logging, the single-instance guard and the tray loop. This is
 the only module with process-level state.
+
+One exe is the setup and the tracker, so ``main()`` first decides what this
+start is for (``decide_action``): the setup or settings window, a silent
+install, an uninstall, CI's self-test, or tracking. The setup modules
+(``winsetup``, ``setup_gui`` with tkinter) are imported only by the branches
+that use them, so the tracker itself never needs them.
 """
 from __future__ import annotations
 
 import argparse
 import logging
 import logging.handlers
+import ntpath
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -20,7 +28,7 @@ from typing import Any
 
 import psutil
 
-from . import tray
+from . import __version__, tray
 from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror
 from .archive_capture import ArchiveClient, HotkeyListener, clean_source, foreground_title, read_selection
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
@@ -34,6 +42,11 @@ from .sync import SyncClient, SyncError, SyncStatus, SyncWorker
 log = logging.getLogger("mindsetforest_tracker")
 PURGE_EVERY_SECONDS = 24 * 3600
 MENU_REFRESH_SECONDS = 5
+# The setup creates this file in the data dir to ask a running tracker to quit
+# (same name as winsetup.QUIT_REQUEST; a file works across versions, no IPC).
+QUIT_REQUEST_FILE = "quit.request"
+QUIT_CHECK_SECONDS = 1.0
+DEFAULT_HOTKEY = "alt+shift+s"
 
 
 def setup_logging(path: Path, console: bool) -> None:
@@ -115,7 +128,8 @@ class TrackerApp:
                  tracker: SessionTracker, client: SyncClient, sync_worker: SyncWorker,
                  device_id: str, clock: Callable[[], float] = time.time,
                  archive: ArchiveClient | None = None,
-                 hotkey_factory: Callable[..., Any] | None = None) -> None:
+                 hotkey_factory: Callable[..., Any] | None = None,
+                 quit_request: Path | None = None) -> None:
         self.clock = clock
         self.config = config
         self.store = store
@@ -143,13 +157,30 @@ class TrackerApp:
         self._hotkey_spec: str | None = None
         self._hotkey_lock = threading.Lock()
         self.intake: Any = None
+        # Graceful quit when the setup asks (upgrade, settings saved, uninstall).
+        self.quit_request = quit_request
+        self.shutdown_event = threading.Event()  # set once quit() is done, whoever asked
+        self._last_quit_check: float | None = None
+        self._shutdown_requested = False
+        self._shutdown_lock = threading.Lock()
+        self._quit_lock = threading.Lock()
+        self._closed = False
         sync_worker.on_status = self.on_sync_status
         sync_worker.on_capture_hotkey = self.on_capture_hotkey
         sync_worker.on_private_keywords = self.on_private_keywords
+        sync_worker.on_hotkey_pushed = self.on_hotkey_pushed
+        if getattr(config, "capture_hotkey_push", False):
+            # Chosen in the setup window: the dashboard's value would win at the next pull.
+            sync_worker.pending_hotkey = config.capture_hotkey
 
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:
+        if self.quit_request is not None:
+            try:  # a request left over from a setup that killed the old tracker is not for us
+                self.quit_request.unlink(missing_ok=True)
+            except OSError as exc:
+                log.warning("Could not remove %s: %s", self.quit_request, exc)
         self.sync_worker.start()
         if self.intake is not None:
             self.intake.start()
@@ -183,6 +214,55 @@ class TrackerApp:
             removed = self.store.purge_synced_older_than(90)
             if removed:
                 log.info("Purged %d synced rows older than 90 days", removed)
+        self._check_quit_request(ts)
+
+    def _check_quit_request(self, ts: float) -> None:
+        """Quit when the setup has created the quit-request file (looked for at most once a second)."""
+        if self.quit_request is None or self._shutdown_requested:
+            return
+        last = self._last_quit_check
+        if last is not None and 0 <= ts - last < QUIT_CHECK_SECONDS:
+            return
+        self._last_quit_check = ts
+        try:
+            if not self.quit_request.is_file():
+                return
+        except OSError:
+            return
+        try:
+            self.quit_request.unlink(missing_ok=True)
+        except OSError as exc:  # quit anyway; the next start removes it
+            log.warning("Quit request seen but not removed: %s", exc)
+        log.info("Quit requested by setup")
+        self.request_shutdown()
+
+    def request_shutdown(self) -> None:
+        """Quit from any thread without blocking it.
+
+        The quit request is noticed on the capture thread and ``quit`` joins
+        that thread, so the work runs on a thread of its own. When it is done
+        the tray loop is stopped and ``shutdown_event`` is set, which ends
+        ``main()`` either way (tray or no tray).
+        """
+        with self._shutdown_lock:
+            if self._shutdown_requested:
+                return
+            self._shutdown_requested = True
+        threading.Thread(target=self._shutdown, name="mf-shutdown").start()
+
+    def _shutdown(self) -> None:
+        try:
+            self.quit()
+        except Exception:
+            log.exception("quit failed")
+        finally:
+            icon = self.icon
+            if icon is not None:
+                try:
+                    icon.stop()
+                except Exception:
+                    log.debug("icon.stop failed", exc_info=True)
+            self.shutdown_event.set()
 
     def _refresh_menu(self) -> None:
         """pystray caches the menu; rebuild it so dynamic labels stay current."""
@@ -201,18 +281,28 @@ class TrackerApp:
             self.store.upsert_session(current, self.device_id)
 
     def quit(self) -> None:
-        """Flush the open session, sync once, close the store."""
-        self._stop.set()
-        if self._thread.is_alive():
-            self._thread.join(timeout=5)
-        with self._lock:
-            for session in self.tracker.close_current(self.clock()):
-                self.store.upsert_session(session, self.device_id)
-        self.apply_capture_hotkey("")
-        self.sync_worker.stop()
-        self.sync_worker.sync_once()
-        self.store.close()
-        log.info("Tracker stopped")
+        """Flush the open session, sync once, close the store.
+
+        Runs once: the tray's Quit can arrive while a quit request is being
+        handled, and the second caller just waits for the first.
+        """
+        with self._quit_lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._stop.set()
+            if self._thread.is_alive() and threading.current_thread() is not self._thread:
+                self._thread.join(timeout=5)
+            with self._lock:
+                for session in self.tracker.close_current(self.clock()):
+                    self.store.upsert_session(session, self.device_id)
+            self.apply_capture_hotkey("")
+            if self.intake is not None:
+                self.intake.stop()
+            self.sync_worker.stop()
+            self.sync_worker.sync_once()
+            self.store.close()
+            log.info("Tracker stopped")
 
     # -- TrayController ------------------------------------------------------
 
@@ -293,6 +383,40 @@ class TrackerApp:
         log.info("Signed in as %s", email)
         self._refresh_menu()
         return None
+
+    def open_settings(self) -> None:
+        """Open the setup window in settings mode, as a process of its own.
+
+        pystray holds this process's main thread and tkinter wants one too, and
+        saving in the window restarts the tracker, so it cannot live in here.
+        """
+        argv = settings_argv(bool(getattr(sys, "frozen", False)), sys.executable)
+        try:
+            if sys.platform == "win32":
+                # Detached, and without PyInstaller's variables: a onefile child would
+                # otherwise reuse this process's unpack folder, gone when the tracker restarts.
+                from .winsetup import WinOps
+
+                WinOps().launch_detached(argv)
+            else:
+                subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
+        except Exception as exc:
+            log.exception("Could not open the settings window")
+            tray.notify(self.icon, f"Nie udało się otworzyć ustawień ({exc}).")
+            return
+        log.info("Settings window opened: %s", " ".join(argv))
+
+    def on_hotkey_pushed(self) -> None:
+        """The setup window's hotkey reached the dashboard: stop sending it."""
+        with self._lock:
+            if not getattr(self.config, "capture_hotkey_push", False):
+                return
+            self.config.capture_hotkey_push = False
+            try:
+                save_config(self.config)
+            except OSError as exc:
+                log.error("Could not save config: %s", exc)
 
     def on_private_keywords(self, keywords: list[str]) -> None:
         """The dashboard's never-record keywords, on top of config.json's own."""
@@ -383,7 +507,8 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     worker = SyncWorker(store, client, interval_seconds=config.sync_seconds)
     archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
     app = TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
-                     archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None)
+                     archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None,
+                     quit_request=data_dir / QUIT_REQUEST_FILE)
     if config.supabase_url and config.vault_dir:
         # An empty recordings_dir turns transcription off; the vault is still mirrored.
         kos = KosClient(config.supabase_url, config.supabase_anon_key, auth)
@@ -396,23 +521,281 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     return app
 
 
-def main(argv: list[str] | None = None) -> int:
+# -- one exe: what this start is for ------------------------------------------------
+
+ACTIONS = ("self-test", "uninstall", "silent-install", "install-gui", "settings-gui", "tracker")
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mindsetforest-tracker")
     parser.add_argument("--config", type=Path, help="path to config.json")
     parser.add_argument("--console", action="store_true", help="also log to stderr")
     parser.add_argument("--no-tray", action="store_true", help="run without a tray icon (Ctrl+C to stop)")
-    args = parser.parse_args(argv)
+    setup = parser.add_argument_group("setup (the same exe installs, configures and removes the tracker)")
+    setup.add_argument("--setup", action="store_true", help="open the setup window")
+    setup.add_argument("--settings", action="store_true", help="open the settings window")
+    setup.add_argument("--install", action="store_true", help="install or upgrade (with --silent: no window)")
+    setup.add_argument("--uninstall", action="store_true", help="remove the program (with --silent: no questions)")
+    setup.add_argument("--silent", action="store_true", help="no window, for --install and --uninstall")
+    setup.add_argument("--remove-data", action="store_true",
+                       help="with --uninstall: also delete the local data (never the vault or recordings)")
+    setup.add_argument("--self-test", type=Path, metavar="PATH", help="run the smoke checks, write JSON to PATH")
+    setup.add_argument("--no-launch", action="store_true", help="with --install: do not start the tracker")
+    setup.add_argument("--no-autostart", action="store_true", help="with --install: do not start with Windows")
+    setup.add_argument("--recordings", metavar="DIR", help="with --install: the folder with MP3 recordings")
+    setup.add_argument("--no-transcribe", action="store_true", help="with --install: no transcription")
+    setup.add_argument("--vault", metavar="DIR", help="with --install: the Obsidian vault folder")
+    setup.add_argument("--hotkey", metavar="SPEC", help='with --install: save-to-Archive hotkey ("" = off)')
+    setup.add_argument("--site", metavar="URL", help="with --install: the dashboard to fetch settings from")
+    setup.add_argument("--supabase-url", metavar="URL", help="with --install: Supabase URL")
+    setup.add_argument("--anon-key", metavar="KEY", help="with --install: Supabase publishable key")
+    return parser
 
+
+def same_path(a: Path | str, b: Path | str, *, windows: bool | None = None) -> bool:
+    """Same file: compared resolved, and ignoring case on Windows."""
+    windows = sys.platform == "win32" if windows is None else windows
+
+    def key(p: Path | str) -> str:
+        try:
+            text = str(Path(p).resolve())
+        except (OSError, RuntimeError):
+            text = os.path.abspath(p)
+        return ntpath.normcase(text) if windows else text
+
+    return key(a) == key(b)
+
+
+def decide_action(args: argparse.Namespace, *, frozen: bool, exe: Path, installed: Path, configured: bool) -> str:
+    """What this start of the exe is for: one of ``ACTIONS``.
+
+    Explicit flags win. Then a frozen exe that is not the installed copy is
+    the downloaded setup, and an installed one without Supabase settings has
+    an unfinished setup: both open the setup window. Everything else tracks
+    (and a source checkout always tracks unless told otherwise).
+    """
+    if getattr(args, "self_test", None):
+        return "self-test"
+    if getattr(args, "uninstall", False):
+        return "uninstall"
+    if getattr(args, "install", False):
+        return "silent-install" if getattr(args, "silent", False) else "install-gui"
+    if getattr(args, "setup", False):
+        return "install-gui"
+    if getattr(args, "settings", False):
+        return "settings-gui"
+    if frozen and not same_path(exe, installed):
+        return "install-gui"
+    if frozen and not configured:
+        return "install-gui"
+    return "tracker"
+
+
+def settings_argv(frozen: bool, executable: str) -> list[str]:
+    """The command that opens the settings window: the exe itself, or run_tracker.py in a checkout."""
+    if frozen:
+        return [executable, "--settings"]
+    return [executable, str(Path(__file__).resolve().parent.parent / "run_tracker.py"), "--settings"]
+
+
+def _configured(config: Config) -> bool:
+    return bool(config.supabase_url and config.supabase_anon_key)
+
+
+def silent_choices(args: argparse.Namespace, existing: Config | None, ops: Any,
+                   fetch: Callable[[str], dict] | None = None) -> Any:
+    """``SetupChoices`` for ``--install --silent``: flags, then the existing config, then the window's defaults.
+
+    The existing config comes before the defaults so a silent upgrade keeps
+    the folders and hotkey the user chose. Supabase settings come from the
+    flags, else from the dashboard's published file, else from that config.
+    """
+    from . import winsetup
+
+    fetch = fetch or winsetup.fetch_site_config
+    url, key = (args.supabase_url or "").strip(), (args.anon_key or "").strip()
+    site = (args.site or "").strip().rstrip("/") + "/" if (args.site or "").strip() else ""
+    dashboard = site or (existing.dashboard_url if existing is not None else "") or winsetup.DEFAULT_SITE
+    if not (url and key):
+        try:
+            fetched = fetch(site or winsetup.DEFAULT_SITE)
+        except winsetup.SetupError as exc:
+            if existing is None or not _configured(existing):
+                raise
+            log.warning("Keeping the Supabase settings of the existing config: %s", exc)
+            fetched = {"supabase_url": existing.supabase_url, "supabase_anon_key": existing.supabase_anon_key}
+        url, key = url or fetched["supabase_url"], key or fetched["supabase_anon_key"]
+        dashboard = fetched.get("dashboard_url") or dashboard
+    if args.no_transcribe:
+        recordings = ""
+    elif args.recordings:
+        recordings = args.recordings
+    elif existing is not None:
+        recordings = existing.recordings_dir
+    else:
+        recordings = str(winsetup.detect_bandicam_dir(ops)[0])
+    vault = args.vault or (existing.vault_dir if existing is not None else "") or str(winsetup.default_vault_dir())
+    if args.hotkey is not None:
+        hotkey = args.hotkey
+    else:
+        hotkey = existing.capture_hotkey if existing is not None else DEFAULT_HOTKEY
+    return winsetup.SetupChoices(
+        supabase_url=url, supabase_anon_key=key, dashboard_url=dashboard, recordings_dir=recordings,
+        vault_dir=vault, capture_hotkey=hotkey.strip().lower(), autostart=not args.no_autostart,
+    )
+
+
+def silent_install(args: argparse.Namespace, data_dir: Path, *, frozen: bool, ops: Any = None) -> int:
+    """``--install --silent``: 0 when installed, 2 on any problem (the reason is in setup.log)."""
+    from . import winsetup
+
+    ops = ops if ops is not None else winsetup.WinOps()
+    try:
+        existing = winsetup.load_existing_config(data_dir, winsetup.find_legacy_install(ops))
+        choices = silent_choices(args, existing, ops)
+        result = winsetup.install(choices, data_dir=data_dir, source_exe=Path(sys.executable) if frozen else None,
+                                  ops=ops, launch=not args.no_launch)
+    except winsetup.SetupError as exc:
+        log.error("Setup failed: %s", exc)
+        return 2
+    except Exception:
+        log.exception("Setup failed")
+        return 2
+    for line in result.messages:
+        log.info("Setup: %s", line)
+    log.info("Installed %s (config %s, tracker started: %s)", result.exe, result.config_path, result.started)
+    return 0
+
+
+def run_uninstall(args: argparse.Namespace, data_dir: Path, *, frozen: bool, ops: Any = None,
+                  confirm: Callable[[], bool] | None = None,
+                  show: Callable[[str, str], None] | None = None) -> int:
+    """``--uninstall``: asks first unless ``--silent``; 0 when removed, 1 when cancelled, 2 on failure."""
+    from . import winsetup
+
+    ops = ops if ops is not None else winsetup.WinOps()
+    if show is None:
+        show = (lambda _kind, _text: None) if args.silent else _show_message
+    if not args.silent and not (confirm or _confirm_uninstall)():
+        log.info("Uninstall cancelled")
+        return 1
+    if args.remove_data:
+        _close_file_logs()  # the data dir goes, our own log file with it
+    try:
+        messages = winsetup.uninstall(data_dir=data_dir, ops=ops, remove_data=args.remove_data,
+                                      running_exe=Path(sys.executable) if frozen else None)
+    except Exception as exc:
+        log.exception("Uninstall failed")
+        show("error", f"Nie udało się odinstalować MindsetForest Tracker: {exc}")
+        return 2
+    show("info", "\n".join(["Odinstalowano MindsetForest Tracker.", "", *messages]))
+    return 0
+
+
+def _confirm_uninstall() -> bool:  # pragma: no cover - GUI
+    """Yes/no before removing the program. Windows has already asked once, so a dialog that
+    cannot be shown does not block the uninstall."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            return bool(messagebox.askyesno(
+                "MindsetForest", "Odinstalować MindsetForest Tracker? Twoje notatki i vault zostaną.", parent=root))
+        finally:
+            root.destroy()
+    except Exception:
+        log.warning("Could not ask before uninstalling; going ahead", exc_info=True)
+        return True
+
+
+def _show_message(kind: str, text: str) -> None:  # pragma: no cover - GUI
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            (messagebox.showerror if kind == "error" else messagebox.showinfo)("MindsetForest", text, parent=root)
+        finally:
+            root.destroy()
+    except Exception:
+        log.warning("Could not show a message: %s", text, exc_info=True)
+
+
+def _close_file_logs() -> None:
+    """Stop writing log files (they would keep the data dir from being deleted on Windows)."""
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if isinstance(handler, logging.FileHandler):
+            root.removeHandler(handler)
+            handler.close()
+
+
+def open_window(mode: str, *, data_dir: Path, frozen: bool) -> int:
+    """The setup window, "install" or "settings". tkinter is imported only here."""
+    from . import winsetup
+    from .setup_gui import run_setup_window
+
+    return run_setup_window(mode, data_dir=data_dir, ops=winsetup.WinOps(),
+                            source_exe=Path(sys.executable) if frozen else None)
+
+
+def run_setup_action(action: str, args: argparse.Namespace, *, data_dir: Path, frozen: bool) -> int:
+    """Every action except "tracker"."""
+    from . import winsetup
+
+    if action == "self-test":
+        try:
+            return 0 if winsetup.self_test(args.self_test, winsetup.WinOps()) else 1
+        except Exception:
+            log.exception("Self-test failed")
+            return 1
+    if action == "silent-install":
+        return silent_install(args, data_dir, frozen=frozen)
+    if action == "uninstall":
+        return run_uninstall(args, data_dir, frozen=frozen)
+    try:
+        return open_window("install" if action == "install-gui" else "settings", data_dir=data_dir, frozen=frozen)
+    except Exception:
+        log.exception("The setup window failed")
+        raise
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    frozen = bool(getattr(sys, "frozen", False))
+    exe = Path(sys.executable)
     data_dir = app_data_dir()
-    setup_logging(data_dir / "tracker.log", console=args.console or not getattr(sys, "frozen", False))
+    installed = exe
+    if frozen:
+        from .winsetup import installed_exe
+
+        installed = installed_exe()
+    action = decide_action(args, frozen=frozen, exe=exe, installed=installed,
+                           configured=_configured(load_config(args.config)))
+    console = args.console or not frozen
+    if action != "tracker":
+        # Its own log: a second process rotating tracker.log fails on Windows.
+        setup_logging(data_dir / "setup.log", console=console)
+        log.info("MindsetForest %s: %s (%s)", __version__, action, exe)
+        return run_setup_action(action, args, data_dir=data_dir, frozen=frozen)
+
+    setup_logging(data_dir / "tracker.log", console=console)
     guard = SingleInstance(data_dir / "tracker.lock")
     if not guard.acquire():
+        if frozen:  # the Start menu shortcut while the tracker runs: show the settings instead
+            log.info("Another tracker instance is already running; opening the settings window")
+            return run_setup_action("settings-gui", args, data_dir=data_dir, frozen=frozen)
         log.error("Another tracker instance is already running; exiting")
         return 1
     try:
-        config = load_config(args.config)
-        log.info("Config from %s", config.path)
-        if not config.supabase_url or not config.supabase_anon_key:
+        config = load_config(args.config)  # again, now that a bad file can be logged
+        log.info("Tracker %s, config from %s", __version__, config.path)
+        if not _configured(config):
             log.error("supabase_url / supabase_anon_key missing in config.json; tracking locally only")
         app = build_app(config, data_dir)
         if app.auth.load_saved():
@@ -426,6 +809,9 @@ def main(argv: list[str] | None = None) -> int:
 
             def setup(icon_ready) -> None:
                 icon_ready.visible = True
+                if app.shutdown_event.is_set():  # a quit request came before the icon existed
+                    icon_ready.stop()
+                    return
                 if app.needs_login():
                     tray.notify(icon_ready, "Sign in from the tray menu to sync your computer time")
 
@@ -433,8 +819,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             log.info("Running without tray; press Ctrl+C to stop")
             try:
-                while True:
-                    time.sleep(1)
+                while not app.shutdown_event.wait(1.0):  # a timeout keeps Ctrl+C working on Windows
+                    pass
             except KeyboardInterrupt:
                 app.quit()
     finally:

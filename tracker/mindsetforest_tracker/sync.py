@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 TABLE = "app_usage_sessions"
 PRIVACY_TABLE = "app_tracking_privacy"
 SETTINGS_TABLE = "user_onboarding"  # the dashboard's preferences (Settings -> Keybinds)
+HOTKEY_RPC = "set_tracker_capture_hotkey"  # writes only preferences.hotkeys.trackerCapture
 MAX_BACKOFF = 600.0
 
 
@@ -72,6 +73,7 @@ class SyncClient:
         self.base = f"{supabase_url.rstrip('/')}/rest/v1/{TABLE}"
         self.privacy_url = f"{supabase_url.rstrip('/')}/rest/v1/{PRIVACY_TABLE}?select=keywords"
         self.settings_url = f"{supabase_url.rstrip('/')}/rest/v1/{SETTINGS_TABLE}?select=preferences"
+        self.hotkey_rpc_url = f"{supabase_url.rstrip('/')}/rest/v1/rpc/{HOTKEY_RPC}"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
@@ -129,7 +131,20 @@ class SyncClient:
         value = hotkeys.get("trackerCapture") if isinstance(hotkeys, dict) else None
         return value.strip().lower() if isinstance(value, str) else None
 
-    def _request(self, method: str, url: str, headers: dict, payload: list[dict] | None) -> Any:
+    def set_capture_hotkey(self, spec: str) -> None:
+        """Store ``spec`` as the dashboard's save-to-Archive hotkey ("" = off).
+
+        The setup window writes the hotkey to config.json, but the dashboard's
+        value wins at every sync, so a new choice has to reach the dashboard.
+        The RPC answers false when the user has no preferences row yet; that is
+        fine too, config.json then applies.
+        """
+        headers = {**self.auth.headers(), "Content-Type": "application/json"}
+        resp = self._request("post", self.hotkey_rpc_url, headers, {"spec": spec})
+        if resp.status_code not in (200, 204):
+            raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+
+    def _request(self, method: str, url: str, headers: dict, payload: Any) -> Any:
         try:
             if method == "post":
                 return self.http.post(url, headers=headers, json=payload, timeout=self.timeout)
@@ -166,6 +181,10 @@ class SyncWorker(threading.Thread):
         self.on_private_keywords: Callable[[list[str]], None] | None = None
         # Called with the dashboard's save-to-Archive hotkey (None: not set there).
         self.on_capture_hotkey: Callable[[str | None], None] | None = None
+        # A hotkey chosen in the setup window, sent to the dashboard before the next
+        # pull (which would otherwise bring back the old one); kept until it gets there.
+        self.pending_hotkey: str | None = None
+        self.on_hotkey_pushed: Callable[[], None] | None = None
         self.clock = clock
         self.status = SyncStatus()
         self._wake = threading.Event()
@@ -215,6 +234,7 @@ class SyncWorker(threading.Thread):
                 if uploaded:
                     log.info("Synced %d session row(s)", uploaded)
                 self._pull_private_keywords()
+                self._push_capture_hotkey()
                 self._pull_capture_hotkey()
             except AuthRequired as exc:
                 self.status.needs_login = True
@@ -251,6 +271,25 @@ class SyncWorker(threading.Thread):
             self.on_private_keywords(keywords)
         except Exception:
             log.exception("on_private_keywords callback failed")
+
+    def _push_capture_hotkey(self) -> None:
+        """Send the setup window's hotkey once; a failure keeps it for the next sync."""
+        spec = self.pending_hotkey
+        if spec is None or not self.client.auth.has_session:
+            return
+        try:
+            self.client.set_capture_hotkey(spec)
+        except Exception as exc:
+            log.warning("Could not send the capture hotkey to the dashboard (will retry): %s", exc)
+            return
+        if self.pending_hotkey == spec:  # unless a newer one arrived meanwhile
+            self.pending_hotkey = None
+        log.info("Capture hotkey sent to the dashboard: %s", spec or "off")
+        if self.on_hotkey_pushed:
+            try:
+                self.on_hotkey_pushed()
+            except Exception:
+                log.exception("on_hotkey_pushed callback failed")
 
     def _pull_capture_hotkey(self) -> None:
         """Fetch the hotkey set in the dashboard; a failure keeps the current one."""

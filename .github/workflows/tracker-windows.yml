@@ -1,0 +1,383 @@
+name: Windows tracker
+
+# Tests the tracker on real Windows, builds the one-file installer
+# (MindsetForestSetup.exe), checks the frozen exe has everything it needs
+# (--self-test), then installs, upgrades and uninstalls it in throwaway folders.
+# A push to main publishes the exe to the tracker-latest release, the stable
+# URL the dashboard's download button points at.
+
+on:
+  push:
+    # Work branches run the same checks; only main publishes (see the release job).
+    branches: [main, "claude/**"]
+    paths: ["tracker/**", ".github/workflows/tracker-windows.yml"]
+  pull_request:
+    paths: ["tracker/**", ".github/workflows/tracker-windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tracker-windows-${{ github.ref }}
+  # Never cancel a run on main halfway through publishing.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Test, build and install on Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: tracker
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tracker/requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-dev.txt
+          if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit code $LASTEXITCODE)" }
+
+      - name: Unit tests (whole suite, real Windows)
+        timeout-minutes: 15
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { throw "pytest failed (exit code $LASTEXITCODE)" }
+
+      - name: Build MindsetForestSetup.exe
+        id: build
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./build-exe.ps1
+          if (-not (Test-Path -LiteralPath 'dist\MindsetForestSetup.exe' -PathType Leaf)) {
+            throw 'build-exe.ps1 finished without dist\MindsetForestSetup.exe'
+          }
+          $version = (python -c "from mindsetforest_tracker import __version__; print(__version__)" | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $version) { throw 'Could not read mindsetforest_tracker.__version__' }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # Kept before the checks below, so a failing run still has the exe to try by hand.
+      - name: Keep the exe
+        uses: actions/upload-artifact@v7
+        with:
+          name: MindsetForestSetup
+          path: tracker/dist/MindsetForestSetup.exe
+          if-no-files-found: error
+
+      - name: Self-test the frozen exe
+        timeout-minutes: 5
+        env:
+          MINDSETFOREST_HOME: '${{ runner.temp }}\selftest-home'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path -LiteralPath 'dist\MindsetForestSetup.exe').Path
+          $out = Join-Path $env:RUNNER_TEMP 'st.json'
+          Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+          # A --noconsole exe prints nothing: the results are in st.json, the reason for a crash in setup.log.
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test', "`"$out`"" -Wait -PassThru
+          if (-not (Test-Path -LiteralPath $out -PathType Leaf)) {
+            throw "Self-test exited with $($proc.ExitCode) and wrote no $out; see selftest-home/setup.log in the logs artifact"
+          }
+          Get-Content -LiteralPath $out -Raw | Write-Host
+          if ($proc.ExitCode -ne 0) { throw "Self-test exited with $($proc.ExitCode), expected 0: the failing checks are in the JSON above" }
+          $result = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
+          if ($result.ok -ne $true) { throw 'Self-test exited with 0 but st.json says ok: false' }
+
+      - name: "E2E: install, upgrade in place, uninstall"
+        timeout-minutes: 10
+        env:
+          # Throwaway data dir and program folder: nothing lands in the runner's own profile.
+          MINDSETFOREST_HOME: '${{ runner.temp }}\mfhome'
+          LOCALAPPDATA: '${{ runner.temp }}\local'
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Join-CommandLine([string[]]$Items) {
+            # Start-Process joins its arguments with spaces and quotes nothing itself.
+            ($Items | ForEach-Object {
+              if ($_ -eq '') { '""' } elseif ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+            }) -join ' '
+          }
+
+          function Invoke-Exe([string]$FilePath, [string[]]$Arguments, [int]$TimeoutSeconds = 180) {
+            # Waits for this process only. Start-Process -Wait also waits for every
+            # descendant, and the setup leaves the tracker running.
+            $line = Join-CommandLine $Arguments
+            Write-Host "> $FilePath $line"
+            $proc = Start-Process -FilePath $FilePath -ArgumentList $line -WorkingDirectory $env:RUNNER_TEMP -PassThru
+            $null = $proc.Handle  # taken now, or ExitCode reads as empty once the process is gone
+            if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              throw "$FilePath $line did not finish within $TimeoutSeconds s"
+            }
+            return $proc.ExitCode
+          }
+
+          function Wait-Until([scriptblock]$Condition, [int]$Seconds, [string]$Failure) {
+            $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+            while (-not (& $Condition)) {
+              if ([DateTime]::UtcNow -gt $deadline) { throw "$Failure (waited $Seconds s)" }
+              Start-Sleep -Milliseconds 500
+            }
+          }
+
+          function Read-Shared([string]$Path) {
+            # The tracker may hold the file open: share everything so the read never fails.
+            $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+            try { [IO.StreamReader]::new($stream).ReadToEnd() } finally { $stream.Dispose() }
+          }
+
+          function Read-LockPid {
+            # tracker.lock holds the running tracker's pid; the tracker deletes it when it quits.
+            try { $text = Read-Shared $LockFile } catch { return 0 }
+            $value = 0
+            if ([int]::TryParse($text.Trim(), [ref]$value)) { return $value }
+            return 0
+          }
+
+          function Test-Alive([int]$ProcessId) {
+            $ProcessId -gt 0 -and $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+          }
+
+          function Assert-SamePath([string]$Actual, [string]$Expected, [string]$What) {
+            if (-not $Actual) { throw "${What}: missing, expected $Expected" }
+            $a = [IO.Path]::GetFullPath($Actual.Trim().Trim('"')).TrimEnd('\', '/')
+            $e = [IO.Path]::GetFullPath($Expected).TrimEnd('\', '/')
+            if ($a -ine $e) { throw "${What}: '$Actual', expected '$Expected'" }
+          }
+
+          function Get-RunValue {
+            $item = Get-ItemProperty -LiteralPath $RunKey -Name $RunName -ErrorAction SilentlyContinue
+            if ($null -eq $item) { return $null }
+            return [string]$item.$RunName
+          }
+
+          function Read-Config {
+            $path = Join-Path $MfHome 'config.json'
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "config.json was not written to $path" }
+            return (Read-Shared $path | ConvertFrom-Json)
+          }
+
+          function Get-Field($Object, [string]$Name) {
+            $prop = $Object.PSObject.Properties[$Name]
+            if ($null -eq $prop) { throw "config.json has no $Name" }
+            return $prop.Value
+          }
+
+          function Get-QuitCount {
+            # TrackerApp logs this when it finds the setup's quit.request: proof of a graceful stop.
+            $count = 0
+            foreach ($log in Get-ChildItem -LiteralPath $MfHome -Filter 'tracker.log*' -File) {
+              $count += [regex]::Matches((Read-Shared $log.FullName), 'Quit requested by setup').Count
+            }
+            return $count
+          }
+
+          function Assert-TrackerRunning([string]$Phase, [int]$OldPid = 0) {
+            Wait-Until { $p = Read-LockPid; $p -ne $OldPid -and (Test-Alive $p) } 30 "${Phase}: no running tracker pid in $LockFile"
+            $trackerPid = Read-LockPid
+            Assert-SamePath (Get-Process -Id $trackerPid).Path $Installed "${Phase}: exe of the running tracker"
+            Start-Sleep -Seconds 5
+            if (-not (Test-Alive $trackerPid)) {
+              throw "${Phase}: the tracker (pid $trackerPid) quit within 5 s of starting; see tracker.log in the logs artifact"
+            }
+            Write-Host "${Phase}: tracker running as pid $trackerPid"
+            return $trackerPid
+          }
+
+          function Assert-Config([string]$Phase) {
+            $cfg = Read-Config
+            Assert-SamePath (Get-Field $cfg 'recordings_dir') $Recordings "${Phase}: config recordings_dir"
+            Assert-SamePath (Get-Field $cfg 'vault_dir') $Vault "${Phase}: config vault_dir"
+            foreach ($pair in @(@('capture_hotkey', 'ctrl+alt+k'), @('supabase_url', 'https://example.supabase.co'))) {
+              $value = Get-Field $cfg $pair[0]
+              if ($value -ne $pair[1]) { throw "${Phase}: config $($pair[0]) is '$value', expected '$($pair[1])'" }
+            }
+            return $cfg
+          }
+
+          $SetupExe = (Resolve-Path -LiteralPath 'dist\MindsetForestSetup.exe').Path
+          $MfHome = $env:MINDSETFOREST_HOME
+          $LockFile = Join-Path $MfHome 'tracker.lock'
+          $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\MindsetForest'
+          $Installed = Join-Path $InstallDir 'MindsetForestTracker.exe'
+          $RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $RunName = 'MindsetForest Tracker'
+          $UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MindsetForestTracker'
+          $StartMenuLnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'MindsetForest.lnk'
+          $Recordings = Join-Path $env:RUNNER_TEMP 'rec'
+          $Vault = Join-Path $env:RUNNER_TEMP 'My Vault'  # a space, like real folder names
+          # Given every time, so no run fetches the real settings from the dashboard.
+          $Supabase = @('--supabase-url', 'https://example.supabase.co', '--anon-key', 'test')
+
+          foreach ($dir in $MfHome, $InstallDir) {
+            if (-not "$dir".StartsWith($env:RUNNER_TEMP, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "$dir is not under RUNNER_TEMP: MINDSETFOREST_HOME / LOCALAPPDATA are not redirected"
+            }
+          }
+          New-Item -ItemType Directory -Force -Path $Recordings | Out-Null
+
+          try {
+            Write-Host '=== Install'
+            $code = Invoke-Exe $SetupExe (@('--install', '--silent') + $Supabase +
+              @('--recordings', $Recordings, '--vault', $Vault, '--hotkey', 'ctrl+alt+k'))
+            if ($code -ne 0) { throw "Install: the setup exited with $code, expected 0; see setup.log in the logs artifact" }
+            if (-not (Test-Path -LiteralPath $Installed -PathType Leaf)) { throw "Install: $Installed is missing" }
+            if ((Get-FileHash -LiteralPath $Installed).Hash -ne (Get-FileHash -LiteralPath $SetupExe).Hash) {
+              throw "Install: $Installed is not a copy of the setup exe"
+            }
+            $cfg = Assert-Config 'Install'
+            if ((Get-Field $cfg 'capture_hotkey_push') -ne $true) {
+              throw 'Install: config capture_hotkey_push is not true, so the chosen hotkey would never reach the dashboard'
+            }
+            foreach ($note in 'routine-prompt.md', 'processing-rules.md') {
+              $path = Join-Path $Vault "_SYSTEM\$note"
+              if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Install: $path is missing; the Claude routine reads it" }
+            }
+            Assert-SamePath (Get-RunValue) $Installed 'Install: HKCU Run value'
+            if (-not (Test-Path -LiteralPath $StartMenuLnk -PathType Leaf)) { throw "Install: Start menu shortcut $StartMenuLnk is missing" }
+            $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($StartMenuLnk)
+            Assert-SamePath $shortcut.TargetPath $Installed 'Install: Start menu shortcut target'
+            if (-not (Test-Path -LiteralPath $UninstallKey)) { throw "Install: uninstall entry $UninstallKey is missing" }
+            $entry = Get-ItemProperty -LiteralPath $UninstallKey
+            if ($entry.DisplayName -ne 'MindsetForest Tracker') { throw "Install: uninstall entry DisplayName is '$($entry.DisplayName)'" }
+            if ("$($entry.UninstallString)".IndexOf($Installed, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+              throw "Install: uninstall entry UninstallString is '$($entry.UninstallString)'"
+            }
+            $firstPid = Assert-TrackerRunning 'Install'
+
+            Write-Host '=== Upgrade in place'
+            $quits = Get-QuitCount
+            # Only the Supabase flags: the folders and the hotkey must come from the existing config.
+            $code = Invoke-Exe $SetupExe (@('--install', '--silent') + $Supabase)
+            if ($code -ne 0) { throw "Upgrade: the setup exited with $code, expected 0; see setup.log in the logs artifact" }
+            Wait-Until { -not (Test-Alive $firstPid) } 15 "Upgrade: the old tracker (pid $firstPid) is still running"
+            $secondPid = Assert-TrackerRunning 'Upgrade' $firstPid
+            if ((Get-QuitCount) -le $quits) {
+              throw 'Upgrade: tracker.log has no new "Quit requested by setup", so the old tracker was killed, not asked to quit'
+            }
+            $null = Assert-Config 'Upgrade'
+            Assert-SamePath (Get-RunValue) $Installed 'Upgrade: HKCU Run value'
+
+            Write-Host '=== Uninstall'
+            $quits = Get-QuitCount
+            $code = Invoke-Exe $Installed @('--uninstall', '--silent')
+            if ($code -ne 0) { throw "Uninstall: exited with $code, expected 0; see setup.log in the logs artifact" }
+            Wait-Until { -not (Test-Alive $secondPid) } 15 "Uninstall: the tracker (pid $secondPid) is still running"
+            Wait-Until { $null -eq (Get-Process -Name 'MindsetForestTracker' -ErrorAction SilentlyContinue) } 15 'Uninstall: a MindsetForestTracker process is still running'
+            Wait-Until { $null -eq (Get-RunValue) } 15 'Uninstall: the HKCU Run value is still there'
+            Wait-Until { -not (Test-Path -LiteralPath $StartMenuLnk) } 15 "Uninstall: $StartMenuLnk is still there"
+            Wait-Until { -not (Test-Path -LiteralPath $UninstallKey) } 15 "Uninstall: $UninstallKey is still there"
+            # A running exe cannot delete itself: delete_later removes it and the folder just after the exit.
+            Wait-Until { -not (Test-Path -LiteralPath $InstallDir) } 25 "Uninstall: $InstallDir is still there"
+            if ((Get-QuitCount) -le $quits) {
+              throw 'Uninstall: tracker.log has no new "Quit requested by setup", so the tracker was killed, not asked to quit'
+            }
+            $kept = @((Join-Path $Vault '_SYSTEM\routine-prompt.md'), $Recordings, (Join-Path $MfHome 'config.json'))
+            foreach ($path in $kept) {
+              if (-not (Test-Path -LiteralPath $path)) {
+                throw "Uninstall: $path was deleted; the vault, the recordings and (without --remove-data) the data dir stay"
+              }
+            }
+            Write-Host 'E2E passed: install, upgrade in place and uninstall.'
+          }
+          catch {
+            $failure = $_
+            foreach ($name in 'setup.log', 'tracker.log') {
+              try {
+                $lines = (Read-Shared (Join-Path $MfHome $name)) -split "`r?`n"
+                Write-Host "--- last lines of $name"
+                $lines | Select-Object -Last 40 | ForEach-Object { Write-Host $_ }
+              } catch {
+                Write-Host "--- no $name"
+              }
+            }
+            Write-Host "::error title=Windows E2E::$($failure.Exception.Message)"
+            throw $failure
+          }
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracker-windows-logs
+          path: |
+            ${{ runner.temp }}/st.json
+            ${{ runner.temp }}/selftest-home/*.log*
+            ${{ runner.temp }}/mfhome/*.log*
+            ${{ runner.temp }}/mfhome/config.json
+          if-no-files-found: ignore
+
+  release:
+    name: Publish to the tracker-latest release
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: tracker-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: MindsetForestSetup
+          path: dist
+
+      - name: Upload MindsetForestSetup.exe to tracker-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.test.outputs.version }}
+          TAG: tracker-latest
+          TITLE: MindsetForest Tracker (Windows)
+        run: |
+          set -euo pipefail
+          exe=dist/MindsetForestSetup.exe
+          if [ ! -s "$exe" ]; then
+            echo "::error::$exe is missing from the build artifact"
+            exit 1
+          fi
+          sha=$(sha256sum "$exe" | cut -d' ' -f1)
+          size=$(stat -c %s "$exe")
+          built=$(date -u '+%Y-%m-%d %H:%M UTC')
+          cat > notes.md <<EOF
+          MindsetForest Tracker ${VERSION:-?} dla Windows. Jeden plik: instalator, ustawienia i tracker, bez uprawnień administratora.
+
+          1. Pobierz **MindsetForestSetup.exe** i uruchom. Windows może ostrzec (aplikacja bez podpisu): **Więcej informacji -> Uruchom mimo to**.
+          2. Zaloguj się, wybierz folder nagrań (Bandicam) i vault Obsidian, kliknij **Zainstaluj i uruchom**.
+          3. **Ustaw rutynę Claude w Claude Desktop**: zadanie cykliczne co 2-3 godziny z dostępem do folderu vaulta. Na koniec instalator pokaże polecenie do skopiowania i kolejne kroki. Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną; tracker przypomni o tym powiadomieniem.
+
+          Nowsza wersja instaluje się tak samo, na miejsce starej: logowanie i dane zostają. Ustawienia otworzysz z ikonki drzewa przy zegarze (Ustawienia...), odinstalujesz w Ustawieniach Windows (Aplikacje).
+
+          Wersja: ${VERSION:-?}
+          Commit: https://github.com/${GH_REPO}/commit/${GITHUB_SHA}
+          Zbudowano: ${built}
+          SHA-256: ${sha}
+          EOF
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE" --notes-file notes.md --draft=false --prerelease=false
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TITLE" --notes-file notes.md
+          fi
+          gh release upload "$TAG" "$exe" --clobber
+          uploaded=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name == "MindsetForestSetup.exe") | .size')
+          if [ "$uploaded" != "$size" ]; then
+            echo "::error::the release asset is ${uploaded:-missing} bytes, the build is $size bytes"
+            exit 1
+          fi
+          echo "Published https://github.com/${GH_REPO}/releases/download/${TAG}/MindsetForestSetup.exe (${size} bytes, sha256 ${sha})"

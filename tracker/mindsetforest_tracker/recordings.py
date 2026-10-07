@@ -1,7 +1,8 @@
 """Knowledge OS intake: recordings in a folder become raw transcripts and Obsidian notes.
 
 Every minute the tracker looks at ``recordings_dir`` (Bandicam's folder by
-default). A new MP3 that has stopped growing is:
+default) and its subfolders (Bandicam can file audio under "Audios" or a date
+folder). A new MP3 that has stopped growing is:
 
 1. hashed (the original is only ever read, never moved or changed);
 2. cut into chunks of a few minutes at MP3 frame boundaries and sent to the
@@ -24,6 +25,10 @@ part sets it back to ``new``.
 
 The vault path is a setting: change ``vault_dir`` in config.json and new notes
 go there (links inside the vault are relative, so a moved vault keeps working).
+
+Without the routine nothing turns transcripts into knowledge notes, and the
+user may not notice, so a session left at ``status: new`` for more than a day
+brings a reminder notification (at most once a day).
 """
 from __future__ import annotations
 
@@ -31,6 +36,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -50,6 +56,9 @@ log = logging.getLogger(__name__)
 CHUNK_SECONDS = 480
 SETTLE_SECONDS = 60
 AUDIO_SUFFIXES = {".mp3"}
+STALE_SESSION_SECONDS = 24 * 3600
+REMINDER_SECONDS = 24 * 3600  # at most one routine reminder a day
+REMINDER_CHECK_SECONDS = 3600  # how often the Sessions/ folder is looked at for it
 
 # -- MP3 frames ----------------------------------------------------------------
 
@@ -514,6 +523,70 @@ def process_file(path: Path, client: KosClient, state: IntakeState, vault: Path,
     return note
 
 
+def _path_key(path: Path) -> str:
+    try:
+        path = path.resolve()
+    except (OSError, RuntimeError):
+        path = Path(os.path.abspath(path))
+    return os.path.normcase(str(path))
+
+
+def recording_files(folder: Path, vault: Path | None = None) -> list[Path]:
+    """Every MP3 under ``folder``, subfolders included.
+
+    Hidden files and folders (a leading dot) are skipped, and so is the vault
+    when it sits inside the recordings folder: its notes are not recordings and
+    it can be large. Pruned while walking, so neither is ever listed.
+    """
+    skip = _path_key(vault) if vault is not None else None
+    out: list[Path] = []
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = sorted(d for d in dirs
+                         if not d.startswith(".") and (skip is None or _path_key(Path(root, d)) != skip))
+        out.extend(Path(root, f) for f in sorted(files)
+                   if not f.startswith(".") and Path(f).suffix.lower() in AUDIO_SUFFIXES)
+    return out
+
+
+_FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
+_STATUS_NEW = re.compile(r"(?m)^status:[ \t]*[\"']?new[\"']?[ \t]*\r?$")
+
+
+def stale_sessions(vault: Path, now: float, older_than: float = STALE_SESSION_SECONDS) -> list[str]:
+    """Session notes still at ``status: new`` and untouched for ``older_than`` seconds, by name.
+
+    The routine sets ``processed`` (or ``skipped``) and a new part rewrites the
+    note, so an old ``new`` note means the routine is not running.
+    """
+    folder = vault / "Sessions"
+    if not folder.is_dir():
+        return []
+    out: list[str] = []
+    for p in sorted(folder.glob("*.md")):
+        try:
+            if p.name.startswith(".") or not p.is_file() or now - p.stat().st_mtime < older_than:
+                continue
+            with p.open(encoding="utf-8", errors="replace") as fh:
+                head = fh.read(4096)
+        except OSError:
+            continue
+        m = _FRONTMATTER.match(head)
+        if m and _STATUS_NEW.search(m.group(1)):
+            out.append(p.stem)
+    return out
+
+
+def routine_reminder(count: int) -> str:
+    """The notification text for ``count`` sessions waiting for the Claude routine."""
+    if count == 1:
+        waiting = "1 sesja czeka"
+    elif count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        waiting = f"{count} sesje czekają"
+    else:
+        waiting = f"{count} sesji czeka"
+    return f"{waiting} na rutynę Claude od ponad doby. Ustawienia... pokazuje, jak ją włączyć."
+
+
 # -- the vault mirror ---------------------------------------------------------------
 
 MIRROR_FOLDERS = ("Knowledge", "Sessions")
@@ -607,8 +680,12 @@ class VaultMirror:
             self.remote[r["path"]] = (r["sha256"], r["vault"])  # type: ignore[index]
 
 
-class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper around tested functions
-    """Every minute: transcribes recordings that stopped growing (oldest first), then mirrors the vault."""
+class IntakeWorker(threading.Thread):
+    """Every minute: transcribes recordings that stopped growing (oldest first), then mirrors the vault.
+
+    Once a day at most it also reminds the user when sessions wait for the
+    Claude routine.
+    """
 
     def __init__(self, folder: Path | None, vault: Path, gap_minutes: float, client: KosClient, state: IntakeState,
                  notify: Callable[[str], None] | None = None, interval: float = 60,
@@ -621,11 +698,13 @@ class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper aroun
         self._retry_after: dict[Path, float] = {}
         self._done: set[tuple[Path, int]] = set()
         self._stop = threading.Event()
+        self._reminded_at: float | None = None
+        self._reminder_checked_at: float | None = None
 
     def stop(self) -> None:
         self._stop.set()
 
-    def run(self) -> None:
+    def run(self) -> None:  # pragma: no cover - thread loop around tested methods
         while not self._stop.is_set():
             try:
                 self.scan(time.time())
@@ -639,6 +718,10 @@ class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper aroun
                 log.warning("Vault mirror: %s", exc)
             except Exception:
                 log.exception("vault mirror failed")
+            try:
+                self.remind_routine(time.time())
+            except Exception:
+                log.exception("routine reminder failed")
             self._stop.wait(self.interval)
 
     def mirror_vault(self, now: float) -> None:
@@ -648,14 +731,39 @@ class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper aroun
         if sent or deleted:
             log.info("Vault mirror: %d note(s) sent, %d deleted", sent, deleted)
 
+    def remind_routine(self, now: float) -> bool:
+        """Notify when sessions have waited more than a day for the routine; True when it did.
+
+        The folder is looked at once an hour and the user hears about it at
+        most once a day (and again after a restart, which is when they are at
+        the PC to act on it).
+        """
+        if self.notify is None:
+            return False
+        if self._reminded_at is not None and 0 <= now - self._reminded_at < REMINDER_SECONDS:
+            return False
+        if self._reminder_checked_at is not None and 0 <= now - self._reminder_checked_at < REMINDER_CHECK_SECONDS:
+            return False
+        self._reminder_checked_at = now
+        stale = stale_sessions(self.vault, now)
+        if not stale:
+            return False
+        self._reminded_at = now
+        log.info("%d session(s) waiting for the Claude routine for over a day: %s", len(stale), ", ".join(stale[:5]))
+        self.notify(routine_reminder(len(stale)))
+        return True
+
     def scan(self, now: float) -> None:
         if self.folder is None or not self.folder.is_dir() or not self.client.auth.user_id:
             return
         ready = []
-        for p in self.folder.iterdir():
-            if p.suffix.lower() not in AUDIO_SUFFIXES or not p.is_file():
+        for p in recording_files(self.folder, self.vault):
+            try:
+                if not p.is_file():
+                    continue
+                st = p.stat()
+            except OSError:
                 continue
-            st = p.stat()
             stable = self._sizes.get(p) == st.st_size and now - st.st_mtime >= SETTLE_SECONDS
             self._sizes[p] = st.st_size
             if stable and now >= self._retry_after.get(p, 0) and not self._seen(p, st.st_size):

@@ -1,10 +1,12 @@
 import json
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from mindsetforest_tracker import recordings
 from mindsetforest_tracker.recordings import (
-    IntakeState, Known, KosClient, VaultMirror, assign_session, mp3_chunks, mp3_duration, mp3_frames,
-    process_file, recorded_at, session_note,
+    IntakeState, IntakeWorker, Known, KosClient, VaultMirror, assign_session, mp3_chunks, mp3_duration, mp3_frames,
+    process_file, recorded_at, recording_files, routine_reminder, session_note, stale_sessions,
 )
 from mindsetforest_tracker.auth import SupabaseAuth, Tokens
 
@@ -200,3 +202,100 @@ def test_a_note_the_server_refuses_does_not_hold_back_the_others(tmp_path):
     posts = len([m for m, _ in server.log if m == "POST"])
     mirror.sync(60)  # refused and unchanged: not tried again
     assert len([m for m, _ in server.log if m == "POST"]) == posts
+
+
+# -- subfolders, and the routine reminder -------------------------------------
+
+
+def bandicam_tree(tmp_path):
+    folder = tmp_path / "Bandicam"
+    for rel in ("top.mp3", "Audios/sub.MP3", "2026-10-07/deep/day.mp3", ".hidden/x.mp3", "._resource.mp3",
+                "notes.txt", "video.mp4", "Vault/Recordings/in-vault.mp3", "Vault/.obsidian/y.mp3"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_bytes(b"x" * 10)
+    return folder
+
+
+def test_recordings_are_found_in_subfolders_but_not_in_hidden_ones_or_the_vault(tmp_path):
+    folder = bandicam_tree(tmp_path)
+    found = {p.relative_to(folder).as_posix() for p in recording_files(folder, folder / "Vault")}
+    assert found == {"top.mp3", "Audios/sub.MP3", "2026-10-07/deep/day.mp3"}
+    # A vault elsewhere does not hide a folder that happens to share its name.
+    assert "Vault/Recordings/in-vault.mp3" in {p.relative_to(folder).as_posix()
+                                               for p in recording_files(folder, tmp_path / "Vault")}
+
+
+class SignedIn:
+    class auth:
+        user_id = "user-1"
+
+
+def test_scan_transcribes_a_recording_from_a_subfolder_once_it_settles(tmp_path, monkeypatch):
+    folder = bandicam_tree(tmp_path)
+    old = 1_800_000_000
+    for p in folder.rglob("*"):
+        if p.is_file():
+            os.utime(p, (old, old))
+    done, notes = [], []
+    monkeypatch.setattr(recordings, "process_file",
+                        lambda p, client, state, vault, gap: done.append(p.relative_to(folder).as_posix()) or "n")
+    worker = IntakeWorker(folder, folder / "Vault", 20, SignedIn(), None, notify=notes.append)
+    worker.scan(old + 600)  # first look: sizes noted
+    assert done == []
+    worker.scan(old + 660)  # same size a minute later: settled
+    assert sorted(done) == ["2026-10-07/deep/day.mp3", "Audios/sub.MP3", "top.mp3"]
+    assert "Transcribed: sub.MP3" in notes
+    worker.scan(old + 720)
+    assert len(done) == 3  # nothing twice
+
+
+def session(vault, name, text, age_seconds, now):
+    p = vault / "Sessions" / f"{name}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+    os.utime(p, (now - age_seconds, now - age_seconds))
+    return p
+
+
+NOW = 1_900_000_000
+DAY = 86400
+
+
+def test_stale_sessions_are_new_ones_untouched_for_a_day(tmp_path):
+    vault = tmp_path / "Vault"
+    assert stale_sessions(vault, NOW) == []  # no Sessions folder yet
+    session(vault, "2026-10-01 10-00", session_note(None, "2026-10-01 10-00", [(1, "a")]), 2 * DAY, NOW)
+    session(vault, "2026-10-02 10-00", "﻿---\ntype: session\nstatus: \"new\"\n---\n", DAY + 5, NOW)
+    session(vault, "2026-10-06 10-00", session_note(None, "2026-10-06 10-00", [(1, "b")]), 3600, NOW)  # fresh
+    session(vault, "2026-09-01 10-00", "---\nstatus: processed\n---\nstatus: new\n", 9 * DAY, NOW)  # body only
+    session(vault, "2026-09-02 10-00", "---\nstatus: skipped\n---\n", 9 * DAY, NOW)
+    session(vault, "2026-09-03 10-00", "status: new\n", 9 * DAY, NOW)  # no frontmatter
+    (vault / "Sessions" / "nested").mkdir()
+    session(vault, "nested/2026-09-04 10-00", "---\nstatus: new\n---\n", 9 * DAY, NOW)  # not Sessions/*.md
+    assert stale_sessions(vault, NOW) == ["2026-10-01 10-00", "2026-10-02 10-00"]
+    assert stale_sessions(vault, NOW, older_than=1800) == ["2026-10-01 10-00", "2026-10-02 10-00",
+                                                           "2026-10-06 10-00"]
+
+
+def test_routine_reminder_text():
+    tail = " na rutynę Claude od ponad doby. Ustawienia... pokazuje, jak ją włączyć."
+    assert routine_reminder(1) == "1 sesja czeka" + tail
+    assert routine_reminder(3) == "3 sesje czekają" + tail
+    assert routine_reminder(5) == "5 sesji czeka" + tail
+    assert routine_reminder(12) == "12 sesji czeka" + tail
+    assert routine_reminder(22) == "22 sesje czekają" + tail
+
+
+def test_the_routine_reminder_comes_at_most_once_a_day(tmp_path):
+    vault = tmp_path / "Vault"
+    notes = []
+    worker = IntakeWorker(None, vault, 20, SignedIn(), None, notify=notes.append)
+    assert worker.remind_routine(NOW) is False  # nothing waiting
+    session(vault, "2026-10-01 10-00", "---\nstatus: new\n---\n", 2 * DAY, NOW)
+    assert worker.remind_routine(NOW + 60) is False  # the folder is looked at once an hour
+    assert worker.remind_routine(NOW + 3600) is True
+    assert notes == [routine_reminder(1)]
+    for later in (NOW + 7200, NOW + 3600 + DAY - 1):
+        assert worker.remind_routine(later) is False
+    assert worker.remind_routine(NOW + 3600 + DAY) is True and len(notes) == 2
+    assert IntakeWorker(None, vault, 20, SignedIn(), None, notify=None).remind_routine(NOW) is False

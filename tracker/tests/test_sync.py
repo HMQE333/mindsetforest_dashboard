@@ -318,3 +318,78 @@ def test_corrupt_session_file_is_moved_aside(tmp_path, caplog, monkeypatch):
     assert not path.exists() and (tmp_path / "session.bin.bad").read_bytes().startswith(b"MFDPAPI1")
     assert "session.bin.bad" in caplog.text
     assert auth.load_saved() is False  # nothing left to load, no error
+
+
+# -- the setup window's hotkey goes to the dashboard -------------------------
+
+class FakeHttpWithGet(FakeHttp):
+    def get(self, url, headers=None, timeout=None):
+        return self._respond("get", url, headers, None)
+
+
+RPC = "/rest/v1/rpc/set_tracker_capture_hotkey"
+PREFS = "/rest/v1/user_onboarding"
+
+
+def test_set_capture_hotkey_calls_the_rpc(tmp_path):
+    from mindsetforest_tracker.sync import SyncError
+    http = FakeHttp()
+    http.add(RPC, FakeResponse(200, True), FakeResponse(200, False), FakeResponse(204), FakeResponse(400, text="no"),
+             requests.ConnectionError("offline"))
+    client = SyncClient(URL, "anon", make_auth(tmp_path, http), http=http)
+    client.set_capture_hotkey("ctrl+alt+k")
+    method, url, headers, body = http.calls[0]
+    assert (method, url, body) == ("post", f"{URL}{RPC}", {"spec": "ctrl+alt+k"})
+    assert headers["apikey"] == "anon" and headers["Authorization"] == "Bearer acc"
+    assert headers["Content-Type"] == "application/json"
+    client.set_capture_hotkey("")  # false: no preferences row yet, config.json applies; still fine
+    client.set_capture_hotkey("")  # 204
+    with pytest.raises(SyncError, match="HTTP 400"):
+        client.set_capture_hotkey("x")
+    with pytest.raises(SyncError, match="offline"):
+        client.set_capture_hotkey("x")
+
+
+def hotkey_worker(tmp_path, http):
+    worker = SyncWorker(Store(), SyncClient(URL, "anon", make_auth(tmp_path, http), http=http))
+    pulled, pushed = [], []
+    worker.on_capture_hotkey = pulled.append
+    worker.on_hotkey_pushed = lambda: pushed.append(True)
+    worker.pending_hotkey = "ctrl+alt+k"
+    return worker, pulled, pushed
+
+
+def test_sync_pushes_the_pending_hotkey_before_pulling_it(tmp_path):
+    http = FakeHttpWithGet()
+    http.add(RPC, FakeResponse(200, True))
+    http.add(PREFS, FakeResponse(200, [{"preferences": {"hotkeys": {"trackerCapture": "ctrl+alt+k"}}}]))
+    worker, pulled, pushed = hotkey_worker(tmp_path, http)
+    worker.sync_once()
+    urls = [c[1] for c in http.calls]
+    assert urls.index(f"{URL}{RPC}") < next(i for i, u in enumerate(urls) if PREFS in u)
+    assert worker.pending_hotkey is None and pushed == [True] and pulled == ["ctrl+alt+k"]
+    worker.sync_once()
+    assert len([u for u in (c[1] for c in http.calls) if RPC in u]) == 1  # sent once
+
+
+def test_a_failed_push_is_kept_for_the_next_sync(tmp_path, caplog):
+    http = FakeHttpWithGet()
+    http.add(RPC, FakeResponse(500, text="boom"))
+    http.add(PREFS, FakeResponse(200, []))
+    worker, pulled, pushed = hotkey_worker(tmp_path, http)
+    worker.sync_once()
+    assert worker.pending_hotkey == "ctrl+alt+k" and pushed == []
+    assert pulled == [None] and worker.status.last_error is None  # the pull still ran; sync itself is fine
+    assert "Could not send the capture hotkey" in caplog.text
+    http.routes[RPC] = [FakeResponse(200, True)]
+    worker.sync_once()
+    assert worker.pending_hotkey is None and pushed == [True]
+
+
+def test_no_push_while_signed_out(tmp_path):
+    http = FakeHttpWithGet()
+    worker, pulled, pushed = hotkey_worker(tmp_path, http)
+    worker.client.auth.tokens = None
+    worker.sync_once()
+    assert not any(RPC in c[1] for c in http.calls)
+    assert worker.pending_hotkey == "ctrl+alt+k" and pushed == []
