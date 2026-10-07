@@ -21,7 +21,7 @@ from typing import Any
 import psutil
 
 from . import tray
-from .recordings import IntakeState, IntakeWorker, KosClient
+from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror
 from .archive_capture import ArchiveClient, HotkeyListener, clean_source, foreground_title, read_selection
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .capture import Sampler, default_sampler
@@ -384,12 +384,14 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
     app = TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
                      archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None)
-    if config.supabase_url and config.recordings_dir and config.vault_dir:
+    if config.supabase_url and config.vault_dir:
+        # An empty recordings_dir turns transcription off; the vault is still mirrored.
+        kos = KosClient(config.supabase_url, config.supabase_anon_key, auth)
         app.intake = IntakeWorker(
-            Path(config.recordings_dir), Path(config.vault_dir), config.session_gap_minutes,
-            KosClient(config.supabase_url, config.supabase_anon_key, auth),
-            IntakeState.load(data_dir / "recordings.json"),
+            Path(config.recordings_dir) if config.recordings_dir else None, Path(config.vault_dir),
+            config.session_gap_minutes, kos, IntakeState.load(data_dir / "recordings.json"),
             notify=lambda msg: tray.notify(app.icon, msg) if app.icon is not None else None,
+            mirror=VaultMirror(Path(config.vault_dir), kos),
         )
     return app
 

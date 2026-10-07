@@ -12,6 +12,11 @@ default). A new MP3 that has stopped growing is:
    one line per segment, each with a timestamp block id (``^t0750`` = 12:30),
    and added to its session note.
 
+The vault's own notes travel the other way: every minute ``VaultMirror``
+copies the .md files under ``Knowledge/`` and ``Sessions/`` into
+``kos_vault_files`` as plain text (changed files only, deleted files are
+deleted), so the dashboard shows the knowledge notes and each session's status.
+
 Recordings that start within ``session_gap_minutes`` of the previous one's
 end belong to the same session (a lecture recorded in parts). The session
 note carries ``status: new`` until the Claude routine has processed it; a new
@@ -28,10 +33,12 @@ import json
 import logging
 import re
 import threading
+import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import quote
 
 import requests
 
@@ -248,7 +255,8 @@ with its link, then `Related:` with [[links]] to other Knowledge notes and the r
 3. **Contradictions:** do not resolve them. Create a `contradiction` note linking both sides with quotes.
 4. **Uncertainty stays:** "I think", "maybe" -> `confidence: low` and say so.
 5. **Do not summarise the recording.** In the session note, under "## Knowledge", list the notes you
-   created or extended, one line each, then set `status: processed`.
+   created or extended, one line each, add `topic: <3-8 words naming what was discussed>` to its
+   frontmatter, then set `status: processed`.
 6. **Continuations:** if the session clearly continues an earlier one (same lecture, same topic picked up
    again), add `continues: "[[Sessions/<earlier>]]"` to its frontmatter and link them; never merge files.
 7. Concept hubs: when several notes share a concept, keep or create a `concept` note that links them
@@ -275,18 +283,23 @@ class KosClient:
         base = supabase_url.rstrip("/")
         self.fn_url = f"{base}/functions/v1/kos-transcribe"
         self.table_url = f"{base}/rest/v1/kos_recordings"
+        self.vault_url = f"{base}/rest/v1/kos_vault_files"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
 
-    def _post(self, url: str, body: dict, extra: dict | None = None, timeout: float = 240) -> Any:
+    def _post(self, url: str, body: Any, extra: dict | None = None, timeout: float = 240) -> Any:
+        return self._request("POST", url, body, extra, timeout)
+
+    def _request(self, method: str, url: str, body: Any = None, extra: dict | None = None,
+                 timeout: float = 240) -> Any:
         for attempt in (1, 2):
             headers = {**self.auth.headers(), "Content-Type": "application/json", **(extra or {})}
             try:
-                resp = self.http.post(url, headers=headers, json=body, timeout=timeout)
+                resp = self.http.request(method, url, headers=headers, json=body, timeout=timeout)
             except requests.RequestException as exc:
                 raise SyncError(f"network error: {exc}") from exc
-            if resp.status_code in (200, 201):
+            if resp.status_code in (200, 201, 204):
                 return resp.json() if resp.text else None
             if resp.status_code == 401 and attempt == 1:
                 self.auth.refresh()
@@ -307,6 +320,27 @@ class KosClient:
         got = self._post(f"{self.table_url}?select=id", {**row, "user_id": self.auth.user_id},
                          {"Prefer": "return=representation"}, timeout=60)
         return got[0]["id"] if isinstance(got, list) and got else None
+
+    def list_vault_files(self) -> dict[str, tuple[str, str]]:
+        """What the server holds of the vault: path -> (sha256, vault name)."""
+        out: dict[str, tuple[str, str]] = {}
+        offset, page = 0, 1000
+        while True:
+            rows = self._request("GET", f"{self.vault_url}?select=path,sha256,vault&order=path&limit={page}"
+                                        f"&offset={offset}", timeout=60) or []
+            for r in rows:
+                out[r["path"]] = (r["sha256"], r["vault"])
+            if len(rows) < page:
+                return out
+            offset += page
+
+    def upsert_vault_files(self, rows: list[dict]) -> None:
+        self._post(f"{self.vault_url}?on_conflict=user_id,path",
+                   [{**r, "user_id": self.auth.user_id} for r in rows],
+                   {"Prefer": "resolution=merge-duplicates,return=minimal"}, timeout=60)
+
+    def delete_vault_file(self, path: str) -> None:
+        self._request("DELETE", f"{self.vault_url}?path=eq.{quote(path, safe='')}", timeout=60)
 
 
 def transcribe_file(client: KosClient, data: bytes) -> tuple[list[dict], str, str | None, float]:
@@ -376,7 +410,7 @@ def process_file(path: Path, client: KosClient, state: IntakeState, vault: Path,
     session, part = assign_session(start, list(state.known.values()), gap_minutes)
     note = f"{start.strftime('%Y-%m-%d %H-%M-%S')} {path.stem}".replace("/", "-")
     rec_id = client.store({
-        "sha256": sha, "file_name": path.name, "recorded_at": start.astimezone().isoformat(),
+        "sha256": sha, "file_name": path.name, "note_name": note, "recorded_at": start.astimezone().isoformat(),
         "duration_seconds": round(duration, 2), "session_key": session, "part": part, "model": model,
         "language": language, "segments": segments, "raw_text": " ".join(s["text"] for s in segments),
     })
@@ -393,14 +427,109 @@ def process_file(path: Path, client: KosClient, state: IntakeState, vault: Path,
     return note
 
 
-class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper around tested functions
-    """Scans the folder every minute; processes files that stopped growing, oldest first."""
+# -- the vault mirror ---------------------------------------------------------------
 
-    def __init__(self, folder: Path, vault: Path, gap_minutes: float, client: KosClient, state: IntakeState,
-                 notify: Callable[[str], None] | None = None, interval: float = 60) -> None:
+MIRROR_FOLDERS = ("Knowledge", "Sessions")
+MAX_NOTE_BYTES = 256_000
+RELOAD_SECONDS = 3600
+
+
+def vault_notes(vault: Path) -> dict[str, Path]:
+    """The notes the dashboard shows: every .md under Knowledge/ and Sessions/, by vault-relative path."""
+    out: dict[str, Path] = {}
+    for folder in MIRROR_FOLDERS:
+        base = vault / folder
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.md"):
+            rel = p.relative_to(vault)
+            if p.is_file() and not any(part.startswith(".") for part in rel.parts):
+                out[rel.as_posix()] = p
+    return out
+
+
+class VaultMirror:
+    """Keeps kos_vault_files equal to the vault's Knowledge/ and Sessions/ notes, one way: vault -> database.
+
+    The server's list (path -> sha256) is the state, read at start and again every hour, so
+    nothing is kept on disk and a lost row is sent again. A file is hashed only when its size
+    or modification time changed. A vault folder that is missing (a drive not mounted yet)
+    changes nothing on the server.
+    """
+
+    def __init__(self, vault: Path, client: KosClient) -> None:
+        self.vault, self.client = vault, client
+        self.remote: dict[str, tuple[str, str]] | None = None
+        self._loaded_at = 0.0
+        self._hashes: dict[str, tuple[tuple[int, int], str]] = {}
+        self._refused: dict[str, str] = {}
+
+    def sync(self, now: float) -> tuple[int, int]:
+        """(files sent, files deleted)."""
+        if not self.vault.is_dir():
+            return 0, 0
+        if self.remote is None or now - self._loaded_at >= RELOAD_SECONDS:
+            self.remote = self.client.list_vault_files()
+            self._loaded_at = now
+        name = self.vault.name
+        changed: list[dict] = []
+        local: set[str] = set()
+        for rel, p in vault_notes(self.vault).items():
+            try:
+                st = p.stat()
+                if st.st_size > MAX_NOTE_BYTES:
+                    continue
+                key = (st.st_mtime_ns, st.st_size)
+                cached = self._hashes.get(rel)
+                data = None
+                if cached is None or cached[0] != key:
+                    data = p.read_bytes()
+                    self._hashes[rel] = (key, hashlib.sha256(data).hexdigest())
+                sha = self._hashes[rel][1]
+                local.add(rel)
+                if self.remote.get(rel) == (sha, name) or self._refused.get(rel) == sha:
+                    continue
+                if data is None:
+                    data = p.read_bytes()
+                    sha = hashlib.sha256(data).hexdigest()
+                text = data.decode("utf-8", errors="replace").lstrip("\ufeff").replace("\x00", "")
+                changed.append({"vault": name, "path": rel, "content": text, "sha256": sha,
+                                "modified_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat()})
+            except OSError:
+                continue
+        for i in range(0, len(changed), 50):
+            self._send(changed[i:i + 50])
+        gone = [rel for rel in self.remote if rel not in local]
+        for rel in gone:
+            self.client.delete_vault_file(rel)
+            del self.remote[rel]
+        return len(changed), len(gone)
+
+    def _send(self, rows: list[dict]) -> None:
+        try:
+            self.client.upsert_vault_files(rows)
+        except SyncRejected:
+            if len(rows) > 1:  # one bad note must not hold back the rest
+                for r in rows:
+                    self._send([r])
+                return
+            log.warning("Vault note %s refused by the server; skipped until it changes", rows[0]["path"])
+            self._refused[rows[0]["path"]] = rows[0]["sha256"]
+            return
+        for r in rows:
+            self.remote[r["path"]] = (r["sha256"], r["vault"])  # type: ignore[index]
+
+
+class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper around tested functions
+    """Every minute: transcribes recordings that stopped growing (oldest first), then mirrors the vault."""
+
+    def __init__(self, folder: Path | None, vault: Path, gap_minutes: float, client: KosClient, state: IntakeState,
+                 notify: Callable[[str], None] | None = None, interval: float = 60,
+                 mirror: VaultMirror | None = None) -> None:
         super().__init__(name="mf-recordings", daemon=True)
         self.folder, self.vault, self.gap = folder, vault, gap_minutes
         self.client, self.state, self.notify, self.interval = client, state, notify, interval
+        self.mirror = mirror
         self._sizes: dict[Path, int] = {}
         self._retry_after: dict[Path, float] = {}
         self._done: set[tuple[Path, int]] = set()
@@ -410,16 +539,30 @@ class IntakeWorker(threading.Thread):  # pragma: no cover - thread wrapper aroun
         self._stop.set()
 
     def run(self) -> None:
-        import time
         while not self._stop.is_set():
             try:
                 self.scan(time.time())
             except Exception:
                 log.exception("recordings scan failed")
+            try:
+                self.mirror_vault(time.time())
+            except AuthRequired:
+                pass
+            except SyncError as exc:
+                log.warning("Vault mirror: %s", exc)
+            except Exception:
+                log.exception("vault mirror failed")
             self._stop.wait(self.interval)
 
+    def mirror_vault(self, now: float) -> None:
+        if self.mirror is None or not self.client.auth.user_id:
+            return
+        sent, deleted = self.mirror.sync(now)
+        if sent or deleted:
+            log.info("Vault mirror: %d note(s) sent, %d deleted", sent, deleted)
+
     def scan(self, now: float) -> None:
-        if not self.folder.is_dir() or not self.client.auth.user_id:
+        if self.folder is None or not self.folder.is_dir() or not self.client.auth.user_id:
             return
         ready = []
         for p in self.folder.iterdir():

@@ -1214,6 +1214,91 @@ export type Database = {
         }
         Relationships: []
       }
+      kos_recordings: {
+        Row: {
+          created_at: string
+          duration_seconds: number
+          file_name: string
+          id: string
+          language: string | null
+          model: string
+          note_name: string | null
+          part: number
+          raw_text: string
+          recorded_at: string
+          segments: Json
+          session_key: string
+          sha256: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds: number
+          file_name: string
+          id?: string
+          language?: string | null
+          model: string
+          note_name?: string | null
+          part?: number
+          raw_text: string
+          recorded_at: string
+          segments: Json
+          session_key: string
+          sha256: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number
+          file_name?: string
+          id?: string
+          language?: string | null
+          model?: string
+          note_name?: string | null
+          part?: number
+          raw_text?: string
+          recorded_at?: string
+          segments?: Json
+          session_key?: string
+          sha256?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      kos_vault_files: {
+        Row: {
+          content: string
+          created_at: string
+          folder: string | null
+          id: string
+          modified_at: string
+          path: string
+          sha256: string
+          user_id: string
+          vault: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          modified_at: string
+          path: string
+          sha256: string
+          user_id: string
+          vault: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          modified_at?: string
+          path?: string
+          sha256?: string
+          user_id?: string
+          vault?: string
+        }
+        Relationships: []
+      }
       library_shares: {
         Row: {
           created_at: string

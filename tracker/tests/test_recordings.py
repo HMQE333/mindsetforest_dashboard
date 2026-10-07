@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from mindsetforest_tracker.recordings import (
-    IntakeState, Known, KosClient, assign_session, mp3_chunks, mp3_duration, mp3_frames, process_file,
-    recorded_at, session_note,
+    IntakeState, Known, KosClient, VaultMirror, assign_session, mp3_chunks, mp3_duration, mp3_frames,
+    process_file, recorded_at, session_note,
 )
 from mindsetforest_tracker.auth import SupabaseAuth, Tokens
 
@@ -65,7 +65,8 @@ class FakeHttp:
     def __init__(self):
         self.calls = []
 
-    def post(self, url, headers=None, json=None, timeout=None):
+    def request(self, method, url, headers=None, json=None, timeout=None):
+        assert method == "POST"
         self.calls.append((url, json))
         if url.endswith("/kos-transcribe"):
             return FakeResp(200, {"model": "openai/whisper-large-v3-turbo", "language": "en",
@@ -89,6 +90,7 @@ def test_a_recording_becomes_a_note_and_the_audio_is_untouched(tmp_path):
     assert len([c for c in http.calls if c[0].endswith("/kos-transcribe")]) == 2  # 600 s in 480 s chunks
     row = http.calls[-1][1]
     assert row["session_key"] == "2026-10-07 14-03" and row["part"] == 1 and row["user_id"] == "user-1"
+    assert row["note_name"] == note == "2026-10-07 14-03-12 bandicam 2026-10-07 14-03-12-123"
     assert [s["start"] for s in row["segments"]] == [1.0, 481.0]
     text = (vault / "Recordings" / f"{note}.md").read_text(encoding="utf-8")
     assert "**[00:08:01]** Hello there. ^t0481" in text and "recording_id: rec-1" in text
@@ -99,3 +101,100 @@ def test_a_recording_becomes_a_note_and_the_audio_is_untouched(tmp_path):
     n = len(http.calls)
     assert process_file(audio, KosClient("https://p.supabase.co", "anon", auth, http=http), again, vault, 20) == note
     assert len(http.calls) == n
+
+
+class FakeVaultServer:
+    """kos_vault_files over PostgREST: list, upsert on (user_id, path), delete by path."""
+
+    def __init__(self, refuse=()):
+        self.rows, self.log, self.refuse = {}, [], set(refuse)
+
+    def request(self, method, url, headers=None, json=None, timeout=None):
+        from urllib.parse import unquote
+        self.log.append((method, url))
+        if method == "GET":
+            return FakeResp(200, [{"path": p, "sha256": r["sha256"], "vault": r["vault"]}
+                                  for p, r in sorted(self.rows.items())])
+        if method == "POST":
+            assert url.endswith("?on_conflict=user_id,path")
+            assert headers["Prefer"] == "resolution=merge-duplicates,return=minimal"
+            if any(r["path"] in self.refuse for r in json):
+                return FakeResp(400, {"message": "bad row"})
+            for r in json:
+                assert r["user_id"] == "user-1"
+                self.rows[r["path"]] = r
+            return FakeResp(201, None)
+        if method == "DELETE":
+            self.rows.pop(unquote(url.split("?path=eq.", 1)[1]), None)
+            return FakeResp(204, None)
+        raise AssertionError(method)
+
+
+def mirror_for(tmp_path, server):
+    auth = SupabaseAuth("https://p.supabase.co", "anon", tmp_path / "s.bin", http=None, clock=lambda: 0.0)
+    auth.tokens = Tokens("acc", "ref", "user-1", 1e12, "a@b.c")
+    vault = tmp_path / "My Vault"
+    for rel, text in {
+        "Knowledge/Reciprocity.md": "---\ntype: principle\n---\nPeople return favours.",
+        "Knowledge/Deep/Nested idea.md": "nested",
+        "Sessions/2026-10-07 14-03.md": "---\nstatus: new\n---\n",
+        "Recordings/2026-10-07 14-03-12 a.md": "raw transcript",
+        "_SYSTEM/processing-rules.md": "rules",
+        "Knowledge/.obsidian/x.md": "hidden",
+        "Knowledge/readme.txt": "not markdown",
+    }.items():
+        (vault / rel).parent.mkdir(parents=True, exist_ok=True)
+        (vault / rel).write_text(text, encoding="utf-8")
+    return vault, VaultMirror(vault, KosClient("https://p.supabase.co", "anon", auth, http=server))
+
+
+def test_the_vault_mirror_copies_knowledge_and_sessions_only(tmp_path):
+    server = FakeVaultServer()
+    vault, mirror = mirror_for(tmp_path, server)
+    assert mirror.sync(0) == (3, 0)
+    assert sorted(server.rows) == ["Knowledge/Deep/Nested idea.md", "Knowledge/Reciprocity.md",
+                                   "Sessions/2026-10-07 14-03.md"]
+    row = server.rows["Knowledge/Reciprocity.md"]
+    assert row["vault"] == "My Vault" and row["content"].endswith("People return favours.")
+    assert row["modified_at"].endswith("+00:00")
+
+    # Nothing changed: nothing is sent, and the server is not asked again within the hour.
+    n = len(server.log)
+    assert mirror.sync(60) == (0, 0) and len(server.log) == n
+
+    # The routine processes the session and a note is removed: one upsert, one delete.
+    (vault / "Sessions/2026-10-07 14-03.md").write_text("---\nstatus: processed\n---\n", encoding="utf-8")
+    (vault / "Knowledge/Deep/Nested idea.md").unlink()
+    assert mirror.sync(120) == (1, 1)
+    assert "status: processed" in server.rows["Sessions/2026-10-07 14-03.md"]["content"]
+    assert ("DELETE", "https://p.supabase.co/rest/v1/kos_vault_files?path=eq.Knowledge%2FDeep%2FNested%20idea.md") in server.log
+    assert "Knowledge/Deep/Nested idea.md" not in server.rows
+
+
+def test_a_restart_sends_only_what_differs_and_a_missing_vault_deletes_nothing(tmp_path):
+    server = FakeVaultServer()
+    vault, mirror = mirror_for(tmp_path, server)
+    mirror.sync(0)
+    _, fresh = mirror_for(tmp_path, server)  # a new tracker process: state comes from the server
+    assert fresh.sync(0) == (0, 0)
+    gone = VaultMirror(tmp_path / "Unplugged drive", fresh.client)
+    assert gone.sync(0) == (0, 0) and len(server.rows) == 3
+
+
+def test_a_moved_vault_resends_its_notes_under_the_new_name(tmp_path):
+    server = FakeVaultServer()
+    vault, mirror = mirror_for(tmp_path, server)
+    mirror.sync(0)
+    moved = vault.rename(tmp_path / "Brain")
+    assert VaultMirror(moved, mirror.client).sync(0) == (3, 0)
+    assert {r["vault"] for r in server.rows.values()} == {"Brain"}
+
+
+def test_a_note_the_server_refuses_does_not_hold_back_the_others(tmp_path):
+    server = FakeVaultServer(refuse={"Knowledge/Reciprocity.md"})
+    vault, mirror = mirror_for(tmp_path, server)
+    mirror.sync(0)
+    assert sorted(server.rows) == ["Knowledge/Deep/Nested idea.md", "Sessions/2026-10-07 14-03.md"]
+    posts = len([m for m, _ in server.log if m == "POST"])
+    mirror.sync(60)  # refused and unchanged: not tried again
+    assert len([m for m, _ in server.log if m == "POST"]) == posts

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import { useBookmarks } from "@/hooks/useBookmarks";
@@ -11,12 +11,16 @@ import ArchiveDigestView from "./ArchiveDigestView";
 import ArchiveForestView from "./ArchiveForestView";
 import ArchiveBookmarksView from "./ArchiveBookmarksView";
 import FileShareView from "./FileShareView";
+import KnowledgeView from "./KnowledgeView";
+import RecordingsView, { type RecordingFocus } from "./RecordingsView";
+import { useKosRecordings, useKosVault } from "@/hooks/useKnowledgeOS";
+import { groupSessions } from "@/lib/kos-vault";
 import PlantSeedModal from "./PlantSeedModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 
-type SubView = "inbox" | "library" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
+type SubView = "inbox" | "library" | "knowledge" | "recordings" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
@@ -55,6 +59,25 @@ const ArchiveView = () => {
   // One store for both views, so a link bookmarked in Links is in Bookmarks at once.
   const bookmarks = useBookmarks();
 
+  // Knowledge OS (the Obsidian vault's notes and the recordings) loads the first time either tab opens.
+  const [kosOn, setKosOn] = useState(false);
+  useEffect(() => {
+    if (subView === "knowledge" || subView === "recordings") setKosOn(true);
+  }, [subView]);
+  const kosVault = useKosVault(kosOn);
+  const kosRecordings = useKosRecordings(kosOn);
+  const sessions = useMemo(() => groupSessions(kosRecordings.rows, kosVault.index), [kosRecordings.rows, kosVault.index]);
+  const vaultName = useMemo(() => {
+    const i = kosVault.index;
+    return i ? i.notes[0]?.vault ?? [...i.sessions.values()][0]?.vault ?? null : null;
+  }, [kosVault.index]);
+  const [recordingFocus, setRecordingFocus] = useState<RecordingFocus | null>(null);
+  const [knowledgeSession, setKnowledgeSession] = useState<string | null>(null);
+  const refreshKos = () => {
+    void kosVault.refetch();
+    void kosRecordings.refetch();
+  };
+
   const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
   const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
   const existingTags = useMemo(() => {
@@ -68,6 +91,8 @@ const ArchiveView = () => {
   const NAV_ITEMS: { id: SubView; label: string; icon: string; count?: number }[] = [
     { id: "inbox", label: "Inbox", icon: "📥" },
     { id: "library", label: "Library", icon: "📚", count: archive.blocks.length },
+    { id: "knowledge", label: "Knowledge", icon: "🧠", count: kosVault.index?.notes.length || undefined },
+    { id: "recordings", label: "Recordings", icon: "🎙️", count: kosRecordings.rows.length || undefined },
     { id: "links", label: "Links", icon: "🔗", count: linkCount },
     { id: "images", label: "Images", icon: "🖼️", count: imageCount },
     { id: "digest", label: "Digest", icon: "🔁" },
@@ -246,6 +271,36 @@ const ArchiveView = () => {
             searchArchive={archive.searchArchive}
             embedAll={archive.embedAll}
             onPlant={(b) => setSinglePlantBlock(b)}
+          />
+        </div>
+        <div className={subView === "knowledge" ? "" : "hidden"}>
+          <KnowledgeView
+            index={kosVault.index}
+            loading={kosVault.loading}
+            failed={!!kosVault.error}
+            recordings={kosRecordings.rows}
+            sessions={sessions}
+            sessionFilter={knowledgeSession}
+            onClearSession={() => setKnowledgeSession(null)}
+            onOpenRecording={(note, seconds) => {
+              setRecordingFocus({ note, seconds, n: Date.now() });
+              setSubView("recordings");
+            }}
+            onRefresh={refreshKos}
+          />
+        </div>
+        <div className={subView === "recordings" ? "" : "hidden"}>
+          <RecordingsView
+            sessions={sessions}
+            loading={kosRecordings.loading}
+            failed={!!kosRecordings.error}
+            vault={vaultName}
+            focus={recordingFocus}
+            onShowKnowledge={(key) => {
+              setKnowledgeSession(key);
+              setSubView("knowledge");
+            }}
+            onRefresh={refreshKos}
           />
         </div>
         <div className={subView === "links" ? "" : "hidden"}>

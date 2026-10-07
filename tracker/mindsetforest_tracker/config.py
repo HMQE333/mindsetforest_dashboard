@@ -39,8 +39,9 @@ class Config:
     min_session_seconds: int = 2
     # Global hotkey that saves the selected text to the Archive ("" turns it off).
     capture_hotkey: str = "alt+shift+s"
-    # Knowledge OS: MP3s in this folder are transcribed and written to the Obsidian vault.
-    # Empty recordings_dir turns it off. Change vault_dir any time; new notes go there.
+    # Knowledge OS: MP3s in this folder are transcribed and written to the Obsidian vault, and
+    # the vault's Knowledge/ and Sessions/ notes are copied to the dashboard. Empty
+    # recordings_dir turns transcription off. Change vault_dir any time; new notes go there.
     recordings_dir: str = field(default_factory=lambda: str(Path.home() / "Documents" / "Bandicam"))
     vault_dir: str = field(default_factory=lambda: str(Path.home() / "Documents" / "MindsetForest Vault"))
     # Recordings starting within this many minutes of the previous one's end are one session.
