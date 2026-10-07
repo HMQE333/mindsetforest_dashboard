@@ -81,6 +81,8 @@ describe("assistant control actions", () => {
     expect(one({ type: "log_metric", metric: "reading", value: -3 })).toEqual([]);
     expect(one({ type: "add_event", title: "Dentist", date: "2026-10-02", time: "9:30" })[0]).toMatchObject({ date: "2026-10-02", time: "9:30" });
     expect(one({ type: "add_event", title: "Dentist", date: "jutro" })).toEqual([]);
+    expect(one({ type: "add_event", title: "Dentist", date: "2026-10-02", tag: " zdrowie " })[0]).toMatchObject({ tag: "zdrowie" });
+    expect(one({ type: "add_event", title: "Dentist", date: "2026-10-02", tag: "  " })[0].tag).toBeUndefined();
     expect(one({ type: "add_transaction", kind: "expense", amount: 42.5, title: "Groceries" })[0]).toMatchObject({ kind: "expense", amount: 42.5 });
     expect(one({ type: "add_transaction", kind: "gift", amount: 5, title: "x" })).toEqual([]);
   });

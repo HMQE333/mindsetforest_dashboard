@@ -9,6 +9,10 @@ describe("keywordScopes", () => {
     expect(keywordScopes("zrobiłem pompki")).toEqual(["dashboard", "tracker"]);
     expect(keywordScopes("włącz preset monk mode")).toEqual(["dashboard"]);
     expect(keywordScopes("Przejdź na kalendarz")).toEqual(["calendar"]);
+    expect(keywordScopes("Umów wizytę u dentysty na piątek 10:00")).toEqual(["calendar"]);
+    expect(keywordScopes("jestem umówiony z Kasią w środę")).toEqual(["calendar"]);
+    expect(keywordScopes("schedule a call with the bank")).toEqual(["calendar"]);
+    expect(keywordScopes("podpisałem umowę najmu")).toEqual([]);
     expect(keywordScopes("what's up")).toEqual([]);
   });
 

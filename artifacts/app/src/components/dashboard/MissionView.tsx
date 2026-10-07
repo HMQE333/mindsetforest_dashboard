@@ -18,7 +18,6 @@ interface MissionViewProps {
   getMissions: (categoryId: string) => Mission[];
   onComplete: (categoryId: string, index: number, xp: number) => void;
   onSplit: (categoryId: string, index: number, subTasks: Mission[]) => void;
-  onResetCategory: (categoryId: string) => void;
   onReroll: (categoryId: string, index: number) => void;
   onBack: () => void;
   onEdit: () => void;
@@ -26,7 +25,7 @@ interface MissionViewProps {
   projectInfo?: ProjectInfo | null;
 }
 
-export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onResetCategory, onReroll, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
+export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onReroll, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
   const { getCategories } = useUserSettings();
   const categories = getCategories();
   const category = categories.find(c => c.id === categoryId);
@@ -97,6 +96,14 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
 
         <div className="flex items-center gap-2">
           <button
+            onClick={onEdit}
+            className="px-3 py-2 rounded-xl border border-white/25 bg-white/[0.09] text-foreground hover:bg-primary/20 hover:border-primary/45 transition-all hover:-translate-y-0.5 backdrop-blur-lg"
+            title="Edit tasks"
+            aria-label="Edit tasks"
+          >
+            <span className="text-lg">✏️</span>
+          </button>
+          <button
             onClick={onAI}
             className="relative px-3 py-2 rounded-xl border border-primary/30 bg-primary/10 text-foreground hover:bg-primary/20 hover:border-primary/45 transition-all hover:-translate-y-0.5 backdrop-blur-lg"
             title="AI suggestions"
@@ -105,24 +112,6 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
             <span className="absolute -top-1.5 -right-1.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-white/15 border border-white/25 text-white/90 backdrop-blur-md">
               AI
             </span>
-          </button>
-          {state.customMissions[categoryId] && state.customMissions[categoryId].length > 0 && (
-            <button
-              onClick={() => {
-                // Same question as the "d" shortcut: this drops the custom list and today's ticks in it.
-                if (window.confirm("Restore the default missions in this category? Your list and today's ticks in it will be removed.")) onResetCategory(categoryId);
-              }}
-              className="px-4 py-2 rounded-full bg-white/[0.09] border border-white/25 text-accent-foreground text-sm flex items-center gap-1.5 hover:bg-destructive/20 hover:border-destructive/70 transition-all"
-              title="Revert to default missions"
-            >
-              ↩️ Reset defaults
-            </button>
-          )}
-          <button
-            onClick={onEdit}
-            className="px-4 py-2 rounded-full bg-white/[0.09] border border-white/25 text-accent-foreground text-sm flex items-center gap-1.5 hover:bg-primary/20 hover:border-primary/70 transition-all"
-          >
-            ✏️ Edit tasks
           </button>
         </div>
       </div>

@@ -631,7 +631,7 @@ function useAssistantValue() {
             if (r.ok) { ok++; toast.success(`Zadanie zrobione: „${r.title}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_event") {
-            const r = await addCalendarEvent(user.id, { title: action.title, date: action.date, time: action.time, notes: action.notes });
+            const r = await addCalendarEvent(user.id, { title: action.title, date: action.date, time: action.time, notes: action.notes, tag: action.tag });
             if (r.ok) { ok++; toast.success(`Dodano do kalendarza: ${action.date} ${action.title}`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_book") {

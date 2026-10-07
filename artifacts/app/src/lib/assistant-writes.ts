@@ -299,12 +299,12 @@ export async function addBooks(
 
 export async function addCalendarEvent(
   userId: string,
-  input: { title: string; date: string; time?: string; notes?: string },
+  input: { title: string; date: string; time?: string; notes?: string; tag?: string },
 ): Promise<WriteResult> {
   const title = input.time ? `${input.time} ${input.title}` : input.title;
   const { error } = await supabase
     .from("calendar_events")
-    .insert({ user_id: userId, title, date: input.date, notes: input.notes || "" });
+    .insert({ user_id: userId, title, date: input.date, notes: input.notes || "", tag: input.tag || "" });
   if (error) return { ok: false, error: "Nie udało się dodać wydarzenia" };
   emitAppEvent(CALENDAR_EVENTS_CHANGED_EVENT);
   return { ok: true };

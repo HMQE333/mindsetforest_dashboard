@@ -159,7 +159,7 @@ export default function DashboardView() {
     } : undefined,
     editTasks: selectedCategory && selectedCategory !== "__projects__" ? () => setEditingCategory(selectedCategory) : undefined,
     aiSuggestions: selectedCategory && selectedCategory !== "__projects__" ? () => setAICategory(selectedCategory) : undefined,
-    // Like the "Reset defaults" button: only when there is a custom list to drop.
+    // Only when there is a custom list to drop (the "d" shortcut; there is no button for it).
     resetDefaults: selectedCategory && selectedCategory !== "__projects__" && state.customMissions[selectedCategory]?.length
       ? () => resetCategory(selectedCategory)
       : undefined,
@@ -257,7 +257,6 @@ export default function DashboardView() {
             getMissions={getMissions}
             onComplete={handleComplete}
             onSplit={splitMission}
-            onResetCategory={resetCategory}
             onReroll={rerollMission}
             onBack={() => setSelectedCategory(selectedCategory.startsWith("project-") ? "__projects__" : null)}
             onEdit={() => setEditingCategory(selectedCategory)}

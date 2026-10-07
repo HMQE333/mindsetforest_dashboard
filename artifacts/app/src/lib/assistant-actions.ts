@@ -119,7 +119,7 @@ export type AssistantAction =
       steps: { title: string; stage?: string | null; days?: number; xp?: number }[];
     }
   | { type: "complete_task"; title: string }
-  | { type: "add_event"; title: string; date: string; time?: string; notes?: string }
+  | { type: "add_event"; title: string; date: string; time?: string; notes?: string; tag?: string }
   | { type: "add_book"; books: BookDraft[] }
   | {
       /** Pages read in a book on the shelf: a reading-log entry, and the bookmark moves to `toPage` (never back). */
@@ -414,7 +414,9 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
 
   if (scopes.includes("calendar")) {
     specs.push(
-      '- add_event: add a calendar event. Fields: title, date ("YYYY-MM-DD"; resolve "jutro"/"tomorrow" from today\'s date in the data), time (optional "HH:MM"), notes (optional).',
+      '- add_event: add a calendar event. Fields: title, date ("YYYY-MM-DD"; resolve "jutro"/"tomorrow" from today\'s date in the data), time (optional "HH:MM"), notes (optional), ' +
+        "tag (optional: one of the user's existing calendar tags shown in the data, [in brackets], when one fits; never invent one). " +
+        "One action per event; several events -> several actions.",
     );
   }
 
@@ -660,7 +662,8 @@ function coerceAction(raw: unknown): AssistantAction | null {
     if (!title || !date) return null;
     const time = typeof o.time === "string" && /^\d{1,2}:\d{2}$/.test(o.time.trim()) ? o.time.trim() : undefined;
     const notes = typeof o.notes === "string" ? o.notes.slice(0, 1000) : undefined;
-    return { type: "add_event", title, date, time, notes };
+    const tag = typeof o.tag === "string" && o.tag.trim() ? o.tag.trim().slice(0, 40) : undefined;
+    return { type: "add_event", title, date, time, notes, tag };
   }
 
   if (type === "log_reading") {
@@ -969,7 +972,7 @@ export function describeAction(action: AssistantAction): string {
     const names = action.books.slice(0, 3).map(one).join(", ");
     return `Add ${action.books.length} books: ${names}${action.books.length > 3 ? ` +${action.books.length - 3} more` : ""}`;
   }
-  if (action.type === "add_event") return `Add event ${action.date}${action.time ? ` ${action.time}` : ""}: "${action.title}"`;
+  if (action.type === "add_event") return `Add event ${action.date}${action.time ? ` ${action.time}` : ""}: "${action.title}"${action.tag ? ` [${action.tag}]` : ""}`;
   if (action.type === "add_transaction") {
     return `Add ${action.kind}: ${action.amount} · "${action.title}"${action.category ? ` (${action.category})` : ""}${action.date ? ` on ${action.date}` : ""}`;
   }
