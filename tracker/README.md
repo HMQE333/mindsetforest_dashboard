@@ -9,24 +9,32 @@
 > 2. Uruchom go. Windows może ostrzec, bo aplikacja nie ma podpisu: **Więcej informacji → Uruchom mimo to**. Instalacja idzie na Twoje
 >    konto Windows (`%LOCALAPPDATA%\Programs\MindsetForest`), bez uprawnień administratora.
 > 3. W oknie instalatora:
->    - **Konto**: zaloguj się tym samym e-mailem i hasłem co w dashboardzie. Adres bazy instalator pobiera sam z dashboardu. Logujesz się raz;
->      token jest zapisany zaszyfrowany (DPAPI).
->    - **Nagrania (Bandicam)**: folder jest wykrywany z ustawień Bandicam (inaczej `Dokumenty\Bandicam`). Odznacz transkrypcję, jeśli jej nie chcesz.
+>    - **Konto**: zaloguj się tym samym e-mailem i hasłem co w dashboardzie. Adres bazy instalator pobiera sam z dashboardu
+>      (`https://hmqe333.github.io/mindsetforest_dashboard/`), a pod polami pokazuje serwer logowania. Logujesz się raz; token jest
+>      zapisany zaszyfrowany (DPAPI).
+>    - **Nagrania (Bandicam)**: folder jest wykrywany z ustawień Bandicam (inaczej `Dokumenty\Bandicam`); podaj pełną ścieżkę z literą
+>      dysku albo kliknij **Wybierz...**. Tracker patrzy w ten folder i podfoldery do 3 poziomów w dół. Jeśli są w nim już MP3, okno pyta
+>      **Przetwórz też nagrania, które już są w folderze (N)**: bez tego transkrybowane są tylko nowe nagrania (dla folderu Bandicam pole
+>      jest domyślnie zaznaczone, dla innych nie, żeby nie wysłać przypadkiem np. muzyki). Odznacz transkrypcję, jeśli jej nie chcesz.
 >    - **Vault Obsidian**: wybierz vault z listy (te, które zna Obsidian) albo zostaw `Dokumenty\MindsetForest Vault`, który zostanie utworzony.
->    - **Skrót** zapisu zaznaczonego tekstu w Archive (domyślnie Alt+Shift+S) i **Uruchamiaj przy starcie Windows**.
+>    - **Skrót** zapisu zaznaczonego tekstu w Archive (domyślnie Alt+Shift+S; jeśli ustawiłeś inny w dashboardzie, okno pokazuje ten) i
+>      **Uruchamiaj przy starcie Windows**.
 >
->    Kliknij **Zainstaluj i uruchom**. Przy zegarze pojawi się zielona ikonka drzewa.
+>    Kliknij **Zainstaluj i uruchom** (przyciski są zawsze na dole okna). Przy zegarze pojawi się zielona ikonka drzewa; Windows 11
+>    chowa nowe ikonki pod strzałką **^** obok zegara.
 > 4. **Ostatni krok, konieczny: rutyna Claude.** Tracker tylko zamienia nagrania na tekst. Notatki wiedzy robi z nich Claude w zadaniu
 >    cyklicznym (rutynie), które ustawiasz raz w Claude Desktop; tego instalator nie zrobi za Ciebie. Ekran "Gotowe" prowadzi przez to krok po kroku:
 >    1. Zainstaluj i otwórz [Claude Desktop](https://claude.ai/download).
->    2. Utwórz zadanie cykliczne (scheduled task) uruchamiane co 2-3 godziny.
->    3. Daj mu dostęp do folderu vaulta.
->    4. Jako polecenie wklej tekst z przycisku **Kopiuj polecenie** (jest w nim ścieżka Twojego vaulta), np.:
+>    2. W lewym pasku kliknij **Scheduled**, potem **New task** (prawy górny róg) i **Set up manually**. Częstotliwość: **Hourly**.
+>    3. Jako folder zadania wskaż folder vaulta. Zadanie musi działać lokalnie, na tym komputerze (nie w chmurze), inaczej nie dostanie
+>       się do vaulta.
+>    4. Jako polecenie (prompt) wklej tekst z przycisku **Kopiuj polecenie** (jest w nim ścieżka Twojego vaulta), np.:
 >
 >       ```
 >       Open my Obsidian vault at C:\Users\Ja\Documents\MindsetForest Vault. Read _SYSTEM/routine-prompt.md and do exactly what it says.
 >       ```
 >
+>    Zadanie uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi; pominięte uruchomienie nadrobi, gdy wrócisz.
 >    Instalator od razu zapisuje w vaulcie `_SYSTEM/routine-prompt.md` (cała procedura rutyny) i `_SYSTEM/processing-rules.md`
 >    (zasady dobrych notatek), więc rutyna działa jeszcze przed pierwszym nagraniem; zmiany robisz w tych plikach, nie w zadaniu.
 >    Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną: sesje zostają ze `status: new`, a gdy czekają dłużej niż
@@ -40,9 +48,12 @@
 >
 > - Menu ikonki drzewa: **Ustawienia...** (to samo okno co instalator: konto, foldery, skrót, autostart; po **Zapisz** tracker sam się
 >   restartuje), **Open dashboard**, **Pause**, **Don't track ...**. Statystyki, klasy i reguły ustawiasz tylko w dashboardzie.
->   Skrót **MindsetForest** w menu Start uruchamia tracker, a gdy już działa, otwiera Ustawienia.
+>   Skrót **MindsetForest** w menu Start uruchamia tracker, a gdy już działa, otwiera Ustawienia (gdy ikonki nie widać przy zegarze,
+>   jest pod strzałką **^**).
+> - **Logowanie wygasło**: gdy serwer odrzuci zapisane logowanie (np. po wylogowaniu w dashboardzie), Ustawienia pokazują
+>   **Logowanie wygasło (e-mail): zaloguj się ponownie** z polami logowania; po **Zapisz** tracker używa nowego logowania.
 > - **Aktualizacja**: pobierz nowszy instalator i uruchom go. Podmienia program w miejscu (sam zamyka stary tracker i uruchamia nowy);
->   logowanie, ustawienia i dane zostają.
+>   logowanie, ustawienia (także wyłączony autostart) i dane zostają.
 > - **Odinstalowanie**: Ustawienia Windows → Aplikacje → Zainstalowane aplikacje (Apps & features) → **MindsetForest Tracker** →
 >   Odinstaluj, albo **Ustawienia... → Odinstaluj...**. Vault i nagrania zostają zawsze; dane lokalne (`%APPDATA%\MindsetForest`)
 >   znikają tylko, jeśli to potwierdzisz.
@@ -52,7 +63,8 @@
 >   zmieniasz je w dashboardzie (**Settings → Keybinds**) albo w **Ustawienia...**, a tracker przełącza się w ciągu minuty, bez
 >   restartu. Unikaj Ctrl+Alt: na polskiej klawiaturze to AltGr (Ctrl+Alt+S pisze "ś"). Jeśli inny program zajął kombinację, dostaniesz
 >   powiadomienie.
-> - **Nagrania → Obsidian (Knowledge OS):** każde nowe MP3 w folderze nagrań (także w podfolderach, np. `Audios`) jest transkrybowane
+> - **Nagrania → Obsidian (Knowledge OS):** każde nowe MP3 w folderze nagrań (także w podfolderach do 3 poziomów, np. `Audios`) jest
+>   transkrybowane
 >   (Whisper large-v3-turbo w chmurze, ze znacznikami czasu) i trafia do vaulta jako notatka w `Recordings/` plus sesja w `Sessions/`
 >   (`status: new`), którą potem przerabia rutyna Claude. Nagrania zaczęte do 20 min po końcu poprzedniego to ta sama sesja (części
 >   jednego wykładu). Oryginalne pliki nie są ruszane. Foldery zmienisz w **Ustawienia...**; `session_gap_minutes` tylko w `config.json`
@@ -139,14 +151,45 @@ admin) and the installed copy runs the tracker. Logic lives in
   `%APPDATA%\MindsetForest\config.json` (keeping every setting it does not
   show, e.g. `ignored_apps`), creates the vault and its `_SYSTEM/` notes,
   removes the old zip install's Startup shortcut, sets the `HKCU\...\Run` value
-  `MindsetForest Tracker`, adds a Start menu shortcut and an Apps & features
-  entry, and starts the tracker.
+  `MindsetForest Tracker` to `"<exe>" --autostart`, adds a Start menu shortcut
+  and an Apps & features entry, and starts the tracker. The vault folder is
+  checked (created and written to) before the running tracker is stopped; if
+  a later step fails, the old tracker is started again.
+* **`--autostart`** marks a logon start: when a tracker already runs it exits
+  quietly (logging to `setup.log`, never `tracker.log`), unless the lock
+  belongs to the old zip tracker whose Startup shortcut came back, which is
+  retired so the installed exe tracks. A Start menu click while the tracker
+  runs opens *Ustawienia* instead.
+* **Supabase URL and key, automatically, only from the real site**: a window
+  that finds nothing configured asks `DEFAULT_SITE`, never the `dashboard_url`
+  of an old config (the zip era's `https://mindsetforest.app` is a domain
+  nobody owns). Another site is asked only when typed under *Zaawansowane*
+  and fetched with *Pobierz ustawienia*. The sign-in server's host is shown
+  under the account fields.
 * **Sign-in in the window** is always a fresh password sign-in. The window
   never refreshes the saved session, because Supabase rotates refresh tokens
-  and would revoke the tracker's session if both used it.
+  and would revoke the tracker's session if both used it. Each window keeps
+  its sign-in in its own `session.new.<pid>.bin` until install moves it into
+  `session.bin`, so closing a second window never drops it. When the tracker
+  left its `needs_login` marker (the server refused the saved session), the
+  window says *Logowanie wygasło* and shows the sign-in fields.
+* **Recordings already in a newly chosen folder** are transcribed only when
+  *Przetwórz też nagrania, które już są w folderze (N)* is ticked (ticked by
+  default for a Bandicam folder). Otherwise `recordings_since` in config.json
+  holds the cutoff and older files are skipped; an upgrade that keeps the
+  folder keeps its cutoff.
+* **Autostart** on an upgrade starts from the current state (the Run value or
+  the zip version's Startup shortcut); only a fresh install starts ticked.
 * **Upgrade** = run a newer setup exe; the data folder (device id, login,
   transcription state) is untouched. **Uninstall** = Apps & features or
   *Ustawienia... -> Odinstaluj...*; the vault and recordings are never deleted.
+  With `--remove-data` (or *Tak* in the window) only the tracker's own files
+  in the data folder go (`config.json`, `session*.bin`, `tracker.db`,
+  `recordings.json`, `tracker.log`, `setup.log`, lock and marker files); the
+  folder itself only when nothing else is left in it. A running exe cannot
+  delete itself, so after the last message box a hidden PowerShell cleanup
+  waits for the uninstaller (and its onefile bootloader) to exit, then removes
+  the exe and its folder.
 * **The Claude routine is the one manual step.** The "Gotowe" page shows the
   steps and a copy button for the scheduled task's prompt
   (`Open my Obsidian vault at <vault>. Read _SYSTEM/routine-prompt.md and do
@@ -155,8 +198,9 @@ admin) and the installed copy runs the tracker. Logic lives in
   day.
 * **Command line** (CI and scripted installs): `--install --silent` with
   `--recordings DIR` / `--no-transcribe`, `--vault DIR`, `--hotkey SPEC`,
-  `--no-autostart`, `--no-launch`, `--site URL` or `--supabase-url URL
-  --anon-key KEY`; `--uninstall [--silent] [--remove-data]`; `--settings`;
+  `--no-autostart`, `--no-launch`, `--skip-existing` (only new recordings),
+  `--site URL` or `--supabase-url URL --anon-key KEY`;
+  `--uninstall [--silent] [--remove-data]`; `--settings`;
   `--self-test OUT.json` (Windows smoke checks). A silent install logs to
   `%APPDATA%\MindsetForest\setup.log`.
 
@@ -174,7 +218,7 @@ Use the installer above unless you are changing the code.
    {
      "supabase_url": "https://YOUR-PROJECT.supabase.co",
      "supabase_anon_key": "YOUR-ANON-PUBLIC-KEY",
-     "dashboard_url": "https://mindsetforest.app",
+     "dashboard_url": "https://hmqe333.github.io/mindsetforest_dashboard/",
      "idle_minutes": 3,
      "tick_seconds": 1,
      "sync_seconds": 60,
@@ -258,9 +302,12 @@ A balloon confirms it, and the note is indexed for semantic search.
   types "s with an accent" and a global hotkey would swallow it. Any
   `modifier+key` works (`ctrl+shift+f9`, `win+shift+s`, ...).
   If another app already owns the combination, a balloon says so.
-* The setup window's choice is pushed to the dashboard once (RPC
-  `set_tracker_capture_hotkey`), so the window and the dashboard never
-  disagree; after that the dashboard's value wins as above.
+* The tracker saves the dashboard's active value into `capture_hotkey` in
+  `config.json`, so the setup window always shows the hotkey in use. A hotkey
+  changed in the window (*Zmień...* or *Wyłącz*) is pushed to the dashboard
+  once (RPC `set_tracker_capture_hotkey`); after that the dashboard's value
+  wins as above. An untouched hotkey is never pushed, so installing on a
+  second PC keeps the account's hotkey.
 
 ## Where data lands
 
@@ -288,15 +335,18 @@ data folder.
 
 ## Troubleshooting
 
-* **No tray icon** - check `tracker.log`. "Another tracker instance is already
-  running" means a second copy was started; `tracker.lock` holds the other
-  process id. A lock left behind by a crash is taken over automatically
+* **No tray icon** - Windows 11 hides new icons under the **^** arrow next to
+  the clock; otherwise check `tracker.log`. "Another tracker instance is
+  already running" (in `setup.log`) means a second copy was started;
+  `tracker.lock` holds the other process id. A lock left behind by a crash is taken over automatically
   (the pid must belong to a running tracker to count).
 * **"Saved session unreadable ... moved to session.bin.bad"** - the token
   file could not be decrypted (copied from another PC/user, or corrupt). Sign
   in again from the tray.
 * **"Not signed in" / balloon asking to sign in** - the saved token was
-  rejected (password changed, session revoked). Use *Sign in...* again.
+  rejected (password changed, session revoked, e.g. by signing out in the
+  dashboard). Use *Sign in...* again, or *Ustawienia...*, which then says
+  *Logowanie wygasło* and shows the sign-in fields.
 * **"Sync error: ..."** in the menu - the last upload failed; the message is
   the HTTP status or network error. Rows are kept locally and retried. A 401
   after a successful sign-in usually means the `supabase_url`/anon key in

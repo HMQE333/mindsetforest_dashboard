@@ -165,6 +165,16 @@ jobs:
             return [string]$item.$RunName
           }
 
+          function Assert-RunValue([string]$Phase) {
+            # "<exe>" --autostart: the flag tells a logon start (exit quietly if a tracker runs) from a Start menu click.
+            $value = Get-RunValue
+            if (-not $value) { throw "${Phase}: the HKCU Run value is missing" }
+            if ($value -notmatch '^\s*"([^"]+)"\s*(.*)$') { throw "${Phase}: HKCU Run value '$value' does not start with a quoted exe" }
+            $runExe, $runArgs = $Matches[1], $Matches[2].Trim()
+            Assert-SamePath $runExe $Installed "${Phase}: HKCU Run value exe"
+            if ($runArgs -ne '--autostart') { throw "${Phase}: HKCU Run value arguments are '$runArgs', expected --autostart" }
+          }
+
           function Read-Config {
             $path = Join-Path $MfHome 'config.json'
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "config.json was not written to $path" }
@@ -247,7 +257,7 @@ jobs:
               $path = Join-Path $Vault "_SYSTEM\$note"
               if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Install: $path is missing; the Claude routine reads it" }
             }
-            Assert-SamePath (Get-RunValue) $Installed 'Install: HKCU Run value'
+            Assert-RunValue 'Install'
             if (-not (Test-Path -LiteralPath $StartMenuLnk -PathType Leaf)) { throw "Install: Start menu shortcut $StartMenuLnk is missing" }
             $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($StartMenuLnk)
             Assert-SamePath $shortcut.TargetPath $Installed 'Install: Start menu shortcut target'
@@ -270,7 +280,7 @@ jobs:
               throw 'Upgrade: tracker.log has no new "Quit requested by setup", so the old tracker was killed, not asked to quit'
             }
             $null = Assert-Config 'Upgrade'
-            Assert-SamePath (Get-RunValue) $Installed 'Upgrade: HKCU Run value'
+            Assert-RunValue 'Upgrade'
 
             Write-Host '=== Uninstall'
             $quits = Get-QuitCount
@@ -281,7 +291,8 @@ jobs:
             Wait-Until { $null -eq (Get-RunValue) } 15 'Uninstall: the HKCU Run value is still there'
             Wait-Until { -not (Test-Path -LiteralPath $StartMenuLnk) } 15 "Uninstall: $StartMenuLnk is still there"
             Wait-Until { -not (Test-Path -LiteralPath $UninstallKey) } 15 "Uninstall: $UninstallKey is still there"
-            # A running exe cannot delete itself: delete_later removes it and the folder just after the exit.
+            # A running exe cannot delete itself: the hidden cleanup waits for the uninstaller (and its
+            # onefile bootloader) to exit, then removes the exe and the folder.
             Wait-Until { -not (Test-Path -LiteralPath $InstallDir) } 25 "Uninstall: $InstallDir is still there"
             if ((Get-QuitCount) -le $quits) {
               throw 'Uninstall: tracker.log has no new "Quit requested by setup", so the tracker was killed, not asked to quit'
@@ -360,9 +371,9 @@ jobs:
 
           1. Pobierz **MindsetForestSetup.exe** i uruchom. Windows może ostrzec (aplikacja bez podpisu): **Więcej informacji -> Uruchom mimo to**.
           2. Zaloguj się, wybierz folder nagrań (Bandicam) i vault Obsidian, kliknij **Zainstaluj i uruchom**.
-          3. **Ustaw rutynę Claude w Claude Desktop**: zadanie cykliczne co 2-3 godziny z dostępem do folderu vaulta. Na koniec instalator pokaże polecenie do skopiowania i kolejne kroki. Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną; tracker przypomni o tym powiadomieniem.
+          3. **Ustaw rutynę Claude w Claude Desktop**: w lewym pasku Scheduled -> New task -> Set up manually, częstotliwość Hourly, jako folder zadania folder vaulta. Zadanie musi działać lokalnie, na tym komputerze (nie w chmurze), i uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi. Na koniec instalator pokaże polecenie do skopiowania i kolejne kroki. Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną; tracker przypomni o tym powiadomieniem.
 
-          Nowsza wersja instaluje się tak samo, na miejsce starej: logowanie i dane zostają. Ustawienia otworzysz z ikonki drzewa przy zegarze (Ustawienia...), odinstalujesz w Ustawieniach Windows (Aplikacje).
+          Nowsza wersja instaluje się tak samo, na miejsce starej: logowanie, ustawienia i dane zostają. Ustawienia otworzysz z ikonki drzewa przy zegarze (Ustawienia...; jeśli ikonki nie widać, kliknij strzałkę ^ obok zegara) albo z menu Start (MindsetForest), odinstalujesz w Ustawieniach Windows (Aplikacje).
 
           Wersja: ${VERSION:-?}
           Commit: https://github.com/${GH_REPO}/commit/${GITHUB_SHA}

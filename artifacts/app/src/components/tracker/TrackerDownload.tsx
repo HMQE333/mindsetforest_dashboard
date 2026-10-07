@@ -8,7 +8,9 @@ const INSTALLER_URL = "https://github.com/hmqe333/mindsetforest_dashboard/releas
  * built from the repo's tracker/ by CI. It reads this deployment's Supabase URL
  * and public key from downloads/tracker-config.json (emitted by vite.config.ts),
  * so the user never has to copy them by hand. The last step, the Claude routine,
- * cannot be automated, so the box says up front that it is the user's to do. The zip (packed at build time by
+ * cannot be automated, so the box says up front that it is the user's to do, with the
+ * same steps as the installer's "Gotowe" page and tracker/README.md (Claude Desktop's own
+ * English labels; the task must run locally to reach the vault). The zip (packed at build time by
  * scripts/pack-tracker.mjs) and a browser-made config.json stay as the advanced
  * route for running from source.
  */
@@ -23,7 +25,9 @@ export default function TrackerDownload({ compact = false }: { compact?: boolean
     const config = {
       supabase_url: supabaseUrl ?? "",
       supabase_anon_key: anonKey ?? "",
-      dashboard_url: typeof window !== "undefined" ? window.location.origin : "",
+      // The dashboard itself, base path included (on GitHub Pages the origin alone is another site):
+      // the tray's "Open dashboard" opens it and the installer fetches tracker-config.json from it.
+      dashboard_url: typeof window !== "undefined" ? new URL(base, window.location.origin).href : "",
       idle_minutes: 3,
       tick_seconds: 1,
       sync_seconds: 60,
@@ -85,16 +89,36 @@ export default function TrackerDownload({ compact = false }: { compact?: boolean
         <div className="space-y-1">
           <div className="font-medium text-foreground">Rutyna Claude: ten krok trzeba zrobić samemu</div>
           <p className="text-muted-foreground">
-            Tracker tylko transkrybuje nagrania. Notatki wiedzy robi zadanie cykliczne w Claude Desktop, uruchamiane co 2-3 godziny, z dostępem
-            do folderu vaulta. Bez niego nagrania czekają jako sesje <code className="font-mono text-foreground/80">new</code>, a tracker po dobie
-            przypomni o tym powiadomieniem. Polecenie do wklejenia pokaże ostatni ekran instalatora; później znajdziesz je w ikonce drzewa →{" "}
-            <span className="text-foreground/80">Ustawienia…</span> → <span className="text-foreground/80">Pokaż, jak ustawić rutynę Claude</span>.
+            Tracker tylko transkrybuje nagrania. Notatki wiedzy robi zadanie cykliczne (rutyna) w Claude Desktop. Bez niego nagrania czekają
+            jako sesje <code className="font-mono text-foreground/80">new</code>, a tracker po dobie przypomni o tym powiadomieniem.
+          </p>
+          <ol className="list-decimal list-inside text-muted-foreground space-y-0.5">
+            <li>
+              W Claude Desktop kliknij w lewym pasku <span className="text-foreground/80">Scheduled</span>, potem{" "}
+              <span className="text-foreground/80">New task</span> (prawy górny róg) i{" "}
+              <span className="text-foreground/80">Set up manually</span>. Częstotliwość:{" "}
+              <span className="text-foreground/80">Hourly</span>.
+            </li>
+            <li>
+              Jako folder zadania wskaż folder vaulta. Zadanie musi działać lokalnie, na tym komputerze (nie w chmurze), inaczej nie dostanie
+              się do vaulta.
+            </li>
+            <li>
+              Jako polecenie (prompt) wklej tekst z przycisku <span className="text-foreground/80">Kopiuj polecenie</span> na ostatnim ekranie
+              instalatora. Później znajdziesz go w ikonce drzewa przy zegarze (może być pod strzałką ^) albo w menu Start → MindsetForest:{" "}
+              <span className="text-foreground/80">Ustawienia…</span> →{" "}
+              <span className="text-foreground/80">Pokaż, jak ustawić rutynę Claude</span>.
+            </li>
+          </ol>
+          <p className="text-muted-foreground">
+            Zadanie uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi; pominięte uruchomienie nadrobi, gdy wrócisz.
           </p>
         </div>
       </div>
       <p className="text-muted-foreground">
-        Nowsza wersja: pobierz instalator i uruchom go jeszcze raz; logowanie, ustawienia i dane zostają. Foldery i skrót zmienisz w ikonce
-        drzewa → <span className="text-foreground/80">Ustawienia…</span>.
+        Nowsza wersja: pobierz instalator i uruchom go jeszcze raz; logowanie, ustawienia (także wyłączony autostart) i dane zostają.
+        Foldery i skrót zmienisz w ikonce drzewa → <span className="text-foreground/80">Ustawienia…</span> albo w menu Start →
+        MindsetForest.
       </p>
       <details className="group">
         <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground select-none">

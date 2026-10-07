@@ -113,13 +113,18 @@ def build_icon(controller: TrayController) -> Any:
     return pystray.Icon("MindsetForest", make_icon_image(), "MindsetForest Tracker", menu)
 
 
-def notify(icon: Any, message: str, title: str = "MindsetForest Tracker") -> None:
-    """Balloon notification; silently ignored when unsupported."""
+def notify(icon: Any, message: str, title: str = "MindsetForest Tracker") -> bool:
+    """Balloon notification; False when it could not be handed to the icon (silently, as before).
+
+    True does not prove the user saw it: pystray reports no failure of its own.
+    """
     try:
         if icon is not None and getattr(icon, "HAS_NOTIFICATION", False):
             icon.notify(message, title)
+            return True
     except Exception:  # pragma: no cover
         log.debug("notify failed", exc_info=True)
+    return False
 
 
 def show_login_dialog(sign_in: Callable[[str, str], str | None]) -> None:  # pragma: no cover - GUI

@@ -10,11 +10,12 @@ import pytest
 from mindsetforest_tracker import __version__, config, winsetup
 from mindsetforest_tracker.config import Config, load_config, save_config
 from mindsetforest_tracker.winsetup import (
-    EXE_NAME, LEGACY_STARTUP_LNK, QUIT_REQUEST, ROUTINE_TASK, RUN_VALUE, START_MENU_LNK, InstallResult,
-    ObsidianVault, SetupChoices, SetupError, WinOps, cleanup_command, default_vault_dir, detect_bandicam_dir,
-    fetch_site_config, find_legacy_install, install, install_dir, installed_exe, load_existing_config,
-    merged_config, obsidian_installed, obsidian_vaults, self_test, stop_running_tracker, uninstall,
-    vault_registered,
+    CLEANUP_SCRIPT, EXE_NAME, LEGACY_STARTUP_LNK, NEEDS_LOGIN, QUIT_REQUEST, ROUTINE_TASK, RUN_VALUE,
+    START_MENU_LNK, InstallResult, ObsidianVault, SetupChoices, SetupError, UninstallResult, WinOps,
+    autostart_enabled, cleanup_command, default_vault_dir, detect_bandicam_dir, fetch_site_config,
+    find_legacy_install, install, install_dir, installed_exe, load_existing_config, login_expired, merged_config,
+    obsidian_installed, obsidian_vaults, pending_session_path, replace_legacy_tracker, schedule_cleanup, self_test,
+    site_for, stop_running_tracker, uninstall, vault_registered,
 )
 
 
@@ -76,6 +77,9 @@ def env(tmp_path, monkeypatch):
         p.mkdir()
     monkeypatch.setenv("LOCALAPPDATA", str(local))
     monkeypatch.setenv("APPDATA", str(roaming))
+    # Path.home() too, so ~/Documents (the zip version's folder) is tmp/Documents and never the real one.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     for module in (config, winsetup):
         monkeypatch.setattr(module, "documents_dir", lambda: docs)
         monkeypatch.setattr(module, "videos_dir", lambda: videos)
@@ -120,12 +124,14 @@ def test_fresh_install_copies_registers_and_starts(env):
     assert data["supabase_url"] == "https://x.supabase.co" and data["supabase_anon_key"] == "anon"
     assert data["dashboard_url"] == "https://site.example/"
     assert data["vault_dir"] == str(env.tmp / "My Vault") and data["recordings_dir"] == str(env.docs / "Bandicam")
-    assert data["capture_hotkey"] == "alt+shift+s" and data["capture_hotkey_push"] is True
+    # Untouched hotkey on a fresh install: the account's own (dashboard) hotkey must not be overwritten.
+    assert data["capture_hotkey"] == "alt+shift+s" and data["capture_hotkey_push"] is False
+    assert data["recordings_since"] == 0.0
     assert result.vault == env.tmp / "My Vault"
     assert (result.vault / "_SYSTEM" / "routine-prompt.md").is_file()
     assert (result.vault / "_SYSTEM" / "processing-rules.md").is_file()
     assert (env.docs / "Bandicam").is_dir()  # Bandicam's default folder is created, harmlessly
-    assert env.ops.run == {RUN_VALUE: f'"{exe}"'}
+    assert env.ops.run == {RUN_VALUE: f'"{exe}" --autostart'}
     lnk = env.ops.programs / START_MENU_LNK
     assert lnk.is_file() and env.ops.shortcuts[str(lnk)][0] == str(exe)
     entry = env.ops.uninstall_entry
@@ -144,6 +150,10 @@ def test_install_messages_always_end_with_the_claude_routine(env):
     result = install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops)
     vault = env.tmp / "My Vault"
     assert "rutynę Claude" in result.messages[-2] and str(vault) in result.messages[-2]
+    # The silent/CLI wording matches the window's steps: Claude Desktop's labels, a local task.
+    for label in ("Scheduled", "New task", "Set up manually", "Hourly", "nie w chmurze"):
+        assert label in result.messages[-2], label
+    assert "2-3 godziny" not in result.messages[-2]
     assert result.messages[-1] == "Polecenie rutyny: " + ROUTINE_TASK.format(vault=vault)
 
 
@@ -176,7 +186,9 @@ def test_upgrade_keeps_unasked_config_fields_and_login(env):
 def test_a_sign_in_from_the_setup_window_replaces_the_login_only_after_the_tracker_stopped(env, monkeypatch):
     env.data.mkdir()
     (env.data / "session.bin").write_bytes(b"MFPLAIN1old")
-    (env.data / winsetup.PENDING_SESSION).write_bytes(b"MFPLAIN1new")
+    pending = pending_session_path(env.data)
+    pending.write_bytes(b"MFPLAIN1new")
+    (env.data / NEEDS_LOGIN).write_text("refresh token not found")
     order = []
 
     def stop(data_dir, *a, **kw):
@@ -186,14 +198,34 @@ def test_a_sign_in_from_the_setup_window_replaces_the_login_only_after_the_track
         return True
 
     monkeypatch.setattr(winsetup, "stop_running_tracker", stop)
-    result = install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops)
+    result = install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops, pending_session=pending)
     assert order == [b"MFPLAIN1old"]
     assert (env.data / "session.bin").read_bytes() == b"MFPLAIN1new"
-    assert not (env.data / winsetup.PENDING_SESSION).exists()
+    assert not pending.exists() and not login_expired(env.data)  # the new login answers the marker
     assert "Zapisano nowe logowanie." in result.messages
     # Nothing pending: the saved login is left alone.
-    assert winsetup.adopt_pending_session(env.data) is False
+    assert winsetup.adopt_pending_session(env.data, pending) is False
+    assert winsetup.adopt_pending_session(env.data, None) is False
     assert (env.data / "session.bin").read_bytes() == b"MFPLAIN1new"
+
+
+def test_install_adopts_only_its_own_windows_sign_in(env):
+    """Two windows open: each keeps its own pending login, and only the caller's is adopted."""
+    env.data.mkdir()
+    mine, other = pending_session_path(env.data, 111), pending_session_path(env.data, 222)
+    assert mine.name == "session.new.111.bin" and pending_session_path(env.data).name == f"session.new.{os.getpid()}.bin"
+    mine.write_bytes(b"MFPLAIN1mine")
+    other.write_bytes(b"MFPLAIN1other")
+    stale = env.data / "session.new.333.bin"
+    stale.write_bytes(b"MFPLAIN1stale")
+    old = time.time() - 2 * 24 * 3600
+    os.utime(stale, (old, old))
+    install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops, pending_session=mine)
+    assert (env.data / "session.bin").read_bytes() == b"MFPLAIN1mine"
+    assert other.read_bytes() == b"MFPLAIN1other"  # the other window's login is not touched (it is fresh)
+    assert not stale.exists()  # a window that closed a day ago without installing
+    install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops)  # no pending login
+    assert (env.data / "session.bin").read_bytes() == b"MFPLAIN1mine"
 
 
 def test_install_from_the_installed_exe_skips_the_copy(env):
@@ -242,7 +274,7 @@ def test_install_rejects_bad_choices_before_touching_anything(env, change):
 
 
 def test_hotkey_off_is_valid(env):
-    install(choices(env, capture_hotkey=""), data_dir=env.data, source_exe=env.source, ops=env.ops)
+    install(choices(env, capture_hotkey="", push_hotkey=True), data_dir=env.data, source_exe=env.source, ops=env.ops)
     data = read_config(env)
     assert data["capture_hotkey"] == "" and data["capture_hotkey_push"] is True
 
@@ -286,7 +318,7 @@ def test_dev_mode_runs_from_the_sources(env):
     assert not installed_exe().exists() and result.exe == script
     python = winsetup._dev_python()  # pythonw.exe on Windows, so no console window opens
     assert env.ops.launched == [([python, str(script)], script.parent)]
-    assert env.ops.run[RUN_VALUE] == f'"{python}" "{script}"'
+    assert env.ops.run[RUN_VALUE] == f'"{python}" "{script}" --autostart'
     assert env.ops.uninstall_entry is None and env.ops.shortcuts == {}
     assert (env.data / "config.json").is_file() and result.started
 
@@ -307,6 +339,34 @@ def test_install_stops_the_running_tracker_first(env, monkeypatch):
     monkeypatch.setattr(winsetup, "stop_running_tracker", lambda data_dir: seen.append(data_dir) or True)
     result = install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops)
     assert seen == [env.data] and "Zatrzymano działający tracker." in result.messages
+
+
+def test_an_unwritable_vault_fails_before_the_tracker_is_stopped(env, monkeypatch):
+    """An unplugged drive (here: a vault "under" a file) must not stop tracking or rewrite config.json."""
+    blocker = env.tmp / "Z-drive"
+    blocker.write_text("not a folder")
+    stopped = []
+    monkeypatch.setattr(winsetup, "stop_running_tracker", lambda data_dir: stopped.append(data_dir) or True)
+    with pytest.raises(SetupError, match="Nie mogę przygotować vaulta"):
+        install(choices(env, vault_dir=str(blocker / "Vault")), data_dir=env.data, source_exe=env.source,
+                ops=env.ops)
+    assert stopped == [] and not (env.data / "config.json").exists() and not installed_exe().exists()
+    assert env.ops.launched == []
+
+
+def test_a_failure_after_the_stop_starts_the_old_tracker_again(env, monkeypatch):
+    exe = installed_exe()
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"old exe")
+    monkeypatch.setattr(winsetup, "stop_running_tracker", lambda data_dir: True)
+
+    def locked(src, dst):
+        raise PermissionError("in use")
+
+    monkeypatch.setattr(winsetup.os, "replace", locked)
+    with pytest.raises(SetupError, match="Nie mogę podmienić"):
+        install(choices(env), data_dir=env.data, source_exe=env.source, ops=env.ops)
+    assert exe.read_bytes() == b"old exe" and env.ops.launched == [([str(exe)], exe.parent)]
 
 
 # -- legacy zip install ----------------------------------------------------------
@@ -363,29 +423,103 @@ def test_install_removes_the_legacy_shortcut_and_migrates_its_config(env):
     assert any(str(folder) in m for m in result.messages)
 
 
-def test_data_dir_config_wins_over_the_legacy_one(env):
+def test_the_live_zip_config_wins_until_this_version_is_installed(env):
+    """The zip tracker read its own folder's config.json first, and "Don't track" saved to it."""
     folder = legacy_folder(env)
     env.data.mkdir()
     save_config(Config(supabase_url="https://data.supabase.co", path=env.data / "config.json"))
-    assert load_existing_config(env.data, folder).supabase_url == "https://data.supabase.co"
+    assert load_existing_config(env.data, folder).supabase_url == "https://legacy.supabase.co"
+    assert load_existing_config(env.data, None).supabase_url == "https://data.supabase.co"
     assert load_existing_config(env.tmp / "empty", folder).supabase_url == "https://legacy.supabase.co"
     assert load_existing_config(env.tmp / "empty", None) is None
+    # Installed: the data dir's file is the live one, even if install-autostart.bat put the shortcut back.
+    installed_exe().parent.mkdir(parents=True)
+    installed_exe().write_bytes(b"exe")
+    assert load_existing_config(env.data, folder).supabase_url == "https://data.supabase.co"
+    assert load_existing_config(env.tmp / "empty", folder).supabase_url == "https://legacy.supabase.co"
+
+
+def test_a_zip_config_without_folders_keeps_the_folders_the_zip_tracker_used(env, monkeypatch):
+    """Documents on OneDrive: the old vault in ~/Documents must stay, not move to the known folder."""
+    onedrive = env.tmp / "OneDrive" / "Dokumenty"
+    onedrive.mkdir(parents=True)
+    for module in (config, winsetup):
+        monkeypatch.setattr(module, "documents_dir", lambda: onedrive)
+    old_vault = env.tmp / "Documents" / "MindsetForest Vault"
+    old_vault.mkdir()
+    folder = legacy_folder(env)  # supabase settings and the hotkey only, like the dashboard's old download
+    cfg = load_existing_config(env.data, folder)
+    assert cfg.vault_dir == str(old_vault)
+    assert cfg.recordings_dir == str(onedrive / "Bandicam")  # nothing better known without ops
+    assert cfg.dashboard_url == winsetup.DEFAULT_SITE
+    env.ops.bandicam = str(env.tmp / "Nagrania")
+    assert load_existing_config(env.data, folder, env.ops).recordings_dir == str(env.tmp / "Nagrania")
+    (env.tmp / "Documents" / "Bandicam").mkdir()
+    assert load_existing_config(env.data, folder, env.ops).recordings_dir == str(env.tmp / "Documents" / "Bandicam")
+    # Keys the file has are kept as they are; the placeholder site is never used.
+    data = json.loads((folder / "config.json").read_text())
+    data.update(vault_dir=str(env.tmp / "Brain"), recordings_dir="", dashboard_url="https://mindsetforest.app")
+    (folder / "config.json").write_text(json.dumps(data))
+    cfg = load_existing_config(env.data, folder, env.ops)
+    assert (cfg.vault_dir, cfg.recordings_dir, cfg.dashboard_url) == (str(env.tmp / "Brain"), "", winsetup.DEFAULT_SITE)
+    # And the install writes them out, so later loads never fall back to defaults.
+    result = install(choices(env, vault_dir=cfg.vault_dir, recordings_dir=""), data_dir=env.data,
+                     source_exe=env.source, ops=env.ops)
+    assert read_config(env)["vault_dir"] == str(env.tmp / "Brain") and result.vault == env.tmp / "Brain"
+
+
+def test_a_broken_config_still_gives_the_zip_era_folders(env):
+    env.data.mkdir()
+    (env.data / "config.json").write_text("{not json")
+    vault = env.tmp / "Documents" / "MindsetForest Vault"
+    vault.mkdir()
+    cfg = load_existing_config(env.data, None)
+    assert cfg.vault_dir == str(vault) and cfg.dashboard_url == winsetup.DEFAULT_SITE
 
 
 # -- merged_config ---------------------------------------------------------------
 
 
 def test_hotkey_push_rules(env):
+    """Pushed only when the user picked it here; an untouched form never overwrites the account's hotkey."""
     data = env.data
-    assert merged_config(None, choices(env), data).capture_hotkey_push is True
+    assert merged_config(None, choices(env), data).capture_hotkey_push is False  # fresh install, second PC
+    assert merged_config(None, choices(env, push_hotkey=True), data).capture_hotkey_push is True
     old = Config(capture_hotkey="alt+shift+s", capture_hotkey_push=False)
-    assert merged_config(old, choices(env, capture_hotkey="ALT+Shift+S "), data).capture_hotkey_push is False
-    assert merged_config(old, choices(env, capture_hotkey="ctrl+shift+k"), data).capture_hotkey_push is True
-    assert merged_config(old, choices(env, capture_hotkey=""), data).capture_hotkey_push is True
+    cfg = merged_config(old, choices(env, capture_hotkey="ALT+Shift+S "), data)
+    assert cfg.capture_hotkey == "alt+shift+s" and cfg.capture_hotkey_push is False
+    # Re-picking the value shown is still a choice (the dashboard may hold another one).
+    assert merged_config(old, choices(env, push_hotkey=True), data).capture_hotkey_push is True
+    assert merged_config(old, choices(env, capture_hotkey="", push_hotkey=True), data).capture_hotkey_push is True
     pending = Config(capture_hotkey="alt+shift+s", capture_hotkey_push=True)
     assert merged_config(pending, choices(env), data).capture_hotkey_push is True  # not pushed yet: keep it
-    off = Config(capture_hotkey="", capture_hotkey_push=False)
-    assert merged_config(off, choices(env, capture_hotkey=""), data).capture_hotkey_push is False
+
+
+def test_recordings_since_follows_the_folder_choice(env, monkeypatch):
+    monkeypatch.setattr(winsetup.time, "time", lambda: 1234.5)
+    rec = str(env.tmp / "rec")
+    assert merged_config(None, choices(env, recordings_dir=rec), env.data).recordings_since == 0.0
+    assert merged_config(None, choices(env, recordings_dir=rec, include_existing=False),
+                         env.data).recordings_since == 1234.5
+    old = Config(recordings_dir=rec, recordings_since=99.0)
+    # Same folder (spelled differently): the cutoff chosen back then stays, whatever the checkbox says.
+    assert merged_config(old, choices(env, recordings_dir=rec + os.sep, include_existing=False),
+                         env.data).recordings_since == 99.0
+    other = str(env.tmp / "other")
+    assert merged_config(old, choices(env, recordings_dir=other), env.data).recordings_since == 0.0
+    assert merged_config(old, choices(env, recordings_dir=other, include_existing=False),
+                         env.data).recordings_since == 1234.5
+    assert merged_config(old, choices(env, recordings_dir=""), env.data).recordings_since == 99.0
+    off = Config(recordings_dir="", recordings_since=0.0)
+    assert merged_config(off, choices(env, recordings_dir=rec, include_existing=False),
+                         env.data).recordings_since == 1234.5
+
+
+def test_merged_config_never_keeps_the_placeholder_site(env):
+    old = Config(dashboard_url="https://mindsetforest.app")
+    assert merged_config(old, choices(env, dashboard_url=""), env.data).dashboard_url == winsetup.DEFAULT_SITE
+    assert merged_config(old, choices(env, dashboard_url="https://my.site/x"), env.data).dashboard_url == \
+        "https://my.site/x/"
 
 
 def test_merged_config_keeps_existing_and_does_not_mutate_it(env):
@@ -433,6 +567,18 @@ def test_stop_ignores_self_strangers_and_dead_pids(env):
     assert stop_running_tracker(env.data, is_tracker=lambda pid: True) is False
     (env.data / "tracker.lock").write_text("garbage")
     assert stop_running_tracker(env.data, is_tracker=lambda pid: True) is False
+
+
+def test_stop_never_stops_our_own_onefile_bootloader(env):
+    """A stale lock pid reused by this process's bootloader: stopping it would kill the setup itself."""
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        write_lock(env, child.pid)
+        assert stop_running_tracker(env.data, timeout=0.3, is_tracker=lambda pid: True,
+                                    self_pids=lambda: {os.getpid(), child.pid}) is False
+        assert child.poll() is None  # untouched
+    finally:
+        child.kill()
 
 
 def test_stop_asks_politely_and_the_tracker_quits(env):
@@ -492,10 +638,15 @@ def installed(env):
 
 def test_uninstall_from_the_installed_exe_defers_its_own_file(env):
     exe = installed(env)
-    messages = uninstall(data_dir=env.data, ops=env.ops, running_exe=exe)
+    result = uninstall(data_dir=env.data, ops=env.ops, running_exe=exe)
+    assert isinstance(result, UninstallResult)
+    messages = result.messages
     assert env.ops.run == {} and env.ops.uninstall_entry is None
     assert not (env.ops.programs / START_MENU_LNK).exists()
     assert exe.exists() and sorted(p.name for p in install_dir().iterdir()) == [EXE_NAME]
+    # Handed back, not started: the caller schedules it after its last dialog.
+    assert result.pending_delete == [exe, install_dir()] and env.ops.deleted_later == []
+    assert schedule_cleanup(env.ops, result.pending_delete) is True
     assert env.ops.deleted_later == [[exe, install_dir()]]
     assert (env.data / "config.json").is_file()  # data kept by default
     assert (env.tmp / "My Vault" / "_SYSTEM").is_dir()
@@ -505,9 +656,18 @@ def test_uninstall_from_the_installed_exe_defers_its_own_file(env):
 
 def test_uninstall_from_elsewhere_deletes_everything_now(env):
     installed(env)
-    uninstall(data_dir=env.data, ops=env.ops, running_exe=env.source)
-    assert not install_dir().exists() and env.ops.deleted_later == []
+    result = uninstall(data_dir=env.data, ops=env.ops, running_exe=env.source)
+    assert not install_dir().exists() and result.pending_delete == []
     assert env.source.exists()
+    assert schedule_cleanup(env.ops, result.pending_delete) is False and env.ops.deleted_later == []
+
+
+def test_schedule_cleanup_failure_is_logged_not_raised(env):
+    def broken(paths):
+        raise OSError("no powershell")
+
+    env.ops.delete_later = broken
+    assert schedule_cleanup(env.ops, [env.tmp / "x"]) is False
 
 
 def test_uninstall_remove_data_never_touches_vault_or_recordings(env):
@@ -522,21 +682,76 @@ def test_uninstall_remove_data_never_touches_vault_or_recordings(env):
     cfg.vault_dir, cfg.recordings_dir = str(inner_vault), str(inner_rec)
     save_config(cfg)
     (env.data / "session.bin").write_bytes(b"x")
-    uninstall(data_dir=env.data, ops=env.ops, remove_data=True)
+    result = uninstall(data_dir=env.data, ops=env.ops, remove_data=True)
     assert (inner_vault / "note.md").read_text() == "keep" and (inner_rec / "note.md").read_text() == "keep"
     assert sorted(p.name for p in env.data.iterdir()) == ["rec", "vault"]
+    assert any("Folder zostaje" in m for m in result.messages)
 
 
 def test_uninstall_remove_data_deletes_the_data_dir(env):
     installed(env)
-    uninstall(data_dir=env.data, ops=env.ops, remove_data=True)
+    for name in ("tracker.db", "tracker.db-wal", "session.bin.bad", "session.new.42.bin", "recordings.json",
+                 "tracker.log", "tracker.log.1", "setup.log", NEEDS_LOGIN, "tracker.lock", QUIT_REQUEST):
+        (env.data / name).write_text("x")
+    result = uninstall(data_dir=env.data, ops=env.ops, remove_data=True)
     assert not env.data.exists() and (env.tmp / "My Vault" / "_SYSTEM").is_dir()
+    assert any(m.startswith("Usunięto dane lokalne") for m in result.messages)
+
+
+def test_remove_data_deletes_only_the_trackers_own_files(env, monkeypatch):
+    """MINDSETFOREST_HOME pointed at a folder that also holds the user's files: those stay."""
+    installed(env)
+    (env.data / "budget.xlsx").write_text("mine")
+    (env.data / "Photos").mkdir()
+    (env.data / "Photos" / "a.jpg").write_text("mine")
+    (env.data / "notes.log").write_text("mine")
+    (env.data / "tracker.db").write_text("db")
+    result = uninstall(data_dir=env.data, ops=env.ops, remove_data=True)
+    assert sorted(p.name for p in env.data.iterdir()) == ["Photos", "budget.xlsx", "notes.log"]
+    assert (env.data / "Photos" / "a.jpg").read_text() == "mine"
+    assert any("Folder zostaje, bo są w nim inne pliki" in m for m in result.messages)
+
+
+def test_remove_data_closes_our_own_log_and_reports_what_stayed(env, monkeypatch):
+    """The settings window logs into the data dir: its handler is closed first, and a file that
+    cannot be deleted is reported (and handed to the cleanup), never claimed as removed."""
+    import logging
+
+    installed(env)
+    root = logging.getLogger()
+    ours = logging.FileHandler(env.data / "setup.log", encoding="utf-8")
+    elsewhere = logging.FileHandler(env.tmp / "other.log", encoding="utf-8")
+    root.addHandler(ours)
+    root.addHandler(elsewhere)
+    try:
+        logging.getLogger("x").warning("before uninstall")
+        real_unlink = Path.unlink
+
+        def unlink(self, *a, **kw):
+            if self.name == "tracker.db":
+                raise PermissionError("in use")
+            return real_unlink(self, *a, **kw)
+
+        (env.data / "tracker.db").write_text("db")
+        monkeypatch.setattr(Path, "unlink", unlink)
+        result = uninstall(data_dir=env.data, ops=env.ops, remove_data=True)
+        assert ours not in root.handlers and ours.stream is None  # closed and detached
+        assert elsewhere in root.handlers  # a log outside the data dir is not ours to close
+        assert not (env.data / "setup.log").exists()
+        assert sorted(p.name for p in env.data.iterdir()) == ["tracker.db"]
+        assert result.pending_delete == [env.data / "tracker.db"]
+        assert any("Nie udało się od razu usunąć" in m and "tracker.db" in m for m in result.messages)
+        assert not any(m.startswith("Usunięto dane") for m in result.messages)
+    finally:
+        for h in (ours, elsewhere):
+            root.removeHandler(h)
+            h.close()
 
 
 def test_uninstall_stops_the_tracker_and_removes_the_legacy_shortcut(env, monkeypatch):
     legacy_folder(env)
     monkeypatch.setattr(winsetup, "stop_running_tracker", lambda data_dir: True)
-    messages = uninstall(data_dir=env.data, ops=env.ops)
+    messages = uninstall(data_dir=env.data, ops=env.ops).messages
     assert "Zatrzymano tracker." in messages
     assert not (env.ops.startup / LEGACY_STARTUP_LNK).exists()
 
@@ -548,9 +763,9 @@ def test_uninstall_reports_failures_and_carries_on(env):
         raise OSError("denied")
 
     env.ops.write_uninstall_entry = broken
-    messages = uninstall(data_dir=env.data, ops=env.ops, running_exe=exe)
-    assert any("wpis w Aplikacjach" in m and "denied" in m for m in messages)
-    assert env.ops.run == {} and env.ops.deleted_later == [[exe, install_dir()]]
+    result = uninstall(data_dir=env.data, ops=env.ops, running_exe=exe)
+    assert any("wpis w Aplikacjach" in m and "denied" in m for m in result.messages)
+    assert env.ops.run == {} and result.pending_delete == [exe, install_dir()]
 
 
 def test_uninstall_never_schedules_a_folder_holding_the_vault(env):
@@ -561,9 +776,9 @@ def test_uninstall_never_schedules_a_folder_holding_the_vault(env):
     cfg = load_config(env.data / "config.json")
     cfg.vault_dir = str(vault)
     save_config(cfg)
-    uninstall(data_dir=env.data, ops=env.ops, running_exe=exe)
+    result = uninstall(data_dir=env.data, ops=env.ops, running_exe=exe)
     assert (vault / "note.md").read_text() == "keep" and not (install_dir() / "extra.dll").exists()
-    assert env.ops.deleted_later == [[exe]]
+    assert result.pending_delete == [exe]
 
 
 def test_child_env_drops_pyinstaller_bootstrap_variables(monkeypatch):
@@ -575,16 +790,42 @@ def test_child_env_drops_pyinstaller_bootstrap_variables(monkeypatch):
     assert child["MF_KEEP"] == "z" and child["MF_DELETE_0"] == "a" and child["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
 
 
-def test_cleanup_command_passes_paths_through_variables(tmp_path):
-    folder = tmp_path / "Prog & (x) 100%"
+def test_cleanup_command_waits_for_our_processes_and_passes_paths_through_variables(tmp_path):
+    folder = tmp_path / "Prog & (x) 100% 'q' $env"
     folder.mkdir()
     exe = folder / EXE_NAME
     exe.write_bytes(b"x")
-    command, variables = cleanup_command([exe, folder], comspec="C:\\Windows\\system32\\cmd.exe")
-    assert variables == {"MF_DELETE_0": str(exe), "MF_DELETE_1": str(folder)}
-    assert command.startswith('"C:\\Windows\\system32\\cmd.exe" /d /s /c "ping -n 3 127.0.0.1 >nul & ')
-    assert command.count('del /f /q "%MF_DELETE_0%"') == 2 and command.count('rmdir /s /q "%MF_DELETE_1%"') == 2
-    assert str(folder) not in command and command.endswith('"')
+    argv, variables = cleanup_command([exe, folder], [111, 222], powershell="C:\\ps.exe")
+    assert variables == {"MF_WAIT_PIDS": "111,222", "MF_DELETE_COUNT": "2", "MF_DELETE_0": str(exe),
+                         "MF_DELETE_1": str(folder)}
+    assert argv == ["C:\\ps.exe", "-NoProfile", "-NonInteractive", "-Command", CLEANUP_SCRIPT]
+    assert all(str(folder) not in a for a in argv)
+    # One argv item, no double quotes: nothing in it is ever re-parsed by a shell.
+    assert '"' not in CLEANUP_SCRIPT and "Wait-Process -Id $ids -Timeout 600" in CLEANUP_SCRIPT
+    assert "Remove-Item -LiteralPath $p -Recurse -Force" in CLEANUP_SCRIPT
+    default_argv, _ = cleanup_command([exe], [1])
+    assert default_argv[0].lower().endswith("powershell.exe")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="runs the real PowerShell cleanup")
+def test_cleanup_deletes_only_after_the_waited_process_exits(tmp_path):  # pragma: no cover - Windows only
+    folder = tmp_path / "Prog & (x) 100% 'q'"
+    folder.mkdir()
+    exe = folder / EXE_NAME
+    exe.write_bytes(b"x")
+    keeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        argv, extra = cleanup_command([exe, folder], [keeper.pid])
+        cleaner = subprocess.Popen(argv, env=winsetup._child_env(extra), cwd=str(tmp_path),
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(6)  # PowerShell has started and is waiting
+        assert exe.exists() and cleaner.poll() is None
+        keeper.kill()
+        keeper.wait(10)
+        cleaner.wait(60)
+        assert not folder.exists()
+    finally:
+        keeper.kill()
 
 
 # -- detection -------------------------------------------------------------------
@@ -692,6 +933,11 @@ def test_folders(env, monkeypatch):
     assert install_dir() == env.local / "Programs" / "MindsetForest"
     assert installed_exe() == install_dir() / "MindsetForestTracker.exe"
     assert default_vault_dir() == env.docs / "MindsetForest Vault"
+    onedrive = env.tmp / "OneDrive"
+    monkeypatch.setattr(config, "documents_dir", lambda: onedrive)
+    assert default_vault_dir() == onedrive / "MindsetForest Vault"
+    (env.docs / "MindsetForest Vault").mkdir()  # the zip version's vault exists: keep using it
+    assert default_vault_dir() == env.docs / "MindsetForest Vault"
     monkeypatch.delenv("LOCALAPPDATA")
     assert install_dir() == Path.home() / "AppData" / "Local" / "Programs" / "MindsetForest"
 
@@ -752,6 +998,87 @@ def test_fetch_site_config_needs_a_site():
         fetch_site_config("  ", http=FakeHttp(FakeResponse(200, {})))
 
 
+@pytest.mark.parametrize("site, supabase_url", [
+    ("http://u.github.io/dash", "https://p.supabase.co"),           # settings over plain http
+    ("https://u.github.io/dash", "http://p.supabase.co"),           # the password over plain http
+    ("https://u.github.io/dash", "https://evil.example.com"),       # not a Supabase project
+    ("https://u.github.io/dash", "https://p.supabase.co.evil.io"),
+    ("https://u.github.io/dash", "https://p.supabase.co/auth/v1"),
+])
+def test_fetch_site_config_accepts_only_https_and_a_supabase_project(site, supabase_url):
+    http = FakeHttp(FakeResponse(200, {"supabase_url": supabase_url, "supabase_anon_key": "k"}))
+    with pytest.raises(SetupError):
+        fetch_site_config(site, http=http)
+    assert all(not c[0].startswith("http://") for c in http.calls)
+
+
+def test_site_for_replaces_the_placeholder():
+    assert winsetup.DEFAULT_SITE == config.DEFAULT_DASHBOARD_URL == "https://hmqe333.github.io/mindsetforest_dashboard/"
+    for value in (None, "", "  ", "https://mindsetforest.app", "https://mindsetforest.app/", "HTTPS://MindsetForest.app"):
+        assert site_for(value) == winsetup.DEFAULT_SITE
+    assert site_for(" https://my.site/app ") == "https://my.site/app/"
+    assert site_for("https://my.site/app/") == "https://my.site/app/"
+
+
+def test_login_expired_and_autostart_enabled(env):
+    env.data.mkdir()
+    assert login_expired(env.data) is False
+    (env.data / NEEDS_LOGIN).write_text("x")
+    assert login_expired(env.data) is True
+    assert autostart_enabled(env.ops) is False
+    env.ops.run[RUN_VALUE] = '"C:\\x.exe" --autostart'
+    assert autostart_enabled(env.ops) is True
+    env.ops.run.clear()
+    legacy_folder(env)  # the zip version's Startup shortcut
+    assert autostart_enabled(env.ops) is True
+
+    class Broken(FakeOps):
+        def get_run(self, name):
+            raise OSError("no registry")
+
+        def startup_dir(self):
+            raise NotImplementedError
+
+    # An unreadable Run value is "unknown", not "off": the settings window then keeps the box
+    # ticked instead of deleting the Run value on Zapisz.
+    with pytest.raises(OSError):
+        autostart_enabled(Broken(env.tmp))
+
+    class NoRegistry(FakeOps):
+        def get_run(self, name):
+            raise OSError("no registry")
+
+    no_registry = NoRegistry(env.tmp / "shell")
+    assert autostart_enabled(no_registry) is True  # the zip shortcut (made above) still answers
+
+    class NoStartupDir(FakeOps):
+        def startup_dir(self):
+            raise NotImplementedError
+
+    assert autostart_enabled(NoStartupDir(env.tmp / "shell")) is False  # the Run value was read: it is absent
+
+
+def test_replace_legacy_tracker_retires_the_zip_tracker_only(env, monkeypatch):
+    import psutil
+
+    stopped = []
+    monkeypatch.setattr(winsetup, "stop_running_tracker", lambda data_dir: stopped.append(data_dir) or True)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        write_lock(env, child.pid)
+        assert replace_legacy_tracker(env.data, env.ops) is False  # no Startup shortcut: nothing to migrate
+        legacy_folder(env)
+        lnk = env.ops.startup / LEGACY_STARTUP_LNK
+        # The lock belongs to the installed exe: that is the tracker we want, leave it.
+        monkeypatch.setattr(winsetup, "installed_exe", lambda: Path(psutil.Process(child.pid).exe()))
+        assert replace_legacy_tracker(env.data, env.ops) is False and lnk.exists() and stopped == []
+        monkeypatch.setattr(winsetup, "installed_exe", lambda: env.local / "Programs" / "MindsetForest" / EXE_NAME)
+        assert replace_legacy_tracker(env.data, env.ops) is True
+        assert not lnk.exists() and stopped == [env.data]
+    finally:
+        child.kill()
+
+
 # -- WinOps off Windows, self-test, config additions -------------------------------
 
 
@@ -805,11 +1132,17 @@ def test_config_folders_off_windows():
     assert config.documents_dir().is_absolute() and config.videos_dir().is_absolute()
 
 
-def test_config_defaults_use_documents_dir(env):
+def test_config_defaults_use_documents_dir(env, monkeypatch):
     cfg = Config()
     assert cfg.recordings_dir == str(env.docs / "Bandicam")
     assert cfg.vault_dir == str(env.docs / "MindsetForest Vault")
-    assert cfg.capture_hotkey_push is False
+    assert cfg.capture_hotkey_push is False and cfg.recordings_since == 0.0
+    # Documents on OneDrive, the zip version's ~/Documents vault still there: the default keeps it.
+    onedrive = env.tmp / "OneDrive"
+    monkeypatch.setattr(config, "documents_dir", lambda: onedrive)
+    (env.docs / "MindsetForest Vault").mkdir()
+    cfg = Config()
+    assert cfg.vault_dir == str(env.docs / "MindsetForest Vault") and cfg.recordings_dir == str(onedrive / "Bandicam")
 
 
 def test_capture_hotkey_push_round_trip(tmp_path):

@@ -1,8 +1,10 @@
 """Knowledge OS intake: recordings in a folder become raw transcripts and Obsidian notes.
 
 Every minute the tracker looks at ``recordings_dir`` (Bandicam's folder by
-default) and its subfolders (Bandicam can file audio under "Audios" or a date
-folder). A new MP3 that has stopped growing is:
+default) and its subfolders up to ``MAX_DEPTH`` levels down (Bandicam can file
+audio under "Audios" or a date folder). When the folder was chosen with "only
+new recordings", files older than ``recordings_since`` are left alone. A new
+MP3 that has stopped growing is:
 
 1. hashed (the original is only ever read, never moved or changed);
 2. cut into chunks of a few minutes at MP3 frame boundaries and sent to the
@@ -29,6 +31,11 @@ go there (links inside the vault are relative, so a moved vault keeps working).
 Without the routine nothing turns transcripts into knowledge notes, and the
 user may not notice, so a session left at ``status: new`` for more than a day
 brings a reminder notification (at most once a day).
+
+The state file (``recordings.json``) remembers every processed recording by
+its sha256 and also each file's path, size and modification time, so after a
+restart a known file is recognised without being read again and only a fresh
+transcription brings a "Transcribed" notification.
 """
 from __future__ import annotations
 
@@ -43,7 +50,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from urllib.parse import quote
 
 import requests
@@ -59,6 +66,8 @@ AUDIO_SUFFIXES = {".mp3"}
 STALE_SESSION_SECONDS = 24 * 3600
 REMINDER_SECONDS = 24 * 3600  # at most one routine reminder a day
 REMINDER_CHECK_SECONDS = 3600  # how often the Sessions/ folder is looked at for it
+REMINDER_START_DELAY = 300  # the tray icon must exist before a reminder can be shown
+MAX_DEPTH = 3  # subfolder levels below recordings_dir that are scanned
 
 # -- MP3 frames ----------------------------------------------------------------
 
@@ -461,28 +470,88 @@ def transcribe_file(client: KosClient, data: bytes) -> tuple[list[dict], str, st
 
 @dataclass
 class IntakeState:
-    """What the PC has already processed (sha256 -> Known), kept in a JSON file in the data folder."""
+    """What the PC has already processed, kept in JSON files in the data folder.
+
+    ``known`` maps sha256 -> Known and is saved in ``recordings.json`` as the
+    plain list every tracker version reads, so starting an older tracker on the
+    same data never breaks. ``files`` maps a file's path key -> (size,
+    mtime_ns, sha256), saved beside it in ``recordings-index.json``: with it a
+    known recording is recognised after a restart without reading the whole MP3
+    again. Losing the index only costs one more read of each file.
+    """
     path: Path
     known: dict[str, Known] = field(default_factory=dict)
+    files: dict[str, tuple[int, int, str]] = field(default_factory=dict)
+    dirty: bool = field(default=False, repr=False, compare=False)  # index entries not saved yet
+
+    @property
+    def index_path(self) -> Path:
+        return self.path.with_name(self.path.stem + "-index.json")
 
     @classmethod
     def load(cls, path: Path) -> "IntakeState":
         st = cls(path)
         try:
-            for k in json.loads(path.read_text(encoding="utf-8")):
+            files = json.loads(st.index_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            files = {}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return st
+        if isinstance(raw, list):
+            entries = raw
+        elif isinstance(raw, dict):  # a development build wrote both in one file
+            entries, files = raw.get("known") or [], files or raw.get("files") or {}
+        else:
+            return st
+        for k in entries if isinstance(entries, list) else []:
+            try:  # one damaged entry must not make every recording look new (and be sent again)
                 st.known[k["sha256"]] = Known(k["sha256"], datetime.fromisoformat(k["start"]),
                                               datetime.fromisoformat(k["end"]), k["session"], k["part"], k["note"])
-        except (OSError, ValueError, KeyError):
-            pass
+            except (TypeError, ValueError, KeyError):
+                continue
+        for key, v in files.items() if isinstance(files, dict) else []:
+            try:
+                size, mtime_ns, sha = v
+                st.files[key] = (int(size), int(mtime_ns), str(sha))
+            except (TypeError, ValueError):
+                continue
         return st
+
+    def recognise(self, key: str, size: int, mtime_ns: int) -> Known | None:
+        """The known recording at ``key`` when the file has not changed since it was hashed."""
+        entry = self.files.get(key)
+        if entry is None or entry[:2] != (size, mtime_ns):
+            return None
+        return self.known.get(entry[2])
+
+    def remember(self, key: str, size: int, mtime_ns: int, sha256: str) -> None:
+        if self.files.get(key) != (size, mtime_ns, sha256):
+            self.files[key] = (size, mtime_ns, sha256)
+            self.dirty = True
 
     def add(self, k: Known) -> None:
         self.known[k.sha256] = k
-        data = [{"sha256": v.sha256, "start": v.start.isoformat(), "end": v.end.isoformat(),
-                 "session": v.session, "part": v.part, "note": v.note} for v in self.known.values()]
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-        tmp.replace(self.path)
+        self.save()
+
+    def save(self) -> None:
+        known = [{"sha256": v.sha256, "start": v.start.isoformat(), "end": v.end.isoformat(),
+                  "session": v.session, "part": v.part, "note": v.note} for v in self.known.values()]
+        for target, data in ((self.path, known), (self.index_path, {key: list(v) for key, v in self.files.items()})):
+            tmp = target.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+            tmp.replace(target)
+        self.dirty = False
+
+    def flush(self) -> None:
+        """Write pending index entries; a failure only costs one more read of those files later."""
+        if not self.dirty:
+            return
+        try:
+            self.save()
+        except OSError as exc:
+            log.warning("Could not save %s: %s", self.path.name, exc)
 
 
 def ensure_system_notes(vault: Path) -> None:
@@ -495,14 +564,27 @@ def ensure_system_notes(vault: Path) -> None:
             p.write_text(text, encoding="utf-8")
 
 
-def process_file(path: Path, client: KosClient, state: IntakeState, vault: Path, gap_minutes: float) -> str:
-    """One recording end to end; returns its note name. The audio file is only read."""
+def process_recording(path: Path, client: KosClient, state: IntakeState, vault: Path,
+                      gap_minutes: float) -> tuple[str, bool]:
+    """One recording end to end: (note name, True when it was transcribed just now).
+
+    The audio file is only read. A file already processed gives (its note,
+    False): recognised by path, size and time without reading it, else by its
+    sha256 (which also fills the index for files processed before it existed).
+    New index entries from that second case are saved by ``state.flush()``.
+    """
+    st = path.stat()  # before reading: a file that changes while read is hashed again next time
+    key = _path_key(path)
+    seen = state.recognise(key, st.st_size, st.st_mtime_ns)
+    if seen is not None:
+        return seen.note, False
     data = path.read_bytes()
     sha = hashlib.sha256(data).hexdigest()
+    state.remember(key, st.st_size, st.st_mtime_ns, sha)
     if sha in state.known:
-        return state.known[sha].note
+        return state.known[sha].note, False
     segments, model, language, duration = transcribe_file(client, data)
-    start = recorded_at(path, duration, path.stat().st_mtime)
+    start = recorded_at(path, duration, st.st_mtime)
     session, part = assign_session(start, list(state.known.values()), gap_minutes)
     note = f"{start.strftime('%Y-%m-%d %H-%M-%S')} {path.stem}".replace("/", "-")
     rec_id = client.store({
@@ -519,8 +601,16 @@ def process_file(path: Path, client: KosClient, state: IntakeState, vault: Path,
     snote = vault / "Sessions" / f"{session}.md"
     snote.write_text(session_note(snote.read_text(encoding="utf-8") if snote.exists() else None, session, parts),
                      encoding="utf-8")
-    state.add(Known(sha, start, start + timedelta(seconds=duration), session, part, note))
-    return note
+    state.add(Known(sha, start, start + timedelta(seconds=duration), session, part, note))  # saves the index too
+    return note, True
+
+
+def process_file(path: Path, client: KosClient, state: IntakeState, vault: Path, gap_minutes: float) -> str:
+    """One recording end to end; returns its note name (``process_recording`` also says if it was new)."""
+    try:
+        return process_recording(path, client, state, vault, gap_minutes)[0]
+    finally:
+        state.flush()
 
 
 def _path_key(path: Path) -> str:
@@ -531,21 +621,41 @@ def _path_key(path: Path) -> str:
     return os.path.normcase(str(path))
 
 
-def recording_files(folder: Path, vault: Path | None = None) -> list[Path]:
-    """Every MP3 under ``folder``, subfolders included.
+def iter_recording_files(folder: Path, vault: Path | None = None, max_depth: int = MAX_DEPTH) -> Iterator[Path]:
+    """Every MP3 under ``folder`` and its subfolders up to ``max_depth`` levels down, as found.
 
     Hidden files and folders (a leading dot) are skipped, and so is the vault
     when it sits inside the recordings folder: its notes are not recordings and
-    it can be large. Pruned while walking, so neither is ever listed.
+    it can be large. Pruned while walking, so neither is ever listed. The depth
+    limit keeps a broad folder (a whole drive, Documents) from pulling in
+    unrelated audio from deep in the tree.
     """
     skip = _path_key(vault) if vault is not None else None
-    out: list[Path] = []
+    base = len(Path(folder).parts)
     for root, dirs, files in os.walk(folder):
-        dirs[:] = sorted(d for d in dirs
-                         if not d.startswith(".") and (skip is None or _path_key(Path(root, d)) != skip))
-        out.extend(Path(root, f) for f in sorted(files)
-                   if not f.startswith(".") and Path(f).suffix.lower() in AUDIO_SUFFIXES)
-    return out
+        if len(Path(root).parts) - base >= max_depth:
+            dirs[:] = []
+        else:
+            dirs[:] = sorted(d for d in dirs
+                             if not d.startswith(".") and (skip is None or _path_key(Path(root, d)) != skip))
+        for f in sorted(files):
+            if not f.startswith(".") and Path(f).suffix.lower() in AUDIO_SUFFIXES:
+                yield Path(root, f)
+
+
+def recording_files(folder: Path, vault: Path | None = None, max_depth: int = MAX_DEPTH) -> list[Path]:
+    """``iter_recording_files`` as a list."""
+    return list(iter_recording_files(folder, vault, max_depth))
+
+
+def count_recordings(folder: Path, vault: Path | None = None, limit: int = 1000) -> int:
+    """How many MP3s the tracker would see in ``folder``, counting stops at ``limit`` (show it as "999+")."""
+    n = 0
+    for _ in iter_recording_files(folder, vault):
+        n += 1
+        if n >= limit:
+            break
+    return n
 
 
 _FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
@@ -615,6 +725,11 @@ class VaultMirror:
     nothing is kept on disk and a lost row is sent again. A file is hashed only when its size
     or modification time changed. A vault folder that is missing (a drive not mounted yet)
     changes nothing on the server.
+
+    A vault without a single note while the server holds some deletes nothing either: that
+    is a new, emptied or wrong folder (a changed vault_dir, a redirected Documents), and
+    mirroring it would empty the dashboard's Knowledge and Recordings tabs. The cost is that
+    deleting the very last note leaves its copy on the server until another note exists.
     """
 
     def __init__(self, vault: Path, client: KosClient) -> None:
@@ -623,6 +738,7 @@ class VaultMirror:
         self._loaded_at = 0.0
         self._hashes: dict[str, tuple[tuple[int, int], str]] = {}
         self._refused: dict[str, str] = {}
+        self._held_back = False
 
     def sync(self, now: float) -> tuple[int, int]:
         """(files sent, files deleted)."""
@@ -660,6 +776,13 @@ class VaultMirror:
         for i in range(0, len(changed), 50):
             self._send(changed[i:i + 50])
         gone = [rel for rel in self.remote if rel not in local]
+        if gone and not local:
+            if not self._held_back:  # once, not every minute
+                log.warning("Vault mirror: %s has no notes but the dashboard has %d; nothing deleted. "
+                            "Check vault_dir in config.json.", self.vault, len(gone))
+            self._held_back = True
+            return len(changed), 0
+        self._held_back = False
         for rel in gone:
             self.client.delete_vault_file(rel)
             del self.remote[rel]
@@ -685,15 +808,22 @@ class IntakeWorker(threading.Thread):
 
     Once a day at most it also reminds the user when sessions wait for the
     Claude routine.
+
+    ``since`` (epoch seconds, 0 = no cutoff) leaves out files last written
+    before it: a folder chosen for "new recordings only" does not send the
+    audio that was already in it. ``notify`` returns False when the message
+    could not be shown (no tray icon yet); None counts as shown.
     """
 
     def __init__(self, folder: Path | None, vault: Path, gap_minutes: float, client: KosClient, state: IntakeState,
-                 notify: Callable[[str], None] | None = None, interval: float = 60,
-                 mirror: VaultMirror | None = None) -> None:
+                 notify: Callable[[str], bool | None] | None = None, interval: float = 60,
+                 mirror: VaultMirror | None = None, since: float = 0.0) -> None:
         super().__init__(name="mf-recordings", daemon=True)
         self.folder, self.vault, self.gap = folder, vault, gap_minutes
         self.client, self.state, self.notify, self.interval = client, state, notify, interval
         self.mirror = mirror
+        self.since = since
+        self.started_at = time.time()
         self._sizes: dict[Path, int] = {}
         self._retry_after: dict[Path, float] = {}
         self._done: set[tuple[Path, int]] = set()
@@ -705,6 +835,7 @@ class IntakeWorker(threading.Thread):
         self._stop.set()
 
     def run(self) -> None:  # pragma: no cover - thread loop around tested methods
+        self.started_at = time.time()
         while not self._stop.is_set():
             try:
                 self.scan(time.time())
@@ -736,9 +867,13 @@ class IntakeWorker(threading.Thread):
 
         The folder is looked at once an hour and the user hears about it at
         most once a day (and again after a restart, which is when they are at
-        the PC to act on it).
+        the PC to act on it). The first look waits ``REMINDER_START_DELAY``
+        after the start, when the tray icon exists, and a reminder that could
+        not be shown is not counted: the next hourly look tries again.
         """
         if self.notify is None:
+            return False
+        if 0 <= now - self.started_at < REMINDER_START_DELAY:
             return False
         if self._reminded_at is not None and 0 <= now - self._reminded_at < REMINDER_SECONDS:
             return False
@@ -748,9 +883,10 @@ class IntakeWorker(threading.Thread):
         stale = stale_sessions(self.vault, now)
         if not stale:
             return False
+        if self.notify(routine_reminder(len(stale))) is False:
+            return False
         self._reminded_at = now
         log.info("%d session(s) waiting for the Claude routine for over a day: %s", len(stale), ", ".join(stale[:5]))
-        self.notify(routine_reminder(len(stale)))
         return True
 
     def scan(self, now: float) -> None:
@@ -764,22 +900,28 @@ class IntakeWorker(threading.Thread):
                 st = p.stat()
             except OSError:
                 continue
+            if self.since > 0 and st.st_mtime < self.since:
+                continue  # was in the folder before transcription was turned on for it
             stable = self._sizes.get(p) == st.st_size and now - st.st_mtime >= SETTLE_SECONDS
             self._sizes[p] = st.st_size
             if stable and now >= self._retry_after.get(p, 0) and not self._seen(p, st.st_size):
                 ready.append((st.st_mtime, p))
-        for _, p in sorted(ready):
-            try:
-                note = process_file(p, self.client, self.state, self.vault, self.gap)
-                self._done.add((p, p.stat().st_size))
-                log.info("Recording %s -> %s", p.name, note)
-                if self.notify:
-                    self.notify(f"Transcribed: {p.name}")
-            except AuthRequired:
-                return
-            except Exception as exc:
-                log.warning("Recording %s failed (%s); retrying in 10 min", p.name, exc)
-                self._retry_after[p] = now + 600
+        try:
+            for _, p in sorted(ready):
+                try:
+                    note, fresh = process_recording(p, self.client, self.state, self.vault, self.gap)
+                    self._done.add((p, p.stat().st_size))
+                    if fresh:  # a file known from before the restart is not news
+                        log.info("Recording %s -> %s", p.name, note)
+                        if self.notify:
+                            self.notify(f"Transcribed: {p.name}")
+                except AuthRequired:
+                    return
+                except Exception as exc:
+                    log.warning("Recording %s failed (%s); retrying in 10 min", p.name, exc)
+                    self._retry_after[p] = now + 600
+        finally:
+            self.state.flush()
 
     def _seen(self, p: Path, size: int) -> bool:
         return (p, size) in self._done

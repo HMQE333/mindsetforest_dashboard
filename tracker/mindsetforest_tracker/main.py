@@ -13,6 +13,7 @@ that use them, so the tracker itself never needs them.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import logging.handlers
 import ntpath
@@ -30,10 +31,12 @@ import psutil
 
 from . import __version__, tray
 from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror
-from .archive_capture import ArchiveClient, HotkeyListener, clean_source, foreground_title, read_selection
+from .archive_capture import (
+    ArchiveClient, HotkeyListener, clean_source, foreground_title, parse_hotkey, read_selection,
+)
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .capture import Sampler, default_sampler
-from .config import Config, app_data_dir, load_config, save_config
+from .config import DEFAULT_DASHBOARD_URL, LEGACY_DASHBOARD_URLS, Config, app_data_dir, load_config, save_config
 from .privacy import is_private
 from .sessions import LOCKED_APP, SessionTracker, iso_utc
 from .store import Store
@@ -46,22 +49,37 @@ MENU_REFRESH_SECONDS = 5
 # (same name as winsetup.QUIT_REQUEST; a file works across versions, no IPC).
 QUIT_REQUEST_FILE = "quit.request"
 QUIT_CHECK_SECONDS = 1.0
+# Written to the data dir while the server refuses the saved login (same name as winsetup.NEEDS_LOGIN):
+# the settings window reads it instead of refreshing the session, which would sign the tracker out.
+NEEDS_LOGIN_FILE = "needs_login"
 DEFAULT_HOTKEY = "alt+shift+s"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+def _add_log_file(path: Path) -> None:
+    """A rotating log file (1 MB x 3), opened only when the first record arrives."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8",
+                                                   delay=True)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logging.getLogger().addHandler(handler)
 
 
 def setup_logging(path: Path, console: bool) -> None:
     """Rotating log file (1 MB x 3) plus stderr when ``console``."""
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.handlers.RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
-    file_handler.setFormatter(fmt)
-    root.addHandler(file_handler)
+    _add_log_file(path)
     if console:
         stream = logging.StreamHandler()
-        stream.setFormatter(fmt)
+        stream.setFormatter(logging.Formatter(LOG_FORMAT))
         root.addHandler(stream)
+
+
+def _log_to(path: Path) -> None:
+    """Swap the log file for ``path``; the console handler, if any, stays."""
+    _close_file_logs()
+    _add_log_file(path)
 
 
 TRACKER_MARKERS = ("mindsetforest", "run_tracker")
@@ -91,25 +109,49 @@ def pid_is_tracker(pid: int) -> bool:
     return any(marker in text for marker in TRACKER_MARKERS)
 
 
+def own_pids(*, frozen: bool | None = None, executable: str | None = None) -> set[int]:
+    """This process, plus the onefile bootloader that started it.
+
+    The onefile exe runs as two processes, the bootloader and its Python
+    child, so a stale tracker.lock pid reused by our own bootloader is not
+    another tracker. Only when frozen and only when the parent runs the same
+    exe: from a source checkout the parent can be the real tracker (the tray
+    starts the settings window), which must not count as self.
+    """
+    pids = {os.getpid()}
+    if not (bool(getattr(sys, "frozen", False)) if frozen is None else frozen):
+        return pids
+    try:
+        parent = psutil.Process(os.getppid())
+        if same_path(parent.exe(), executable or sys.executable):
+            pids.add(parent.pid)
+    except (psutil.Error, OSError, ValueError):
+        pass
+    return pids
+
+
 class SingleInstance:
     """Pid-file guard so two trackers never run for the same user.
 
-    A stale lock (pid gone, or reused by an unrelated process) is taken over.
+    A stale lock (pid gone, or reused by an unrelated process or by our own
+    onefile bootloader) is taken over.
     """
 
-    def __init__(self, path: Path, is_tracker: Callable[[int], bool] = pid_is_tracker) -> None:
+    def __init__(self, path: Path, is_tracker: Callable[[int], bool] = pid_is_tracker,
+                 self_pids: Callable[[], set[int]] = own_pids) -> None:
         self.path = path
         self.is_tracker = is_tracker
+        self.self_pids = self_pids
 
     def acquire(self) -> bool:
         try:
             other = int(self.path.read_text().strip())
         except (OSError, ValueError):
             other = 0
-        if other and other != os.getpid() and self.is_tracker(other):
+        if other and other not in self.self_pids() and self.is_tracker(other):
             return False
         if other and other != os.getpid():
-            log.warning("Taking over stale lock file (pid %d is not a tracker)", other)
+            log.warning("Taking over stale lock file (pid %d is not another tracker)", other)
         self.path.write_text(str(os.getpid()))
         return True
 
@@ -129,7 +171,7 @@ class TrackerApp:
                  device_id: str, clock: Callable[[], float] = time.time,
                  archive: ArchiveClient | None = None,
                  hotkey_factory: Callable[..., Any] | None = None,
-                 quit_request: Path | None = None) -> None:
+                 quit_request: Path | None = None, login_marker: Path | None = None) -> None:
         self.clock = clock
         self.config = config
         self.store = store
@@ -139,7 +181,10 @@ class TrackerApp:
         self.client = client
         self.sync_worker = sync_worker
         self.device_id = device_id
-        self.dashboard_url = config.dashboard_url
+        url = (config.dashboard_url or "").strip()
+        # The zip version's placeholder domain belongs to nobody: never open it.
+        self.dashboard_url = DEFAULT_DASHBOARD_URL if not url or url in LEGACY_DASHBOARD_URLS else url
+        self.login_marker = login_marker
         self.icon = None
         self._lock = threading.Lock()
         self._paused = False
@@ -379,6 +424,9 @@ class TrackerApp:
         except AuthError as exc:
             return str(exc)
         self._login_notified = False
+        if self.login_marker is not None:
+            with contextlib.suppress(OSError):
+                self.login_marker.unlink()
         self.sync_worker.request_sync()
         log.info("Signed in as %s", email)
         self._refresh_menu()
@@ -433,7 +481,33 @@ class TrackerApp:
 
     def on_capture_hotkey(self, spec: str | None) -> None:
         """The dashboard's hotkey after a sync; None (never set there) falls back to config.json."""
+        if spec is not None:
+            self._remember_hotkey(spec)
         self.apply_capture_hotkey(self.config.capture_hotkey if spec is None else spec)
+
+    def _remember_hotkey(self, spec: str) -> None:
+        """Save the dashboard's hotkey in config.json, so the settings window shows the one in use.
+
+        Not while our own choice waits to be pushed: a failed push is followed
+        by a pull of the old value, which must not replace the user's new one.
+        Saved only on a change (this runs every minute) and only a valid spec.
+        """
+        spec = (spec or "").strip().lower()
+        if spec:
+            try:
+                parse_hotkey(spec)
+            except ValueError:
+                return
+        with self._lock:
+            if spec == (self.config.capture_hotkey or "").strip().lower():
+                return
+            if getattr(self.config, "capture_hotkey_push", False) or self.sync_worker.pending_hotkey is not None:
+                return
+            self.config.capture_hotkey = spec
+            try:
+                save_config(self.config)
+            except OSError as exc:
+                log.error("Could not save config: %s", exc)
 
     def apply_capture_hotkey(self, spec: str) -> None:
         """Switch the global hotkey to ``spec`` ("" turns it off); no-op when unchanged."""
@@ -488,11 +562,26 @@ class TrackerApp:
         tray.notify(self.icon, message)
 
     def on_sync_status(self, status: SyncStatus) -> None:
+        self._mark_login(status)
         if status.needs_login and not self._login_notified:
             self._login_notified = True
             tray.notify(self.icon, "Sign in from the tray menu to sync your computer time")
         elif not status.needs_login:
             self._login_notified = False
+
+    def _mark_login(self, status: SyncStatus) -> None:
+        """Keep the needs_login marker in step: there while the login is refused, gone after a good sync."""
+        marker = self.login_marker
+        if marker is None:
+            return
+        try:
+            if status.needs_login:
+                if not marker.exists():
+                    marker.write_text((status.last_error or "sign in required") + "\n", encoding="utf-8")
+            elif status.last_error is None:
+                marker.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("Could not update %s: %s", marker, exc)
 
 
 def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) -> TrackerApp:
@@ -508,15 +597,22 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
     app = TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
                      archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None,
-                     quit_request=data_dir / QUIT_REQUEST_FILE)
+                     quit_request=data_dir / QUIT_REQUEST_FILE, login_marker=data_dir / NEEDS_LOGIN_FILE)
     if config.supabase_url and config.vault_dir:
         # An empty recordings_dir turns transcription off; the vault is still mirrored.
         kos = KosClient(config.supabase_url, config.supabase_anon_key, auth)
+
+        def notify(message: str) -> bool:
+            """Show a balloon; False when it cannot be shown yet (no icon, or not on screen yet)."""
+            icon = app.icon
+            if icon is None or not getattr(icon, "visible", False):
+                return False
+            return tray.notify(icon, message)
+
         app.intake = IntakeWorker(
             Path(config.recordings_dir) if config.recordings_dir else None, Path(config.vault_dir),
             config.session_gap_minutes, kos, IntakeState.load(data_dir / "recordings.json"),
-            notify=lambda msg: tray.notify(app.icon, msg) if app.icon is not None else None,
-            mirror=VaultMirror(Path(config.vault_dir), kos),
+            notify=notify, mirror=VaultMirror(Path(config.vault_dir), kos), since=config.recordings_since,
         )
     return app
 
@@ -531,6 +627,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, help="path to config.json")
     parser.add_argument("--console", action="store_true", help="also log to stderr")
     parser.add_argument("--no-tray", action="store_true", help="run without a tray icon (Ctrl+C to stop)")
+    parser.add_argument("--autostart", action="store_true",
+                        help="started with Windows: if a tracker already runs, exit quietly (no settings window)")
     setup = parser.add_argument_group("setup (the same exe installs, configures and removes the tracker)")
     setup.add_argument("--setup", action="store_true", help="open the setup window")
     setup.add_argument("--settings", action="store_true", help="open the settings window")
@@ -544,6 +642,8 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--no-autostart", action="store_true", help="with --install: do not start with Windows")
     setup.add_argument("--recordings", metavar="DIR", help="with --install: the folder with MP3 recordings")
     setup.add_argument("--no-transcribe", action="store_true", help="with --install: no transcription")
+    setup.add_argument("--skip-existing", action="store_true",
+                       help="with --install: a new recordings folder's MP3s already there are not transcribed")
     setup.add_argument("--vault", metavar="DIR", help="with --install: the Obsidian vault folder")
     setup.add_argument("--hotkey", metavar="SPEC", help='with --install: save-to-Archive hotkey ("" = off)')
     setup.add_argument("--site", metavar="URL", help="with --install: the dashboard to fetch settings from")
@@ -615,7 +715,7 @@ def silent_choices(args: argparse.Namespace, existing: Config | None, ops: Any,
     fetch = fetch or winsetup.fetch_site_config
     url, key = (args.supabase_url or "").strip(), (args.anon_key or "").strip()
     site = (args.site or "").strip().rstrip("/") + "/" if (args.site or "").strip() else ""
-    dashboard = site or (existing.dashboard_url if existing is not None else "") or winsetup.DEFAULT_SITE
+    dashboard = site or winsetup.site_for(existing.dashboard_url if existing is not None else "")
     if not (url and key):
         try:
             fetched = fetch(site or winsetup.DEFAULT_SITE)
@@ -639,9 +739,20 @@ def silent_choices(args: argparse.Namespace, existing: Config | None, ops: Any,
         hotkey = args.hotkey
     else:
         hotkey = existing.capture_hotkey if existing is not None else DEFAULT_HOTKEY
+    # An upgrade keeps autostart as the user left it (off stays off); a fresh install turns it on.
+    autostart = not args.no_autostart
+    if autostart and (existing is not None or winsetup.installed_exe().exists()):
+        try:
+            autostart = winsetup.autostart_enabled(ops)
+        except Exception as exc:  # unreadable: keep it on rather than drop it
+            log.warning("Could not read the autostart setting: %s", exc)
     return winsetup.SetupChoices(
         supabase_url=url, supabase_anon_key=key, dashboard_url=dashboard, recordings_dir=recordings,
-        vault_dir=vault, capture_hotkey=hotkey.strip().lower(), autostart=not args.no_autostart,
+        vault_dir=vault, capture_hotkey=hotkey.strip().lower(), autostart=autostart,
+        # Only a hotkey given on the command line goes to the dashboard; otherwise the account's stays.
+        push_hotkey=args.hotkey is not None,
+        # Old MP3s go out only from a folder named after Bandicam (or when the folder is unchanged).
+        include_existing=not args.skip_existing and "bandicam" in (recordings or "").lower(),
     )
 
 
@@ -651,7 +762,7 @@ def silent_install(args: argparse.Namespace, data_dir: Path, *, frozen: bool, op
 
     ops = ops if ops is not None else winsetup.WinOps()
     try:
-        existing = winsetup.load_existing_config(data_dir, winsetup.find_legacy_install(ops))
+        existing = winsetup.load_existing_config(data_dir, winsetup.find_legacy_install(ops), ops)
         choices = silent_choices(args, existing, ops)
         result = winsetup.install(choices, data_dir=data_dir, source_exe=Path(sys.executable) if frozen else None,
                                   ops=ops, launch=not args.no_launch)
@@ -670,7 +781,12 @@ def silent_install(args: argparse.Namespace, data_dir: Path, *, frozen: bool, op
 def run_uninstall(args: argparse.Namespace, data_dir: Path, *, frozen: bool, ops: Any = None,
                   confirm: Callable[[], bool] | None = None,
                   show: Callable[[str, str], None] | None = None) -> int:
-    """``--uninstall``: asks first unless ``--silent``; 0 when removed, 1 when cancelled, 2 on failure."""
+    """``--uninstall``: asks first unless ``--silent``; 0 when removed, 1 when cancelled, 2 on failure.
+
+    The program file is deleted only after the final message box: the cleanup
+    waits for this process to exit, so a dialog left open never beats it.
+    (``winsetup.uninstall`` closes our log file itself when the data goes.)
+    """
     from . import winsetup
 
     ops = ops if ops is not None else winsetup.WinOps()
@@ -679,16 +795,15 @@ def run_uninstall(args: argparse.Namespace, data_dir: Path, *, frozen: bool, ops
     if not args.silent and not (confirm or _confirm_uninstall)():
         log.info("Uninstall cancelled")
         return 1
-    if args.remove_data:
-        _close_file_logs()  # the data dir goes, our own log file with it
     try:
-        messages = winsetup.uninstall(data_dir=data_dir, ops=ops, remove_data=args.remove_data,
-                                      running_exe=Path(sys.executable) if frozen else None)
+        result = winsetup.uninstall(data_dir=data_dir, ops=ops, remove_data=args.remove_data,
+                                    running_exe=Path(sys.executable) if frozen else None)
     except Exception as exc:
         log.exception("Uninstall failed")
         show("error", f"Nie udało się odinstalować MindsetForest Tracker: {exc}")
         return 2
-    show("info", "\n".join(["Odinstalowano MindsetForest Tracker.", "", *messages]))
+    show("info", "\n".join(["Odinstalowano MindsetForest Tracker.", "", *result.messages]))
+    winsetup.schedule_cleanup(ops, result.pending_delete)
     return 0
 
 
@@ -765,6 +880,37 @@ def run_setup_action(action: str, args: argparse.Namespace, *, data_dir: Path, f
         raise
 
 
+def already_running(args: argparse.Namespace, guard: SingleInstance, *, data_dir: Path, frozen: bool) -> int | None:
+    """Another tracker holds the lock: the exit code, or None when this start should track after all.
+
+    Nothing here writes tracker.log: it belongs to the running tracker, and a
+    second process rotating it fails on Windows. A logon start (``--autostart``)
+    never opens a window: it exits quietly, unless the old zip tracker (its
+    Startup shortcut is back) won the race; that one is retired and this start
+    takes over. A Start menu click opens the settings window instead.
+    """
+    _log_to(data_dir / "setup.log")
+    if getattr(args, "autostart", False):
+        from . import winsetup
+
+        try:
+            replaced = winsetup.replace_legacy_tracker(data_dir, winsetup.WinOps())
+        except Exception:
+            log.warning("Checking for the old zip tracker failed", exc_info=True)
+            replaced = False
+        if replaced and guard.acquire():
+            log.info("Autostart: replaced the old zip tracker; tracking here")
+            _log_to(data_dir / "tracker.log")
+            return None
+        log.info("Autostart: another tracker instance is already running; exiting")
+        return 0
+    if frozen:  # the Start menu shortcut while the tracker runs: show the settings instead
+        log.info("Another tracker instance is already running; opening the settings window")
+        return run_setup_action("settings-gui", args, data_dir=data_dir, frozen=frozen)
+    log.error("Another tracker instance is already running; exiting")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     frozen = bool(getattr(sys, "frozen", False))
@@ -784,14 +930,12 @@ def main(argv: list[str] | None = None) -> int:
         log.info("MindsetForest %s: %s (%s)", __version__, action, exe)
         return run_setup_action(action, args, data_dir=data_dir, frozen=frozen)
 
-    setup_logging(data_dir / "tracker.log", console=console)
+    setup_logging(data_dir / "tracker.log", console=console)  # the file opens with the first record
     guard = SingleInstance(data_dir / "tracker.lock")
     if not guard.acquire():
-        if frozen:  # the Start menu shortcut while the tracker runs: show the settings instead
-            log.info("Another tracker instance is already running; opening the settings window")
-            return run_setup_action("settings-gui", args, data_dir=data_dir, frozen=frozen)
-        log.error("Another tracker instance is already running; exiting")
-        return 1
+        code = already_running(args, guard, data_dir=data_dir, frozen=frozen)
+        if code is not None:
+            return code
     try:
         config = load_config(args.config)  # again, now that a bad file can be logged
         log.info("Tracker %s, config from %s", __version__, config.path)

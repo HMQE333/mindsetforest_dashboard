@@ -1,7 +1,7 @@
 {
   "supabase_url": "https://YOUR-PROJECT.supabase.co",
   "supabase_anon_key": "YOUR-ANON-PUBLIC-KEY",
-  "dashboard_url": "https://mindsetforest.app",
+  "dashboard_url": "https://hmqe333.github.io/mindsetforest_dashboard/",
   "idle_minutes": 3,
   "tick_seconds": 1,
   "sync_seconds": 60,

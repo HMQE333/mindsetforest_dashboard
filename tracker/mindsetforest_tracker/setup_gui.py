@@ -9,7 +9,12 @@ the Claude routine that turns transcripts into knowledge notes.
 
 The window never refreshes or uses the saved session: a running tracker owns it, and
 Supabase revokes a whole session when an old refresh token is reused. It only reads
-``session.bin`` for the email, or does a fresh password sign-in.
+``session.bin`` for the email (and the tracker's ``needs_login`` marker, to say a
+login expired), or does a fresh password sign-in into its own
+``session.new.<pid>.bin``, so two open windows never drop each other's sign-in.
+
+The main buttons sit in a fixed bar under the scrolling page, so they are on screen
+at 1366x768 and 125% scaling whatever the page holds.
 
 Network and install work run in worker threads that report through a queue polled with
 ``after()``, so the window never freezes. tkinter is imported on first use, so the pure
@@ -20,6 +25,7 @@ from __future__ import annotations
 from contextlib import suppress
 
 import logging
+import ntpath
 import os
 import queue
 import re
@@ -30,13 +36,13 @@ import webbrowser
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from . import winsetup
 from .archive_capture import parse_hotkey
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .config import Config
-from .recordings import MIRROR_FOLDERS
+from .recordings import MIRROR_FOLDERS, count_recordings
 
 log = logging.getLogger(__name__)
 
@@ -50,10 +56,25 @@ SETTINGS_TAGLINE = "Ustawienia trackera"
 ROUTINE_TITLE = "Ostatni krok: rutyna Claude (przerabia nagrania na notatki)"
 ROUTINE_INTRO = ("Tracker tylko zamienia nagrania na tekst. Notatki wiedzy robi z nich Claude, w zadaniu "
                  "cyklicznym (rutynie), które ustawiasz raz w Claude Desktop:")
-ROUTINE_NOTE = ("Bez rutyny nagrania będą się transkrybować, ale notatki wiedzy nie powstaną; "
-                "tracker przypomni o tym powiadomieniem.")
+# Claude Desktop's own English labels (support.claude.com, "Schedule recurring tasks in Claude
+# Cowork"): the app may not be in Polish, and a task needs a local folder to run on this PC.
+ROUTINE_STEPS = (
+    "Otwórz Claude Desktop.",
+    "W lewym pasku kliknij Scheduled, potem New task (prawy górny róg) i Set up manually. "
+    "Częstotliwość: Hourly.",
+    "Jako folder zadania wskaż folder vaulta. Zadanie musi działać lokalnie, na tym komputerze "
+    "(nie w chmurze), inaczej nie dostanie się do vaulta.",
+    "Jako polecenie (prompt) wklej:",
+)
+ROUTINE_NOTE = ("Zadanie uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi; pominięte "
+                "uruchomienie nadrobi, gdy wrócisz. Bez rutyny nagrania będą się transkrybować, ale notatki "
+                "wiedzy nie powstaną; tracker przypomni o tym powiadomieniem.")
+CLAUDE_NOT_DETECTED = "Nie wykryto Claude Desktop. Jeśli już go masz, pomiń ten krok."
 OPEN_FOLDER_AS_VAULT = "W Obsidianie wybierz: Open folder as vault, potem ten folder:"
+TRACKER_RUNNING = "Tracker działa (ikonka drzewa przy zegarze; jeśli jej nie widać, kliknij strzałkę ^ obok zegara)."
+SETTINGS_LATER = "Ustawienia otworzysz później z menu ikonki (Ustawienia...) albo z menu Start: MindsetForest."
 COPIED = "Skopiowano"
+RECORDINGS_COUNT_CAP = 1000  # counting a whole drive must not take long; shown as "999+"
 
 # -- hotkeys -------------------------------------------------------------------------
 
@@ -200,6 +221,18 @@ def _same_path(a: str | Path, b: str | Path) -> bool:
     return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
+def is_full_path(path: str, platform: str = sys.platform) -> bool:
+    """A path that does not depend on the current folder: drive and root ("D:\\x") or a share.
+
+    "Nagrania", "D:Nagrania" and "\\Nagrania" would be resolved against the tracker's
+    working folder (the program folder), which never holds the user's files.
+    """
+    if platform == "win32":
+        drive, rest = ntpath.splitdrive(path)
+        return bool(drive) and (drive.startswith(("\\\\", "//")) or rest.startswith(("\\", "/")))
+    return os.path.isabs(path)
+
+
 class Problem(str):
     """A Polish message from ``validate``: errors block saving, warnings only ask "Kontynuować?"."""
 
@@ -218,7 +251,7 @@ def validate(form: Mapping[str, Any]) -> list[Problem]:
     vault = str(form.get("vault_dir") or "")
     if not vault:
         errors.append("Wybierz folder vaulta Obsidian.")
-    elif not os.path.isabs(vault):
+    elif not is_full_path(vault):
         errors.append("Podaj pełną ścieżkę vaulta (z literą dysku) albo kliknij „Wybierz...”.")
     elif Path(vault).exists() and not Path(vault).is_dir():
         errors.append("Ścieżka vaulta wskazuje plik, a nie folder.")
@@ -226,6 +259,8 @@ def validate(form: Mapping[str, Any]) -> list[Problem]:
     if form.get("transcribe"):
         if not rec:
             errors.append("Wybierz folder z nagraniami albo wyłącz transkrypcję.")
+        elif not is_full_path(rec):
+            errors.append("Podaj pełną ścieżkę folderu nagrań (z literą dysku) albo kliknij „Wybierz...”.")
         elif vault and _same_path(rec, vault):
             errors.append("Folder nagrań i vault muszą być różnymi folderami.")
         elif not Path(rec).is_dir():
@@ -247,8 +282,9 @@ def validate(form: Mapping[str, Any]) -> list[Problem]:
     elif not url.startswith(("https://", "http://")):
         errors.append("Adres Supabase musi zaczynać się od https://")
     if not form.get("signed_in"):
-        warnings.append("Nie zalogowano: tracker policzy czas lokalnie i wyśle go, gdy zalogujesz się "
-                        "z menu ikonki przy zegarze.")
+        first = "Logowanie wygasło" if form.get("login_expired") else "Nie zalogowano"
+        warnings.append(f"{first}: tracker policzy czas lokalnie i wyśle go, gdy się zalogujesz: tutaj, z menu "
+                        "Start (MindsetForest) albo z menu ikonki drzewa przy zegarze (może być pod strzałką ^).")
     return [Problem(e) for e in errors] + [Problem(w, warning=True) for w in warnings]
 
 
@@ -256,6 +292,8 @@ def recordings_hint(path: str, detected: Path | None, how: str) -> str:
     """The line under the recordings folder: where it came from, or that it does not exist yet."""
     if not path:
         return ""
+    if not is_full_path(path):
+        return "Podaj pełną ścieżkę (z literą dysku), np. D:\\Nagrania"
     if not Path(path).is_dir():
         return "Folder jeszcze nie istnieje: tracker zacznie, gdy się pojawi"
     if detected is not None and _same_path(path, detected):
@@ -264,15 +302,25 @@ def recordings_hint(path: str, detected: Path | None, how: str) -> str:
 
 
 def claude_desktop_installed(env: Mapping[str, str] | None = None) -> bool:
-    """True when a folder Claude Desktop creates exists (install dirs or its settings folder)."""
+    """True when something Claude Desktop creates exists. A miss is only "not detected", never "absent".
+
+    The older installer leaves its install or settings folder. The MSIX package (Microsoft
+    Store, winget and today's claude.ai installer) lives in WindowsApps and keeps its data
+    under Packages\\Claude_<publisher>, with an app alias claude.exe; an unpackaged process
+    like this one does not see its redirected %APPDATA%\\Claude. ``lexists``: the alias is a
+    reparse point that a plain stat may fail to follow.
+    """
     env = os.environ if env is None else env
     candidates: list[Path] = []
     if env.get("LOCALAPPDATA"):
         local = Path(env["LOCALAPPDATA"])
-        candidates += [local / "AnthropicClaude", local / "Programs" / "claude"]
+        candidates += [local / "AnthropicClaude", local / "Programs" / "claude",
+                       local / "Microsoft" / "WindowsApps" / "claude.exe"]
+        with suppress(OSError):
+            candidates += [p for p in (local / "Packages").glob("Claude_*") if p.is_dir()]
     if env.get("APPDATA"):
         candidates.append(Path(env["APPDATA"]) / "Claude")
-    return any(p.exists() for p in candidates)
+    return any(os.path.lexists(p) for p in candidates)
 
 
 def obsidian_action(vault: Path, vaults: list[winsetup.ObsidianVault], installed: bool) -> tuple[str, str]:
@@ -302,7 +350,11 @@ def vault_choices(default: Path, vaults: Iterable[winsetup.ObsidianVault], curre
 
 
 def initial_form(existing: Config | None, *, detected: Path, default_vault: Path, autostart: bool) -> dict[str, Any]:
-    """The form's starting values: the saved config when there is one, detection otherwise."""
+    """The form's starting values: the saved config when there is one, detection otherwise.
+
+    The hotkey is config.json's, which the tracker keeps equal to the dashboard's active one.
+    The site goes through ``site_for``: an empty or placeholder address means the real site.
+    """
     if existing is None:
         return {
             "supabase_url": "", "supabase_anon_key": "", "dashboard_url": winsetup.DEFAULT_SITE,
@@ -311,7 +363,7 @@ def initial_form(existing: Config | None, *, detected: Path, default_vault: Path
         }
     return {
         "supabase_url": existing.supabase_url, "supabase_anon_key": existing.supabase_anon_key,
-        "dashboard_url": existing.dashboard_url or winsetup.DEFAULT_SITE,
+        "dashboard_url": winsetup.site_for(existing.dashboard_url),
         # An empty recordings_dir is how the config says "transcription off".
         "transcribe": bool(existing.recordings_dir),
         "recordings_dir": existing.recordings_dir or str(detected),
@@ -319,6 +371,70 @@ def initial_form(existing: Config | None, *, detected: Path, default_vault: Path
         "hotkey": existing.capture_hotkey, "autostart": autostart,
         "device_name": existing.device_name or socket.gethostname(),
     }
+
+
+def hotkey_changed(chosen: str, shown: str) -> bool:
+    """True when the user picked a hotkey other than the one the form opened with.
+
+    Only then is it pushed to the dashboard: an untouched default on a fresh install
+    must not overwrite the account's hotkey on every device.
+    """
+    return (chosen or "").strip().lower() != (shown or "").strip().lower()
+
+
+def existing_recordings_label(count: int) -> str:
+    """The "also process what is already there" checkbox, with how many MP3s that is."""
+    shown = f"{RECORDINGS_COUNT_CAP - 1}+" if count >= RECORDINGS_COUNT_CAP else str(count)
+    return f"Przetwórz też nagrania, które już są w folderze ({shown})"
+
+
+def include_existing_default(path: str, detected: Path, how: str) -> bool:
+    """Ticked only for a folder named after Bandicam, whose MP3s are the user's recordings.
+
+    Any other folder may hold unrelated audio that must not be sent off the PC unasked,
+    even when Bandicam's own settings point at it (people set its output to a whole
+    drive, Desktop or Music). The user can still tick the box: it shows the count.
+    """
+    return bool(path) and "bandicam" in path.lower()
+
+
+def offer_existing(path: str, count: int | None, previous: str) -> bool:
+    """Whether to ask about the MP3s already in ``path``.
+
+    Only for a folder the tracker did not watch before (an upgrade keeps its cutoff)
+    and only when there is something to ask about.
+    """
+    if not path or not count:
+        return False
+    return not previous or not _same_path(path, previous)
+
+
+def count_existing(folder: str, vault: str = "") -> int:
+    """MP3s the tracker would see in ``folder`` (same depth limit), up to ``RECORDINGS_COUNT_CAP``."""
+    if not folder or not is_full_path(folder) or not Path(folder).is_dir():
+        return 0
+    return count_recordings(Path(folder), Path(vault) if vault else None, limit=RECORDINGS_COUNT_CAP)
+
+
+def supabase_host(url: str) -> str:
+    """The server a sign-in goes to, shown next to the fields so it is never a hidden setting."""
+    try:
+        return urlparse((url or "").strip()).hostname or ""
+    except ValueError:
+        return ""
+
+
+def account_hint(url: str) -> str:
+    base = "Konto z dashboardu MindsetForest. Logujesz się raz; tracker zapamięta logowanie."
+    host = supabase_host(url)
+    return f"{base} Serwer logowania: {host}" if host else base
+
+
+def account_line(email: str, expired: bool) -> str:
+    """The line above the sign-in fields for a saved login."""
+    if expired:
+        return f"Logowanie wygasło ({email}): zaloguj się ponownie"
+    return f"Zalogowano: {email}"
 
 
 def choices_from_form(form: Mapping[str, Any]) -> winsetup.SetupChoices:
@@ -332,6 +448,8 @@ def choices_from_form(form: Mapping[str, Any]) -> winsetup.SetupChoices:
         capture_hotkey=str(form.get("hotkey") or ""),
         autostart=bool(form.get("autostart", True)),
         device_name=str(form.get("device_name") or "").strip(),
+        push_hotkey=bool(form.get("push_hotkey", False)),
+        include_existing=bool(form.get("include_existing", True)),
     )
 
 
@@ -399,7 +517,11 @@ def _dpi_aware() -> None:
 
 
 def run_setup_window(mode: str, *, data_dir: Path, ops: winsetup.WinOps, source_exe: Path | None) -> int:
-    """Show the window until it is closed: 0 after installing, saving or uninstalling, else 1."""
+    """Show the window until it is closed: 0 after installing, saving or uninstalling, else 1.
+
+    After an uninstall the files this process still holds (the running exe, its folder) are
+    handed to ``schedule_cleanup`` as the very last step, once the result dialog is gone.
+    """
     if mode not in ("install", "settings"):
         raise ValueError(f"unknown setup window mode {mode!r}")
     _import_tk()
@@ -417,6 +539,11 @@ def run_setup_window(mode: str, *, data_dir: Path, ops: winsetup.WinOps, source_
             log.debug("could not report the error", exc_info=True)
         return 1
     root.mainloop()
+    if window.cleanup:
+        try:
+            winsetup.schedule_cleanup(ops, window.cleanup)
+        except Exception:
+            log.exception("Scheduling the cleanup after uninstall failed")
     return window.exit_code
 
 
@@ -437,11 +564,18 @@ class SetupWindow:
         self.ops = ops
         self.source_exe = source_exe
         self.exit_code = 1
+        self.cleanup: list[Path] = []  # after an uninstall: deleted once this process has exited
+        # This window's own pending sign-in: closing another window never drops it.
+        self.pending: Path = winsetup.pending_session_path(data_dir)
         self.closed = False
         self.busy = False          # installing / uninstalling
         self.signing_in = False
         self.fetching = False
         self.switching_account = False
+        self.expired = False              # session.bin is there but the tracker says the server refused it
+        self.include_touched = False      # the user ticked or unticked "Przetwórz też nagrania..."
+        self.rec_count: int | None = None  # MP3s already in the recordings folder; None while counting
+        self._count_after: Any = None
         self.submit_after_signin = False  # "Zainstaluj" pressed with an email and password not yet sent
         self.page_name = "form"
         self.events: queue.Queue[tuple[str, bool, Any]] = queue.Queue()
@@ -464,7 +598,7 @@ class SetupWindow:
         self._poll_id = root.after(POLL_MS, self._poll)
         root.bind("<Destroy>", self._destroyed, add="+")
         if not (self.url_var.get() and self.key_var.get()):
-            self.fetch_site_config()
+            self.fetch_site_config(auto=True)
         self._center()
 
     # -- plumbing ------------------------------------------------------------------
@@ -511,7 +645,7 @@ class SetupWindow:
             log.debug("window icon unavailable", exc_info=True)
 
     def _build_scroller(self) -> None:
-        """A canvas around the page, so small screens scroll instead of cutting the buttons off."""
+        """A canvas around the page, so small screens scroll, and a fixed bar under it for the buttons."""
         bg = ttk.Style(self.root).lookup("TFrame", "background") or self.root.cget("background")
         self.root.configure(background=bg)
         self.canvas = tk.Canvas(self.root, highlightthickness=0, borderwidth=0, background=bg,
@@ -521,6 +655,11 @@ class SetupWindow:
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.vsb.grid(row=0, column=1, sticky="ns")
         self.vsb.grid_remove()
+        self.footer_line = ttk.Separator(self.root, orient="horizontal")
+        self.footer_line.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.footer = ttk.Frame(self.root, padding=(self.px(16), self.px(8), self.px(16), self.px(12)))
+        self.footer.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.footer.bind("<Configure>", self._fit)
         self.root.rowconfigure(0, weight=1)
         self.root.columnconfigure(0, weight=1)
         self.page = ttk.Frame(self.canvas, padding=self.px(16))
@@ -532,7 +671,9 @@ class SetupWindow:
 
     def _fit(self, _event: Any = None) -> None:
         need = self.page.winfo_reqheight()
-        room = self.root.winfo_screenheight() - self.px(120)
+        # The button bar is outside the canvas: without subtracting it the window grows behind the taskbar.
+        bar = self.footer.winfo_reqheight() + self.footer_line.winfo_reqheight()
+        room = max(self.px(160), self.root.winfo_screenheight() - self.px(120) - bar)
         self.canvas.configure(scrollregion=(0, 0, 0, need), height=min(need, room))
         self._toggle_scrollbar()
 
@@ -574,9 +715,11 @@ class SetupWindow:
             pass
 
     def _place_over(self, top: Any) -> None:
+        """Over the window, but never so low that its buttons end up behind the taskbar."""
         top.update_idletasks()
         x = self.root.winfo_rootx() + (self.root.winfo_width() - top.winfo_reqwidth()) // 2
         y = self.root.winfo_rooty() + self.px(60)
+        y = min(y, top.winfo_screenheight() - top.winfo_reqheight() - self.px(100))
         top.geometry(f"+{max(0, x)}+{max(0, y)}")
 
     def _modal(self, top: Any, tries: int = 20) -> None:
@@ -652,13 +795,13 @@ class SetupWindow:
         if event.widget is not self.root or self.closed:
             return  # every child's <Destroy> passes through the root's binding too
         self.closed = True
-        try:
-            self.root.after_cancel(self._poll_id)
-        except Exception:
-            pass
-        if self.exit_code != 0:  # closed without installing: a sign-in made here is dropped
+        for job in (self._poll_id, self._count_after):
+            if job is not None:
+                with suppress(Exception):
+                    self.root.after_cancel(job)
+        if self.exit_code != 0:  # closed without installing: the sign-in made here (only that one) is dropped
             with suppress(OSError):
-                (self.data_dir / winsetup.PENDING_SESSION).unlink()
+                self.pending.unlink()
 
     # -- state ---------------------------------------------------------------------
 
@@ -667,50 +810,76 @@ class SetupWindow:
         notes: list[str] = []
         legacy = self._try(lambda: winsetup.find_legacy_install(self.ops), None, "Stara instalacja", notes)
         self.existing: Config | None = self._try(
-            lambda: winsetup.load_existing_config(self.data_dir, legacy), None, "Zapisane ustawienia", notes)
+            lambda: winsetup.load_existing_config(self.data_dir, legacy, self.ops), None, "Zapisane ustawienia", notes)
         fallback = (Path(Config().recordings_dir), "default")
         self.detected: tuple[Path, str] = self._try(
             lambda: winsetup.detect_bandicam_dir(self.ops), fallback, "Folder Bandicam", notes)
+        # An upgrade or Ustawienia keeps what is set now (the user may have turned autostart off);
+        # only a fresh install starts ticked. A config alone does not count: uninstall keeps
+        # config.json but removes the Run value, and a reinstall is a fresh start.
+        installed = self.mode == "settings" or legacy is not None or bool(
+            self._try(lambda: winsetup.installed_exe().exists(), False, "Program"))
         autostart = True
-        if self.mode == "settings":
-            # The old zip install autostarts from the Startup folder; install() moves that to Run.
-            autostart = self._try(lambda: self.ops.get_run(winsetup.RUN_VALUE) is not None or legacy is not None,
-                                  True, "Autostart", notes)
+        if installed:
+            autostart = bool(self._try(lambda: winsetup.autostart_enabled(self.ops), True, "Autostart", notes))
         self.obsidian_list: list[winsetup.ObsidianVault] = self._try(
             winsetup.obsidian_vaults, [], "Vaulty Obsidiana", notes)
         self.default_vault: Path = self._try(winsetup.default_vault_dir, Path(Config().vault_dir), "Domyślny vault", notes)
         self.initial = initial_form(self.existing, detected=self.detected[0], default_vault=self.default_vault,
                                     autostart=autostart)
-        self.account_email: str | None = self._saved_account()
+        self.account_email, self.expired = self._saved_account()
         self.load_notes = notes
 
-    def _saved_account(self) -> str | None:
-        """The signed-in email: a sign-in made here and not yet installed, else session.bin.
+    def _saved_account(self) -> tuple[str | None, bool]:
+        """(email, expired): a sign-in made in this window and not yet installed, else session.bin.
 
-        Reads the files only: no refresh, no network.
+        Reads the files only: no refresh, no network. session.bin is "expired" when the
+        tracker left its needs-login marker (the server refused the saved session); a
+        pending sign-in from another window is never shown here.
         """
-        for name in (winsetup.PENDING_SESSION, winsetup.SESSION_FILE):
+        for path in (self.pending, self.data_dir / winsetup.SESSION_FILE):
             try:
-                auth = SupabaseAuth("", "", self.data_dir / name)
-                if auth.load_saved():
-                    return auth.email or auth.user_id or "?"
+                auth = SupabaseAuth("", "", path)
+                if not auth.load_saved():
+                    continue
             except Exception:
-                log.warning("Could not read the saved session %s", name, exc_info=True)
-        return None
+                log.warning("Could not read the saved session %s", path.name, exc_info=True)
+                continue
+            email = auth.email or auth.user_id or "?"
+            expired = path != self.pending and bool(
+                self._try(lambda: winsetup.login_expired(self.data_dir), False, "Stan logowania"))
+            return email, expired
+        return None, False
 
     def form_values(self) -> dict[str, Any]:
         return {
             "supabase_url": self.url_var.get().strip().rstrip("/"),
             "supabase_anon_key": self.key_var.get().strip(),
             "dashboard_url": self.site_var.get().strip(),
-            "signed_in": self.account_email is not None,
+            "signed_in": self.account_email is not None and not self.expired,
+            "login_expired": self.account_email is not None and self.expired,
             "transcribe": bool(self.transcribe_var.get()),
             "recordings_dir": clean_path(self.rec_var.get()),
+            "include_existing": self._include_existing(),
             "vault_dir": clean_path(self.vault_var.get()),
             "hotkey": self.hotkey_var.get(),
+            # Any hotkey the user confirmed goes to the dashboard, even the one shown: the form may show
+            # a value the account has since replaced (an old zip config.json), and re-picking it is a choice.
+            "push_hotkey": self.hotkey_touched or hotkey_changed(self.hotkey_var.get(), self.initial["hotkey"]),
             "autostart": bool(self.autostart_var.get()),
             "device_name": self.device_var.get().strip(),
         }
+
+    def _include_existing(self) -> bool:
+        """The checkbox when it is shown; an empty folder has nothing to leave out, so no cutoff then.
+
+        (Recordings copied in later keep their old dates, and would be skipped by a cutoff.)
+        """
+        if self.rec_count == 0:
+            return True
+        if self.rec_count is None:  # still counting: the user has not seen the box, so send nothing old
+            return False
+        return bool(self.include_var.get())
 
     # -- the form ------------------------------------------------------------------
 
@@ -735,6 +904,11 @@ class SetupWindow:
             self._hint(form, "Nie wszystko udało się wykryć automatycznie (" + "; ".join(self.load_notes)
                        + "). Sprawdź pola poniżej.", style="Error.TLabel").pack(anchor="w", pady=(self.px(6), 0))
         self.lock_while_busy: list[Any] = []
+        # Shown under Zaawansowane, but the account section already needs the Supabase address.
+        self.site_var = self._var(self.initial["dashboard_url"])
+        self.url_var = self._var(self.initial["supabase_url"])
+        self.key_var = self._var(self.initial["supabase_anon_key"])
+        self.device_var = self._var(self.initial["device_name"])
         self._account_section(form)
         self._recordings_section(form)
         self._vault_section(form)
@@ -744,7 +918,7 @@ class SetupWindow:
         ttk.Checkbutton(form, text="Uruchamiaj przy starcie Windows", variable=self.autostart_var).pack(
             anchor="w", pady=(self.px(16), 0))
         self._advanced_section(form)
-        self._bottom_buttons(form)
+        self._bottom_buttons(self.footer)
         self._refresh_buttons()
 
     def _account_section(self, parent: Any) -> None:
@@ -754,8 +928,9 @@ class SetupWindow:
         self.signed_in_frame.grid(row=0, column=0, sticky="ew")
         self.signed_in_frame.columnconfigure(0, weight=1)
         self.signed_in_var = self._var()
-        ttk.Label(self.signed_in_frame, textvariable=self.signed_in_var, style="Bold.TLabel").grid(
-            row=0, column=0, sticky="w")
+        self.signed_in_label = ttk.Label(self.signed_in_frame, textvariable=self.signed_in_var, style="Bold.TLabel",
+                                         wraplength=self.wrap, justify="left")
+        self.signed_in_label.grid(row=0, column=0, sticky="w")
         self.other_account_button = ttk.Button(self.signed_in_frame, text="Zaloguj inne konto",
                                                command=self._switch_account)
         self.other_account_button.grid(row=0, column=1, sticky="e", padx=(px(8), 0))
@@ -779,18 +954,22 @@ class SetupWindow:
         label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(px(4), 0))
         label.grid_remove()  # an empty line would leave a gap
         self.signin_error.trace_add("write", lambda *_a: label.grid() if self.signin_error.get() else label.grid_remove())
-        self._hint(box, "Konto z dashboardu MindsetForest. Logujesz się raz; tracker zapamięta logowanie.").grid(
-            row=2, column=0, sticky="w", pady=(px(2), 0))
+        # The server the password goes to is always visible, never only a setting under Zaawansowane.
+        hint = self._var(account_hint(self.url_var.get()))
+        self.url_var.trace_add("write", lambda *_a: hint.set(account_hint(self.url_var.get())))
+        self._hint(box, var=hint).grid(row=2, column=0, sticky="w", pady=(px(2), 0))
+        self.account_hint_var = hint
         self._render_account()
 
     def _render_account(self) -> None:
         signed = self.account_email is not None
         if signed:
-            self.signed_in_var.set(f"Zalogowano: {self.account_email}")
+            self.signed_in_var.set(account_line(self.account_email or "?", self.expired))
+            self.signed_in_label.configure(style="Error.TLabel" if self.expired else "Bold.TLabel")
             self.signed_in_frame.grid()
         else:
             self.signed_in_frame.grid_remove()
-        if signed and not self.switching_account:
+        if signed and not self.switching_account and not self.expired:
             self.signin_frame.grid_remove()
             self.other_account_button.grid()
         else:
@@ -815,6 +994,13 @@ class SetupWindow:
         self.rec_button.grid(row=1, column=1, padx=(px(8), 0), pady=(px(4), 0))
         self.rec_hint = self._var()
         self._hint(box, var=self.rec_hint).grid(row=2, column=0, columnspan=2, sticky="w")
+        start = clean_path(self.initial["recordings_dir"])
+        self.include_var = self._var(include_existing_default(start, *self.detected), "bool")
+        self.hotkey_touched = False
+        self.include_check = ttk.Checkbutton(box, variable=self.include_var, command=self._include_toggled)
+        self.include_check.grid(row=3, column=0, columnspan=2, sticky="w", pady=(px(2), 0))
+        self.include_check.grid_remove()
+        self._counted_path: str | None = None
         self.rec_var.trace_add("write", lambda *_a: self._recordings_changed())
         self._recordings_changed()
 
@@ -822,10 +1008,48 @@ class SetupWindow:
         on = bool(self.transcribe_var.get())
         for w in (self.rec_entry, self.rec_button):
             w.state(["!disabled"] if on else ["disabled"])
+        path = clean_path(self.rec_var.get())
         if on:
-            self.rec_hint.set(recordings_hint(clean_path(self.rec_var.get()), *self.detected))
+            self.rec_hint.set(recordings_hint(path, *self.detected))
         else:
             self.rec_hint.set("Transkrypcja wyłączona. Notatki z vaulta nadal trafiają do dashboardu.")
+        if path != self._counted_path:
+            self._counted_path = path
+            self.rec_count = None
+            if not self.include_touched:
+                self.include_var.set(include_existing_default(path, *self.detected))
+            if self._count_after is not None:
+                self.root.after_cancel(self._count_after)
+            self._count_after = self.root.after(400, self._start_count)  # not on every keystroke
+        self._render_include()
+
+    def _include_toggled(self) -> None:
+        self.include_touched = True
+
+    def _start_count(self) -> None:
+        """Count the MP3s already in the folder in a worker: a broad folder takes a moment to walk."""
+        self._count_after = None
+        path = self._counted_path or ""
+        vault = clean_path(self.vault_var.get()) if hasattr(self, "vault_var") else ""
+        self._spawn("count", lambda: (path, count_existing(path, vault)))
+
+    def _on_count(self, ok: bool, value: Any) -> None:
+        if self.page_name != "form" or not ok:
+            return
+        path, count = value
+        if path == self._counted_path:  # an answer for a folder typed over since is dropped
+            self.rec_count = count
+            self._render_include()
+
+    def _render_include(self) -> None:
+        """Ask about the MP3s already in a newly chosen folder; they are sent only if ticked."""
+        previous = self.existing.recordings_dir if self.existing is not None else ""
+        path = self._counted_path or ""
+        if self.transcribe_var.get() and offer_existing(path, self.rec_count, previous):
+            self.include_check.configure(text=existing_recordings_label(self.rec_count or 0))
+            self.include_check.grid()
+        else:
+            self.include_check.grid_remove()
 
     def _pick_recordings(self) -> None:
         current = clean_path(self.rec_var.get())
@@ -879,7 +1103,7 @@ class SetupWindow:
         ttk.Label(box, textvariable=self.hotkey_text, style="Hotkey.TLabel").grid(row=0, column=0, sticky="w")
         change = ttk.Button(box, text="Zmień...", command=self.capture_hotkey)
         change.grid(row=0, column=1, padx=(px(8), 0))
-        off = ttk.Button(box, text="Wyłącz", command=lambda: self.hotkey_var.set(""))
+        off = ttk.Button(box, text="Wyłącz", command=lambda: self._set_hotkey(""))
         off.grid(row=0, column=2, padx=(px(8), 0))
         self.lock_while_busy += [change, off]
         self._hint(box, "To samo ustawienie co w dashboardzie (Settings → Keybinds); zmiana działa w ciągu minuty.").grid(
@@ -891,10 +1115,6 @@ class SetupWindow:
         self.adv_button.pack(anchor="w", pady=(px(16), 0))
         self.adv_frame = ttk.Frame(parent)
         self.adv_frame.columnconfigure(1, weight=1)
-        self.site_var = self._var(self.initial["dashboard_url"])
-        self.url_var = self._var(self.initial["supabase_url"])
-        self.key_var = self._var(self.initial["supabase_anon_key"])
-        self.device_var = self._var(self.initial["device_name"])
         rows = (("Adres dashboardu", self.site_var), ("Supabase URL", self.url_var),
                 ("Klucz publiczny", self.key_var), ("Nazwa urządzenia", self.device_var))
         for row, (label, var) in enumerate(rows):
@@ -917,11 +1137,14 @@ class SetupWindow:
             self.adv_frame.pack_forget()
 
     def _bottom_buttons(self, parent: Any) -> None:
+        """Status line and buttons in the fixed bar: the main action never scrolls out of sight."""
         px = self.px
         self.status_var = self._var()
-        self._hint(parent, var=self.status_var).pack(anchor="w", pady=(px(10), 0))
+        # One line kept even when empty, so the bar (and the window) does not jump while installing.
+        ttk.Label(parent, textvariable=self.status_var, style="Hint.TLabel", wraplength=self.wrap).pack(
+            anchor="w", fill="x")
         row = ttk.Frame(parent)
-        row.pack(fill="x", pady=(px(8), 0))
+        row.pack(fill="x", pady=(px(6), 0))
         text = "Zainstaluj i uruchom" if self.mode == "install" else "Zapisz"
         self.submit_button = ttk.Button(row, text=text, command=self.submit, default="active")
         self.submit_button.pack(side="right")
@@ -947,11 +1170,17 @@ class SetupWindow:
 
     # -- worker actions ------------------------------------------------------------
 
-    def fetch_site_config(self) -> None:
-        """Supabase URL + public key from the dashboard's ``downloads/tracker-config.json``."""
+    def fetch_site_config(self, auto: bool = False) -> None:
+        """Supabase URL + public key from the dashboard's ``downloads/tracker-config.json``.
+
+        The automatic fetch (nothing configured yet) always asks the official site, like a
+        silent install: an old config may name a placeholder domain anyone could register,
+        and the answer decides where the password goes. Another site is asked only through
+        "Pobierz ustawienia", for the address the user typed.
+        """
         if self.fetching:
             return
-        site = self.site_var.get().strip() or winsetup.DEFAULT_SITE
+        site = winsetup.DEFAULT_SITE if auto else winsetup.site_for(self.site_var.get().strip())
         self.fetching = True
         self.status_var.set("Pobieram ustawienia z dashboardu...")
         self._refresh_buttons()
@@ -997,9 +1226,9 @@ class SetupWindow:
         self._signin_message("Loguję...", error=False)
         self._refresh_buttons()
         # A fresh password sign-in makes an independent session; the saved one is never refreshed here.
-        # It waits in session.new.bin until install() has stopped the running tracker (which could
-        # otherwise save its own rotated token over it) and moves it into place.
-        session_path = self.data_dir / winsetup.PENDING_SESSION
+        # It waits in this window's session.new.<pid>.bin until install() has stopped the running
+        # tracker (which could otherwise save its own rotated token over it) and moves it into place.
+        session_path = self.pending
         self._spawn("signin", lambda: SupabaseAuth(url, key, session_path).sign_in(email, password).email or email)
         return True
 
@@ -1014,6 +1243,7 @@ class SetupWindow:
         if ok:
             self.account_email = value
             self.switching_account = False
+            self.expired = False  # the pending sign-in replaces the refused session on install
             self.password_var.set("")
             self._signin_message("")
             self._render_account()
@@ -1032,7 +1262,7 @@ class SetupWindow:
             self.status_var.set("Czekam na logowanie...")
             return
         typed = self.email_var.get().strip() and self.password_var.get()
-        if typed and (self.account_email is None or self.switching_account) and self.sign_in():
+        if typed and (self.account_email is None or self.switching_account or self.expired) and self.sign_in():
             # Email and password typed but "Zaloguj" never pressed: sign in first, then install.
             self.submit_after_signin = True
             self.status_var.set("Loguję...")
@@ -1056,7 +1286,8 @@ class SetupWindow:
             self.events.put(("progress", True, line))
 
         self._spawn("install", lambda: winsetup.install(
-            choices, data_dir=self.data_dir, source_exe=self.source_exe, ops=self.ops, launch=True, progress=progress))
+            choices, data_dir=self.data_dir, source_exe=self.source_exe, ops=self.ops, launch=True, progress=progress,
+            pending_session=self.pending))
 
     def _on_progress(self, _ok: bool, line: Any) -> None:
         if self.page_name == "form":
@@ -1095,18 +1326,29 @@ class SetupWindow:
             messagebox.showerror("MindsetForest", error_text(value), parent=self.root)
             return
         self.exit_code = 0
-        messagebox.showinfo("MindsetForest", "\n".join(value) or "Odinstalowano.", parent=self.root)
+        # What this process still holds goes after it exits; run_setup_window schedules it last.
+        self.cleanup = list(value.pending_delete)
+        messagebox.showinfo("MindsetForest", "\n".join(value.messages) or "Odinstalowano.", parent=self.root)
         self.close(force=True)
 
     # -- the hotkey dialog -----------------------------------------------------------
 
     def capture_hotkey(self) -> HotkeyDialog:
-        return HotkeyDialog(self, self.hotkey_var.set)
+        return HotkeyDialog(self, self._set_hotkey)
+
+    def _set_hotkey(self, spec: str) -> None:
+        """A hotkey the user confirmed (the dialog's OK or Wyłącz)."""
+        self.hotkey_touched = True
+        self.hotkey_var.set(spec)
 
     # -- the "Gotowe" page -----------------------------------------------------------
 
     def show_done(self, result: winsetup.InstallResult) -> None:
-        """Replace the form with what is left to do by hand: the Claude routine, then Obsidian."""
+        """Replace the form with what is left to do by hand: the Claude routine first, then Obsidian.
+
+        The routine panel comes right after the lead line, so "Kopiuj polecenie" is on screen
+        without scrolling; install's status lines follow it, and Zamknij is in the fixed bar.
+        """
         self.result = result
         self.page_name = "done"
         self.form.destroy()
@@ -1114,19 +1356,21 @@ class SetupWindow:
         done = self.done = ttk.Frame(self.page)
         done.pack(fill="x")
         ttk.Label(done, text="Gotowe", style="Title.TLabel").pack(anchor="w")
-        lead = ("Tracker działa (ikonka drzewa przy zegarze)." if result.started else "Ustawienia zapisane.")
+        lead = TRACKER_RUNNING if result.started else "Ustawienia zapisane."
         ttk.Label(done, text=lead, style="Bold.TLabel", wraplength=self.wrap, justify="left").pack(
             anchor="w", pady=(px(4), 0))
+        self._routine_panel(done, Path(result.vault)).pack(fill="x", pady=(px(10), 0))
         messages = done_messages(result.messages)
         if messages:
-            self._hint(done, "\n".join(messages)).pack(anchor="w", pady=(px(4), 0))
-        self._hint(done, "Ustawienia zmienisz później w menu ikonki: Ustawienia...").pack(anchor="w", pady=(px(4), 0))
-        self._routine_panel(done, Path(result.vault)).pack(fill="x", pady=(px(16), 0))
+            self._hint(done, "\n".join(messages)).pack(anchor="w", pady=(px(12), 0))
+        self._hint(done, SETTINGS_LATER).pack(anchor="w", pady=(px(4), 0))
         self._obsidian_panel(done, Path(result.vault)).pack(fill="x", pady=(px(12), 0))
-        row = ttk.Frame(done)
-        row.pack(fill="x", pady=(px(16), 0))
+        for child in self.footer.winfo_children():
+            child.destroy()
+        row = ttk.Frame(self.footer)
+        row.pack(fill="x")
         ttk.Button(row, text="Zamknij", command=lambda: self.close(force=True), default="active").pack(side="right")
-        dashboard = (self.last_choices.dashboard_url if self.last_choices else "") or winsetup.DEFAULT_SITE
+        dashboard = winsetup.site_for(self.last_choices.dashboard_url if self.last_choices else "")
         ttk.Button(row, text="Otwórz dashboard", command=lambda: self._open_url(dashboard)).pack(
             side="right", padx=(0, px(8)))
         self.canvas.yview_moveto(0)
@@ -1140,26 +1384,30 @@ class SetupWindow:
         ttk.Label(box, text=ROUTINE_INTRO, wraplength=wrap + px(30), justify="left").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, px(4)))
 
-        def step(number: int, text: str) -> Any:
+        def step(number: int, text: str, narrow: bool = False) -> Any:
+            """One numbered step; ``narrow`` leaves the right end of its first line for a button."""
             ttk.Label(box, text=f"{number}.", style="Bold.TLabel").grid(
                 row=number, column=0, sticky="nw", padx=(0, px(6)), pady=(px(6), 0))
             cell = ttk.Frame(box)
             cell.grid(row=number, column=1, sticky="ew", pady=(px(6), 0))
             cell.columnconfigure(0, weight=1)
-            ttk.Label(cell, text=text, wraplength=wrap, justify="left").grid(row=0, column=0, columnspan=2, sticky="w")
+            ttk.Label(cell, text=text, wraplength=wrap - px(150) if narrow else wrap, justify="left").grid(
+                row=0, column=0, columnspan=1 if narrow else 2, sticky="w")
             return cell
 
-        first = step(1, "Otwórz Claude Desktop.")
+        first = step(1, ROUTINE_STEPS[0])
         if not claude_desktop_installed():
-            ttk.Label(first, text="Nie widzę go na tym komputerze.", style="Hint.TLabel").grid(
-                row=1, column=0, sticky="w", pady=(px(4), 0))
+            ttk.Label(first, text=CLAUDE_NOT_DETECTED, style="Hint.TLabel", wraplength=wrap - px(150),
+                      justify="left").grid(row=1, column=0, sticky="w", pady=(px(4), 0))
             ttk.Button(first, text="Pobierz Claude Desktop", command=lambda: self._open_url(CLAUDE_DOWNLOAD_URL)).grid(
                 row=1, column=1, sticky="e", pady=(px(4), 0))
-        step(2, "Utwórz zadanie cykliczne (scheduled task), które uruchamia się co 2-3 godziny.")
-        third = step(3, "Daj mu dostęp do folderu vaulta:")
+        step(2, ROUTINE_STEPS[1])
+        third = step(3, ROUTINE_STEPS[2])
         self._copyable_path(third, vault)
-        fourth = step(4, "Jako polecenie wklej:")
+        fourth = step(4, ROUTINE_STEPS[3], narrow=True)
         text = routine_text(vault)
+        # The copy button sits on the step's own line, above the text: the first thing to reach.
+        self._copy_button(fourth, "Kopiuj polecenie", text).grid(row=0, column=1, sticky="e")
         lines = max(2, min(6, len(text) // 55 + 1))
         prompt = tk.Text(fourth, height=lines, width=10, wrap="word", relief="solid", borderwidth=1,
                          padx=px(6), pady=px(4), font="TkDefaultFont", takefocus=0)
@@ -1167,9 +1415,6 @@ class SetupWindow:
         prompt.configure(state="disabled")  # still selectable, so Ctrl+C works too
         prompt.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(px(4), 0))
         self.routine_text_widget = prompt
-        actions = ttk.Frame(fourth)
-        actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(px(6), 0))
-        self._copy_button(actions, "Kopiuj polecenie", text).pack(side="left")
         ttk.Label(box, text=ROUTINE_NOTE, style="Hint.TLabel", wraplength=wrap + px(30), justify="left").grid(
             row=5, column=0, columnspan=2, sticky="w", pady=(px(10), 0))
         return box

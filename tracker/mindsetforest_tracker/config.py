@@ -18,7 +18,9 @@ log = logging.getLogger(__name__)
 
 APP_DIR_NAME = "MindsetForest"
 CONFIG_FILE_NAME = "config.json"
-DEFAULT_DASHBOARD_URL = "https://mindsetforest.app"
+DEFAULT_DASHBOARD_URL = "https://hmqe333.github.io/mindsetforest_dashboard/"
+# The placeholder the zip version shipped with; nobody owns that domain, so it means "not set".
+LEGACY_DASHBOARD_URLS = frozenset({"https://mindsetforest.app", "https://mindsetforest.app/"})
 FOLDERID_DOCUMENTS = "{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"
 FOLDERID_VIDEOS = "{18989B1D-99B5-455B-841C-AB7C74E4DDFC}"
 
@@ -66,6 +68,22 @@ def videos_dir() -> Path:
     return _known_folder(FOLDERID_VIDEOS) or Path.home() / "Videos"
 
 
+def legacy_or_known(name: str) -> Path:
+    """``~/Documents/<name>`` when that folder exists, else ``<name>`` in the real Documents folder.
+
+    The zip version always used ~/Documents. With Documents on OneDrive the
+    known folder is elsewhere, and following it would move an existing vault
+    away from its notes (and the mirror would then empty the dashboard).
+    """
+    try:
+        legacy = Path.home() / "Documents" / name
+        if legacy.is_dir():
+            return legacy
+    except (OSError, RuntimeError):
+        pass
+    return documents_dir() / name
+
+
 @dataclass
 class Config:
     """User-editable settings. Unknown keys in the file are ignored."""
@@ -90,8 +108,11 @@ class Config:
     # Knowledge OS: MP3s in this folder are transcribed and written to the Obsidian vault, and
     # the vault's Knowledge/ and Sessions/ notes are copied to the dashboard. Empty
     # recordings_dir turns transcription off. Change vault_dir any time; new notes go there.
-    recordings_dir: str = field(default_factory=lambda: str(documents_dir() / "Bandicam"))
-    vault_dir: str = field(default_factory=lambda: str(documents_dir() / "MindsetForest Vault"))
+    recordings_dir: str = field(default_factory=lambda: str(legacy_or_known("Bandicam")))
+    vault_dir: str = field(default_factory=lambda: str(legacy_or_known("MindsetForest Vault")))
+    # Recordings last written before this time (epoch seconds) are left alone; 0 = no cutoff.
+    # Set by the setup when a folder full of old recordings should not all be transcribed.
+    recordings_since: float = 0.0
     # Recordings starting within this many minutes of the previous one's end are one session.
     session_gap_minutes: float = 20.0
     path: Path | None = field(default=None, compare=False)
@@ -158,6 +179,10 @@ def load_config(path: Path | None = None) -> Config:
     cfg.recordings_dir = os.path.expandvars(os.path.expanduser(str(cfg.recordings_dir or "").strip()))
     cfg.vault_dir = os.path.expandvars(os.path.expanduser(str(cfg.vault_dir or "").strip()))
     cfg.session_gap_minutes = max(1.0, float(cfg.session_gap_minutes))
+    try:
+        cfg.recordings_since = max(0.0, float(cfg.recordings_since or 0))
+    except (TypeError, ValueError):
+        cfg.recordings_since = 0.0
     return cfg
 
 

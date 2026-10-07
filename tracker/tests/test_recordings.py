@@ -5,8 +5,9 @@ from pathlib import Path
 
 from mindsetforest_tracker import recordings
 from mindsetforest_tracker.recordings import (
-    IntakeState, IntakeWorker, Known, KosClient, VaultMirror, assign_session, mp3_chunks, mp3_duration, mp3_frames,
-    process_file, recorded_at, recording_files, routine_reminder, session_note, stale_sessions,
+    REMINDER_START_DELAY, IntakeState, IntakeWorker, Known, KosClient, VaultMirror, assign_session, count_recordings,
+    mp3_chunks, mp3_duration, mp3_frames, process_file, process_recording, recorded_at, recording_files,
+    routine_reminder, session_note, stale_sessions,
 )
 from mindsetforest_tracker.auth import SupabaseAuth, Tokens
 
@@ -237,9 +238,14 @@ def test_scan_transcribes_a_recording_from_a_subfolder_once_it_settles(tmp_path,
         if p.is_file():
             os.utime(p, (old, old))
     done, notes = [], []
-    monkeypatch.setattr(recordings, "process_file",
-                        lambda p, client, state, vault, gap: done.append(p.relative_to(folder).as_posix()) or "n")
-    worker = IntakeWorker(folder, folder / "Vault", 20, SignedIn(), None, notify=notes.append)
+
+    def transcribe(p, client, state, vault, gap):
+        done.append(p.relative_to(folder).as_posix())
+        return "n", True
+
+    monkeypatch.setattr(recordings, "process_recording", transcribe)
+    worker = IntakeWorker(folder, folder / "Vault", 20, SignedIn(), IntakeState(tmp_path / "r.json"),
+                          notify=notes.append)
     worker.scan(old + 600)  # first look: sizes noted
     assert done == []
     worker.scan(old + 660)  # same size a minute later: settled
@@ -299,3 +305,172 @@ def test_the_routine_reminder_comes_at_most_once_a_day(tmp_path):
         assert worker.remind_routine(later) is False
     assert worker.remind_routine(NOW + 3600 + DAY) is True and len(notes) == 2
     assert IntakeWorker(None, vault, 20, SignedIn(), None, notify=None).remind_routine(NOW) is False
+
+
+# -- review fixes: depth, cutoff, restarts, reminders, empty vault --------------
+
+
+def test_the_scan_goes_at_most_three_folders_down(tmp_path):
+    folder = tmp_path / "D"
+    for rel in ("a.mp3", "1/b.mp3", "1/2/c.mp3", "1/2/3/d.mp3", "1/2/3/4/e.mp3", "Music/Artist/Album/Disc 1/f.mp3"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_bytes(b"x")
+    found = {p.relative_to(folder).as_posix() for p in recording_files(folder)}
+    assert found == {"a.mp3", "1/b.mp3", "1/2/c.mp3", "1/2/3/d.mp3"}
+    assert count_recordings(folder) == 4 and count_recordings(folder, limit=2) == 2
+    assert count_recordings(tmp_path / "missing") == 0
+
+
+def test_files_older_than_the_cutoff_are_never_sent(tmp_path, monkeypatch):
+    folder = tmp_path / "Bandicam"
+    (folder / "Audios").mkdir(parents=True)
+    since = 1_800_000_000
+    for name, mtime in (("before.mp3", since - 3600), ("Audios/after.mp3", since + 60)):
+        (folder / name).write_bytes(b"x" * 10)
+        os.utime(folder / name, (mtime, mtime))
+    done = []
+    monkeypatch.setattr(recordings, "process_recording",
+                        lambda p, client, state, vault, gap: (done.append(p.name) or "n", True))
+    worker = IntakeWorker(folder, tmp_path / "Vault", 20, SignedIn(), IntakeState(tmp_path / "r.json"), since=since)
+    worker.scan(since + 600)
+    worker.scan(since + 660)
+    assert done == ["after.mp3"]
+    # No cutoff (the existing recordings were wanted, or an upgrade kept the folder): both.
+    done.clear()
+    everything = IntakeWorker(folder, tmp_path / "Vault", 20, SignedIn(), IntakeState(tmp_path / "r2.json"))
+    everything.scan(since + 600)
+    everything.scan(since + 660)
+    assert sorted(done) == ["after.mp3", "before.mp3"]
+
+
+class Client:
+    """A signed-in KosClient on FakeHttp that counts transcriptions."""
+
+    def __init__(self, tmp_path):
+        auth = SupabaseAuth("https://p.supabase.co", "anon", tmp_path / "s.bin", http=None, clock=lambda: 0.0)
+        auth.tokens = Tokens("acc", "ref", "user-1", 1e12, "a@b.c")
+        self.http = FakeHttp()
+        self.kos = KosClient("https://p.supabase.co", "anon", auth, http=self.http)
+
+    def transcribed(self):
+        return len([c for c in self.http.calls if c[0].endswith("/kos-transcribe")])
+
+
+def test_a_restart_neither_rereads_known_recordings_nor_announces_them(tmp_path, monkeypatch):
+    folder, vault, state_file = tmp_path / "Bandicam", tmp_path / "Vault", tmp_path / "recordings.json"
+    (folder / "Audios").mkdir(parents=True)
+    old = 1_800_000_000
+    files = [folder / "Audios" / f"rec{i}.mp3" for i in range(3)]
+    for i, f in enumerate(files):
+        f.write_bytes(mp3(30 + i))
+        os.utime(f, (old, old))
+    client = Client(tmp_path)
+    # A tracker from before the index: recordings.json is a plain list and knows the three files.
+    first = IntakeState(tmp_path / "old.json")
+    for f in files:
+        process_file(f, client.kos, first, vault, 20)
+    state_file.write_text((tmp_path / "old.json").read_text(encoding="utf-8"), encoding="utf-8")
+    sent = client.transcribed()
+
+    reads = []
+    real_read = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: reads.append(self.name) or real_read(self))
+
+    def run_tracker():
+        notes = []
+        worker = IntakeWorker(folder, vault, 20, client.kos, IntakeState.load(state_file), notify=notes.append)
+        worker.scan(old + 600)
+        worker.scan(old + 660)
+        return notes
+
+    # First start after the upgrade: the files are hashed once to fill the index; no toast, nothing sent.
+    assert run_tracker() == []
+    assert sorted(reads) == ["rec0.mp3", "rec1.mp3", "rec2.mp3"] and client.transcribed() == sent
+    # recordings.json keeps the plain list every tracker reads; the index lives beside it.
+    saved = json.loads(state_file.read_text(encoding="utf-8"))
+    index = json.loads((tmp_path / "recordings-index.json").read_text(encoding="utf-8"))
+    assert isinstance(saved, list) and len(saved) == 3 and len(index) == 3
+    # Every start after that: not read at all.
+    reads.clear()
+    assert run_tracker() == [] and reads == []
+    # A new recording is the only one transcribed and announced.
+    new = folder / "Audios" / "rec3.mp3"
+    new.write_bytes(mp3(40))
+    os.utime(new, (old, old))
+    assert run_tracker() == ["Transcribed: rec3.mp3"] and reads == ["rec3.mp3"]
+    assert client.transcribed() == sent + 1
+
+
+def test_the_index_rehashes_a_changed_file_and_reads_both_state_forms(tmp_path):
+    audio = tmp_path / "a.mp3"
+    audio.write_bytes(mp3(30))
+    client = Client(tmp_path)
+    state = IntakeState(tmp_path / "recordings.json")
+    note, fresh = process_recording(audio, client.kos, state, tmp_path / "Vault", 20)
+    assert fresh is True
+    assert process_recording(audio, client.kos, state, tmp_path / "Vault", 20) == (note, False)
+    # Same path, other content: hashed again and transcribed as the new recording it is.
+    audio.write_bytes(mp3(45))
+    os.utime(audio, (1_800_000_000, 1_800_000_000))
+    other, fresh = process_recording(audio, client.kos, state, tmp_path / "Vault", 20)
+    assert fresh is True and other != note and client.transcribed() == 2
+    loaded = IntakeState.load(tmp_path / "recordings.json")
+    assert set(loaded.known) == set(state.known) and loaded.files == state.files
+    # recordings.json is the list an older tracker reads too; a damaged entry must not hide the good ones.
+    entries = json.loads((tmp_path / "recordings.json").read_text(encoding="utf-8"))
+    assert isinstance(entries, list)
+    (tmp_path / "old.json").write_text(json.dumps([{"sha256": "broken"}] + entries), encoding="utf-8")
+    old = IntakeState.load(tmp_path / "old.json")
+    assert set(old.known) == set(state.known) and old.files == {}
+    # The one-file form a development build wrote is still read.
+    both = {"known": entries, "files": {k: list(v) for k, v in state.files.items()}}
+    (tmp_path / "dev.json").write_text(json.dumps(both), encoding="utf-8")
+    dev = IntakeState.load(tmp_path / "dev.json")
+    assert set(dev.known) == set(state.known) and dev.files == state.files
+    (tmp_path / "junk.json").write_text("42", encoding="utf-8")
+    assert IntakeState.load(tmp_path / "junk.json").known == {}
+
+
+def test_the_first_reminder_waits_for_the_tray_icon_and_an_unshown_one_is_retried(tmp_path):
+    vault = tmp_path / "Vault"
+    session(vault, "2026-10-01 10-00", "---\nstatus: new\n---\n", 2 * DAY, NOW)
+    shown = []
+    icon_ready = [False]
+
+    def notify(msg):
+        if not icon_ready[0]:
+            return False
+        shown.append(msg)
+        return True
+
+    worker = IntakeWorker(None, vault, 20, SignedIn(), None, notify=notify)
+    worker.started_at = NOW
+    assert worker.remind_routine(NOW) is False  # just started: not even looked at
+    assert worker.remind_routine(NOW + REMINDER_START_DELAY - 1) is False and worker._reminder_checked_at is None
+    assert worker.remind_routine(NOW + REMINDER_START_DELAY) is False  # looked, but no icon to show it on
+    assert worker._reminded_at is None and shown == []
+    icon_ready[0] = True
+    assert worker.remind_routine(NOW + REMINDER_START_DELAY + 60) is False  # the next look is in an hour
+    assert worker.remind_routine(NOW + REMINDER_START_DELAY + 3600) is True and shown == [routine_reminder(1)]
+    assert worker.remind_routine(NOW + REMINDER_START_DELAY + 7200) is False  # then once a day
+
+
+def test_an_empty_vault_never_empties_the_dashboard(tmp_path, caplog):
+    server = FakeVaultServer()
+    vault, mirror = mirror_for(tmp_path, server)
+    mirror.sync(0)
+    # vault_dir now points at a new, empty folder (the installer made it and wrote _SYSTEM/).
+    empty = tmp_path / "New" / "MindsetForest Vault"
+    (empty / "_SYSTEM").mkdir(parents=True)
+    (empty / "_SYSTEM" / "routine-prompt.md").write_text("x", encoding="utf-8")
+    (empty / "Sessions").mkdir()
+    moved = VaultMirror(empty, mirror.client)
+    with caplog.at_level("WARNING"):
+        assert moved.sync(0) == (0, 0)
+        assert moved.sync(recordings.RELOAD_SECONDS) == (0, 0)
+    assert len(server.rows) == 3 and not any(m == "DELETE" for m, _ in server.log)
+    assert len([r for r in caplog.records if "nothing deleted" in r.getMessage()]) == 1  # warned once
+    # Once the vault has notes again, deletions mirror as before.
+    (empty / "Sessions" / "2026-10-07 14-03.md").write_text("---\nstatus: new\n---\n", encoding="utf-8")
+    assert moved.sync(2 * recordings.RELOAD_SECONDS) == (1, 2)
+    assert sorted(server.rows) == ["Sessions/2026-10-07 14-03.md"]

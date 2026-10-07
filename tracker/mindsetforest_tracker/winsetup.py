@@ -18,6 +18,7 @@ import json
 import logging
 import ntpath
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,7 +35,10 @@ import requests
 
 from . import __version__
 from .archive_capture import parse_hotkey
-from .config import CONFIG_FILE_NAME, Config, _known_folder, documents_dir, load_config, save_config, videos_dir
+from .config import (
+    CONFIG_FILE_NAME, DEFAULT_DASHBOARD_URL, LEGACY_DASHBOARD_URLS, Config, _known_folder, documents_dir,
+    legacy_or_known, load_config, save_config, videos_dir,
+)
 from .recordings import ensure_system_notes
 
 log = logging.getLogger(__name__)
@@ -45,12 +49,17 @@ RUN_VALUE = "MindsetForest Tracker"       # HKCU\Software\Microsoft\Windows\Curr
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\MindsetForestTracker"
 LEGACY_STARTUP_LNK = "MindsetForest Tracker.lnk"
 START_MENU_LNK = "MindsetForest.lnk"
-DEFAULT_SITE = "https://hmqe333.github.io/mindsetforest_dashboard/"
+DEFAULT_SITE = DEFAULT_DASHBOARD_URL
 QUIT_REQUEST = "quit.request"             # file in data dir; the tracker quits gracefully when it appears
-# A sign-in made in the setup window is saved here, not over session.bin: a tracker still running
-# could save its own rotated token over it. install() moves it into place once the tracker has stopped.
-PENDING_SESSION = "session.new.bin"
+# A sign-in made in the setup window is saved to pending_session_path(), not over session.bin: a tracker
+# still running could save its own rotated token over it. install() moves it into place once the tracker
+# has stopped. One file per window, so two open windows never adopt each other's login.
+PENDING_SESSION = "session.new.bin"       # the name used before it was per window; still cleaned up
 SESSION_FILE = "session.bin"
+# Left in the data dir by the tracker when the server refused its login (main.NEEDS_LOGIN_FILE): the
+# settings window never refreshes the session itself, so this is how it learns the login is gone.
+NEEDS_LOGIN = "needs_login"
+AUTOSTART_ARG = "--autostart"             # in the Run value: a logon start, told apart from a Start menu click
 ROUTINE_TASK = "Open my Obsidian vault at {vault}. Read _SYSTEM/routine-prompt.md and do exactly what it says."
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -67,6 +76,8 @@ _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _CREATE_NO_WINDOW = 0x08000000
 _COPY_ATTEMPTS = 5
 _retry_sleep = time.sleep  # tests replace it
+_PENDING_MAX_AGE = 24 * 3600              # a window's unused sign-in older than this is dropped
+_SUPABASE_URL = re.compile(r"https://[a-z0-9-]+\.supabase\.co/?")
 
 
 class SetupError(Exception):
@@ -166,37 +177,81 @@ class WinOps:
         )
 
     def delete_later(self, paths: list[Path]) -> None:
-        """Delete ``paths`` a few seconds after this process exits (a running exe cannot delete itself)."""
+        """Delete ``paths`` once this process and its onefile bootloader have exited.
+
+        A running exe cannot delete itself, and the uninstaller may sit behind a
+        message box for minutes, so a fixed delay is not enough: the hidden
+        cleanup waits for both processes (at most 10 minutes), then retries.
+        """
         if sys.platform != "win32":
             return
-        command, extra = cleanup_command(paths)  # pragma: no cover - Windows only
+        argv, extra = cleanup_command(paths, sorted(_own_pids()))  # pragma: no cover - Windows only
         subprocess.Popen(  # pragma: no cover
-            command, cwd=tempfile.gettempdir(), env=_child_env(extra), close_fds=True,
+            argv, cwd=tempfile.gettempdir(), env=_child_env(extra), close_fds=True,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             creationflags=_CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP,
         )
 
 
-def cleanup_command(paths: list[Path], comspec: str | None = None) -> tuple[str, dict[str, str]]:
-    """The ``cmd`` line for ``WinOps.delete_later`` plus the variables it reads.
+# Waits for MF_WAIT_PIDS, then deletes MF_DELETE_0..MF_DELETE_<COUNT-1> for up to a minute (a virus
+# scanner may hold the exe a moment longer). Single quotes only: the script is one argv item, so
+# no shell ever parses it, and no path is ever part of it.
+CLEANUP_SCRIPT = (
+    "$ErrorActionPreference = 'SilentlyContinue'; "
+    "$ids = @($env:MF_WAIT_PIDS -split ',' | Where-Object { $_ } | ForEach-Object { [int]$_ }); "
+    "if ($ids.Count) { Wait-Process -Id $ids -Timeout 600 }; "
+    "$paths = @(); "
+    "for ($i = 0; $i -lt [int]$env:MF_DELETE_COUNT; $i++) { "
+    "$paths += [Environment]::GetEnvironmentVariable('MF_DELETE_' + $i) }; "
+    "for ($try = 0; $try -lt 30; $try++) { "
+    "$left = @($paths | Where-Object { $_ -and (Test-Path -LiteralPath $_) }); "
+    "if (-not $left.Count) { break }; "
+    "foreach ($p in $left) { Remove-Item -LiteralPath $p -Recurse -Force }; "
+    "Start-Sleep -Seconds 2 }"
+)
 
-    The paths travel in environment variables, so no folder name (spaces, &,
-    %, parentheses) is ever parsed by cmd. ``/s`` makes cmd strip exactly the
-    outer quotes. The pause lets the exiting exe release its own file and a
-    second pass catches a slow exit; ``ping`` is the pause because ``timeout``
-    quits at once when it has no console input.
+
+def cleanup_command(paths: list[Path], wait_pids: list[int],
+                    powershell: str | None = None) -> tuple[list[str], dict[str, str]]:
+    """The argv for ``WinOps.delete_later`` plus the environment variables its script reads.
+
+    The paths and pids travel in environment variables, so no folder name
+    (spaces, quotes, &, %, $) is ever parsed by a shell. A folder is removed
+    with everything in it, so callers never pass one that holds the vault.
     """
-    env: dict[str, str] = {}
-    steps: list[str] = []
+    env: dict[str, str] = {"MF_WAIT_PIDS": ",".join(str(p) for p in wait_pids),
+                           "MF_DELETE_COUNT": str(len(paths))}
     for i, p in enumerate(paths):
-        var = f"MF_DELETE_{i}"
-        env[var] = str(p)
-        steps.append(f'rmdir /s /q "%{var}%" 2>nul' if p.is_dir() else f'del /f /q "%{var}%" 2>nul')
-    one_pass = " & ".join(steps) or "rem"
-    pause = "ping -n 3 127.0.0.1 >nul"
-    script = f"{pause} & {one_pass} & {pause} & {one_pass}"
-    shell = comspec or os.environ.get("ComSpec") or "cmd.exe"
-    return f'"{shell}" /d /s /c "{script}"', env
+        env[f"MF_DELETE_{i}"] = str(p)
+    if powershell is None:
+        system = os.environ.get("SystemRoot") or r"C:\Windows"
+        found = ntpath.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        powershell = found if os.path.isfile(found) else "powershell.exe"
+    return [powershell, "-NoProfile", "-NonInteractive", "-Command", CLEANUP_SCRIPT], env
+
+
+def _own_pids() -> set[int]:
+    # Imported on call, like _pid_is_tracker: main imports this module.
+    from .main import own_pids
+
+    return own_pids()
+
+
+def schedule_cleanup(ops: WinOps, paths: list[Path]) -> bool:
+    """Hand ``paths`` to the cleanup that runs after this process exits; call it as the very last step.
+
+    After any final dialog: the cleanup waits for this process, so it never
+    races a message box the user is still reading. False when it could not start.
+    """
+    if not paths:
+        return False
+    try:
+        ops.delete_later(list(paths))
+    except Exception:
+        log.warning("Scheduling the deletion of %s failed", ", ".join(map(str, paths)), exc_info=True)
+        return False
+    log.info("Scheduled for deletion after exit: %s", ", ".join(map(str, paths)))
+    return True
 
 
 def _child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -301,7 +356,8 @@ def installed_exe() -> Path:
 
 
 def default_vault_dir() -> Path:
-    return documents_dir() / "MindsetForest Vault"
+    """The zip version's ~/Documents vault when it exists, else one in the real Documents folder."""
+    return legacy_or_known("MindsetForest Vault")
 
 
 def _path_key(path: Path | str) -> str:
@@ -416,15 +472,31 @@ def vault_registered(vault: Path, vaults: list[ObsidianVault]) -> ObsidianVault 
 # -- dashboard settings -----------------------------------------------------------
 
 
+def site_for(url: str | None) -> str:
+    """The dashboard to use for ``url``: the real one when it is empty or the old placeholder.
+
+    The zip version's default was https://mindsetforest.app, a domain nobody
+    owns; settings (and so a password) must never be fetched from it.
+    """
+    text = (url or "").strip()
+    placeholders = {u.rstrip("/").lower() for u in LEGACY_DASHBOARD_URLS}
+    if not text or text.rstrip("/").lower() in placeholders:
+        return DEFAULT_SITE
+    return text.rstrip("/") + "/"
+
+
 def fetch_site_config(site: str, http: Any = requests, timeout: float = 10) -> dict:
     """Supabase URL and public key published by the dashboard build.
 
     They are public (the site's JS has them) but not in the repo, so the exe
-    fetches them instead of carrying them.
+    fetches them instead of carrying them. Only over https and only a
+    ``*.supabase.co`` project: the password typed next goes to that address.
     """
     base = (site or "").strip().rstrip("/")
     if not base:
         raise SetupError("Podaj adres dashboardu.")
+    if not base.lower().startswith("https://"):
+        raise SetupError(f"Adres dashboardu musi zaczynać się od https:// ({base}).")
     base += "/"
     url = base + "downloads/tracker-config.json"
     hint = "Wpisz Supabase URL i klucz publiczny w sekcji Zaawansowane."
@@ -440,9 +512,10 @@ def fetch_site_config(site: str, http: Any = requests, timeout: float = 10) -> d
         raise SetupError(f"Ustawienia z dashboardu są nieczytelne ({url}). {hint}") from exc
     supabase_url = data.get("supabase_url") if isinstance(data, dict) else None
     key = data.get("supabase_anon_key") if isinstance(data, dict) else None
-    if not (isinstance(supabase_url, str) and supabase_url.strip().startswith(("https://", "http://"))
-            and isinstance(key, str) and key.strip()):
+    if not (isinstance(supabase_url, str) and isinstance(key, str) and key.strip()):
         raise SetupError(f"Ustawienia z dashboardu są niepełne ({url}). {hint}")
+    if not _SUPABASE_URL.fullmatch(supabase_url.strip().lower()):
+        raise SetupError(f"Dashboard {base} podaje nieoczekiwany adres Supabase ({supabase_url.strip()}). {hint}")
     return {"supabase_url": supabase_url.strip().rstrip("/"), "supabase_anon_key": key.strip(),
             "dashboard_url": base}
 
@@ -477,12 +550,53 @@ def find_legacy_install(ops: WinOps) -> Path | None:
     return None
 
 
-def load_existing_config(data_dir: Path, legacy_dir: Path | None) -> Config | None:
-    """The config an upgrade starts from: the data dir's, else the old zip folder's."""
-    for candidate in (data_dir / CONFIG_FILE_NAME, legacy_dir / CONFIG_FILE_NAME if legacy_dir else None):
-        if candidate is not None and candidate.is_file():
-            return load_config(candidate)
+def _existing_config_file(data_dir: Path, legacy_dir: Path | None) -> Path | None:
+    """Which config.json the running tracker really uses.
+
+    The zip tracker read its own folder's file first and %APPDATA%'s only as a
+    fallback, and saved "Don't track" back to it, so while the zip install is
+    live its file wins. Once this version is installed (its exe exists) the data
+    dir's file is the live one, even if the old Startup shortcut came back.
+    """
+    data = data_dir / CONFIG_FILE_NAME
+    legacy = legacy_dir / CONFIG_FILE_NAME if legacy_dir else None
+    if legacy is not None and legacy.is_file() and not (data.is_file() and installed_exe().is_file()):
+        return legacy
+    if data.is_file():
+        return data
     return None
+
+
+def load_existing_config(data_dir: Path, legacy_dir: Path | None, ops: WinOps | None = None) -> Config | None:
+    """The config an upgrade starts from (see ``_existing_config_file``), or None.
+
+    Keys missing from the file are resolved the way the zip tracker did, not
+    from today's defaults: its config.json never had the folders, and it used
+    ~/Documents even when Documents lives on OneDrive. A vault that silently
+    moved would leave the notes behind and empty the dashboard's mirror.
+    """
+    path = _existing_config_file(data_dir, legacy_dir)
+    if path is None:
+        return None
+    cfg = load_config(path)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    if "vault_dir" not in raw:
+        cfg.vault_dir = str(legacy_or_known("MindsetForest Vault"))
+    if "recordings_dir" not in raw:
+        documents = Path.home() / "Documents" / "Bandicam"
+        if documents.is_dir():
+            cfg.recordings_dir = str(documents)
+        elif ops is not None:
+            cfg.recordings_dir = str(detect_bandicam_dir(ops)[0])
+        else:
+            cfg.recordings_dir = str(legacy_or_known("Bandicam"))
+    cfg.dashboard_url = site_for(raw.get("dashboard_url") if isinstance(raw.get("dashboard_url"), str) else "")
+    return cfg
 
 
 @dataclass
@@ -495,24 +609,36 @@ class SetupChoices:
     capture_hotkey: str          # "" = off
     autostart: bool = True
     device_name: str = ""        # "" keeps existing / hostname
+    # The user picked the hotkey here (window: changed it; silent: --hotkey), so it goes to the dashboard.
+    push_hotkey: bool = False
+    # A newly chosen recordings folder: also transcribe the MP3s already in it (else only newer ones).
+    include_existing: bool = True
+
+
+def _same_folder_text(a: str, b: str) -> bool:
+    if not a.strip() or not b.strip():
+        return a.strip() == b.strip()
+    return _same_path(_user_path(a), _user_path(b))
 
 
 def merged_config(existing: Config | None, choices: SetupChoices, data_dir: Path) -> Config:
     """``existing`` with the setup choices applied; everything setup does not ask about is kept.
 
-    A new hotkey is flagged for pushing: the dashboard's value wins at every
-    sync, so without the push a choice made here would be undone within a minute.
+    The dashboard's hotkey wins at every sync, so a hotkey the user picked here
+    is flagged for pushing. Only then: an untouched form (a fresh install on a
+    second PC) must not overwrite the hotkey the account already has.
     """
     cfg = copy.deepcopy(existing) if existing is not None else Config()
     cfg.supabase_url = choices.supabase_url.strip().rstrip("/") or cfg.supabase_url
     cfg.supabase_anon_key = choices.supabase_anon_key.strip() or cfg.supabase_anon_key
-    cfg.dashboard_url = choices.dashboard_url.strip() or cfg.dashboard_url
-    cfg.recordings_dir = choices.recordings_dir.strip()
+    cfg.dashboard_url = site_for(choices.dashboard_url.strip() or cfg.dashboard_url)
+    recordings = choices.recordings_dir.strip()
+    if recordings and (existing is None or not _same_folder_text(recordings, existing.recordings_dir or "")):
+        cfg.recordings_since = 0.0 if choices.include_existing else time.time()
+    cfg.recordings_dir = recordings
     cfg.vault_dir = choices.vault_dir.strip()
-    hotkey = choices.capture_hotkey.strip().lower()
-    if existing is None or hotkey != (existing.capture_hotkey or "").strip().lower():
-        cfg.capture_hotkey_push = True
-    cfg.capture_hotkey = hotkey
+    cfg.capture_hotkey_push = bool(choices.push_hotkey or (existing.capture_hotkey_push if existing else False))
+    cfg.capture_hotkey = choices.capture_hotkey.strip().lower()
     if choices.device_name.strip():
         cfg.device_name = choices.device_name.strip()
     cfg.path = data_dir / CONFIG_FILE_NAME
@@ -547,21 +673,30 @@ def _with_bootloader(proc: psutil.Process) -> list[psutil.Process]:
     return family
 
 
+def _lock_pid(data_dir: Path) -> int | None:
+    """The pid written in tracker.lock, or None."""
+    try:
+        pid = int((data_dir / LOCK_FILE).read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
 def stop_running_tracker(data_dir: Path, timeout: float = 10.0, *, is_tracker: Callable[[int], bool] = _pid_is_tracker,
                          sleep: Callable[[float], None] = time.sleep,
-                         clock: Callable[[], float] = time.monotonic) -> bool:
+                         clock: Callable[[], float] = time.monotonic,
+                         self_pids: Callable[[], set[int]] = _own_pids) -> bool:
     """Ask the running tracker to quit, then make sure it did. True if one was running.
 
     The quit request lets it flush the open session and sync; terminate and
     kill are the fallback for an old version that does not know the request.
+    A stale lock pid now used by this process or its own onefile bootloader is
+    not a tracker: stopping it would kill the setup itself.
     """
     quit_file = data_dir / QUIT_REQUEST
     try:
-        try:
-            pid = int((data_dir / LOCK_FILE).read_text().strip())
-        except (OSError, ValueError):
-            return False
-        if pid <= 0 or pid == os.getpid() or not is_tracker(pid):
+        pid = _lock_pid(data_dir)
+        if pid is None or pid in self_pids() or not is_tracker(pid):
             return False
         try:
             proc = psutil.Process(pid)
@@ -703,34 +838,131 @@ def _recordings_messages(recordings_dir: str) -> list[str]:
 
 def _routine_messages(vault: Path) -> list[str]:
     return [
-        "Ostatni krok: ustaw rutynę Claude w Claude Desktop (zadanie cykliczne co 2-3 godziny z dostępem do "
-        f"folderu {vault}). Bez niej nagrania się transkrybują, ale notatki wiedzy nie powstaną.",
+        # The same steps as setup_gui.ROUTINE_STEPS, README.md and TrackerDownload.tsx (Claude Desktop's labels).
+        "Ostatni krok: ustaw rutynę Claude w Claude Desktop: Scheduled > New task > Set up manually, "
+        f"częstotliwość Hourly, folder zadania {vault}, uruchamiana lokalnie na tym komputerze (nie w chmurze). "
+        "Bez niej nagrania się transkrybują, ale notatki wiedzy nie powstaną.",
         "Polecenie rutyny: " + ROUTINE_TASK.format(vault=vault),
     ]
 
 
-def adopt_pending_session(data_dir: Path) -> bool:
-    """Move a sign-in made in the setup window into session.bin; call only with the tracker stopped."""
-    pending = data_dir / PENDING_SESSION
-    if not pending.is_file():
+def pending_session_path(data_dir: Path, pid: int | None = None) -> Path:
+    """Where the setup window process ``pid`` (default: this one) keeps a sign-in until install()."""
+    return data_dir / f"session.new.{pid or os.getpid()}.bin"
+
+
+def adopt_pending_session(data_dir: Path, pending: Path | None) -> bool:
+    """Move the sign-in in ``pending`` into session.bin; call only with the tracker stopped.
+
+    That new login answers the tracker's needs_login marker, so the marker goes too.
+    """
+    if pending is None or not pending.is_file():
         return False
     try:
         os.replace(pending, data_dir / SESSION_FILE)
     except OSError as exc:
         raise SetupError(f"Nie mogę zapisać logowania w {data_dir / SESSION_FILE} ({exc}).") from exc
+    with suppress(OSError):
+        (data_dir / NEEDS_LOGIN).unlink()
     return True
 
 
+def _drop_stale_pending_sessions(data_dir: Path, now: float | None = None) -> None:
+    """Sign-ins left by windows that closed without installing (or crashed), after a day."""
+    cutoff = (time.time() if now is None else now) - _PENDING_MAX_AGE
+    with suppress(OSError):
+        for path in data_dir.glob("session.new*.bin"):
+            with suppress(OSError):
+                if path.stat().st_mtime < cutoff:
+                    path.unlink()
+
+
+def login_expired(data_dir: Path) -> bool:
+    """The tracker found its saved login refused by the server (and nobody has signed in since)."""
+    return (data_dir / NEEDS_LOGIN).is_file()
+
+
+def autostart_enabled(ops: WinOps) -> bool:
+    """The tracker starts with Windows: our Run value, or the zip version's Startup shortcut.
+
+    A Run value that cannot be read raises (unless the shortcut answers anyway):
+    "unknown" must not read as "off", or saving the settings would delete the
+    Run value. The caller picks the fallback (the window ticks the box).
+    """
+    error: Exception | None = None
+    try:
+        if ops.get_run(RUN_VALUE) is not None:
+            return True
+    except Exception as exc:
+        error = exc
+    try:
+        if (ops.startup_dir() / LEGACY_STARTUP_LNK).is_file():
+            return True
+    except Exception:
+        log.debug("Could not look for the old Startup shortcut", exc_info=True)
+    if error is not None:
+        raise error
+    return False
+
+
+def replace_legacy_tracker(data_dir: Path, ops: WinOps) -> bool:
+    """At logon the zip tracker (its Startup shortcut is back) won tracker.lock: retire it.
+
+    The same migration install() does: the shortcut goes and the old tracker is
+    stopped, so the installed exe can take the lock. False, with nothing done,
+    when there is no such shortcut or the lock belongs to the installed exe.
+    """
+    try:
+        lnk = ops.startup_dir() / LEGACY_STARTUP_LNK
+        if not lnk.is_file():
+            return False
+    except Exception:
+        return False
+    pid = _lock_pid(data_dir)
+    if pid is None:
+        return False
+    try:
+        holder = psutil.Process(pid).exe()
+    except (psutil.Error, OSError):
+        holder = ""
+    if holder and _same_path(holder, installed_exe()):
+        return False
+    try:
+        lnk.unlink()
+    except OSError:
+        log.warning("Could not remove the old Startup shortcut %s", lnk, exc_info=True)
+    log.info("The old zip tracker (pid %d, %s) started at logon; replacing it", pid, holder or "?")
+    stop_running_tracker(data_dir)
+    return True
+
+
+def _prepare_vault(vault: Path) -> None:
+    """Create the vault with its _SYSTEM notes and prove it is writable (a drive may be unplugged)."""
+    try:
+        vault.mkdir(parents=True, exist_ok=True)
+        ensure_system_notes(vault)
+        probe = vault / "_SYSTEM" / f".mindsetforest-write-test-{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+    except OSError as exc:
+        raise SetupError(f"Nie mogę przygotować vaulta w {vault} ({exc}). Sprawdź, czy dysk jest podłączony, "
+                         "albo wybierz inny folder.") from exc
+
+
 def install(choices: SetupChoices, *, data_dir: Path, source_exe: Path | None, ops: WinOps,
-            launch: bool = True, progress: Callable[[str], None] = lambda s: None) -> InstallResult:
+            launch: bool = True, progress: Callable[[str], None] = lambda s: None,
+            pending_session: Path | None = None) -> InstallResult:
     """Install or upgrade in place, then start the tracker.
 
     Safe to run again: a newer setup exe replaces the program, keeps every
     config field it does not ask about and leaves the data dir (login, device
     id, history) alone. ``source_exe`` None is a dev run from the sources:
     nothing is copied or registered, the tracker starts as ``run_tracker.py``.
-    Only a bad choice, a failed copy or an unwritable config/vault raise
-    SetupError; autostart, shortcut and start-up failures become messages.
+    ``pending_session`` is the calling window's sign-in (``pending_session_path``).
+    Only a bad choice, an unwritable vault, a failed copy or an unwritable config
+    raise SetupError; the vault is checked before the tracker is stopped, and a
+    failure after the stop starts the old tracker again. Autostart, shortcut
+    and start-up failures become messages.
     """
     def step(text: str) -> None:
         log.info("Setup: %s", text)
@@ -740,37 +972,48 @@ def install(choices: SetupChoices, *, data_dir: Path, source_exe: Path | None, o
     vault = _validate(choices)
     dev = source_exe is None
     exe = _dev_script() if dev else installed_exe()
+    run_argv = [_dev_python(), str(exe)] if dev else [str(exe)]
     messages: list[str] = []
     legacy_dir = find_legacy_install(ops)
     had_exe = not dev and exe.exists()
 
+    step("Przygotowuję vault Obsidian...")
+    _prepare_vault(vault)
+
     step("Zatrzymuję działający tracker...")
-    if stop_running_tracker(data_dir):
+    stopped = stop_running_tracker(data_dir)
+    if stopped:
         messages.append("Zatrzymano działający tracker.")
-    if adopt_pending_session(data_dir):
-        messages.append("Zapisano nowe logowanie.")
-    # Read only now: a stopping tracker may save config.json once more (e.g. the hotkey push flag).
-    existing = load_existing_config(data_dir, legacy_dir)
-    upgrade = existing is not None or had_exe
-
-    if not dev:
-        step("Kopiuję program...")
-        try:
-            same = exe.exists() and source_exe.samefile(exe)
-        except OSError:
-            same = False
-        if not same:
-            _copy_exe(source_exe, exe)
-        with suppress(OSError):
-            exe.with_name(exe.name + ".old").unlink()
-
-    step("Zapisuję ustawienia...")
-    cfg = merged_config(existing, choices, data_dir)
     try:
-        data_dir.mkdir(parents=True, exist_ok=True)
-        save_config(cfg)
-    except OSError as exc:
-        raise SetupError(f"Nie mogę zapisać ustawień w {cfg.path} ({exc}).") from exc
+        if adopt_pending_session(data_dir, pending_session):
+            messages.append("Zapisano nowe logowanie.")
+        _drop_stale_pending_sessions(data_dir)
+        # Read only now: a stopping tracker may save config.json once more (e.g. the hotkey push flag).
+        existing = load_existing_config(data_dir, legacy_dir, ops)
+        upgrade = existing is not None or had_exe
+
+        if not dev:
+            step("Kopiuję program...")
+            try:
+                same = exe.exists() and source_exe.samefile(exe)
+            except OSError:
+                same = False
+            if not same:
+                _copy_exe(source_exe, exe)
+            with suppress(OSError):
+                exe.with_name(exe.name + ".old").unlink()
+
+        step("Zapisuję ustawienia...")
+        cfg = merged_config(existing, choices, data_dir)
+        try:
+            data_dir.mkdir(parents=True, exist_ok=True)
+            save_config(cfg)
+        except OSError as exc:
+            raise SetupError(f"Nie mogę zapisać ustawień w {cfg.path} ({exc}).") from exc
+    except SetupError:
+        if stopped and launch:
+            _restart_after_failure(ops, run_argv, exe)
+        raise
     if dev:
         messages.append(f"Tryb deweloperski: tracker startuje ze źródeł ({exe}).")
         if (exe.parent / CONFIG_FILE_NAME).is_file():
@@ -781,13 +1024,6 @@ def install(choices: SetupChoices, *, data_dir: Path, source_exe: Path | None, o
         messages.append(f"Zainstalowano tracker {__version__} w {exe.parent}.")
     if not cfg.supabase_url or not cfg.supabase_anon_key:
         messages.append("Brak adresu Supabase: tracker liczy czas tylko na tym komputerze.")
-
-    step("Przygotowuję vault Obsidian...")
-    try:
-        vault.mkdir(parents=True, exist_ok=True)
-        ensure_system_notes(vault)
-    except OSError as exc:
-        raise SetupError(f"Nie mogę przygotować vaulta w {vault} ({exc}).") from exc
     messages.extend(_recordings_messages(cfg.recordings_dir))
 
     step("Sprawdzam starą wersję...")
@@ -805,10 +1041,9 @@ def install(choices: SetupChoices, *, data_dir: Path, source_exe: Path | None, o
         log.warning("Removing the old Startup shortcut failed", exc_info=True)
         messages.append(f"Nie udało się usunąć starego skrótu autostartu ({exc}).")
 
-    run_argv = [_dev_python(), str(exe)] if dev else [str(exe)]
     step("Ustawiam autostart...")
     try:
-        ops.set_run(RUN_VALUE, _command_line(run_argv) if choices.autostart else None)
+        ops.set_run(RUN_VALUE, f"{_command_line(run_argv)} {AUTOSTART_ARG}" if choices.autostart else None)
         messages.append("Tracker uruchomi się przy starcie Windows." if choices.autostart
                         else "Autostart wyłączony: tracker uruchomisz z menu Start (MindsetForest).")
     except Exception as exc:
@@ -845,6 +1080,17 @@ def install(choices: SetupChoices, *, data_dir: Path, source_exe: Path | None, o
     messages.extend(_routine_messages(vault))
     return InstallResult(exe=exe, config_path=cfg.path or data_dir / CONFIG_FILE_NAME, vault=vault,
                          started=started, legacy_removed=legacy_removed, messages=messages)
+
+
+def _restart_after_failure(ops: WinOps, run_argv: list[str], exe: Path) -> None:
+    """The setup stopped the tracker and then failed: start the old one again, so time is still tracked."""
+    if not exe.exists():
+        return
+    try:
+        ops.launch_detached(run_argv, cwd=exe.parent)
+        log.info("Setup failed after stopping the tracker; started it again")
+    except Exception:
+        log.warning("Could not start the tracker again after a failed setup", exc_info=True)
 
 
 def _uninstall_values(exe: Path) -> dict[str, str | int]:
@@ -898,15 +1144,72 @@ def _remove_tree(root: Path, keep: list[Path]) -> None:
         remove(root)
 
 
+# What the tracker and the setup write in the data dir; --remove-data deletes these and nothing else,
+# because MINDSETFOREST_HOME may point at a folder that also holds the user's own files.
+TRACKER_DATA_FILES = (
+    CONFIG_FILE_NAME, "session*.bin*", "tracker.db*", "recordings.json", "recordings.tmp", "recordings-index.json",
+    "recordings-index.tmp", LOCK_FILE,
+    QUIT_REQUEST, NEEDS_LOGIN, "tracker.log*", "setup.log*",
+)
+
+
+@dataclass
+class UninstallResult:
+    messages: list[str]                                        # Polish, one line each
+    # Still in use by this process (the running exe and its folder): pass to schedule_cleanup() last.
+    pending_delete: list[Path] = field(default_factory=list)
+
+
+def _close_logs_in(folder: Path) -> None:
+    """Close this process's log files inside ``folder``: Windows cannot delete an open file.
+
+    Removed from the root logger too, or the next record would open them again.
+    """
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        name = getattr(handler, "baseFilename", None)
+        if isinstance(handler, logging.FileHandler) and name and _inside(name, folder):
+            root.removeHandler(handler)
+            with suppress(Exception):
+                handler.close()
+
+
+def _remove_tracker_data(data_dir: Path) -> tuple[list[Path], bool]:
+    """Delete the tracker's own files (``TRACKER_DATA_FILES``), then the folder if nothing else is left.
+
+    Returns the files that could not be deleted and whether the folder is gone.
+    """
+    failed: list[Path] = []
+    if not data_dir.is_dir():
+        return failed, True
+    seen: set[Path] = set()
+    for pattern in TRACKER_DATA_FILES:
+        for path in sorted(data_dir.glob(pattern)):
+            if path in seen or not (path.is_file() or path.is_symlink()):
+                continue
+            seen.add(path)
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                failed.append(path)
+    with suppress(OSError):
+        data_dir.rmdir()  # only when empty: anything else in it is not ours
+    return failed, not data_dir.exists()
+
+
 def uninstall(*, data_dir: Path, ops: WinOps, remove_data: bool = False,
-              running_exe: Path | None = None) -> list[str]:
+              running_exe: Path | None = None) -> UninstallResult:
     """Stop the tracker and remove the program, its autostart, shortcut and Apps entry.
 
-    The data dir goes only with ``remove_data``; the vault and the recordings
-    never. A running exe cannot delete itself, so when the uninstaller is the
-    installed exe its file and folder are deleted just after it exits.
+    The tracker's files in the data dir go only with ``remove_data``; the vault,
+    the recordings and anything else in that folder never. A running exe cannot
+    delete itself: what is still in use comes back in ``pending_delete``, for
+    ``schedule_cleanup`` once the caller has shown its last dialog.
     """
     messages: list[str] = []
+    pending: list[Path] = []
     keep = _user_folders(data_dir)
     if stop_running_tracker(data_dir):
         messages.append("Zatrzymano tracker.")
@@ -935,25 +1238,30 @@ def uninstall(*, data_dir: Path, ops: WinOps, remove_data: bool = False,
         held = running_exe if running_exe is not None and _inside(running_exe, folder) else None
         _remove_tree(folder, [*keep, *([held] if held else [])])
         if folder.exists():
-            # rmdir /s would take a vault kept inside the folder along, so then only the exe goes.
-            later = ([held] if held else []) + ([] if any(_inside(k, folder) for k in keep) else [folder])
-            try:
-                ops.delete_later(later)
-                messages.append(f"Folder programu {folder} zniknie kilka sekund po zakończeniu deinstalacji.")
-            except Exception as exc:
-                log.warning("Scheduling the program folder's deletion failed", exc_info=True)
-                messages.append(f"Nie udało się usunąć {folder} ({exc}); możesz go skasować ręcznie.")
+            # The cleanup removes a folder with everything in it, so with a vault inside only the exe goes.
+            pending = ([held] if held else []) + ([] if any(_inside(k, folder) for k in keep) else [folder])
+            messages.append(f"Folder programu {folder} zniknie kilka sekund po zakończeniu deinstalacji.")
         else:
             messages.append(f"Usunięto program z {folder}.")
 
     if remove_data:
-        _remove_tree(data_dir, keep)
-        messages.append(f"Usunięto dane lokalne (logowanie, historia czasu) z {data_dir}.")
+        _close_logs_in(data_dir)
+        failed, gone = _remove_tracker_data(data_dir)
+        if failed:
+            pending.extend(failed)
+            names = ", ".join(p.name for p in failed)
+            messages.append(f"Nie udało się od razu usunąć z {data_dir}: {names}. Spróbuję jeszcze raz po "
+                            "zakończeniu deinstalacji; jeśli zostaną, usuń je ręcznie.")
+        elif gone:
+            messages.append(f"Usunięto dane lokalne (logowanie, historia czasu) z {data_dir}.")
+        else:
+            messages.append(f"Usunięto dane trackera (logowanie, historia czasu) z {data_dir}. "
+                            "Folder zostaje, bo są w nim inne pliki.")
     else:
         messages.append(f"Dane lokalne zostają w {data_dir}: po ponownej instalacji logowanie wróci samo.")
     messages.append("Vault Obsidian i nagrania zostają nietknięte.")
     log.info("Uninstalled: %s", " | ".join(messages))
-    return messages
+    return UninstallResult(messages=messages, pending_delete=pending)
 
 
 # -- CI smoke test ----------------------------------------------------------------

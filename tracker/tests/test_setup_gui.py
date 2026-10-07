@@ -19,22 +19,33 @@ from mindsetforest_tracker.setup_gui import (
     CONTROL_MASK,
     SHIFT_MASK,
     SuperKeys,
+    account_hint,
+    account_line,
     choices_from_form,
     claude_desktop_installed,
     clean_path,
+    count_existing,
     done_messages,
+    existing_recordings_label,
+    hotkey_changed,
     hotkey_from_event,
     hotkey_label,
     hotkey_problem,
+    include_existing_default,
     initial_form,
+    is_full_path,
     obsidian_action,
+    offer_existing,
     pressed_label,
     recordings_hint,
     routine_text,
     signin_error_text,
+    supabase_host,
     validate,
     vault_choices,
 )
+
+REPO = Path(__file__).resolve().parents[2]
 
 X11 = "linux"
 WIN = "win32"
@@ -197,6 +208,28 @@ def test_not_signed_in_is_a_warning(tmp_path):
     errors, warnings = _split(validate(_form(tmp_path, signed_in=False)))
     assert errors == []
     assert any("Nie zalogowano" in w for w in warnings)
+    # Windows 11 hides a new tray icon under ^: the warning names that and the Start menu way in.
+    assert any("strzałką ^" in w and "menu Start (MindsetForest)" in w for w in warnings)
+    _, warnings = _split(validate(_form(tmp_path, signed_in=False, login_expired=True)))
+    assert any(w.startswith("Logowanie wygasło") for w in warnings)
+
+
+def test_relative_recordings_folder_is_an_error(tmp_path):
+    errors, _ = _split(validate(_form(tmp_path, recordings_dir="Bandicam")))
+    assert any("pełną ścieżkę folderu nagrań" in e for e in errors)
+    assert validate(_form(tmp_path, recordings_dir="Bandicam", transcribe=False)) == []
+    assert recordings_hint("Bandicam", tmp_path, "default").startswith("Podaj pełną ścieżkę")
+
+
+def test_full_paths_on_windows():
+    assert is_full_path("C:\\Users\\Ola\\Bandicam", platform=WIN)
+    assert is_full_path("D:/Nagrania", platform=WIN)
+    assert is_full_path("\\\\nas\\share\\audio", platform=WIN)
+    assert is_full_path("\\\\nas\\share", platform=WIN)
+    # Relative to the tracker's working folder (the program folder) or to a drive's current folder.
+    for relative in ("Bandicam", "D:Nagrania", "\\Nagrania", "/Nagrania", ""):
+        assert not is_full_path(relative, platform=WIN), relative
+    assert is_full_path("/home/ola/rec", platform=X11) and not is_full_path("rec", platform=X11)
 
 
 def test_bad_hotkey_is_an_error_and_a_poor_one_a_warning(tmp_path):
@@ -240,10 +273,47 @@ def test_claude_desktop_detection(tmp_path):
     env = {"LOCALAPPDATA": str(local), "APPDATA": str(roaming)}
     assert not claude_desktop_installed(env)
     assert not claude_desktop_installed({})
-    for folder in (local / "AnthropicClaude", local / "Programs" / "claude", roaming / "Claude"):
+    # Squirrel install folders, the settings folder, and the MSIX package's data folder.
+    for folder in (local / "AnthropicClaude", local / "Programs" / "claude", roaming / "Claude",
+                   local / "Packages" / "Claude_pzs8sxrjxfjjc"):
         folder.mkdir(parents=True)
-        assert claude_desktop_installed(env)
+        assert claude_desktop_installed(env), folder
         folder.rmdir()
+    (local / "Packages" / "Claude_pzs8sxrjxfjjc.txt").write_text("x")  # a file, not the package folder
+    assert not claude_desktop_installed(env)
+    alias = local / "Microsoft" / "WindowsApps" / "claude.exe"  # the MSIX app execution alias
+    alias.parent.mkdir(parents=True)
+    alias.write_bytes(b"")
+    assert claude_desktop_installed(env)
+
+
+def test_a_detection_miss_never_says_claude_is_absent():
+    assert setup_gui.CLAUDE_NOT_DETECTED == "Nie wykryto Claude Desktop. Jeśli już go masz, pomiń ten krok."
+
+
+def test_routine_steps_say_where_scheduled_tasks_live():
+    steps = " ".join(setup_gui.ROUTINE_STEPS)
+    # Claude Desktop's own (English) labels, a local task for the vault, and when it fires.
+    for label in ("Scheduled", "New task", "Set up manually", "Hourly"):
+        assert label in steps
+    assert "lokalnie" in steps and "nie w chmurze" in steps
+    assert "Claude Desktop jest włączony" in setup_gui.ROUTINE_NOTE and "komputer nie śpi" in setup_gui.ROUTINE_NOTE
+    # The README and the dashboard's download box give the same steps.
+    readme = (REPO / "tracker" / "README.md").read_text(encoding="utf-8")
+    box = (REPO / "artifacts" / "app" / "src" / "components" / "tracker" / "TrackerDownload.tsx").read_text(
+        encoding="utf-8")
+    # So do the release notes CI writes for the download.
+    notes = (REPO / ".github" / "workflows" / "tracker-windows.yml").read_text(encoding="utf-8")
+    for text in (readme, box, notes):
+        for label in ("Scheduled", "New task", "Set up manually", "Hourly", "nie w chmurze", "komputer nie śpi"):
+            assert label in text, label
+        assert "2-3 godzin" not in text
+
+
+def test_done_page_texts_point_past_the_hidden_tray_icon():
+    assert setup_gui.TRACKER_RUNNING == ("Tracker działa (ikonka drzewa przy zegarze; jeśli jej nie widać, "
+                                         "kliknij strzałkę ^ obok zegara).")
+    assert "menu Start: MindsetForest" in setup_gui.SETTINGS_LATER
 
 
 def test_obsidian_action(tmp_path):
@@ -261,6 +331,68 @@ def test_vault_choices_put_the_default_first_without_repeats(tmp_path):
     vaults = [winsetup.ObsidianVault(tmp_path / "A", "a", 2), winsetup.ObsidianVault(default, "d", 1)]
     assert vault_choices(default, vaults, str(tmp_path / "A")) == [str(default), str(tmp_path / "A")]
     assert vault_choices(default, [], str(tmp_path / "B")) == [str(default), str(tmp_path / "B")]
+
+
+def test_initial_form_never_uses_the_placeholder_site(tmp_path):
+    detected, default_vault = tmp_path / "Bandicam", tmp_path / "Vault"
+    for old in ("https://mindsetforest.app", "https://mindsetforest.app/", ""):
+        form = initial_form(Config(dashboard_url=old), detected=detected, default_vault=default_vault, autostart=True)
+        assert form["dashboard_url"] == winsetup.DEFAULT_SITE
+    own = initial_form(Config(dashboard_url="https://me.example/dash"), detected=detected,
+                       default_vault=default_vault, autostart=True)
+    assert own["dashboard_url"] == "https://me.example/dash/"
+
+
+def test_the_sign_in_server_is_shown():
+    assert supabase_host("https://abcd.supabase.co/") == "abcd.supabase.co"
+    assert supabase_host("") == "" and supabase_host("not a url") == ""
+    assert account_hint("https://abcd.supabase.co").endswith("Serwer logowania: abcd.supabase.co")
+    assert "Serwer logowania" not in account_hint("")
+
+
+def test_account_line_for_an_expired_login():
+    assert account_line("ola@example.com", False) == "Zalogowano: ola@example.com"
+    assert account_line("ola@example.com", True) == "Logowanie wygasło (ola@example.com): zaloguj się ponownie"
+
+
+def test_hotkey_is_pushed_only_when_changed_in_the_window(tmp_path):
+    assert not hotkey_changed("alt+shift+s", "alt+shift+s")
+    assert not hotkey_changed("Alt+Shift+S ", "alt+shift+s")
+    assert hotkey_changed("ctrl+f8", "alt+shift+s") and hotkey_changed("", "alt+shift+s")
+    assert choices_from_form(_form(tmp_path, push_hotkey=True)).push_hotkey
+    assert not choices_from_form(_form(tmp_path)).push_hotkey  # a fresh install's untouched default
+
+
+def test_existing_recordings_choice(tmp_path):
+    assert existing_recordings_label(3) == "Przetwórz też nagrania, które już są w folderze (3)"
+    assert existing_recordings_label(999) == "Przetwórz też nagrania, które już są w folderze (999)"
+    assert existing_recordings_label(1000) == "Przetwórz też nagrania, które już są w folderze (999+)"
+    detected = tmp_path / "Rec"
+    # Bandicam's folder holds the user's recordings; a broad folder may hold anyone's audio.
+    assert include_existing_default(str(tmp_path / "Documents" / "Bandicam"), detected, "default")
+    assert include_existing_default(str(tmp_path / "BANDICAM" / "Audios"), detected, "default")
+    # Even Bandicam's own setting may point at a whole drive or Desktop: off unless the folder says Bandicam.
+    assert not include_existing_default(str(detected), detected, "bandicam")
+    assert not include_existing_default(str(detected), detected, "default")
+    assert not include_existing_default(str(tmp_path / "Music"), detected, "bandicam")
+    assert not include_existing_default("", detected, "bandicam")
+    # Asked only for a folder the tracker did not watch before, and only when it holds MP3s.
+    assert offer_existing(str(detected), 4, "")
+    assert offer_existing(str(detected), 4, str(tmp_path / "Old"))
+    assert not offer_existing(str(detected), 4, str(detected))
+    assert not offer_existing(str(detected), 0, "") and not offer_existing(str(detected), None, "")
+    assert choices_from_form(_form(tmp_path, include_existing=False)).include_existing is False
+    assert choices_from_form(_form(tmp_path)).include_existing is True
+
+
+def test_count_existing_uses_the_trackers_depth_limit(tmp_path):
+    root = tmp_path / "D"
+    for rel in ("a.mp3", "Audios/b.MP3", "x/y/c.mp3", "x/y/z/d.mp3", "x/y/z/deep/e.mp3", "notes.txt"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(b"")
+    assert count_existing(str(root)) == 4  # e.mp3 is four levels down: the tracker never sees it
+    assert count_existing(str(root / "x"), vault=str(root / "x" / "y")) == 0  # the vault is not recordings
+    assert count_existing(str(tmp_path / "missing")) == 0 and count_existing("D") == 0
 
 
 def test_initial_form_without_and_with_a_config(tmp_path):
@@ -311,6 +443,117 @@ def test_module_imports_without_tkinter():
 def test_unknown_mode_is_rejected_before_any_window(tmp_path):
     with pytest.raises(ValueError):
         setup_gui.run_setup_window("bogus", data_dir=tmp_path, ops=winsetup.WinOps(), source_exe=None)
+
+
+# -- window state without a window (runs everywhere) ---------------------------------------
+
+class StateOps:
+    """Just enough of WinOps for ``_load_state``: no legacy install, autostart as given."""
+
+    def __init__(self, run: str | None = None) -> None:
+        self.run = run
+
+    def get_run(self, _name):
+        return self.run
+
+    def startup_dir(self):
+        raise NotImplementedError
+
+    def read_bandicam_output(self):
+        return None
+
+
+def _saved_session(path: Path, email: str) -> None:
+    payload = json.dumps({"refresh_token": "r", "user_id": "u", "email": email}).encode()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(auth.protect(payload))
+
+
+def _state(monkeypatch, tmp_path, mode="install", ops=None, *, installed=False):
+    """A SetupWindow with only ``_load_state`` run: the decisions it makes, no Tk needed."""
+    monkeypatch.setattr(winsetup, "installed_exe", lambda: tmp_path / ("Programs/x.exe" if installed else "none.exe"))
+    if installed:
+        (tmp_path / "Programs").mkdir(exist_ok=True)
+        (tmp_path / "Programs" / "x.exe").write_bytes(b"")
+    monkeypatch.setattr(winsetup, "obsidian_vaults", lambda appdata=None: [])
+    monkeypatch.setattr(winsetup, "default_vault_dir", lambda: tmp_path / "Default Vault")
+    monkeypatch.setattr(winsetup, "detect_bandicam_dir", lambda ops: (tmp_path / "Bandicam", "default"))
+    window = setup_gui.SetupWindow.__new__(setup_gui.SetupWindow)
+    window.mode, window.data_dir, window.ops = mode, tmp_path / "data", ops or StateOps()
+    window.pending = winsetup.pending_session_path(window.data_dir)
+    window._load_state()
+    return window
+
+
+def test_upgrade_keeps_autostart_off(monkeypatch, tmp_path):
+    # Installed, and the user had turned autostart off in Ustawienia: an upgrade must not turn it on.
+    assert _state(monkeypatch, tmp_path, ops=StateOps(run=None), installed=True).initial["autostart"] is False
+    assert _state(monkeypatch, tmp_path, ops=StateOps(run='"x.exe" --autostart'), installed=True).initial["autostart"]
+    assert _state(monkeypatch, tmp_path, "settings", ops=StateOps(run=None)).initial["autostart"] is False
+    # A fresh install starts ticked, also after an uninstall that kept config.json (no Run value then).
+    save_config(Config(supabase_url="https://x.supabase.co", supabase_anon_key="k",
+                       path=tmp_path / "data" / "config.json"))
+    assert _state(monkeypatch, tmp_path, ops=StateOps(run=None)).initial["autostart"] is True
+
+
+def test_expired_login_is_not_shown_as_signed_in(monkeypatch, tmp_path):
+    data = tmp_path / "data"
+    _saved_session(data / winsetup.SESSION_FILE, "ola@example.com")
+    window = _state(monkeypatch, tmp_path, "settings")
+    assert (window.account_email, window.expired) == ("ola@example.com", False)
+    (data / winsetup.NEEDS_LOGIN).write_text("refused")
+    window = _state(monkeypatch, tmp_path, "settings")
+    assert (window.account_email, window.expired) == ("ola@example.com", True)
+    # A sign-in made in this window and not installed yet is the answer to that.
+    _saved_session(winsetup.pending_session_path(data), "ola@example.com")
+    window = _state(monkeypatch, tmp_path, "settings")
+    assert (window.account_email, window.expired) == ("ola@example.com", False)
+
+
+def test_a_window_sees_and_drops_only_its_own_pending_sign_in(monkeypatch, tmp_path):
+    data = tmp_path / "data"
+    _saved_session(data / winsetup.SESSION_FILE, "a@example.com")
+    other = winsetup.pending_session_path(data, pid=os.getpid() + 1)
+    _saved_session(other, "b@example.com")  # signed in in another window, not installed yet
+    window = _state(monkeypatch, tmp_path, "settings")
+    assert window.pending != other and window.account_email == "a@example.com"
+    _saved_session(window.pending, "c@example.com")
+    assert _state(monkeypatch, tmp_path, "settings").account_email == "c@example.com"
+
+    root = SimpleNamespace(after_cancel=lambda job: None)
+    window.root, window.closed, window.exit_code, window._poll_id, window._count_after = root, False, 1, "p", None
+    window._destroyed(SimpleNamespace(widget=root))  # closed with Anuluj or X
+    assert not window.pending.exists() and other.exists()
+
+
+def test_cleanup_after_uninstall_is_the_last_step(monkeypatch, tmp_path):
+    order = []
+
+    class FakeRoot:
+        def mainloop(self):
+            order.append("mainloop")  # the result dialog was shown and closed in here
+
+    class FakeWindow:
+        def __init__(self, root, mode, **kw):
+            self.exit_code, self.cleanup = 0, [tmp_path / "prog"]
+
+    monkeypatch.setattr(setup_gui, "_import_tk", lambda: None)
+    monkeypatch.setattr(setup_gui, "tk", SimpleNamespace(Tk=FakeRoot))
+    monkeypatch.setattr(setup_gui, "SetupWindow", FakeWindow)
+    monkeypatch.setattr(winsetup, "schedule_cleanup", lambda ops, paths: order.append(("cleanup", paths)))
+    assert setup_gui.run_setup_window("settings", data_dir=tmp_path, ops=StateOps(), source_exe=None) == 0
+    assert order == ["mainloop", ("cleanup", [tmp_path / "prog"])]
+
+
+def test_help_window_stays_above_the_taskbar():
+    placed = []
+    top = SimpleNamespace(update_idletasks=lambda: None, winfo_reqwidth=lambda: 500, winfo_reqheight=lambda: 600,
+                          winfo_screenheight=lambda: 768, geometry=placed.append)
+    window = setup_gui.SetupWindow.__new__(setup_gui.SetupWindow)
+    window.scale = 1.25
+    window.root = SimpleNamespace(winfo_rootx=lambda: 100, winfo_width=lambda: 700, winfo_rooty=lambda: 120)
+    window._place_over(top)
+    assert placed == ["+200+43"]  # 768 - 600 - 125, not 120 + 75
 
 
 # -- the real window (only with Tk and a display) ------------------------------------------
@@ -400,7 +643,7 @@ def test_install_window_end_to_end(gui, monkeypatch, tmp_path):
     monkeypatch.setattr(winsetup, "fetch_site_config", lambda site: fetched.append(site) or {
         "supabase_url": "https://x.supabase.co", "supabase_anon_key": "anon", "dashboard_url": site})
 
-    def fake_install(choices, *, data_dir, source_exe, ops, launch, progress):
+    def fake_install(choices, *, data_dir, source_exe, ops, launch, progress, pending_session):
         progress("Kopiuję program...")
         installed.append(choices)
         return _result(Path(choices.vault_dir))
@@ -409,7 +652,7 @@ def test_install_window_end_to_end(gui, monkeypatch, tmp_path):
     window = setup_gui.SetupWindow(gui.root, "install", data_dir=data_dir, ops=RaisingOps(), source_exe=None)
     assert pump(gui.root, lambda: window.url_var.get() == "https://x.supabase.co")
     assert fetched == [winsetup.DEFAULT_SITE]
-    assert "Zainstaluj i uruchom" in texts(window.page)
+    assert "Zainstaluj i uruchom" in texts(window.footer)
     assert window.account_email is None  # no session.bin: email + password fields
 
     dialog = window.capture_hotkey()
@@ -432,6 +675,7 @@ def test_install_window_end_to_end(gui, monkeypatch, tmp_path):
     assert asked and "Nie zalogowano" in asked[0] and "Kontynuować?" in asked[0]
     (choices,) = installed
     assert choices.vault_dir == str(vault) and choices.capture_hotkey == "alt+shift+k"
+    assert choices.push_hotkey  # picked in "Zmień...": the dashboard gets it
     assert choices.recordings_dir == str(tmp_path / "rec-missing")
     assert choices.supabase_url == "https://x.supabase.co" and choices.supabase_anon_key == "anon"
     assert window.exit_code == 0
@@ -476,12 +720,13 @@ def test_settings_window_shows_the_saved_account_and_uninstalls(gui, monkeypatch
     (data_dir / "session.bin").write_bytes(auth.protect(payload))
     monkeypatch.setattr(winsetup, "fetch_site_config", lambda site: pytest.fail("settings are already known"))
     removed = []
-    monkeypatch.setattr(winsetup, "uninstall", lambda **kw: removed.append(kw) or ["Usunięto program."])
+    monkeypatch.setattr(winsetup, "uninstall", lambda **kw: removed.append(kw) or winsetup.UninstallResult(
+        ["Usunięto program."], [tmp_path / "prog"]))
 
     window = setup_gui.SetupWindow(gui.root, "settings", data_dir=data_dir, ops=RaisingOps(), source_exe=None)
     gui.root.update()
     assert window.account_email == "ola@example.com"
-    shown = texts(window.page)
+    shown = texts(gui.root)
     assert "Zapisz" in shown and "Odinstaluj..." in shown and "Zaloguj inne konto" in shown
     assert window.vault_var.get() == str(tmp_path / "Vault")
     help_window = window.show_routine_help()
@@ -493,6 +738,7 @@ def test_settings_window_shows_the_saved_account_and_uninstalls(gui, monkeypatch
     assert removed and removed[0]["data_dir"] == data_dir and removed[0]["remove_data"] is True
     assert window.exit_code == 0
     assert ("info", "Usunięto program.") in gui.box.calls
+    assert window.cleanup == [tmp_path / "prog"]  # run_setup_window hands it to schedule_cleanup last
 
 
 @pytest.mark.parametrize("password_ok", [True, False])
@@ -534,5 +780,145 @@ def test_typed_credentials_sign_in_before_installing(gui, monkeypatch, tmp_path,
         assert installed == [] and window.page_name == "form"
     ((url, key, session_path), email, password), = signed
     assert (url, key, email, password) == ("https://x.supabase.co", "anon", "ola@example.com", "secret")
-    # The new login waits beside session.bin until install() has stopped the running tracker.
-    assert session_path == tmp_path / "data" / winsetup.PENDING_SESSION
+    # The new login waits beside session.bin, in this window's own file, until install() has
+    # stopped the running tracker.
+    assert session_path == window.pending == winsetup.pending_session_path(tmp_path / "data")
+
+
+def _inside_of(widget, container) -> bool:
+    return str(widget).startswith(str(container) + ".")
+
+
+def test_main_buttons_stay_in_the_fixed_bar(gui, monkeypatch, tmp_path):
+    monkeypatch.setattr(winsetup, "fetch_site_config", lambda site: {
+        "supabase_url": "https://x.supabase.co", "supabase_anon_key": "anon", "dashboard_url": site})
+    monkeypatch.setattr(winsetup, "install", lambda choices, **kw: _result(Path(choices.vault_dir)))
+    window = setup_gui.SetupWindow(gui.root, "install", data_dir=tmp_path / "data", ops=RaisingOps(), source_exe=None)
+    assert pump(gui.root, lambda: window.key_var.get() == "anon")
+    # The action is outside the scrolled page, inside the window, whatever the page's height.
+    assert _inside_of(window.submit_button, window.footer) and not _inside_of(window.submit_button, window.page)
+    gui.root.update()
+    bottom = window.submit_button.winfo_rooty() + window.submit_button.winfo_height()
+    assert window.submit_button.winfo_ismapped()
+    assert bottom <= gui.root.winfo_rooty() + gui.root.winfo_height()
+    room = gui.root.winfo_screenheight() - window.px(120)
+    assert window.canvas.winfo_reqheight() + window.footer.winfo_reqheight() <= room
+
+    window.vault_var.set(str(tmp_path / "Vault"))
+    window.submit()
+    assert pump(gui.root, lambda: window.page_name == "done")
+    assert "Zamknij" in texts(window.footer) and "Zamknij" not in texts(window.page)
+    # The routine comes first on the Gotowe page, its copy button on the step's own line.
+    order = [c for c in window.done.winfo_children() if c.winfo_manager()]
+    panel = next(i for i, c in enumerate(order) if str(c.cget("text") if "text" in c.keys() else "")
+                 == setup_gui.ROUTINE_TITLE)
+    lines = next(i for i, c in enumerate(order) if "Zainstalowano tracker." in str(c.cget("text")))
+    assert panel < lines
+    assert setup_gui.TRACKER_RUNNING in texts(window.page)
+
+
+def test_existing_mp3s_are_offered_not_sent_by_default(gui, monkeypatch, tmp_path):
+    installed = []
+    monkeypatch.setattr(winsetup, "fetch_site_config", lambda site: {
+        "supabase_url": "https://x.supabase.co", "supabase_anon_key": "anon", "dashboard_url": site})
+    monkeypatch.setattr(winsetup, "install", lambda choices, **kw: installed.append(choices) or _result(
+        Path(choices.vault_dir)))
+    music = tmp_path / "Music"
+    for name in ("a.mp3", "b.mp3", "Album/c.mp3"):
+        (music / name).parent.mkdir(parents=True, exist_ok=True)
+        (music / name).write_bytes(b"")
+    window = setup_gui.SetupWindow(gui.root, "install", data_dir=tmp_path / "data", ops=RaisingOps(), source_exe=None)
+    assert pump(gui.root, lambda: window.key_var.get() == "anon")
+    window.rec_var.set(str(music))
+    assert pump(gui.root, lambda: window.rec_count == 3)
+    assert window.include_check.winfo_manager()
+    assert window.include_check.cget("text") == "Przetwórz też nagrania, które już są w folderze (3)"
+    assert window.include_var.get() is False  # not Bandicam's folder: only new recordings unless ticked
+    assert window.form_values()["include_existing"] is False
+
+    bandicam = tmp_path / "Videos" / "Bandicam"
+    (bandicam / "Audios").mkdir(parents=True)
+    (bandicam / "Audios" / "lecture.mp3").write_bytes(b"")
+    window.rec_var.set(str(bandicam))
+    assert pump(gui.root, lambda: window.rec_count == 1)
+    assert window.include_var.get() is True
+    window.include_check.invoke()  # the user unticks it: kept from now on
+    window.rec_var.set(str(music))
+    assert pump(gui.root, lambda: window.rec_count == 3)
+    assert window.include_var.get() is False
+    (tmp_path / "Empty").mkdir()
+    window.rec_var.set(str(tmp_path / "Empty"))
+    assert pump(gui.root, lambda: window.rec_count == 0)
+    assert not window.include_check.winfo_manager()
+    assert window.form_values()["include_existing"] is True  # nothing to leave out: no cutoff
+
+    window.rec_var.set(str(music))
+    assert pump(gui.root, lambda: window.rec_count == 3)
+    window.vault_var.set(str(tmp_path / "Vault"))
+    window.submit()
+    assert pump(gui.root, lambda: window.page_name == "done")
+    assert installed[0].recordings_dir == str(music) and installed[0].include_existing is False
+
+
+def test_unconfigured_window_fetches_only_from_the_real_site(gui, monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    # What an old unconfigured tracker saved: the placeholder site and no Supabase settings.
+    (data_dir / "config.json").write_text(json.dumps({"dashboard_url": "https://mindsetforest.app",
+                                                      "supabase_url": "", "supabase_anon_key": ""}))
+    fetched = []
+    monkeypatch.setattr(winsetup, "fetch_site_config", lambda site: fetched.append(site) or {
+        "supabase_url": "https://abcd.supabase.co", "supabase_anon_key": "anon", "dashboard_url": site})
+    window = setup_gui.SetupWindow(gui.root, "install", data_dir=data_dir, ops=RaisingOps(), source_exe=None)
+    assert pump(gui.root, lambda: window.url_var.get() == "https://abcd.supabase.co")
+    assert fetched == [winsetup.DEFAULT_SITE] and window.site_var.get() == winsetup.DEFAULT_SITE
+    assert window.account_hint_var.get().endswith("Serwer logowania: abcd.supabase.co")
+    window.site_var.set("https://mine.example")  # typed under Zaawansowane, then "Pobierz ustawienia"
+    window.fetch_site_config()
+    assert pump(gui.root, lambda: len(fetched) == 2 and not window.fetching)
+    assert fetched[1] == "https://mine.example/"
+
+
+def test_expired_login_shows_the_sign_in_fields(gui, monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    save_config(Config(supabase_url="https://x.supabase.co", supabase_anon_key="anon",
+                       vault_dir=str(tmp_path / "Vault"), path=data_dir / "config.json"))
+    _saved_session(data_dir / winsetup.SESSION_FILE, "ola@example.com")
+    (data_dir / winsetup.NEEDS_LOGIN).write_text("refused")
+    window = setup_gui.SetupWindow(gui.root, "settings", data_dir=data_dir, ops=RaisingOps(), source_exe=None)
+    gui.root.update()
+    assert window.signed_in_var.get() == "Logowanie wygasło (ola@example.com): zaloguj się ponownie"
+    assert window.signin_frame.winfo_manager() and not window.other_account_button.winfo_manager()
+    assert window.email_var.get() == "ola@example.com"
+    form = window.form_values()
+    assert form["signed_in"] is False and form["login_expired"] is True
+
+
+def test_untouched_hotkey_is_not_pushed(gui, monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    save_config(Config(supabase_url="https://x.supabase.co", supabase_anon_key="anon", capture_hotkey="ctrl+f8",
+                       vault_dir=str(tmp_path / "Vault"), path=data_dir / "config.json"))
+    window = setup_gui.SetupWindow(gui.root, "settings", data_dir=data_dir, ops=RaisingOps(), source_exe=None)
+    gui.root.update()
+    assert window.hotkey_text.get() == "Ctrl + F8"  # config.json follows the dashboard's active hotkey
+    assert window.form_values()["push_hotkey"] is False
+    window.hotkey_var.set("")  # "Wyłącz"
+    assert window.form_values()["push_hotkey"] is True
+    window.hotkey_var.set("ctrl+f8")  # back to what the window showed: nothing to push
+    assert window.form_values()["push_hotkey"] is False
+
+
+def test_a_confirmed_hotkey_is_pushed_even_when_it_matches_the_one_shown():
+    # The form may show an old zip config.json value the dashboard has since replaced;
+    # confirming it in the dialog (or Wyłącz) is a choice, so it must reach the dashboard.
+    class Var:
+        def __init__(self):
+            self.value = None
+
+        def set(self, v):
+            self.value = v
+
+    window = type("W", (), {})()
+    window.hotkey_var, window.hotkey_touched = Var(), False
+    setup_gui.SetupWindow._set_hotkey(window, "alt+shift+s")
+    assert window.hotkey_touched is True and window.hotkey_var.value == "alt+shift+s"

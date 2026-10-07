@@ -14,11 +14,12 @@ from mindsetforest_tracker.auth import SupabaseAuth, Tokens
 from mindsetforest_tracker.capture import FakeSampler, Sample
 from mindsetforest_tracker.config import Config, load_config, save_config
 from mindsetforest_tracker.main import (
-    SingleInstance, TrackerApp, build_parser, decide_action, same_path, settings_argv, silent_choices,
+    SingleInstance, TrackerApp, already_running, build_app, build_parser, decide_action, own_pids, same_path,
+    settings_argv, silent_choices,
 )
 from mindsetforest_tracker.sessions import SessionTracker, iso_utc
 from mindsetforest_tracker.store import Store
-from mindsetforest_tracker.sync import SyncClient, SyncWorker
+from mindsetforest_tracker.sync import SyncClient, SyncStatus, SyncWorker
 from mindsetforest_tracker.tray import format_duration, make_icon_image
 
 T0 = 1_800_000_000
@@ -220,6 +221,7 @@ def test_same_path_ignores_case_only_on_windows(tmp_path):
 def test_quit_request_file_name_matches_the_setup():
     from mindsetforest_tracker import winsetup
     assert main_mod.QUIT_REQUEST_FILE == winsetup.QUIT_REQUEST
+    assert main_mod.NEEDS_LOGIN_FILE == winsetup.NEEDS_LOGIN
 
 
 class StoppableIcon(FakeIcon):
@@ -387,6 +389,99 @@ def test_no_push_without_the_flag(tmp_path):
     assert not any(isinstance(c, tuple) for c in app.client.calls)
 
 
+class DashboardClient(HotkeyClient):
+    """Keeps the dashboard's hotkey like the server does."""
+
+    def __init__(self, dashboard, fail=False):
+        super().__init__(fail)
+        self.dashboard = dashboard
+
+    def set_capture_hotkey(self, spec):
+        super().set_capture_hotkey(spec)
+        self.dashboard = spec
+
+    def capture_hotkey(self):
+        self.calls.append("pull")
+        return self.dashboard
+
+
+def test_config_json_follows_the_dashboards_hotkey(tmp_path):
+    """So the settings window shows the hotkey actually in use."""
+    app = hotkey_app(tmp_path, push=False)
+    path = tmp_path / "config.json"
+    app.on_capture_hotkey("Ctrl+Shift+F9")
+    assert app.config.capture_hotkey == "ctrl+shift+f9"
+    assert json.loads(path.read_text())["capture_hotkey"] == "ctrl+shift+f9"
+    path.unlink()
+    app.on_capture_hotkey("ctrl+shift+f9")  # unchanged: not written again (this runs every minute)
+    app.on_capture_hotkey(None)  # never set in the dashboard: config.json's stays
+    app.on_capture_hotkey("not a hotkey")  # nothing the setup would reject later
+    assert not path.exists() and app.config.capture_hotkey == "ctrl+shift+f9"
+    app.on_capture_hotkey("")  # turned off in the dashboard
+    assert json.loads(path.read_text())["capture_hotkey"] == ""
+
+
+def test_a_failed_push_never_lets_the_old_dashboard_hotkey_replace_the_new_choice(tmp_path):
+    app = hotkey_app(tmp_path, push=True, fail=True)  # the user chose ctrl+alt+k in the setup window
+    app.client = app.sync_worker.client = DashboardClient("alt+shift+d", fail=True)
+    app.client.auth = app.auth
+    app.sync_worker.sync_once()  # push fails, the pull still brings the old value
+    assert json.loads((tmp_path / "config.json").read_text())["capture_hotkey"] == "ctrl+alt+k"
+    assert app.config.capture_hotkey == "ctrl+alt+k" and app.config.capture_hotkey_push is True
+    app.client.fail = False
+    app.sync_worker.sync_once()
+    saved = json.loads((tmp_path / "config.json").read_text())
+    assert saved["capture_hotkey"] == "ctrl+alt+k" and saved["capture_hotkey_push"] is False
+    assert app.client.dashboard == "ctrl+alt+k"
+
+
+def test_needs_login_marker_follows_the_sync_status(tmp_path, monkeypatch):
+    """The settings window cannot refresh the session itself; the marker tells it the login is gone."""
+    app = make_app(tmp_path, [])
+    marker = app.login_marker = tmp_path / "needs_login"
+    app.on_sync_status(SyncStatus(needs_login=True, last_error="sign in required: Refresh Token Not Found"))
+    assert "Refresh Token Not Found" in marker.read_text(encoding="utf-8")
+    app.on_sync_status(SyncStatus(needs_login=True, last_error="sign in required: again"))
+    assert "Refresh Token Not Found" in marker.read_text(encoding="utf-8")  # written once
+    app.on_sync_status(SyncStatus(last_error="network error: offline"))  # not proof of a good login
+    assert marker.exists()
+    app.on_sync_status(SyncStatus(last_sync_at=T0))
+    assert not marker.exists()
+    marker.write_text("x")
+    monkeypatch.setattr(app.auth, "sign_in", lambda email, password: None)
+    assert app.sign_in("a@b.c", "pw") is None and not marker.exists()
+
+
+def test_build_app_wires_the_marker_the_cutoff_and_a_truthful_notify(tmp_path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"supabase_url": "https://x.supabase.co", "supabase_anon_key": "anon",
+                                    "vault_dir": str(tmp_path / "Vault"), "recordings_dir": str(tmp_path / "rec"),
+                                    "recordings_since": 1_800_000_000, "dashboard_url": "https://mindsetforest.app"}))
+    app = build_app(load_config(cfg_path), tmp_path)
+    try:
+        assert app.login_marker == tmp_path / "needs_login"
+        assert app.intake.since == 1_800_000_000
+        assert app.dashboard_url == main_mod.DEFAULT_DASHBOARD_URL  # never the placeholder domain
+
+        class Icon:
+            HAS_NOTIFICATION = True
+            visible = False
+
+            def __init__(self):
+                self.shown = []
+
+            def notify(self, message, title):
+                self.shown.append(message)
+
+        assert app.intake.notify("hello") is False  # no icon yet: the reminder must not count as shown
+        app.icon = Icon()
+        assert app.intake.notify("hello") is False and app.icon.shown == []  # not on screen yet
+        app.icon.visible = True
+        assert app.intake.notify("hello") is True and app.icon.shown == ["hello"]
+    finally:
+        app.store.close()
+
+
 def test_a_config_without_the_push_field_still_works(tmp_path):
     app = make_app(tmp_path, [])
 
@@ -462,15 +557,33 @@ def test_silent_choices_fetch_the_site_and_use_the_windows_defaults(tmp_path):
         sites.append(site)
         return {"supabase_url": "https://s.supabase.co", "supabase_anon_key": "pub", "dashboard_url": site}
 
-    c = silent_choices(install_args(), None, FakeOps(bandicam=str(tmp_path / "Bandi")), fetch=fetch)
+    c = silent_choices(install_args(), None, FakeOps(bandicam=str(tmp_path / "Bandicam")), fetch=fetch)
     assert sites == [winsetup.DEFAULT_SITE]
     assert (c.supabase_url, c.supabase_anon_key, c.dashboard_url) == ("https://s.supabase.co", "pub",
                                                                        winsetup.DEFAULT_SITE)
-    assert c.recordings_dir == str(tmp_path / "Bandi")
+    assert c.recordings_dir == str(tmp_path / "Bandicam")
     assert c.vault_dir == str(winsetup.default_vault_dir()) and c.capture_hotkey == "alt+shift+s"
     assert c.autostart is True
+    # No --hotkey: the account's dashboard hotkey is not overwritten; Bandicam's existing recordings are included.
+    assert c.push_hotkey is False and c.include_existing is True
+    # Bandicam set to save into a broad folder (a whole drive): what is already there stays on the PC.
+    broad = silent_choices(install_args(), None, FakeOps(bandicam=str(tmp_path / "D")), fetch=fetch)
+    assert broad.recordings_dir == str(tmp_path / "D") and broad.include_existing is False
+    c = silent_choices(install_args("--hotkey", "ctrl+alt+k", "--skip-existing"), None, FakeOps(), fetch=fetch)
+    assert c.push_hotkey is True and c.include_existing is False
     assert silent_choices(install_args("--no-transcribe", "--hotkey", ""), None, FakeOps(),
                           fetch=fetch).recordings_dir == ""
+
+
+def test_a_silent_upgrade_keeps_autostart_off_when_the_user_turned_it_off(tmp_path):
+    existing = Config(supabase_url="https://old.supabase.co", supabase_anon_key="old",
+                      vault_dir=str(tmp_path / "Brain"), dashboard_url="https://dash/")
+    ops = FakeOps()  # no Run value, no Startup shortcut: autostart is off
+    c = silent_choices(install_args("--supabase-url", "https://s.supabase.co", "--anon-key", "k"), existing, ops)
+    assert c.autostart is False
+    assert silent_choices(install_args("--no-autostart"), None, ops,
+                          fetch=lambda s: {"supabase_url": "https://s.supabase.co", "supabase_anon_key": "k",
+                                           "dashboard_url": s}).autostart is False
 
 
 def test_silent_upgrade_keeps_the_users_choices_when_the_site_is_down(tmp_path):
@@ -487,6 +600,8 @@ def test_silent_upgrade_keeps_the_users_choices_when_the_site_is_down(tmp_path):
     assert (c.recordings_dir, c.vault_dir, c.capture_hotkey) == ("", str(tmp_path / "Brain"), "")
     with pytest.raises(winsetup.SetupError):
         silent_choices(install_args(), None, FakeOps(), fetch=down)
+    existing.dashboard_url = "https://mindsetforest.app"  # the zip version's placeholder
+    assert silent_choices(install_args(), existing, FakeOps(), fetch=down).dashboard_url == winsetup.DEFAULT_SITE
 
 
 @pytest.fixture
@@ -590,4 +705,82 @@ def test_main_opens_the_windows(tmp_path, monkeypatch, fake_window, restore_logg
     monkeypatch.setattr(main_mod.SingleInstance, "acquire", lambda self: False)
     assert main_mod.main([]) == 0
     assert fake_window[-1] == ("settings", data, installed)
-    assert "opening the settings window" in (data / "tracker.log").read_text(encoding="utf-8")
+    # Logged to setup.log: tracker.log belongs to the running tracker (a second writer breaks its rotation).
+    assert "opening the settings window" in (data / "setup.log").read_text(encoding="utf-8")
+    assert not (data / "tracker.log").exists()
+
+    # The same at logon (the Run value's --autostart): no window, a quiet exit.
+    opened = len(fake_window)
+    assert main_mod.main(["--autostart"]) == 0
+    assert len(fake_window) == opened and not (data / "tracker.log").exists()
+    assert "Autostart: another tracker instance is already running" in (data / "setup.log").read_text(encoding="utf-8")
+
+
+class Guard:
+    def __init__(self, *answers):
+        self.answers = list(answers)
+
+    def acquire(self):
+        return self.answers.pop(0)
+
+
+def test_autostart_retires_the_zip_tracker_that_won_the_logon_race(tmp_path, monkeypatch, restore_logging):
+    from mindsetforest_tracker import winsetup
+    seen = []
+    monkeypatch.setattr(winsetup, "replace_legacy_tracker", lambda data_dir, ops: seen.append(data_dir) or True)
+    logging.getLogger().setLevel(logging.INFO)  # as main()'s setup_logging leaves it
+    args = build_parser().parse_args(["--autostart"])
+    assert already_running(args, Guard(True), data_dir=tmp_path, frozen=True) is None  # tracks here after all
+    assert seen == [tmp_path]
+    logging.getLogger("mindsetforest_tracker").info("tracking line")
+    assert "tracking line" in (tmp_path / "tracker.log").read_text(encoding="utf-8")
+    assert "replaced the old zip tracker" in (tmp_path / "setup.log").read_text(encoding="utf-8")
+    # Replaced, but someone else got the lock first: still no window.
+    assert already_running(args, Guard(False), data_dir=tmp_path, frozen=True) == 0
+
+
+def test_a_second_tracker_from_the_sources_just_exits(tmp_path, restore_logging, fake_window):
+    logging.getLogger().setLevel(logging.INFO)
+    assert already_running(build_parser().parse_args([]), Guard(), data_dir=tmp_path, frozen=False) == 1
+    assert fake_window == [] and "already running" in (tmp_path / "setup.log").read_text(encoding="utf-8")
+
+
+def test_own_pids_counts_the_onefile_bootloader_only_when_frozen():
+    """Run in a child, whose parent (this test) runs the same Python exe, like a onefile bootloader."""
+    code = ("import os, sys; from mindsetforest_tracker.main import own_pids; "
+            "print(own_pids(frozen=True, executable=sys.executable) == {os.getpid(), os.getppid()}, "
+            "own_pids(frozen=False) == {os.getpid()}, "
+            "own_pids(frozen=True, executable=sys.executable + '-other') == {os.getpid()})")
+    out = subprocess.run([sys.executable, "-c", code], cwd=Path(main_mod.__file__).resolve().parent.parent,
+                         capture_output=True, text=True, timeout=120)
+    assert out.stdout.split() == ["True", "True", "True"], out.stderr
+    assert own_pids(frozen=False) == {os.getpid()}
+
+
+def test_a_stale_lock_held_by_our_own_bootloader_is_taken_over(tmp_path):
+    lock = tmp_path / "tracker.lock"
+    lock.write_text("4242")  # last session's pid, now our own bootloader's
+    guard = SingleInstance(lock, is_tracker=lambda pid: True, self_pids=lambda: {os.getpid(), 4242})
+    assert guard.acquire() is True and lock.read_text() == str(os.getpid())
+    lock.write_text("4243")
+    assert guard.acquire() is False  # a real other tracker still wins
+
+
+def test_uninstall_deletes_the_program_only_after_the_last_dialog(tmp_path, monkeypatch, restore_logging):
+    from mindsetforest_tracker import winsetup
+    events = []
+
+    class Ops(FakeOps):
+        def delete_later(self, paths):
+            events.append(("delete_later", list(paths)))
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    folder = winsetup.install_dir()
+    folder.mkdir(parents=True)
+    exe = folder / winsetup.EXE_NAME
+    exe.write_bytes(b"MZ")
+    monkeypatch.setattr(sys, "executable", str(exe))
+    args = build_parser().parse_args(["--uninstall"])
+    assert main_mod.run_uninstall(args, tmp_path / "data", frozen=True, ops=Ops(), confirm=lambda: True,
+                                  show=lambda kind, text: events.append(("show", kind))) == 0
+    assert events == [("show", "info"), ("delete_later", [exe, folder])]
