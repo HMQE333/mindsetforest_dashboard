@@ -137,10 +137,14 @@ export interface SourceRef {
   seconds: number | null;
 }
 
-/** A link into Recordings/ as a source; null for any other link. */
+/**
+ * A link to a recording as a source: anything in Recordings/, or any link to a
+ * transcript moment (#^tNNNN), since Obsidian resolves [[name#^t0750]] without
+ * the folder and a routine may well write it that way. Null for other links.
+ */
 export function sourceRef(l: WikiLink): SourceRef | null {
-  if (!/^Recordings\//i.test(l.target)) return null;
   const t = l.anchor ? /^\^?t(\d+)$/i.exec(l.anchor) : null;
+  if (!t && !/^Recordings\//i.test(l.target)) return null;
   return { note: l.name, seconds: t ? Number(t[1]) : null };
 }
 

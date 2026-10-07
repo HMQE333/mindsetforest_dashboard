@@ -61,6 +61,17 @@ describe("knowledge notes", () => {
     expect(n.quote).toBe("If someone does you a favour, you feel you owe them, even if you never asked for it.");
   });
 
+  it("takes a transcript moment linked without the Recordings/ folder as a source", () => {
+    const n = parseKnowledgeNote({
+      path: "Knowledge/Short link.md",
+      vault: "V",
+      modified_at: "",
+      content: `---\nsources: ["[[${REC}#^t0042]]"]\n---\nText, see [[Reciprocity]].`,
+    });
+    expect(n.sources).toEqual([{ note: REC, seconds: 42 }]);
+    expect(n.links).toEqual(["Reciprocity"]);
+  });
+
   it("falls back to the file name and tolerates a note with nothing but text", () => {
     const n = parseKnowledgeNote({ path: "Knowledge/Sub/Loose idea.md", vault: "V", modified_at: "", content: "Just a thought." });
     expect([n.title, n.type, n.confidence, n.sources.length, n.summary]).toEqual(["Loose idea", "", null, 0, "Just a thought."]);
