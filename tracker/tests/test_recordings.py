@@ -96,6 +96,8 @@ def test_a_recording_becomes_a_note_and_the_audio_is_untouched(tmp_path):
     assert "**[00:08:01]** Hello there. ^t0481" in text and "recording_id: rec-1" in text
     assert "status: new" in (vault / "Sessions" / "2026-10-07 14-03.md").read_text(encoding="utf-8")
     assert (vault / "_SYSTEM" / "processing-rules.md").exists()
+    routine = (vault / "_SYSTEM" / "routine-prompt.md").read_text(encoding="utf-8")
+    assert "processed_parts" in routine and "routine.lock" in routine
     # Seen again (restart): nothing is sent twice.
     again = IntakeState.load(tmp_path / "recordings.json")
     n = len(http.calls)

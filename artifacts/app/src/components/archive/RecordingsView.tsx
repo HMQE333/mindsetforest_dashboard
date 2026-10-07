@@ -27,6 +27,7 @@ const PAGE = 20;
 const STATUS: Record<string, { label: string; cls: string }> = {
   new: { label: "⏳ Waiting for Claude", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
   processed: { label: "✓ Processed", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  skipped: { label: "Skipped: nothing to keep", cls: "border-border/50 text-muted-foreground" },
 };
 
 const time = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
