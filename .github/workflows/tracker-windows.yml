@@ -96,6 +96,16 @@ jobs:
           $result = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
           if ($result.ok -ne $true) { throw 'Self-test exited with 0 but st.json says ok: false' }
 
+      # The tracker names a browser tab by the domain in its address bar (UI Automation). A browser
+      # update can rename what the reader looks for: open Edge (and Chrome when the runner has it) on
+      # example.com with a throw-away profile and check the reader gives example.com.
+      - name: Read the domain from the address bar of Edge and Chrome
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python scripts/probe_omnibox.py --require edge --url https://example.com --expect example.com --raw
+          if ($LASTEXITCODE -ne 0) { throw "probe_omnibox.py failed (exit code $LASTEXITCODE): the reader could not read a tab's domain, see the lines above" }
+
       - name: "E2E: install, upgrade in place, uninstall"
         timeout-minutes: 10
         env:

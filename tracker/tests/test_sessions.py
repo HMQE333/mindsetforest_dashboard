@@ -193,3 +193,12 @@ def test_session_is_split_at_four_am():
     rows = [s.to_row() for s in out if s.seconds > 0]
     assert [r["local_date"] for r in rows] == ["2026-09-29", "2026-09-30"]
     assert [r["seconds"] for r in rows] == [1800, 1800]
+
+
+def test_a_new_host_under_the_same_title_is_a_new_session():
+    tr = SessionTracker(min_seconds=0)
+    a = Sample("chrome.exe", "Loading - Google Chrome", host="example.com")
+    b = Sample("chrome.exe", "Loading - Google Chrome", host="example.org")
+    out = run(tr, ticks(a, 0, 5) + ticks(b, 5, 9))
+    out += tr.close_current(T0 + 9)
+    assert [(s.app_key, s.seconds) for s in out] == [("Browser | example.com", 5), ("Browser | example.org", 4)]

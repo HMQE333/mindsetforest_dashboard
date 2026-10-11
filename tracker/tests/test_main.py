@@ -452,6 +452,20 @@ def test_needs_login_marker_follows_the_sync_status(tmp_path, monkeypatch):
     assert app.sign_in("a@b.c", "pw") is None and not marker.exists()
 
 
+def test_build_app_passes_browser_domains_to_the_sampler(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(main_mod, "default_sampler", lambda **kw: seen.append(kw) or FakeSampler([]))
+    for flag in (True, False):
+        cfg_path = tmp_path / f"{flag}.json"
+        cfg_path.write_text(json.dumps({"browser_domains": flag}))
+        build_app(load_config(cfg_path), tmp_path / str(flag)).store.close()
+    assert seen == [{"browser_domains": True}, {"browser_domains": False}]
+    given = FakeSampler([])
+    app = build_app(load_config(tmp_path / "x.json"), tmp_path / "given", sampler=given)
+    assert app.sampler is given and len(seen) == 2
+    app.store.close()
+
+
 def test_build_app_wires_the_marker_the_cutoff_and_a_truthful_notify(tmp_path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"supabase_url": "https://x.supabase.co", "supabase_anon_key": "anon",

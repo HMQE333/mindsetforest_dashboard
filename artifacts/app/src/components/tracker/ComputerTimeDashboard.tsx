@@ -38,6 +38,8 @@ interface Props {
   to: string;
   /** Full sessions (with titles) for the given day keys, so title rules apply to the baseline too. */
   fetchSessionsForDates: (dates: string[]) => Promise<UsageSession[]>;
+  /** Opens "Przypisz w 10 sekund" from the "Nieprzypisane" tile. */
+  onOpenTriage?: () => void;
 }
 
 const TILE_KINDS: AppKind[] = ["work", "learning", "communication", "watching", "waste"];
@@ -59,7 +61,7 @@ interface BaselineState {
   partial: boolean;
 }
 
-export default function ComputerTimeDashboard({ classes, categories, ctx, agg, from, to, fetchSessionsForDates }: Props) {
+export default function ComputerTimeDashboard({ classes, categories, ctx, agg, from, to, fetchSessionsForDates, onOpenTriage }: Props) {
   const palette = useKindPalette();
   const singleDay = from === to;
   const dayCount = Math.max(1, daysBetween(from, to) + 1);
@@ -157,8 +159,8 @@ export default function ComputerTimeDashboard({ classes, categories, ctx, agg, f
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {tiles.map((t) => {
           const delta = t.base === null ? null : t.seconds - t.base;
-          return (
-            <div key={t.key} className="bg-secondary/40 rounded-xl p-3 text-center">
+          const body = (
+            <>
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: t.color }} />
                 {t.label}
@@ -171,6 +173,23 @@ export default function ComputerTimeDashboard({ classes, categories, ctx, agg, f
               ) : (
                 <div className="text-[10px] text-muted-foreground mt-0.5">{formatHm(t.seconds / dayCount)} / dzień</div>
               )}
+            </>
+          );
+          // The unassigned tile is the way into the triage dialog.
+          return t.key === "unassigned" && onOpenTriage ? (
+            <button
+              key={t.key}
+              type="button"
+              onClick={onOpenTriage}
+              title="Przypisz w 10 sekund"
+              className="bg-secondary/40 rounded-xl p-3 text-center border border-transparent hover:border-primary/40 hover:bg-secondary/60 transition-colors"
+            >
+              {body}
+              <div className="text-[10px] text-primary mt-0.5">Przypisz →</div>
+            </button>
+          ) : (
+            <div key={t.key} className="bg-secondary/40 rounded-xl p-3 text-center">
+              {body}
             </div>
           );
         })}

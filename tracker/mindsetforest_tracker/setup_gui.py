@@ -74,6 +74,9 @@ OPEN_FOLDER_AS_VAULT = "W Obsidianie wybierz: Open folder as vault, potem ten fo
 TRACKER_RUNNING = "Tracker działa (ikonka drzewa przy zegarze; jeśli jej nie widać, kliknij strzałkę ^ obok zegara)."
 SETTINGS_LATER = "Ustawienia otworzysz później z menu ikonki (Ustawienia...) albo z menu Start: MindsetForest."
 COPIED = "Skopiowano"
+BROWSER_DOMAINS_LABEL = "Rozpoznawaj stronę po domenie aktywnej karty (bez pełnego adresu)"
+BROWSER_DOMAINS_HINT = ("Chrome, Edge, Brave: tracker czyta z paska adresu tylko domenę (np. chatgpt.com), "
+                        "nigdy ścieżki ani wyszukiwania. Bez tego karty rozpoznaje tylko po tytule.")
 RECORDINGS_COUNT_CAP = 1000  # counting a whole drive must not take long; shown as "999+"
 
 # -- hotkeys -------------------------------------------------------------------------
@@ -360,6 +363,7 @@ def initial_form(existing: Config | None, *, detected: Path, default_vault: Path
             "supabase_url": "", "supabase_anon_key": "", "dashboard_url": winsetup.DEFAULT_SITE,
             "transcribe": True, "recordings_dir": str(detected), "vault_dir": str(default_vault),
             "hotkey": DEFAULT_HOTKEY, "autostart": autostart, "device_name": socket.gethostname(),
+            "browser_domains": True,
         }
     return {
         "supabase_url": existing.supabase_url, "supabase_anon_key": existing.supabase_anon_key,
@@ -370,6 +374,7 @@ def initial_form(existing: Config | None, *, detected: Path, default_vault: Path
         "vault_dir": existing.vault_dir or str(default_vault),
         "hotkey": existing.capture_hotkey, "autostart": autostart,
         "device_name": existing.device_name or socket.gethostname(),
+        "browser_domains": bool(getattr(existing, "browser_domains", True)),
     }
 
 
@@ -450,6 +455,7 @@ def choices_from_form(form: Mapping[str, Any]) -> winsetup.SetupChoices:
         device_name=str(form.get("device_name") or "").strip(),
         push_hotkey=bool(form.get("push_hotkey", False)),
         include_existing=bool(form.get("include_existing", True)),
+        browser_domains=bool(form.get("browser_domains", True)),
     )
 
 
@@ -868,6 +874,7 @@ class SetupWindow:
             "push_hotkey": self.hotkey_touched or hotkey_changed(self.hotkey_var.get(), self.initial["hotkey"]),
             "autostart": bool(self.autostart_var.get()),
             "device_name": self.device_var.get().strip(),
+            "browser_domains": bool(self.domains_var.get()),
         }
 
     def _include_existing(self) -> bool:
@@ -917,6 +924,10 @@ class SetupWindow:
         self.autostart_var = self._var(bool(self.initial["autostart"]), "bool")
         ttk.Checkbutton(form, text="Uruchamiaj przy starcie Windows", variable=self.autostart_var).pack(
             anchor="w", pady=(self.px(16), 0))
+        self.domains_var = self._var(bool(self.initial["browser_domains"]), "bool")
+        ttk.Checkbutton(form, text=BROWSER_DOMAINS_LABEL, variable=self.domains_var).pack(
+            anchor="w", pady=(self.px(6), 0))
+        self._hint(form, BROWSER_DOMAINS_HINT).pack(anchor="w", pady=(self.px(2), 0))
         self._advanced_section(form)
         self._bottom_buttons(self.footer)
         self._refresh_buttons()

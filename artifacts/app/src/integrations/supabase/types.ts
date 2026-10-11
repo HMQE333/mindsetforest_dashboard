@@ -83,8 +83,94 @@ export type Database = {
         }
         Relationships: []
       }
+      app_class_suggestions: {
+        Row: {
+          alt_class_id: string | null
+          app_key: string
+          class_id: string | null
+          confidence: number
+          created_at: string
+          decided_at: string | null
+          final_class_id: string | null
+          id: string
+          item_type: string
+          model: string
+          multi_purpose: boolean
+          preselected: boolean
+          reason: string
+          seconds_at_offer: number
+          status: string
+          title_key: string
+          user_id: string
+          vocab_hash: string
+        }
+        Insert: {
+          alt_class_id?: string | null
+          app_key: string
+          class_id?: string | null
+          confidence?: number
+          created_at?: string
+          decided_at?: string | null
+          final_class_id?: string | null
+          id?: string
+          item_type?: string
+          model?: string
+          multi_purpose?: boolean
+          preselected?: boolean
+          reason?: string
+          seconds_at_offer?: number
+          status?: string
+          title_key?: string
+          user_id: string
+          vocab_hash?: string
+        }
+        Update: {
+          alt_class_id?: string | null
+          app_key?: string
+          class_id?: string | null
+          confidence?: number
+          created_at?: string
+          decided_at?: string | null
+          final_class_id?: string | null
+          id?: string
+          item_type?: string
+          model?: string
+          multi_purpose?: boolean
+          preselected?: boolean
+          reason?: string
+          seconds_at_offer?: number
+          status?: string
+          title_key?: string
+          user_id?: string
+          vocab_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_class_suggestions_alt_class_id_fkey"
+            columns: ["alt_class_id"]
+            isOneToOne: false
+            referencedRelation: "app_classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_class_suggestions_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "app_classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_class_suggestions_final_class_id_fkey"
+            columns: ["final_class_id"]
+            isOneToOne: false
+            referencedRelation: "app_classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_classes: {
         Row: {
+          catalog_groups: string[]
           color: string | null
           count_idle: boolean
           created_at: string
@@ -99,6 +185,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          catalog_groups?: string[]
           color?: string | null
           count_idle?: boolean
           created_at?: string
@@ -113,6 +200,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          catalog_groups?: string[]
           color?: string | null
           count_idle?: boolean
           created_at?: string
@@ -201,6 +289,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      app_tracking_privacy: {
+        Row: {
+          ai_titles: boolean
+          keywords: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_titles?: boolean
+          keywords?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_titles?: boolean
+          keywords?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       app_usage_sessions: {
         Row: {

@@ -515,6 +515,14 @@ def test_recordings_since_follows_the_folder_choice(env, monkeypatch):
                          env.data).recordings_since == 1234.5
 
 
+def test_browser_domains_follow_the_window_and_survive_a_silent_upgrade(env):
+    off = Config(browser_domains=False)
+    assert merged_config(off, choices(env), env.data).browser_domains is False  # silent: None keeps it
+    assert merged_config(off, choices(env, browser_domains=True), env.data).browser_domains is True
+    assert merged_config(Config(), choices(env, browser_domains=False), env.data).browser_domains is False
+    assert merged_config(None, choices(env), env.data).browser_domains is True
+
+
 def test_merged_config_never_keeps_the_placeholder_site(env):
     old = Config(dashboard_url="https://mindsetforest.app")
     assert merged_config(old, choices(env, dashboard_url=""), env.data).dashboard_url == winsetup.DEFAULT_SITE
@@ -1106,9 +1114,9 @@ def test_self_test_writes_every_check(env):
     assert report["ok"] is ok and report["version"] == __version__
     checks = report["checks"]
     assert {"tkinter", "pystray", "pillow", "dpapi", "shortcut", "registry_run", "known_folders", "documents_dir",
-            "detect_bandicam_dir", "obsidian_vaults", "parse_hotkey"} <= set(checks)
+            "detect_bandicam_dir", "obsidian_vaults", "parse_hotkey", "uia"} <= set(checks)
     for name in ("dpapi", "shortcut", "registry_run", "known_folders", "documents_dir", "detect_bandicam_dir",
-                 "obsidian_vaults", "parse_hotkey"):
+                 "obsidian_vaults", "parse_hotkey", "uia"):
         assert checks[name] == "ok", (name, checks[name])
     assert env.ops.run == {} and env.ops.shortcuts  # test value removed again
     assert ok == all(v == "ok" for v in checks.values())

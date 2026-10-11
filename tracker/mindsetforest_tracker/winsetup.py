@@ -652,6 +652,8 @@ class SetupChoices:
     push_hotkey: bool = False
     # A newly chosen recordings folder: also transcribe the MP3s already in it (else only newer ones).
     include_existing: bool = True
+    # Name browser tabs by their domain (config browser_domains). None keeps the config's (a silent upgrade).
+    browser_domains: bool | None = None
 
 
 def _same_folder_text(a: str, b: str) -> bool:
@@ -680,6 +682,8 @@ def merged_config(existing: Config | None, choices: SetupChoices, data_dir: Path
     cfg.capture_hotkey = choices.capture_hotkey.strip().lower()
     if choices.device_name.strip():
         cfg.device_name = choices.device_name.strip()
+    if choices.browser_domains is not None:
+        cfg.browser_domains = bool(choices.browser_domains)
     cfg.path = data_dir / CONFIG_FILE_NAME
     return cfg
 
@@ -1371,6 +1375,15 @@ def _check_known_folders(ops: WinOps) -> None:
         _require(folder.is_dir(), f"{folder} does not exist")
 
 
+def _check_uia() -> None:
+    """The address-bar reader's UI Automation client (comtypes and its bundled wrapper)."""
+    if sys.platform != "win32":
+        return
+    from .browser_url import self_check
+
+    self_check()
+
+
 def _check_certifi() -> None:
     import certifi
 
@@ -1397,6 +1410,7 @@ def self_test(out: Path, ops: WinOps) -> bool:
     check("pillow", _check_pil)
     check("dpapi", _check_dpapi)
     check("certifi", _check_certifi)
+    check("uia", _check_uia)
     check("shortcut", lambda: _check_shortcut(ops))
     check("registry_run", lambda: _check_run(ops))
     check("known_folders", lambda: _check_known_folders(ops))

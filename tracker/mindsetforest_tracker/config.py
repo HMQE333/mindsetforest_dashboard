@@ -115,6 +115,9 @@ class Config:
     recordings_since: float = 0.0
     # Recordings starting within this many minutes of the previous one's end are one session.
     session_gap_minutes: float = 20.0
+    # Name a Chromium browser's tab by the domain in its address bar (UI Automation; only the
+    # domain is kept, never the address). False: titles only, and no UI Automation at all.
+    browser_domains: bool = True
     path: Path | None = field(default=None, compare=False)
 
     def is_ignored(self, app_name: str) -> bool:
@@ -152,6 +155,20 @@ def config_search_paths() -> list[Path]:
     return [exe_dir() / CONFIG_FILE_NAME, app_data_dir() / CONFIG_FILE_NAME]
 
 
+def _flag(value: object, default: bool) -> bool:
+    """A yes/no setting from JSON: true/false, 1/0, "true"/"false" ...; anything else is ``default``."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower() if isinstance(value, str) else ""
+    if text in ("true", "1", "yes", "on"):
+        return True
+    if text in ("false", "0", "no", "off"):
+        return False
+    return default
+
+
 def load_config(path: Path | None = None) -> Config:
     """Load the first config file found (or ``path``); missing file gives defaults."""
     candidates = [path] if path else config_search_paths()
@@ -179,6 +196,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg.recordings_dir = os.path.expandvars(os.path.expanduser(str(cfg.recordings_dir or "").strip()))
     cfg.vault_dir = os.path.expandvars(os.path.expanduser(str(cfg.vault_dir or "").strip()))
     cfg.session_gap_minutes = max(1.0, float(cfg.session_gap_minutes))
+    cfg.browser_domains = _flag(cfg.browser_domains, True)
     try:
         cfg.recordings_since = max(0.0, float(cfg.recordings_since or 0))
     except (TypeError, ValueError):

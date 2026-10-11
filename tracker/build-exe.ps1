@@ -6,7 +6,9 @@
     PyInstaller --onefile --noconsole. The same exe is the setup window, the
     settings window and the tracker itself (main.decide_action picks the mode),
     so everything the setup needs is bundled too: tkinter, pywin32 (shortcuts,
-    DPAPI), pystray and Pillow. build.bat runs this for a local build and CI
+    DPAPI), pystray, Pillow and comtypes with its generated UI Automation
+    wrapper (browser_url.py reads the active tab's domain). build.bat runs
+    this for a local build and CI
     (.github/workflows/tracker-windows.yml) runs it before the exe's
     --self-test, so a missing hidden import fails there and not on a user's PC.
     Works in Windows PowerShell 5.1 (build.bat) and PowerShell 7 (CI).
@@ -45,6 +47,8 @@ $HiddenImports = @(
     'win32timezone'        # pywin32 needs it to turn COM dates into datetime
     'psutil'               # stopping the running tracker before an upgrade
     'requests'
+    'comtypes'             # UI Automation for the address bar; browser_url imports it on first use
+    'comtypes.client'
 )
 
 function Invoke-Native {
@@ -75,6 +79,13 @@ try {
         & $Python -m pip install --disable-pip-version-check -r requirements.txt $PyInstallerSpec
     }
 
+    # comtypes writes Python wrappers for a COM type library the first time it is used. Made here,
+    # in site-packages\comtypes\gen, they go into the exe (--collect-submodules below); otherwise
+    # every installed copy would write them to %TEMP% on its first start.
+    Invoke-Native 'Generating the UI Automation wrapper (comtypes.gen)' {
+        & $Python -c "import comtypes.client as c; c.GetModule('UIAutomationCore.dll'); import comtypes.gen.UIAutomationClient"
+    }
+
     New-Item -ItemType Directory -Force -Path assets | Out-Null
     Invoke-Native 'Writing the tray icon to assets\icon.ico' {
         & $Python -c "from mindsetforest_tracker.tray import save_ico; save_ico(r'assets\icon.ico')"
@@ -93,6 +104,8 @@ try {
         '--add-data', 'assets\icon.ico;assets'
         # setup_gui and winsetup are imported lazily; take every module of the package.
         '--collect-submodules', 'mindsetforest_tracker'
+        # The wrappers generated above (UIAutomationClient and the stdole it imports).
+        '--collect-submodules', 'comtypes.gen'
     )
     foreach ($module in $HiddenImports) { $pyiArgs += @('--hidden-import', $module) }
     $pyiArgs += 'run_tracker.py'

@@ -22,7 +22,9 @@ import {
   type UsageSession,
   type ClassifyContext,
 } from "../lib/app-usage-classify";
-import { dailyRowToSession, rowToSession } from "../lib/app-usage-rows";
+import { dailyRowToSession, rowToClass, rowToSession } from "../lib/app-usage-rows";
+import { matchCatalog } from "../lib/app-catalog";
+import { CLASSIFICATION_SOURCE_LABELS } from "../components/tracker/computer-time-shared";
 
 // ---------------------------------------------------------------------------
 // fixtures
@@ -37,6 +39,7 @@ const cls = (over: Partial<AppClass> & { id: string; kind: AppClass["kind"] }): 
   sort_order: 0,
   count_idle: false,
   is_default: false,
+  catalog_groups: [],
   ...over,
 });
 
@@ -127,7 +130,7 @@ describe("classifySession: rules", () => {
     const disabled = rule({ pattern: "Discord", class_id: "waste", enabled: false });
     const suggested = rule({ pattern: "Discord", class_id: "waste", source: "suggested", priority: 99 });
     const c = classifySession(sess({ app_key: "Discord" }), ctx([disabled, suggested]));
-    expect(c.source).toBe("keyword"); // falls through to the "Discord" keyword of Komunikacja
+    expect(c.source).toBe("catalog"); // falls through to the built-in catalog: Discord is communication
     expect(c.classId).toBe("comm");
   });
 
@@ -144,8 +147,8 @@ describe("classifySession: rules", () => {
 
   it("domain rules match hosts in titles and site tokens in keys", () => {
     const r = rule({ field: "title", match_kind: "domain", pattern: "youtube.com", class_id: "watch" });
-    expect(classifySession(sess({ app_key: "Browser | x", window_title: "Talk - https://www.youtube.com/watch?v=1" }), ctx([r])).classId).toBe("watch");
-    expect(classifySession(sess({ app_key: "Browser | x", window_title: "https://notyoutube.com/" }), ctx([r])).source).toBe("none");
+    expect(classifySession(sess({ app_key: "Browser | site", window_title: "Talk - https://www.youtube.com/watch?v=1" }), ctx([r])).classId).toBe("watch");
+    expect(classifySession(sess({ app_key: "Browser | site", window_title: "https://notyoutube.com/" }), ctx([r])).source).toBe("none");
     const bare = rule({ field: "app_key", match_kind: "domain", pattern: "youtube", class_id: "waste" });
     expect(classifySession(sess({ app_key: "Browser | YouTube" }), ctx([bare])).classId).toBe("waste");
   });
@@ -195,14 +198,16 @@ describe("regex safety", () => {
 
 describe("classifySession: keywords and priors", () => {
   it("class keywords must match as whole words, case-insensitively", () => {
-    expect(classifySession(sess({ app_key: "Browser | reddit" }), ctx()).classId).toBe("waste");
-    const c = classifySession(sess({ app_key: "Browser | Redditor" }), ctx());
+    // (Reddit itself is in the built-in catalog, so a word only the user knows)
+    expect(classifySession(sess({ app_key: "Browser | Python TUTORIAL" }), ctx()).classId).toBe("learn");
+    const c = classifySession(sess({ app_key: "Browser | Tutorials" }), ctx());
     expect(c.source).toBe("none");
-    expect(classifySession(sess({ app_key: "Browser | reddit" }), ctx()).confidence).toBe(0.75);
+    expect(classifySession(sess({ app_key: "Browser | Python TUTORIAL" }), ctx()).confidence).toBe(0.75);
   });
 
   it("a project name in the key or title yields the work class with projectId set", () => {
-    const c = classifySession(sess({ app_key: "PyCharm | mindsetforest" }), ctx());
+    // Hermes is not in the built-in catalog (PyCharm is: see "built-in catalog")
+    const c = classifySession(sess({ app_key: "Hermes | mindsetforest" }), ctx());
     expect(c.classId).toBe("work");
     expect(c.projectId).toBe("p1");
     expect(c.source).toBe("keyword");
@@ -212,30 +217,30 @@ describe("classifySession: keywords and priors", () => {
     expect(c2.projectId).toBe("p1");
     // a class bound to the project wins over the default work class
     const bound = cls({ id: "mf", kind: "work", name: "MF", project_id: "p1", sort_order: 9 });
-    const c3 = classifySession(sess({ app_key: "PyCharm | mindsetforest" }), ctx([], { classes: [...CLASSES, bound] }));
+    const c3 = classifySession(sess({ app_key: "Hermes | mindsetforest" }), ctx([], { classes: [...CLASSES, bound] }));
     expect(c3.classId).toBe("mf");
   });
 
   it("uses the per-app prior only at share >= 0.7 and with enough history", () => {
-    const s = sess({ app_key: "Figma" });
-    const low = classifySession(s, ctx([], { priors: { Figma: { classId: "work", share: 0.6 } } }));
+    const s = sess({ app_key: "Affinity" });
+    const low = classifySession(s, ctx([], { priors: { Affinity: { classId: "work", share: 0.6 } } }));
     expect(low.source).toBe("none");
-    const high = classifySession(s, ctx([], { priors: { Figma: { classId: "work", share: 0.8 } } }));
+    const high = classifySession(s, ctx([], { priors: { Affinity: { classId: "work", share: 0.8 } } }));
     expect(high.source).toBe("prior");
     expect(high.classId).toBe("work");
     expect(high.confidence).toBeCloseTo(0.55 + 0.15 * 0.8, 3);
-    const thin = classifySession(s, ctx([], { priors: { Figma: { classId: "work", share: 1, seconds: 600 } } }));
+    const thin = classifySession(s, ctx([], { priors: { Affinity: { classId: "work", share: 1, seconds: 600 } } }));
     expect(thin.source).toBe("none");
   });
 
   it("classifyAll derives priors from rule/keyword decisions for the second pass", () => {
     const r = rule({ field: "title", match_kind: "substring", pattern: "repo", class_id: "work" });
     const sessions = [
-      sess({ app_key: "Figma", app: "Figma", window_title: "repo design", seconds: 3000 }),
-      sess({ app_key: "Figma", app: "Figma", window_title: "logo", seconds: 100 }),
+      sess({ app_key: "Affinity", app: "Affinity", window_title: "repo design", seconds: 3000 }),
+      sess({ app_key: "Affinity", app: "Affinity", window_title: "logo", seconds: 100 }),
     ];
     const priors = computeAppPriors(sessions, sessions.map((s) => classifySession(s, ctx([r]))));
-    expect(priors.Figma).toMatchObject({ classId: "work", share: 1, seconds: 3000 });
+    expect(priors.Affinity).toMatchObject({ classId: "work", share: 1, seconds: 3000 });
     const all = classifyAll(sessions, ctx([r]));
     expect(all[0].source).toBe("rule");
     expect(all[1].source).toBe("prior");
@@ -248,7 +253,7 @@ describe("classifySession: keywords and priors", () => {
       sess({ app_key: "Browser | GitHub", app: "Chrome", seconds: 5 * 3600 }),
       sess({ app_key: "Browser | YouTube", app: "Chrome", seconds: 3600 }),
       sess({ app_key: "Browser | new-site", app: "Chrome", seconds: 900 }),
-      sess({ app_key: "Code | new-project", app: "Code", seconds: 900 }),
+      sess({ app_key: "Kate | new-project", app: "Kate", seconds: 900 }),
     ];
     const all = classifyAll(sessions, ctx(rules, { classes: CLASSES.map((c) => ({ ...c, keywords: [] })) }));
     expect(all[2].source).toBe("none");
@@ -262,16 +267,17 @@ describe("classifySession: keywords and priors", () => {
     const r = rule({ field: "title", match_kind: "substring", pattern: "budget", class_id: "work" });
     const idleWaste = rule({ field: "title", match_kind: "substring", pattern: "party", class_id: "waste" });
     const sessions = [
-      sess({ app_key: "Word", app: "Word", window_title: "budget.docx", seconds: 1000 }),
-      sess({ app_key: "Word", app: "Word", window_title: "party.docx", seconds: 20000, idle: true }),
+      sess({ app_key: "Pages", app: "Pages", window_title: "budget.docx", seconds: 1000 }),
+      sess({ app_key: "Pages", app: "Pages", window_title: "party.docx", seconds: 20000, idle: true }),
     ];
     const thin = computeAppPriors(sessions, sessions.map((s) => classifySession(s, ctx([r, idleWaste]))));
-    expect(thin.Word).toBeUndefined(); // 1000 s non-idle is below the 30-minute floor
-    sessions.push(sess({ app_key: "Word", app: "Word", window_title: "budget v2.docx", seconds: 1000 }));
+    expect(thin.Pages).toBeUndefined(); // 1000 s non-idle is below the 30-minute floor
+    sessions.push(sess({ app_key: "Pages", app: "Pages", window_title: "budget v2.docx", seconds: 1000 }));
     const priors = computeAppPriors(sessions, sessions.map((s) => classifySession(s, ctx([r, idleWaste]))));
-    expect(priors.Word).toMatchObject({ classId: "work", share: 1, seconds: 2000 });
-    const unknown = classifySession(sess({ app_key: "Word", app: "Word", window_title: "letter.docx" }), ctx([], { priors }));
+    expect(priors.Pages).toMatchObject({ classId: "work", share: 1, seconds: 2000 });
+    const unknown = classifySession(sess({ app_key: "Pages", app: "Pages", window_title: "letter.docx" }), ctx([], { priors }));
     expect(unknown.classId).toBe("work");
+    expect(unknown.source).toBe("prior");
   });
 
   it("returns none when nothing applies", () => {
@@ -495,5 +501,180 @@ describe("review fixes", () => {
     const sessions = [long("2026-09-21"), long("2026-09-14")];
     // cutoff 10:00 local = 360 minutes after 04:00: 10 minutes of each session
     expect(weekdayBaseline(sessions, CLASSES, classifyAll(sessions, ctx()), ["2026-09-21", "2026-09-14"], 360)?.byKind.work).toBe(600);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// built-in catalog in the classifier
+// ---------------------------------------------------------------------------
+
+describe("built-in catalog", () => {
+  it("an exact catalog name classifies with its confidence, reason and entry id", () => {
+    const c = classifySession(sess({ app_key: "com.openai.chatgpt", app: "ChatGPT", window_title: "ChatGPT" }), ctx());
+    expect(c).toMatchObject({ classId: "work", source: "catalog", confidence: 0.6, catalogId: "chatgpt" });
+    expect(c.why).toBe("Wbudowany katalog: ChatGPT (pakiet Androida)");
+    expect(classifySession(sess({ app_key: "Browser | Netflix" }), ctx()).confidence).toBe(0.8);
+  });
+
+  it("order: a rule beats the catalog", () => {
+    const r = rule({ pattern: "Browser | YouTube", class_id: "learn", source: "label" });
+    const c = classifySession(sess({ app_key: "Browser | YouTube" }), ctx([r]));
+    expect(c).toMatchObject({ classId: "learn", source: "rule" });
+  });
+
+  it("order: an exact catalog name beats a keyword", () => {
+    // the "YouTube" keyword of Oglądanie would take YouTube Music
+    const c = classifySession(sess({ app_key: "Browser | YouTube Music", window_title: "Mix - YouTube Music - Brave" }), ctx());
+    expect(c).toMatchObject({ classId: "neutral", source: "catalog", catalogId: "ytmusic" });
+  });
+
+  it("order: a keyword beats a catalog guess from the title", () => {
+    const s = sess({ app_key: "Browser | other", window_title: "Python docs notes - Miro - Brave" });
+    expect(matchCatalog(s, "loose")?.entry.id).toBe("miro");
+    expect(classifySession(s, ctx())).toMatchObject({ classId: "learn", source: "keyword" });
+    const plain = classifySession(sess({ app_key: "Browser | other", window_title: "Sprint board - Miro - Brave" }), ctx());
+    expect(plain).toMatchObject({ classId: "work", source: "catalog", catalogId: "miro" });
+    expect(plain.why).toBe("Wbudowany katalog: Miro (fragment tytułu)");
+  });
+
+  it("an opaque entry never classifies (a phone browser says nothing about the page)", () => {
+    const s = sess({ app_key: "com.brave.browser", app: "Brave", window_title: "Brave" });
+    expect(matchCatalog(s)?.entry.opaque).toBe(true);
+    const c = classifySession(s, ctx());
+    expect(c).toMatchObject({ classId: null, source: "none", confidence: 0 });
+    expect(c.why).toBe("Wbudowany katalog: Przeglądarka w telefonie nie mówi, co było otwarte");
+    expect(classifyAll([{ ...s, seconds: 7200 }], ctx())[0].source).toBe("none");
+  });
+
+  it("stays silent when the user has no class of the entry's kind", () => {
+    const noWatching = CLASSES.filter((c) => c.kind !== "watching");
+    expect(classifySession(sess({ app_key: "Browser | Netflix" }), ctx([], { classes: noWatching })).source).toBe("none");
+  });
+
+  it("a class that claims the entry's group takes it", () => {
+    const classes = CLASSES.map((c) => (c.id === "learn" ? { ...c, catalog_groups: ["ai_chat"] } : c));
+    const c = classifySession(sess({ app_key: "Browser | ChatGPT" }), ctx([], { classes }));
+    expect(c).toMatchObject({ classId: "learn", source: "catalog" });
+  });
+
+  it("a project name attaches the project; a bound class of the same kind replaces the catalog's pick", () => {
+    const bound = cls({ id: "mf", kind: "work", name: "MF", project_id: "p1", sort_order: 9 });
+    const classes = [...CLASSES, bound];
+    const ide = classifySession(sess({ app_key: "PyCharm | mindsetforest" }), ctx([], { classes }));
+    expect(ide).toMatchObject({ classId: "mf", projectId: "p1", source: "catalog", catalogId: "jetbrains" });
+    // a video about the project is still watching, filed under the project
+    const video = classifySession(sess({ app_key: "Browser | YouTube", window_title: "mindsetforest devlog - YouTube" }), ctx([], { classes }));
+    expect(video).toMatchObject({ classId: "watch", projectId: "p1", source: "catalog" });
+  });
+
+  it("Messenger (com.facebook.orca) is communication, not the Facebook keyword's waste", () => {
+    const classes = CLASSES.map((c) => (c.id === "waste" ? { ...c, keywords: ["Reddit", "Facebook"] } : c));
+    const c = classifySession(sess({ app_key: "com.facebook.orca", app: "Messenger", window_title: "Messenger" }), ctx([], { classes }));
+    expect(c).toMatchObject({ classId: "comm", source: "catalog", catalogId: "messenger" });
+  });
+
+  it("keywords read a package's label, not the package name", () => {
+    const classes = CLASSES.map((c) => (c.id === "waste" ? { ...c, keywords: ["Reddit", "Facebook"] } : c));
+    // not in the catalog: before the fix "facebook" in the package hit the Facebook keyword
+    const pages = classifySession(sess({ app_key: "com.facebook.pages.app", app: "Meta Business Suite" }), ctx([], { classes }));
+    expect(pages.source).toBe("none");
+    const beta = classifySession(sess({ app_key: "com.example.discordbeta", app: "Discord Beta" }), ctx([], { classes }));
+    expect(beta).toMatchObject({ classId: "comm", source: "keyword" });
+    // a Windows name that looks like a package keeps matching on itself
+    const winApp = classifySession(sess({ app_key: "Reddit.App", app: "Reddit.App" }), ctx([], { classes }));
+    expect(winApp).toMatchObject({ classId: "waste", source: "keyword" });
+  });
+
+  it("priors learn from catalog decisions", () => {
+    const sessions = [
+      sess({ app_key: "Browser | Board", window_title: "Sprint - Miro - Brave", seconds: 2400 }),
+      sess({ app_key: "Browser | Board", window_title: "Untitled board - Brave", seconds: 300 }),
+    ];
+    const first = sessions.map((s) => classifySession(s, ctx()));
+    expect(first.map((c) => c.source)).toEqual(["catalog", "none"]);
+    expect(computeAppPriors(sessions, first)["Browser | Board"]).toMatchObject({ classId: "work", share: 1, seconds: 2400 });
+    const all = classifyAll(sessions, ctx());
+    expect(all[1]).toMatchObject({ classId: "work", source: "prior" });
+  });
+
+  it("'Browser | other' never learns a prior from the few titles that were recognised", () => {
+    const sessions = [
+      sess({ app_key: "Browser | other", window_title: "New Tab - Brave", seconds: 3600 }),
+      sess({ app_key: "Browser | other", window_title: "Prośba o pomoc finansową - Brave", seconds: 3600 }),
+    ];
+    const all = classifyAll(sessions, ctx());
+    expect(all[0]).toMatchObject({ classId: "neutral", source: "catalog", catalogId: "browser_chrome" });
+    expect(computeAppPriors(sessions, all)["Browser | other"]).toBeUndefined();
+    expect(all[1].source).toBe("none");
+  });
+
+  it("daily rollup rows (no title) still get the exact names", () => {
+    const daily = dailyRowToSession({
+      local_date: "2026-10-01",
+      device_id: "android:x",
+      app: "Jakdojade",
+      app_key: "com.citynav.jakdojade.pl.android",
+      idle: false,
+      seconds: 600,
+      session_count: 2,
+      last_seen_at: null,
+    })!;
+    expect(classifySession(daily, ctx())).toMatchObject({ classId: "neutral", source: "catalog", catalogId: "jakdojade" });
+  });
+
+  it("the source has a Polish label", () => {
+    expect(CLASSIFICATION_SOURCE_LABELS.catalog).toBe("katalog");
+  });
+});
+
+describe("proposeRule: browsers", () => {
+  const browserLabels = [
+    { appKey: "Browser | GitHub", app: "Brave", classId: "work" },
+    { appKey: "Browser | Supabase", app: "Brave", classId: "work" },
+  ];
+
+  it("never proposes 'always treat Brave as X' after three sites share a class", () => {
+    const p = proposeRule("Browser | Vercel", "Dashboard - Vercel - Brave", "work", {
+      app: "Brave",
+      labels: browserLabels,
+      projects: [],
+      titles: [],
+      existingRules: [
+        { field: "app_key", match_kind: "exact", pattern: "Browser | GitHub" },
+        { field: "app_key", match_kind: "exact", pattern: "Browser | Supabase" },
+        { field: "app_key", match_kind: "exact", pattern: "Browser | Vercel" },
+      ],
+    });
+    expect(p).toBeNull();
+  });
+
+  it("nor for a phone key whose label is a browser's name (the rule would take every PC tab)", () => {
+    expect(proposeRule("com.brave.browser", "", "work", { app: "Brave", labels: browserLabels })).toBeNull();
+    const phoneLabels = [...browserLabels, { appKey: "Brave Beta", app: "Brave", classId: "work" }, { appKey: "Brave Nightly", app: "Brave", classId: "work" }];
+    expect(proposeRule("com.brave.browser", "", "work", { app: "Brave", labels: phoneLabels })).toBeNull();
+    // without any browser key under that name it is an ordinary app
+    expect(proposeRule("com.brave.browser", "", "work", { app: "Brave", labels: phoneLabels.slice(2) })).toMatchObject({ field: "app", pattern: "Brave" });
+  });
+});
+
+describe("rowToClass", () => {
+  const row = {
+    id: "c",
+    user_id: "u",
+    name: "Praca",
+    kind: "work",
+    pillar_id: null,
+    project_id: null,
+    keywords: ["Code"],
+    color: null,
+    sort_order: 0,
+    count_idle: false,
+    is_default: false,
+    created_at: "2026-10-01T00:00:00Z",
+  };
+  it("maps catalog_groups and reads a database without the column as no claims", () => {
+    expect(rowToClass(row).catalog_groups).toEqual([]);
+    expect(rowToClass({ ...row, catalog_groups: null }).catalog_groups).toEqual([]);
+    expect(rowToClass({ ...row, catalog_groups: ["ai_chat"] }).catalog_groups).toEqual(["ai_chat"]);
   });
 });

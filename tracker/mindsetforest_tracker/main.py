@@ -597,7 +597,11 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
     client = SyncClient(config.supabase_url, config.supabase_anon_key, auth)
     worker = SyncWorker(store, client, interval_seconds=config.sync_seconds)
     archive = ArchiveClient(config.supabase_url, config.supabase_anon_key, auth) if config.supabase_url else None
-    app = TrackerApp(config, store, auth, sampler or default_sampler(), tracker, client, worker, device_id,
+    if sampler is None:
+        log.info("Browser tabs named by %s",
+                 "their domain (address bar)" if config.browser_domains else "their title only")
+        sampler = default_sampler(browser_domains=config.browser_domains)
+    app = TrackerApp(config, store, auth, sampler, tracker, client, worker, device_id,
                      archive=archive, hotkey_factory=HotkeyListener if sys.platform == "win32" else None,
                      quit_request=data_dir / QUIT_REQUEST_FILE, login_marker=data_dir / NEEDS_LOGIN_FILE)
     if config.supabase_url and config.vault_dir:

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, MonitorSmartphone, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, MonitorSmartphone, RefreshCw, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppUsage, type UsageRange } from "@/hooks/useAppUsage";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useTrackerDevices } from "@/hooks/useTrackerDevices";
 import { addDays, daysBetween, todayKey } from "@/lib/today";
 import { aggregateUsage, PRIORITY_LEARNED, type Classification, type RuleProposal, type UsageSession } from "@/lib/app-usage-classify";
+import { buildTriage, durationLabel, plural, triageWorth } from "@/lib/app-usage-triage";
+import { dismissedKeys, loadSuggestionRows, recordDecisions, requestAiSuggestions, type AiDecision, type AiSuggestion } from "@/lib/app-usage-ai";
 import ComputerTimeDashboard from "./ComputerTimeDashboard";
 import ComputerTimeTimeline from "./ComputerTimeTimeline";
 import ComputerTimeWeek from "./ComputerTimeWeek";
@@ -17,6 +19,7 @@ import TrackerDownload from "./TrackerDownload";
 import PhoneDownload from "./PhoneDownload";
 import ComputerTimePrivacy from "./ComputerTimePrivacy";
 import TrackerDevicesDialog from "./TrackerDevicesDialog";
+import ComputerTimeTriage, { type TriageMemory } from "./ComputerTimeTriage";
 import { deviceLabel, pillActive, pillBase, pillIdle, relativeTime } from "./computer-time-shared";
 
 /**
@@ -38,7 +41,25 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 const ALL_DEVICES = "__all__";
 const COLLAPSE_KEY = "computer-time-collapsed";
+/** The range preset (and a custom range) survive a reload. */
+const RANGE_KEY = "computer-time-range";
+/** The day the triage banner was hidden: it comes back the next day. */
+const TRIAGE_HIDDEN_KEY = "computer-time-triage-hidden";
 const MAX_WEEK_DAYS = 60;
+const NO_DISMISSED = new Set<string>();
+const NO_AI = new Map<string, AiSuggestion>();
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function readStoredRange(): { preset: Preset; custom: UsageRange } | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RANGE_KEY) || "null");
+    if (!raw || typeof raw.preset !== "string" || !Object.prototype.hasOwnProperty.call(PRESET_LABELS, raw.preset)) return null;
+    const custom = DAY_KEY_RE.test(raw.from) && DAY_KEY_RE.test(raw.to) ? { from: raw.from, to: raw.to } : null;
+    return { preset: raw.preset, custom: custom ?? { from: addDays(todayKey(), -13), to: todayKey() } };
+  } catch {
+    return null;
+  }
+}
 
 function presetRange(preset: Preset, custom: UsageRange): UsageRange {
   const today = todayKey();
@@ -70,8 +91,9 @@ export default function ComputerTime() {
   // Loads start on the first expand and stay loaded afterwards.
   const [everExpanded, setEverExpanded] = useState(!collapsed);
   const [showInstall, setShowInstall] = useState(false);
-  const [preset, setPreset] = useState<Preset>("today");
-  const [custom, setCustom] = useState<UsageRange>(() => ({ from: addDays(todayKey(), -13), to: todayKey() }));
+  const [storedRange] = useState(readStoredRange);
+  const [preset, setPreset] = useState<Preset>(storedRange?.preset ?? "today");
+  const [custom, setCustom] = useState<UsageRange>(() => storedRange?.custom ?? { from: addDays(todayKey(), -13), to: todayKey() });
   const [device, setDevice] = useState<string>(ALL_DEVICES);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [now, setNow] = useState(() => new Date());
@@ -100,6 +122,14 @@ export default function ComputerTime() {
     }
   }, [collapsed]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(RANGE_KEY, JSON.stringify({ preset, from: custom.from, to: custom.to }));
+    } catch {
+      /* ignore */
+    }
+  }, [preset, custom]);
+
   // "12 min temu" should age while the page sits open.
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 60_000);
@@ -125,6 +155,65 @@ export default function ComputerTime() {
 
   const agg = useMemo(() => aggregateUsage(inRange.sessions, usage.classes, inRange.classifications), [inRange, usage.classes]);
   const weekAgg = useMemo(() => aggregateUsage(week.sessions, usage.classes, week.classifications), [week, usage.classes]);
+
+  // "Przypisz w 10 sekund": the whole loaded window on every device, not the
+  // range or device filter. The skipped keys come from app_class_suggestions.
+  const [triageOpen, setTriageOpen] = useState(false);
+  const [memory, setMemory] = useState<TriageMemory | null>(null);
+  const userId = usage.userId;
+  const refreshMemory = useCallback(async (): Promise<TriageMemory> => {
+    if (!userId) return { rows: [], ready: false };
+    const next = await loadSuggestionRows(userId);
+    setMemory(next);
+    return next;
+  }, [userId]);
+  useEffect(() => {
+    if (everExpanded && userId && usage.tableReady) void refreshMemory();
+  }, [everExpanded, userId, usage.tableReady, refreshMemory]);
+  const record = useCallback(
+    async (decisions: AiDecision[]) => (userId ? recordDecisions(userId, decisions) : false),
+    [userId],
+  );
+  const dismissed = useMemo(() => (memory ? dismissedKeys(memory.rows) : NO_DISMISSED), [memory]);
+  const triage = useMemo(
+    () =>
+      everExpanded && usage.sessions.length > 0 && usage.classes.length > 0
+        ? buildTriage({
+            sessions: usage.sessions,
+            classifications: usage.classifications,
+            classes: usage.classes,
+            rules: usage.rules,
+            dismissed,
+            ai: NO_AI,
+          })
+        : null,
+    [everExpanded, usage.sessions, usage.classifications, usage.classes, usage.rules, dismissed],
+  );
+  const loadedDays = daysBetween(loadRange.from, loadRange.to) + 1;
+  const [triageHiddenOn, setTriageHiddenOn] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(TRIAGE_HIDDEN_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const showTriageBanner = !!triage && triageWorth(triage) && triageHiddenOn !== dayKey;
+  const hideTriageBanner = () => {
+    setTriageHiddenOn(dayKey);
+    try {
+      localStorage.setItem(TRIAGE_HIDDEN_KEY, dayKey);
+    } catch {
+      /* ignore */
+    }
+  };
+  const triageBannerText = !triage
+    ? ""
+    : triage.unassignedSeconds >= 15 * 60
+      ? `${durationLabel(triage.unassignedSeconds)} bez kategorii`
+      : triage.questions.length > 0
+        ? `${triage.questions.length} ${plural(triage.questions.length, "szybkie pytanie", "szybkie pytania", "szybkich pytań")}`
+        : `${durationLabel(triage.guessedSeconds)} do potwierdzenia`;
+  const canTriage = !!triage && (triage.items.length > 0 || triage.questions.length > 0);
 
   const createLearnedRule = async (proposal: RuleProposal): Promise<boolean> => {
     const created = await usage.createRule({
@@ -182,6 +271,28 @@ export default function ComputerTime() {
             className="overflow-hidden"
           >
             <div className="px-6 pb-6">
+              {showTriageBanner && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 pl-3 pr-1.5 py-1.5 text-xs" role="status">
+                  <button
+                    type="button"
+                    onClick={() => setTriageOpen(true)}
+                    className="flex-1 min-w-0 text-left py-0.5 text-foreground/90 hover:text-foreground"
+                  >
+                    <span aria-hidden="true">⚡</span> <strong>{triageBannerText}</strong>
+                    <span className="text-muted-foreground"> ({loadedDays} {plural(loadedDays, "dzień", "dni", "dni")})</span> ·{" "}
+                    <span className="text-primary underline-offset-2 hover:underline">Przypisz w 10 sekund</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={hideTriageBanner}
+                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 shrink-0"
+                    aria-label="Ukryj do jutra"
+                    title="Ukryj do jutra"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               {/* Range + device */}
               <div className="flex flex-wrap items-center gap-2 mb-4" role="group" aria-label="Zakres dat">
                 {(Object.keys(PRESET_LABELS) as Preset[]).map((p) => (
@@ -266,6 +377,23 @@ export default function ComputerTime() {
                   usage.refetch();
                 }}
               />
+              <ComputerTimeTriage
+                open={triageOpen}
+                onOpenChange={setTriageOpen}
+                sessions={usage.sessions}
+                classifications={usage.classifications}
+                classes={usage.classes}
+                rules={usage.rules}
+                categories={categories}
+                days={loadedDays}
+                memory={memory}
+                refreshMemory={refreshMemory}
+                requestAi={requestAiSuggestions}
+                recordDecisions={record}
+                labelKeys={usage.labelKeys}
+                claimCatalogGroups={usage.claimCatalogGroups}
+                undoLabels={usage.undoLabels}
+              />
               {usage.lastSync && (
                 <p className="text-[11px] text-muted-foreground mb-4 sm:hidden">
                   Ostatni sync: {relativeTime(usage.lastSync.at, now)} z {deviceLabel(usage.lastSync.device, names)}
@@ -324,6 +452,16 @@ export default function ComputerTime() {
                         {TAB_LABELS[t]}
                       </button>
                     ))}
+                    {canTriage && (
+                      <button
+                        type="button"
+                        onClick={() => setTriageOpen(true)}
+                        className={`${pillBase} ${pillIdle} ml-auto`}
+                        title="Przypisz w 10 sekund"
+                      >
+                        <span aria-hidden="true">⚡</span> Przypisz
+                      </button>
+                    )}
                   </div>
 
                   {noDataInRange && tab !== "apps" && tab !== "week" ? (
@@ -337,6 +475,7 @@ export default function ComputerTime() {
                       from={range.from}
                       to={range.to}
                       fetchSessionsForDates={usage.fetchSessionsForDates}
+                      onOpenTriage={canTriage ? () => setTriageOpen(true) : undefined}
                     />
                   ) : tab === "timeline" ? (
                     <ComputerTimeTimeline

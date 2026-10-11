@@ -90,3 +90,17 @@ def test_legacy_or_known_prefers_the_zip_versions_documents_folder(tmp_path, mon
     assert legacy_or_known("MindsetForest Vault") == tmp_path / "Documents" / "MindsetForest Vault"
     assert Config().vault_dir == str(tmp_path / "Documents" / "MindsetForest Vault")
     assert load_config(tmp_path / "missing.json").recordings_dir == str(onedrive / "Bandicam")
+
+
+def test_browser_domains_default_round_trip_and_odd_values(tmp_path):
+    path = tmp_path / "config.json"
+    cfg = load_config(path)
+    assert cfg.browser_domains is True  # on unless turned off
+    cfg.browser_domains = False
+    save_config(cfg)
+    assert json.loads(path.read_text())["browser_domains"] is False
+    assert load_config(path).browser_domains is False
+    for raw, expected in ((True, True), (False, False), ("false", False), ("No", False), (0, False), ("off", False),
+                          ("true", True), (1, True), (None, True), ("maybe", True), ([], True)):
+        path.write_text(json.dumps({"browser_domains": raw}))
+        assert load_config(path).browser_domains is expected, raw

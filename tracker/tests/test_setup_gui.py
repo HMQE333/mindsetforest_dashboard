@@ -409,6 +409,9 @@ def test_initial_form_without_and_with_a_config(tmp_path):
     assert kept["vault_dir"] == str(tmp_path / "Mine") and kept["hotkey"] == "ctrl+f8"
     assert kept["supabase_url"] == "https://x.supabase.co" and kept["device_name"] == "Laptop"
     assert kept["autostart"] is False
+    assert fresh["browser_domains"] is True and kept["browser_domains"] is True
+    off = initial_form(Config(browser_domains=False), detected=detected, default_vault=default_vault, autostart=True)
+    assert off["browser_domains"] is False
 
 
 def test_choices_from_form(tmp_path):
@@ -419,6 +422,8 @@ def test_choices_from_form(tmp_path):
     assert choices.vault_dir == str(tmp_path / "Vault") and choices.capture_hotkey == "alt+shift+s"
     on = choices_from_form(_form(tmp_path, dashboard_url=""))
     assert on.recordings_dir == str(tmp_path / "rec") and on.dashboard_url == winsetup.DEFAULT_SITE
+    assert on.browser_domains is True
+    assert choices_from_form(_form(tmp_path, browser_domains=False)).browser_domains is False
 
 
 def test_clean_path(tmp_path, monkeypatch):
@@ -922,3 +927,37 @@ def test_a_confirmed_hotkey_is_pushed_even_when_it_matches_the_one_shown():
     window.hotkey_var, window.hotkey_touched = Var(), False
     setup_gui.SetupWindow._set_hotkey(window, "alt+shift+s")
     assert window.hotkey_touched is True and window.hotkey_var.value == "alt+shift+s"
+
+
+def test_browser_domains_checkbox_reaches_the_choices(gui, monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    save_config(Config(supabase_url="https://x.supabase.co", supabase_anon_key="anon", browser_domains=False,
+                       vault_dir=str(tmp_path / "Vault"), path=data_dir / "config.json"))
+    installed = []
+    monkeypatch.setattr(winsetup, "install", lambda choices, **kw: installed.append(choices) or _result(
+        Path(choices.vault_dir)))
+    window = setup_gui.SetupWindow(gui.root, "settings", data_dir=data_dir, ops=RaisingOps(), source_exe=None)
+    gui.root.update()
+    shown = texts(window.form)
+    assert setup_gui.BROWSER_DOMAINS_LABEL in shown and setup_gui.BROWSER_DOMAINS_HINT in shown
+    assert window.domains_var.get() is False  # the saved choice
+    check = next(w for w in _all_widgets(window.form) if _text(w) == setup_gui.BROWSER_DOMAINS_LABEL)
+    assert check.winfo_reqwidth() <= window.wrap + window.px(40)  # fits the column, no clipped label
+    check.invoke()
+    assert window.form_values()["browser_domains"] is True
+    window.submit()
+    assert pump(gui.root, lambda: window.page_name == "done")
+    assert installed[0].browser_domains is True
+
+
+def _all_widgets(widget):
+    for child in widget.winfo_children():
+        yield child
+        yield from _all_widgets(child)
+
+
+def _text(widget):
+    try:
+        return str(widget.cget("text"))
+    except Exception:
+        return ""

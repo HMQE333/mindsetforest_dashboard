@@ -12,6 +12,9 @@ agent that is out of date still cannot store them. Keep the two in step.
 Built-in terms match as whole words, case-insensitively: ``sex`` matches
 "Sex Education" but not "Essex". A trailing ``*`` matches any continuation
 (``porn*`` covers "porno", "pornography"). User keywords match anywhere.
+The session tracker checks the window title, the exe and, for a Chromium
+browser, the active tab's domain (``pornhub.com``), which catches a site
+whose titles never name it.
 """
 from __future__ import annotations
 

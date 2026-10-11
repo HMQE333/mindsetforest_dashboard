@@ -3,3 +3,4 @@ psutil>=5.9
 pystray>=0.19
 pillow>=10.0
 requests>=2.31
+comtypes>=1.4; sys_platform == "win32"

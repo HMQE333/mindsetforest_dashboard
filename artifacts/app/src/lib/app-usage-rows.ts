@@ -19,7 +19,8 @@ export function asKind(v: string): AppKind {
   return (APP_KINDS as string[]).includes(v) ? (v as AppKind) : "neutral";
 }
 
-export function rowToClass(r: Tables<"app_classes">): AppClass {
+/** `catalog_groups` arrives with migration 20261010120000; a database without it reads as no claims. */
+export function rowToClass(r: Tables<"app_classes"> & { catalog_groups?: string[] | null }): AppClass {
   return {
     id: r.id,
     name: r.name,
@@ -31,6 +32,7 @@ export function rowToClass(r: Tables<"app_classes">): AppClass {
     sort_order: r.sort_order,
     count_idle: r.count_idle,
     is_default: r.is_default,
+    catalog_groups: Array.isArray(r.catalog_groups) ? r.catalog_groups : [],
   };
 }
 

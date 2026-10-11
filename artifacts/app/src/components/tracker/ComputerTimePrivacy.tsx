@@ -13,28 +13,37 @@ import {
  * in (agent and database trigger, see 20260930120000_app_usage_privacy.sql);
  * here the user adds their own keywords, which the database applies at once
  * and the agent picks up at its next sync. Time recorded before a keyword
- * existed is cleared on request (app_usage_forget_private).
+ * existed is cleared on request (app_usage_forget_private). The same row
+ * says whether window titles (redacted) may go to the AI that proposes
+ * classes in "Przypisz w 10 sekund" (ai_titles, default on).
  */
 export default function ComputerTimePrivacy({ onForgotten }: { onForgotten: () => void }) {
   const { user } = useAuth();
   const [keywords, setKeywords] = useState<string[]>([]);
+  const [aiTitles, setAiTitles] = useState(true);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmForget, setConfirmForget] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    void (supabase.from("app_tracking_privacy" as never) as any)
-      .select("keywords")
+    // "*" rather than naming ai_titles: before migration 20261010120000 the column is missing and a named select would fail.
+    void supabase
+      .from("app_tracking_privacy")
+      .select("*")
       .eq("user_id", user.id)
       .maybeSingle()
-      .then(({ data }: { data: { keywords?: string[] } | null }) => setKeywords(data?.keywords ?? []));
+      .then(({ data }) => {
+        setKeywords(data?.keywords ?? []);
+        setAiTitles(data?.ai_titles ?? true);
+      });
   }, [user]);
 
   const save = async (next: string[]) => {
     if (!user) return false;
     setSaving(true);
-    const { error } = await (supabase.from("app_tracking_privacy" as never) as any)
+    const { error } = await supabase
+      .from("app_tracking_privacy")
       .upsert({ user_id: user.id, keywords: next, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
     setSaving(false);
     if (error) {
@@ -43,6 +52,18 @@ export default function ComputerTimePrivacy({ onForgotten }: { onForgotten: () =
     }
     setKeywords(next);
     return true;
+  };
+
+  const saveAiTitles = async (next: boolean) => {
+    if (!user) return;
+    setAiTitles(next);
+    const { error } = await supabase
+      .from("app_tracking_privacy")
+      .upsert({ user_id: user.id, ai_titles: next, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (error) {
+      setAiTitles(!next);
+      toast.error("Nie udało się zapisać ustawienia AI", { description: error.message });
+    }
   };
 
   const add = async () => {
@@ -112,6 +133,20 @@ export default function ComputerTimePrivacy({ onForgotten }: { onForgotten: () =
           <Plus className="h-3.5 w-3.5" /> Add
         </button>
       </form>
+      <label className="flex items-start gap-2 text-xs text-foreground/90 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={aiTitles}
+          onChange={(e) => void saveAiTitles(e.target.checked)}
+          className="mt-0.5 accent-[hsl(var(--primary))]"
+        />
+        <span>
+          Wysyłaj tytuły okien do AI przy proponowaniu kategorii
+          <span className="block text-[11px] text-muted-foreground">
+            E-maile, @nazwy rozmówców, identyfikatory i numery telefonów są maskowane. Wyłączone: AI widzi tylko nazwy aplikacji i stron.
+          </span>
+        </span>
+      </label>
       <button
         type="button"
         onClick={() => setConfirmForget(true)}

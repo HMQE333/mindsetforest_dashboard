@@ -52,3 +52,26 @@ def test_site_keys():
     assert app_key("chrome.exe", "Watch - youtube.com - Google Chrome") == "Browser | YouTube"
     assert app_key("chrome.exe", "Never Gonna - YouTube - Google Chrome") == "Browser | YouTube"
     assert app_key("brave.exe", "Artykuł - Hacker News - Osobisty – Brave") == "Browser | Hacker News"
+
+
+def test_the_tabs_domain_is_checked_too():
+    """A site whose titles never name it: the domain from the address bar catches it."""
+    t = SessionTracker(min_seconds=0)
+    t.set_private_keywords(["tinder"])
+    out = []
+    out += t.feed(0, Sample(exe="chrome.exe", title="Docs - Google Chrome", host="docs.google.com"))
+    out += t.feed(5, Sample(exe="chrome.exe", title="Hot video - Google Chrome", host="pornhub.com"))
+    out += t.feed(10, Sample(exe="chrome.exe", title="Match - Google Chrome", host="tinder.com"))
+    out += t.feed(15, Sample(exe="chrome.exe", title="Docs - Google Chrome", host="docs.google.com"))
+    out += t.close_current(20)
+    assert [(s.app_key, s.seconds) for s in out] == [("Browser | docs.google.com", 5)] * 2
+    assert all("pornhub" not in s.window_title + s.app_key and "tinder" not in s.app_key for s in out)
+
+
+def test_the_host_only_shapes_app_key_and_is_never_stored_alone():
+    t = SessionTracker(min_seconds=0)
+    out = t.feed(0, Sample(exe="brave.exe", title="Prośba o pomoc finansową – Brave", host="chatgpt.com"))
+    out += t.close_current(5)
+    (row,) = [s.to_row() for s in out]
+    assert row["app_key"] == "Browser | ChatGPT" and row["window_title"] == "Prośba o pomoc finansową – Brave"
+    assert "host" not in row and "chatgpt.com" not in str(row)

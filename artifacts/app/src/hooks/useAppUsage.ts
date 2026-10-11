@@ -20,6 +20,7 @@ import {
   type UsageSession,
 } from "@/lib/app-usage-classify";
 import { DAILY_COLUMNS, SESSION_COLUMNS, dailyRowToSession, rowToClass, rowToRule, rowToSession } from "@/lib/app-usage-rows";
+import { planGroupClaims, planLabelBatch, type LabelEntry, type LabelUndo } from "@/lib/app-usage-triage";
 
 /**
  * Fired by any out-of-band writer (the assistant, a future AI classifier) after
@@ -124,6 +125,105 @@ export const DEFAULT_CLASSES: ClassInput[] = [
   { name: "Marnowanie czasu", kind: "waste", keywords: ["TikTok", "Instagram", "Reddit", "Facebook"], sort_order: 4 },
   { name: "Neutralne", kind: "neutral", keywords: ["Explorer", "Locked"], is_default: true, sort_order: 5 },
 ];
+
+// --- batch writes (the triage dialog), outside the hook so they can be tested --
+
+/**
+ * Many labels in as few requests as possible. Keys with a hand-written rule
+ * keep it and only move its target (planLabelWrite "update"), each its own
+ * update; everything else is ONE array upsert at the label priority. The
+ * undo lists the rows the upsert created (deleted on undo) and the previous
+ * state of every rule it changed or overwrote (restored on undo). On a
+ * failure the undo still covers what did get written.
+ */
+export async function writeLabelBatch(
+  userId: string,
+  rules: AppRule[],
+  entries: LabelEntry[],
+): Promise<{ undo: LabelUndo; error: PgError }> {
+  const plan = planLabelBatch(rules, entries);
+  const undo: LabelUndo = { keys: [], created: [], restore: [], classGroups: [] };
+  let error: PgError = null;
+
+  const updates = await Promise.all(
+    plan.updates.map((u) =>
+      supabase.from("app_rules").update({ class_id: u.classId, project_id: u.projectId }).eq("id", u.previous.id).eq("user_id", userId),
+    ),
+  );
+  updates.forEach((res, i) => {
+    if (res.error) {
+      error = error || res.error;
+      return;
+    }
+    undo.keys.push(plan.updates[i].appKey);
+    undo.restore.push(plan.updates[i].previous);
+  });
+
+  if (plan.upserts.length > 0) {
+    const payload: TablesInsert<"app_rules">[] = plan.upserts.map((u) => ({
+      user_id: userId,
+      field: "app_key",
+      match_kind: "exact",
+      pattern: u.appKey,
+      class_id: u.classId,
+      project_id: u.projectId,
+      priority: plan.priority,
+      source: "label",
+      confidence: 1,
+      enabled: true,
+    }));
+    const res = await supabase.from("app_rules").upsert(payload, { onConflict: "user_id,field,match_kind,pattern" }).select("id,pattern");
+    if (res.error) {
+      error = error || res.error;
+    } else {
+      const idByPattern = new Map((res.data || []).map((r) => [r.pattern, r.id]));
+      for (const u of plan.upserts) {
+        undo.keys.push(u.appKey);
+        const id = idByPattern.get(u.appKey);
+        // The rule it overwrote comes back on undo; a row that did not exist goes.
+        if (u.previous && (!id || id === u.previous.id)) undo.restore.push(u.previous);
+        else if (id) undo.created.push(id);
+      }
+    }
+  }
+  return { undo, error };
+}
+
+/** Each answered catalog group in exactly one class's catalog_groups: one update per class that changes. */
+export async function writeGroupClaims(userId: string, classes: AppClass[], answers: Record<string, string>): Promise<PgError> {
+  const changes = planGroupClaims(classes, answers);
+  const results = await Promise.all(
+    changes.map((c) => supabase.from("app_classes").update({ catalog_groups: c.after }).eq("id", c.id).eq("user_id", userId)),
+  );
+  return results.find((r) => r.error)?.error ?? null;
+}
+
+/** Undo of a batch: created rules deleted in one request, changed rules and class claims put back as they were. */
+export async function revertLabels(userId: string, undo: LabelUndo): Promise<PgError> {
+  const jobs: PromiseLike<{ error: PgError }>[] = [];
+  if (undo.created.length > 0) jobs.push(supabase.from("app_rules").delete().in("id", undo.created).eq("user_id", userId));
+  for (const r of undo.restore) {
+    jobs.push(
+      supabase
+        .from("app_rules")
+        .update({
+          class_id: r.class_id,
+          project_id: r.project_id,
+          priority: r.priority,
+          source: r.source,
+          confidence: r.confidence,
+          enabled: r.enabled,
+        })
+        .eq("id", r.id)
+        .eq("user_id", userId),
+    );
+  }
+  for (const c of undo.classGroups) {
+    jobs.push(supabase.from("app_classes").update({ catalog_groups: c.catalog_groups }).eq("id", c.id).eq("user_id", userId));
+  }
+  const results = await Promise.all(jobs);
+  return results.find((r) => r.error)?.error ?? null;
+}
 
 export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {}) {
   const enabled = options.enabled ?? true;
@@ -523,6 +623,77 @@ export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {})
     [userId, rules, sessions, projectRefs, guard, loadVocabulary],
   );
 
+  /**
+   * Many labels at once (the triage dialog): writeLabelBatch, then ONE
+   * vocabulary refetch, and one warning naming a higher-priority rule that
+   * still wins for some key. Returns what "Cofnij" needs (null when nothing
+   * was written).
+   */
+  const labelKeys = useCallback(
+    async (entries: LabelEntry[]): Promise<LabelUndo | null> => {
+      if (!userId || entries.length === 0) return null;
+      const { undo, error } = await writeLabelBatch(userId, rules, entries);
+      if (error) guard(error, "przypisać klasy");
+      if (undo.keys.length === 0) return null;
+
+      const fresh = await loadVocabulary();
+      if (fresh) {
+        const chosen = new Map(entries.map((e) => [e.appKey, e.classId]));
+        const winners: AppRule[] = [];
+        for (const key of undo.keys) {
+          const sample = sessions.find((s) => s.app_key === key && !s.idle) || sessions.find((s) => s.app_key === key);
+          if (!sample) continue;
+          const winner = competingRule(sample, { classes: fresh.classes, rules: fresh.rules, projects: projectRefs }, chosen.get(key) || "");
+          if (winner && !winners.some((w) => w.id === winner.id)) winners.push(winner);
+        }
+        if (winners.length > 0) {
+          const w = winners[0];
+          toast.warning(
+            `Nadal wygrywa reguła o wyższym priorytecie (${w.priority}): ${describeRule(w)}` +
+              (winners.length > 1 ? ` i ${winners.length - 1} inne` : "") +
+              ". Zmień ją w zakładce Aplikacje.",
+          );
+        }
+      }
+      return undo;
+    },
+    [userId, rules, sessions, projectRefs, guard, loadVocabulary],
+  );
+
+  /**
+   * The answers to the triage questions (writeGroupClaims), then one
+   * vocabulary refetch.
+   */
+  const claimCatalogGroups = useCallback(
+    async (answers: Record<string, string>): Promise<boolean> => {
+      if (!userId) return false;
+      if (planGroupClaims(classes, answers).length === 0) return true;
+      const failed = await writeGroupClaims(userId, classes, answers);
+      if (failed) {
+        if (failed.code === "PGRST204" || failed.code === "42703") {
+          toast.error("Brak kolumny catalog_groups: uruchom migrację 20261010120000_usage_categorize.sql");
+        } else {
+          guard(failed, "zapisać odpowiedzi");
+        }
+      }
+      await loadVocabulary();
+      return !failed;
+    },
+    [userId, classes, guard, loadVocabulary],
+  );
+
+  /** "Cofnij" after labelKeys / claimCatalogGroups (revertLabels), then one vocabulary refetch. */
+  const undoLabels = useCallback(
+    async (undo: LabelUndo): Promise<boolean> => {
+      if (!userId) return false;
+      const failed = await revertLabels(userId, undo);
+      if (failed) guard(failed, "cofnąć przypisania");
+      await loadVocabulary();
+      return !failed;
+    },
+    [userId, guard, loadVocabulary],
+  );
+
   const acceptSuggestion = useCallback(
     async (ruleId: string): Promise<boolean> => updateRule(ruleId, { source: "learned", enabled: true }),
     [updateRule],
@@ -546,6 +717,7 @@ export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {})
   const suggestions = useMemo(() => rules.filter((r) => r.source === "suggested"), [rules]);
 
   return {
+    userId,
     sessions,
     classes,
     rules,
@@ -569,6 +741,9 @@ export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {})
     updateRule,
     deleteRule,
     labelKey,
+    labelKeys,
+    claimCatalogGroups,
+    undoLabels,
     acceptSuggestion,
     rejectSuggestion,
   };

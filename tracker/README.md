@@ -19,6 +19,10 @@
 >    - **Vault Obsidian**: wybierz vault z listy (te, które zna Obsidian) albo zostaw `Dokumenty\MindsetForest Vault`, który zostanie utworzony.
 >    - **Skrót** zapisu zaznaczonego tekstu w Archive (domyślnie Alt+Shift+S; jeśli ustawiłeś inny w dashboardzie, okno pokazuje ten) i
 >      **Uruchamiaj przy starcie Windows**.
+>    - **Rozpoznawaj stronę po domenie aktywnej karty (bez pełnego adresu)**: w Chrome, Edge i Brave tracker czyta z paska adresu
+>      tylko domenę (np. `chatgpt.com`), nigdy ścieżki, wyszukiwania ani tego, co wpisujesz; plik z dysku to `Local file`. Dzięki temu
+>      karta bez nazwy strony w tytule (np. rozmowa w ChatGPT) nie ląduje w `Browser | other`. Odznacz, a karty będą rozpoznawane
+>      tylko po tytule.
 >
 >    Kliknij **Zainstaluj i uruchom** (przyciski są zawsze na dole okna). Przy zegarze pojawi się zielona ikonka drzewa; Windows 11
 >    chowa nowe ikonki pod strzałką **^** obok zegara.
@@ -104,7 +108,7 @@ and the same idle state. Each row uploaded to `app_usage_sessions` has:
 | column | meaning |
 | --- | --- |
 | `app` | display name, e.g. `Chrome`, `Code`, `Word`, `Slack` (Rambox workspaces get their workspace name) |
-| `app_key` | low-cardinality identity the dashboard classifies: `Browser \| YouTube`, `Browser \| github.com`, `Code \| my-project`, `PyCharm \| my-project`, `Word`, ... |
+| `app_key` | low-cardinality identity the dashboard classifies: `Browser \| YouTube`, `Browser \| github.com`, `Browser \| New Tab`, `Code \| my-project`, `PyCharm \| my-project`, `Word`, ... For Chrome, Edge, Brave and other Chromium browsers the site comes from the active tab's domain when it can be read (see Privacy), otherwise from the window title |
 | `window_title` | the full window title at the time (re-read every second, so an editor session follows the file you are in) |
 | `started_at` / `ended_at` | UTC timestamps (ISO-8601, `Z`) |
 | `seconds` | duration |
@@ -127,6 +131,18 @@ good tick, not merged.
 * Nothing is captured while tracking is paused or while an app is on the
   don't-track list. Keystrokes and screen content are never read; only the
   "seconds since last input" counter from Windows is used for idle detection.
+* For Chrome, Edge, Brave and other Chromium browsers the tracker reads the
+  **domain of the active tab, never the address**: the address bar's text is
+  read through UI Automation when the window title changes, reduced to its
+  host (`chatgpt.com`) and only that is kept, inside `app_key` (`Browser |
+  ChatGPT`, `Browser | rybiapaka.pl`). Paths, queries, search words and what
+  you type are never stored or logged; a local file is `Browser | Local
+  file`, an internal page (`brave://settings`) `Browser | Browser page`. No
+  extension is installed and web pages are never inspected. The private-window
+  rules also check the domain. Turn it off with the setup window's
+  *Rozpoznawaj stronę po domenie aktywnej karty* checkbox or
+  `"browser_domains": false` in `config.json`; then no UI Automation runs at
+  all and tabs are named from their titles. Firefox is always named by title.
 * The refresh token is stored in `%APPDATA%\MindsetForest\session.bin`
   encrypted with Windows DPAPI (readable only by your Windows account). The
   access token is kept in memory only.
@@ -225,14 +241,16 @@ Use the installer above unless you are changing the code.
      "device_name": "",
      "min_session_seconds": 2,
      "ignored_apps": [],
-     "private_keywords": []
+     "private_keywords": [],
+     "browser_domains": true
    }
    ```
 
    `config.json` is looked for next to the exe/script first, then in
    `%APPDATA%\MindsetForest\config.json` (a UTF-8 BOM, as written by
    PowerShell, is fine). `device_name` defaults to the computer name.
-   `min_session_seconds` is the merge threshold described above. The anon
+   `min_session_seconds` is the merge threshold described above.
+   `browser_domains` names Chromium browser tabs by their domain (see Privacy). The anon
    key is the public one from Supabase -> Project Settings -> API; it is not
    a secret, your login is what grants access. Set the environment variable
    `MINDSETFOREST_HOME` to move the data folder somewhere other than
@@ -357,6 +375,12 @@ data folder.
 * **Wrong app names / keys** - the rules are in `mindsetforest_tracker/normalize.py`
   (browsers -> `Browser | site`, editors -> `App | project`, everything else ->
   display name). Anything more specific belongs in the dashboard's rules.
+* **Browser tabs named by title, not domain** - `tracker.log` says why ("UI
+  Automation is unavailable", "Reading the address bar failed"). After a
+  browser update run `python scripts\probe_omnibox.py` (from a source
+  checkout): it opens Edge and Chrome on example.com with a throw-away profile
+  and prints what the reader finds in the address bar (`--browser brave` for
+  Brave).
 * **Dev run on Linux/macOS** - the code imports without pywin32/pystray and uses
   a fake sampler; only the test-suite is meaningful there:
   `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt psutil requests pillow && python -m pytest -q`.
@@ -368,6 +392,7 @@ tracker/
   mindsetforest_tracker/
     config.py     config.json loading/saving, data folder
     capture.py    win32 foreground/idle/lock sampling (FakeSampler elsewhere)
+    browser_url.py  the active tab's domain from a Chromium address bar (UI Automation)
     normalize.py  app display name + app_key rules
     sessions.py   session state machine (idle, sleep gap, merging, 04:00 rule)
     store.py      SQLite queue (sessions + kv)
@@ -380,6 +405,7 @@ tracker/
     setup_gui.py  the setup and "Ustawienia..." window (tkinter)
     main.py       wiring, single-instance guard, logging, setup dispatch
   tests/          pytest suite (runs on Linux)
+  scripts/probe_omnibox.py  checks the address-bar reader on real Edge/Chrome (CI runs it)
   run_tracker.py  entry point for run-dev.bat and PyInstaller
   build-exe.ps1   builds dist\MindsetForestSetup.exe (build.bat runs it)
 ```

@@ -7,10 +7,19 @@
 Rules for ``app_key`` (first match wins):
 
 1. Browsers -> ``"Browser | <site>"`` regardless of which browser it is.
-   ``site`` is a well-known service named anywhere in the title (``youtube.com``
-   -> ``YouTube``); else a domain-like token (``github.com``); else the LAST
-   title segment after the browser's own name and profile are removed
+   With the active tab's host (Chromium browsers, ``browser_url``) the host
+   decides: a well-known service by its exact host, or by a parent domain
+   for services that own every subdomain (``old.reddit.com`` -> ``Reddit``);
+   else the host itself (``rybiapaka.pl``). An empty omnibox is ``New Tab``,
+   a local file ``Local file``, an internal page (``brave://settings``)
+   ``Browser page``. Discord conversation titles keep their key (below).
+   Without a host the title decides: ``site`` is a well-known service named
+   anywhere in the title (``youtube.com`` -> ``YouTube``); else a domain-like
+   token (``github.com``); else the LAST title segment after the browser's
+   own name and profile are removed
    (``"Never Gonna Give You Up - YouTube - Google Chrome"`` -> ``YouTube``).
+   A New Tab page's title (``Nowa karta``) is ``New Tab`` and X's title shape
+   (``"Name (@handle) / X"``) is ``X``.
    Titles of a conversation (a ``@person`` or ``#channel`` segment, as in
    ``"Discord | @Arnold"``) keep that last segment, so each chat is its own
    key (``@Arnold``); a one-word
@@ -33,6 +42,8 @@ from __future__ import annotations
 
 import re
 
+from .browser_url import FILE_HOST, INTERNAL_SCHEMES, NEW_TAB_HOST
+
 BROWSERS: dict[str, str] = {
     "chrome.exe": "Chrome", "chromium.exe": "Chromium", "msedge.exe": "Edge",
     "firefox.exe": "Firefox", "brave.exe": "Brave", "opera.exe": "Opera",
@@ -53,6 +64,8 @@ BROWSER_TITLE_WORDS = {
 
 # Services named by their own title segment or domain, so every way a title
 # spells them lands on one key. A segment matching a name wins over the rest.
+# A tab's host maps to the same names, so label rules written for a title-derived
+# key (``Browser | Proton Mail``) keep matching once the host is known: keep the names.
 KNOWN_SITES: dict[str, tuple[str, ...]] = {
     "YouTube": ("youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com"),
     "Discord": ("discord.com", "discordapp.com"),
@@ -72,9 +85,33 @@ KNOWN_SITES: dict[str, tuple[str, ...]] = {
     "Claude": ("claude.ai",),
     "GitHub": ("github.com",),
     "Notion": ("notion.so",),
+    "Google Gemini": ("gemini.google.com",),
+    "Google Search": ("google.com", "google.pl"),
+    "Perplexity": ("perplexity.ai",),
+    "Proton Mail": ("mail.proton.me",),
+    "Miro": ("miro.com",),
+    "Lovable": ("lovable.dev",),
+    "MindsetForest": ("hmqe333.github.io",),  # this dashboard (config.DEFAULT_DASHBOARD_URL)
 }
 _SITE_BY_NAME = {name.lower(): name for name in KNOWN_SITES}
 _SITE_BY_DOMAIN = {d: name for name, domains in KNOWN_SITES.items() for d in domains}
+# Known domains whose every subdomain is the same service (old.reddit.com is Reddit). The
+# rest match their exact host only: docs.google.com is not Google Search, calendar.proton.me
+# is not Proton Mail.
+WHOLE_SITE_DOMAINS = frozenset({
+    "youtube.com", "youtu.be", "discord.com", "discordapp.com", "instagram.com", "facebook.com", "messenger.com",
+    "whatsapp.com", "x.com", "twitter.com", "reddit.com", "linkedin.com", "tiktok.com", "twitch.tv", "netflix.com",
+    "spotify.com", "chatgpt.com", "claude.ai", "github.com", "notion.so", "perplexity.ai", "miro.com", "lovable.dev",
+})
+
+# The tab title of a New Tab page, in the browsers and languages seen so far.
+NEW_TAB_TITLES = frozenset({
+    "new tab", "nowa karta", "new private tab", "nowa karta prywatna", "new incognito tab", "nowa karta incognito",
+    "new inprivate tab", "nowa karta inprivate",
+})
+NEW_TAB_SITE = "New Tab"
+LOCAL_FILE_SITE = "Local file"
+BROWSER_PAGE_SITE = "Browser page"
 
 # exe -> (display name, where the project sits in the title)
 EDITORS: dict[str, tuple[str, str]] = {
@@ -119,6 +156,7 @@ _INVISIBLE_RE = re.compile(
     "\ud800-\udfff]"                              # lone surrogates
 )
 _COUNT_PREFIX_RE = re.compile(r"^\(\d+\+?\)\s*")
+_X_TITLE_RE = re.compile(r"\s/\s(?:X|Twitter)$")  # "Name (@handle) / X"
 _TRAILING_BRACKET_RE = re.compile(r"\s*(\[[^\]]*\]|\([^)]*\))$")
 _DOMAIN_RE = re.compile(
     r"(?<![\w.@-])(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|app|ai|co|pl|eu|de|uk|us|me|tv|"
@@ -172,14 +210,28 @@ def app_display_name(exe: str, title: str) -> str:
     return title[:30] or "Unknown"
 
 
-def browser_site(title: str) -> str | None:
-    """Site identity of a browser window title, or None when there is none."""
-    text = _COUNT_PREFIX_RE.sub("", clean_title(title))
+def _site_segments(text: str) -> list[str]:
+    """Title segments without the browser's own name and profile at the end."""
     segments = split_title(text)
     while segments and segments[-1].lower() in BROWSER_TITLE_WORDS:
         segments.pop()
-    # A "@person" / "#channel" title (Discord) keeps its conversation as the key.
-    conversation = any(s.startswith(("@", "#")) for s in segments)
+    return segments
+
+
+def _is_conversation(segments: list[str]) -> bool:
+    """A "@person" / "#channel" title (Discord): its conversation is the key."""
+    return any(s.startswith(("@", "#")) for s in segments)
+
+
+def browser_site(title: str) -> str | None:
+    """Site identity of a browser window title, or None when there is none."""
+    text = _COUNT_PREFIX_RE.sub("", clean_title(title))
+    segments = _site_segments(text)
+    if len(segments) == 1 and segments[0].lower() in NEW_TAB_TITLES:
+        return NEW_TAB_SITE
+    if segments and _X_TITLE_RE.search(segments[-1]):
+        return "X"
+    conversation = _is_conversation(segments)
     if not conversation:
         for segment in reversed(segments):
             known = _SITE_BY_NAME.get(_COUNT_PREFIX_RE.sub("", segment).lower())
@@ -215,12 +267,46 @@ def editor_project(exe: str, title: str) -> str | None:
     return project or None
 
 
-def app_key(exe: str, title: str) -> str:
-    """Low-cardinality identity used for classification. See module docstring."""
+def known_site_for_host(host: str) -> str | None:
+    """The KNOWN_SITES name of a host: its exact domain, else a whole-site parent domain."""
+    host = (host or "").strip().lower().rstrip(".").removeprefix("www.")
+    name = _SITE_BY_DOMAIN.get(host)
+    if name:
+        return name
+    labels = host.split(".")
+    for i in range(1, len(labels) - 1):  # longest parent first: a.b.reddit.com, b.reddit.com, reddit.com
+        parent = ".".join(labels[i:])
+        if parent in WHOLE_SITE_DOMAINS:
+            return _SITE_BY_DOMAIN[parent]
+    return None
+
+
+def browser_site_for_host(host: str, title: str) -> str:
+    """Site identity from the active tab's host (``browser_url.host_from_omnibox``)."""
+    host = (host or "").strip().lower()
+    if host == NEW_TAB_HOST:
+        return NEW_TAB_SITE
+    if host == FILE_HOST:
+        return LOCAL_FILE_SITE
+    if host in INTERNAL_SCHEMES:
+        return BROWSER_PAGE_SITE
+    known = known_site_for_host(host)
+    if known == "Discord" and _is_conversation(_site_segments(_COUNT_PREFIX_RE.sub("", clean_title(title)))):
+        return browser_site(title) or known  # each chat stays its own key, as without the host
+    return known or host
+
+
+def app_key(exe: str, title: str, host: str | None = None) -> str:
+    """Low-cardinality identity used for classification. See module docstring.
+
+    ``host`` is the active tab's host for a Chromium browser (``Sample.host``);
+    it wins over the title. Without it the title decides, as before.
+    """
     name = exe_base(exe)
     display = app_display_name(exe, title)
     if name in BROWSERS:
-        return f"Browser | {browser_site(title) or 'other'}"
+        site = browser_site_for_host(host, title) if host else browser_site(title)
+        return f"Browser | {site or 'other'}"
     if name in EDITORS:
         project = editor_project(exe, title)
         return f"{display} | {project}" if project else display

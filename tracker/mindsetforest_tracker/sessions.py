@@ -22,7 +22,10 @@ one at the same instant. Rules worth knowing:
   ``Store.upsert_session`` applies it only to a row it already holds, which
   zeroes a live-flushed copy that would otherwise keep its stale duration.
 * Private windows (``privacy.is_private``: adult sites and words, the user's
-  own keywords) and ignored apps record nothing; the open session closes.
+  own keywords, matched in the title and the active tab's domain) and ignored
+  apps record nothing; the open session closes.
+* A browser tab's domain (``Sample.host``) only shapes ``app_key``; it is
+  never stored on its own.
 * ``local_date`` follows the 04:00 rule: a session that starts at 01:30 local
   time belongs to the previous calendar day, and a session running across
   04:00 is split there, so each day only holds its own time.
@@ -214,9 +217,11 @@ class SessionTracker:
         if app.lower() in self._ignored:
             return None
         # Private (adult sites, the user's keywords): not recorded at all, like an ignored app.
-        if is_private(title, sample.exe, keywords=self._private):
+        # The tab's domain counts too: a site whose titles never name it is still caught.
+        if is_private(title, sample.exe, sample.host, keywords=self._private):
             return None
-        return Activity(app, app_key(sample.exe, title), title, sample.idle_seconds >= self.idle_threshold)
+        key = app_key(sample.exe, title, sample.host or None)
+        return Activity(app, key, title, sample.idle_seconds >= self.idle_threshold)
 
     def _open(self, activity: Activity, at: float) -> None:
         if self._carry and self._carry[1] == at:

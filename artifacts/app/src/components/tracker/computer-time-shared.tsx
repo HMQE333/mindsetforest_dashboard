@@ -24,6 +24,7 @@ export const SOURCE_LABELS: Record<RuleSource, string> = {
 
 export const CLASSIFICATION_SOURCE_LABELS: Record<ClassificationSource, string> = {
   rule: "reguła",
+  catalog: "katalog",
   keyword: "słowo kluczowe",
   prior: "historia",
   none: "brak",

@@ -13,6 +13,7 @@ import {
   type UsageAggregate,
   type UsageSession,
 } from "@/lib/app-usage-classify";
+import { friendlyName } from "@/lib/app-usage-triage";
 import {
   CLASSIFICATION_SOURCE_LABELS,
   KIND_LABELS,
@@ -179,58 +180,63 @@ export default function ComputerTimeFolders({ agg, sessions, classes, rules, pro
                   <p className="text-[11px] text-muted-foreground italic">Żadna aplikacja nie trafiła tu w tym zakresie.</p>
                 ) : (
                   <div className="space-y-1">
-                    {g.apps.map((t) => (
-                      <div key={t.appKey} className="flex items-center gap-2 sm:gap-3 px-2 py-1.5 rounded-lg hover:bg-secondary/30 text-xs">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-foreground/90 truncate">{t.appKey}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {t.sessions} sesji{t.titles[0] ? `. ${t.titles[0]}` : ""}
-                          </div>
-                        </div>
-                        <span className="font-mono text-muted-foreground w-12 text-right shrink-0">{formatHm(t.seconds)}</span>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0" aria-label="Dlaczego">
-                              <Info className="w-3.5 h-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-xs text-xs">
-                            <div className="font-semibold mb-0.5">
-                              Źródło: {CLASSIFICATION_SOURCE_LABELS[t.source]}
-                              {t.source !== "none" && ` (${Math.round(t.confidence * 100)}%)`}
+                    {g.apps.map((t) => {
+                      // "Messenger" for com.facebook.orca, "YouTube" for "Browser | YouTube"; the key itself stays visible underneath.
+                      const name = friendlyName(t.appKey, t.app);
+                      return (
+                        <div key={t.appKey} className="flex items-center gap-2 sm:gap-3 px-2 py-1.5 rounded-lg hover:bg-secondary/30 text-xs">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-foreground/90 truncate">{name}</div>
+                            {name !== t.appKey && <div className="text-[10px] text-muted-foreground/70 font-mono truncate">{t.appKey}</div>}
+                            <div className="text-[10px] text-muted-foreground truncate">
+                              {t.sessions} sesji{t.titles[0] ? `. ${t.titles[0]}` : ""}
                             </div>
-                            <div className="text-muted-foreground">{t.why}</div>
-                            {Object.keys(t.classSeconds).length > 1 && (
-                              <div className="mt-1 text-muted-foreground">
-                                Podział:{" "}
-                                {Object.entries(t.classSeconds)
-                                  .sort((a, b) => b[1] - a[1])
-                                  .map(([id, s]) => `${id ? classById.get(id)?.name || "?" : UNASSIGNED_LABEL} ${formatHm(s)}`)
-                                  .join(", ")}
+                          </div>
+                          <span className="font-mono text-muted-foreground w-12 text-right shrink-0">{formatHm(t.seconds)}</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0" aria-label="Dlaczego">
+                                <Info className="w-3.5 h-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-xs text-xs">
+                              <div className="font-semibold mb-0.5">
+                                Źródło: {CLASSIFICATION_SOURCE_LABELS[t.source]}
+                                {t.source !== "none" && ` (${Math.round(t.confidence * 100)}%)`}
                               </div>
-                            )}
-                          </TooltipContent>
-                        </Tooltip>
-                        <Select value={t.classId || NONE_VALUE} onValueChange={(v) => handleLabel(t, v)} disabled={busy === t.appKey}>
-                          <SelectTrigger
-                            className="h-7 w-32 sm:w-40 text-[11px] bg-secondary/40 border-border/50 shrink-0"
-                            aria-label={`Klasa dla ${t.appKey}`}
-                          >
-                            <SelectValue placeholder="Klasa" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE_VALUE} disabled>
-                              {UNASSIGNED_LABEL}
-                            </SelectItem>
-                            {classes.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.name}
+                              <div className="text-muted-foreground">{t.why}</div>
+                              {Object.keys(t.classSeconds).length > 1 && (
+                                <div className="mt-1 text-muted-foreground">
+                                  Podział:{" "}
+                                  {Object.entries(t.classSeconds)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .map(([id, s]) => `${id ? classById.get(id)?.name || "?" : UNASSIGNED_LABEL} ${formatHm(s)}`)
+                                    .join(", ")}
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                          <Select value={t.classId || NONE_VALUE} onValueChange={(v) => handleLabel(t, v)} disabled={busy === t.appKey}>
+                            <SelectTrigger
+                              className="h-7 w-32 sm:w-40 text-[11px] bg-secondary/40 border-border/50 shrink-0"
+                              aria-label={`Klasa dla ${t.appKey}`}
+                            >
+                              <SelectValue placeholder="Klasa" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NONE_VALUE} disabled>
+                                {UNASSIGNED_LABEL}
                               </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                              {classes.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -6,15 +6,21 @@
  * in a fixed order that never calls a model:
  *
  *   (a) enabled rules, priority first (a `suggested` rule never classifies)
- *   (b) class keywords and project names found as whole words
- *   (c) a per-app prior computed from what (a) and (b) already decided
- *   (d) unassigned
+ *   (b) the built-in catalog's exact matches (package, app name, site token)
+ *   (c) class keywords and project names found as whole words
+ *   (d) the built-in catalog's loose matches (domain or site name in the title)
+ *   (e) a per-app prior computed from what (a) to (d) already decided
+ *   (f) unassigned
  *
- * Everything the UI shows (tiles, donut, folders, focus ratio) comes out of
- * `aggregateUsage`, so a session is counted in exactly one place.
+ * The user's words (rules, keywords) bracket the catalog: a rule always wins,
+ * a keyword beats a guess from the title but not an exact name (see
+ * app-catalog.ts for why). Everything the UI shows (tiles, donut, folders,
+ * focus ratio) comes out of `aggregateUsage`, so a session is counted in
+ * exactly one place.
  */
 
 import { DAY_START_HOUR } from "@/lib/today";
+import { catalogClassFor, catalogConfidence, matchCatalog, type CatalogMatch } from "@/lib/app-catalog";
 
 export type AppKind = "work" | "learning" | "communication" | "waste" | "neutral" | "watching";
 
@@ -51,6 +57,8 @@ export interface AppClass {
   sort_order: number;
   count_idle: boolean;
   is_default: boolean;
+  /** Catalog groups this class claims ("ai_chat"): the user's answer to the group question. */
+  catalog_groups: string[];
 }
 
 export interface AppRule {
@@ -89,7 +97,7 @@ export interface ClassifyContext {
   priors?: Record<string, AppPrior>;
 }
 
-export type ClassificationSource = "rule" | "keyword" | "prior" | "none";
+export type ClassificationSource = "rule" | "catalog" | "keyword" | "prior" | "none";
 
 export interface Classification {
   classId: string | null;
@@ -100,6 +108,8 @@ export interface Classification {
   why: string;
   /** The rule that decided, when source is "rule". */
   ruleId?: string;
+  /** The catalog entry that decided, when source is "catalog". */
+  catalogId?: string;
 }
 
 export const PRIOR_MIN_SHARE = 0.7;
@@ -121,6 +131,24 @@ export const PRIORITY_LEARNED = 0;
 /** "Browser | YouTube" and "Code | project" carry a site/project token; "Word" does not. */
 export function hasKeyToken(appKey: string): boolean {
   return appKey.includes(" | ");
+}
+
+const PACKAGE_RE = /^[a-z]\w*(\.\w+)+$/i;
+
+/**
+ * What keywords and project names read as the app: its label for a phone
+ * package ("Messenger", not "com.facebook.orca", whose "facebook" would hit a
+ * Facebook keyword), the key itself otherwise. "Whatsapp.Root" looks like a
+ * package too, but its label is the same string, so nothing changes there.
+ */
+function keywordSubject(session: Pick<UsageSession, "app" | "app_key">): string {
+  const app = (session.app || "").trim();
+  return app && app !== session.app_key && PACKAGE_RE.test(session.app_key) ? app : session.app_key;
+}
+
+/** "Browser | other": the tracker's catch-all for browser tabs without a recognisable site. */
+function isBucketKey(appKey: string): boolean {
+  return siteToken(appKey)?.toLowerCase() === "other";
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +426,7 @@ interface KeywordIndex {
   projectNames: KeywordEntry[];
   defaultWorkClassId: string | null;
   classByProject: Map<string, string>;
+  classById: Map<string, AppClass>;
 }
 
 const keywordCache = new WeakMap<AppClass[], WeakMap<ProjectRef[], KeywordIndex>>();
@@ -431,6 +460,7 @@ function buildKeywordIndex(classes: AppClass[], projects: ProjectRef[]): Keyword
     projectNames,
     defaultWorkClassId: defaultWork ? defaultWork.id : null,
     classByProject,
+    classById: new Map(classes.map((c) => [c.id, c])),
   };
   byProjects.set(projects, index);
   return index;
@@ -464,7 +494,44 @@ export function describeRule(rule: Pick<AppRule, "field" | "match_kind" | "patte
   return `${FIELD_LABEL[rule.field] || rule.field} ${MATCH_LABEL[rule.match_kind] || rule.match_kind} "${rule.pattern}" (reguła ${SOURCE_LABEL[rule.source] || rule.source})`;
 }
 
-const NONE: Classification = { classId: null, projectId: null, confidence: 0, source: "none", why: "Brak reguły i słowa kluczowego" };
+const NONE: Classification = {
+  classId: null,
+  projectId: null,
+  confidence: 0,
+  source: "none",
+  why: "Brak reguły, słowa kluczowego i wpisu w katalogu",
+};
+
+/**
+ * A catalog match as a classification, or null when it cannot decide: an
+ * opaque entry, or no class of the entry's kind. A project name in the key
+ * or title attaches the project, and a class bound to that project replaces
+ * the catalog's pick when it is of the same kind ("PyCharm | mindsetforest"
+ * goes to the mindsetforest work class, not just the first work class).
+ */
+function catalogClassification(m: CatalogMatch | null, ctx: ClassifyContext, index: KeywordIndex, text: string): Classification | null {
+  if (!m || m.entry.opaque) return null;
+  let cls = catalogClassFor(m.entry, ctx.classes);
+  if (!cls) return null;
+  let projectId = cls.project_id;
+  if (!projectId) {
+    const proj = index.projectNames.find((p) => hasWholeWord(text, p.needle));
+    if (proj) {
+      projectId = proj.projectId;
+      const boundId = proj.projectId ? index.classByProject.get(proj.projectId) : undefined;
+      const bound = boundId ? index.classById.get(boundId) : undefined;
+      if (bound && bound.kind === cls.kind) cls = bound;
+    }
+  }
+  return {
+    classId: cls.id,
+    projectId,
+    confidence: catalogConfidence(m.entry),
+    source: "catalog",
+    why: `Wbudowany katalog: ${m.entry.name} (${m.how})`,
+    catalogId: m.entry.id,
+  };
+}
 
 export function classifySession(session: UsageSession, ctx: ClassifyContext): Classification {
   // (a) rules
@@ -482,12 +549,19 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
     };
   }
 
-  // (b) keywords: class keywords first, then project names. The app key is
+  const index = buildKeywordIndex(ctx.classes, ctx.projects || NO_PROJECTS);
+  const subject = keywordSubject(session);
+  const keyText = subject.toLowerCase();
+  const text = `${subject} ${session.window_title}`.toLowerCase();
+
+  // (b) the catalog's exact names
+  const exactMatch = matchCatalog(session, "exact");
+  const exact = catalogClassification(exactMatch, ctx, index, text);
+  if (exact) return exact;
+
+  // (c) keywords: class keywords first, then project names. The app key is
   // tried before the title, so "Claude Code in 10 minutes - YouTube" is
   // YouTube (watching) rather than "code" (work) because of a word in the title.
-  const index = buildKeywordIndex(ctx.classes, ctx.projects || NO_PROJECTS);
-  const keyText = session.app_key.toLowerCase();
-  const text = `${session.app_key} ${session.window_title}`.toLowerCase();
   const keyword =
     index.classKeywords.find((kw) => hasWholeWord(keyText, kw.needle)) ??
     index.classKeywords.find((kw) => hasWholeWord(text, kw.needle));
@@ -518,7 +592,11 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
     };
   }
 
-  // (c) per-app prior. The app-level fallback is only for keys without a
+  // (d) the catalog's guesses from the title
+  const loose = catalogClassification(matchCatalog(session, "loose"), ctx, index, text);
+  if (loose) return loose;
+
+  // (e) per-app prior. The app-level fallback is only for keys without a
   // site/project token: "Browser | new-site" must not inherit Chrome's history.
   if (ctx.priors) {
     const prior = ctx.priors[session.app_key] || (hasKeyToken(session.app_key) ? undefined : ctx.priors[session.app]);
@@ -534,14 +612,14 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
     }
   }
 
-  // (d)
-  return NONE;
+  // (f) An opaque catalog name explains itself instead of "no catalog entry".
+  return exactMatch?.entry.opaque ? { ...NONE, why: `Wbudowany katalog: ${exactMatch.entry.name} nie mówi, co było otwarte` } : NONE;
 }
 
 /**
- * Priors from what rules and keywords already decided: for each app (and
- * app_key) the class that took the largest share of its classified time.
- * Feed the result back through `ctx.priors` for a second pass over the
+ * Priors from what rules, the catalog and keywords already decided: for each
+ * app (and app_key) the class that took the largest share of its classified
+ * time. Feed the result back through `ctx.priors` for a second pass over the
  * sessions that stayed unassigned.
  */
 export function computeAppPriors(sessions: UsageSession[], classifications: Classification[]): Record<string, AppPrior> {
@@ -557,8 +635,11 @@ export function computeAppPriors(sessions: UsageSession[], classifications: Clas
   sessions.forEach((s, i) => {
     const c = classifications[i];
     // Idle spans say nothing about what the app is for.
-    if (s.idle || !c || !c.classId || (c.source !== "rule" && c.source !== "keyword")) return;
-    add(s.app_key, c.classId, s.seconds);
+    if (s.idle || !c || !c.classId || (c.source !== "rule" && c.source !== "keyword" && c.source !== "catalog")) return;
+    // "Browser | other" is the tracker's bucket for tabs it could not name,
+    // not an identity: the New Tab pages and songs the catalog recognises in
+    // it say nothing about the rest (mostly AI chats), so it learns no prior.
+    if (!isBucketKey(s.app_key)) add(s.app_key, c.classId, s.seconds);
     // The app-level entry only learns from keys without a site/project token,
     // so it describes "this app on its own", never "every site in this browser".
     if (s.app_key !== s.app && !hasKeyToken(s.app_key)) add(s.app, c.classId, s.seconds);
@@ -576,7 +657,7 @@ export function computeAppPriors(sessions: UsageSession[], classifications: Clas
   return out;
 }
 
-/** Two-pass classification: rules + keywords, then priors for what is left. */
+/** Two-pass classification: rules, catalog and keywords, then priors for what is left. */
 export function classifyAll(sessions: UsageSession[], ctx: ClassifyContext): Classification[] {
   const base: ClassifyContext = { classes: ctx.classes, rules: ctx.rules, projects: ctx.projects };
   const first = sessions.map((s) => classifySession(s, base));
@@ -854,12 +935,16 @@ export function proposeRule(
   }
 
   // 2. Three keys of the same app already point at this class: the app itself.
+  // Never for a browser: its `app` is "Brave" for every site, so "always treat
+  // Brave as Praca" would outrank the keywords on every tab (YouTube too).
+  // That covers the phone too: once a browser key is labelled under this app
+  // name, an app rule for "Brave" (the phone package's label) would also take
+  // every tab on the PC.
   const app = history.app || appKey.split("|")[0].trim();
-  const sameApp = new Set(
-    history.labels.filter((l) => l.app === app && l.classId === classId).map((l) => l.appKey),
-  );
+  const browserApp = site !== null || history.labels.some((l) => l.app === app && siteToken(l.appKey) !== null);
+  const sameApp = new Set(history.labels.filter((l) => l.app === app && l.classId === classId).map((l) => l.appKey));
   sameApp.add(appKey);
-  if (app && sameApp.size >= 3 && !exists("app", "exact", app)) {
+  if (app && !browserApp && sameApp.size >= 3 && !exists("app", "exact", app)) {
     return {
       field: "app",
       match_kind: "exact",
