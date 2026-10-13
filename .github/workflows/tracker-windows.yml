@@ -105,9 +105,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python scripts/probe_omnibox.py --browser chrome --require chrome --url https://example.com --expect example.com --raw
           if ($LASTEXITCODE -ne 0) { throw "probe_omnibox.py failed (exit code $LASTEXITCODE): the reader could not read a tab's domain, see the lines above" }
-          # Edge on a fresh runner profile sits on its first-run pages, and one read there hung for 25 s.
-          # The tracker reads on a thread of its own and names such tabs from their titles, so Edge is
-          # printed for diagnosis, not required.
+          # Edge read example.com too, but on a fresh runner profile its first-run pages once kept the tab
+          # busy and a read hung for 25 s. The tracker reads on a thread of its own and names such tabs
+          # from their titles, so Edge is printed for diagnosis, not required.
           python scripts/probe_omnibox.py --browser edge --url https://example.com --expect example.com --raw
           if ($LASTEXITCODE -ne 0) { Write-Host "Edge: no domain read on this runner (see above); Edge tabs fall back to their titles" }
           $global:LASTEXITCODE = 0

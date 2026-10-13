@@ -141,9 +141,10 @@ good tick, not merged.
   extension is installed and web pages are never inspected. The private-window
   rules also check the domain. The read runs on a thread of its own and a
   tick waits for it at most 0.3 s, so a busy browser never stalls tracking:
-  its tab is named from the title until the answer comes. Verified on Chrome
-  in CI; Edge on a fresh CI profile gave no domain (its tabs fall back to
-  titles). Turn it off with the setup window's
+  its tab is named from the title until the answer comes. CI reads
+  example.com from Chrome's and Edge's address bars (about 1.4 s for the
+  first read, which includes finding the bar); Edge's first-run pages on a
+  fresh profile can delay it. Turn it off with the setup window's
   *Rozpoznawaj stronę po domenie aktywnej karty* checkbox or
   `"browser_domains": false` in `config.json`; then no UI Automation runs at
   all and tabs are named from their titles. Firefox is always named by title.
