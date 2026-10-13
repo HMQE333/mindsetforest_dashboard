@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Category } from "@/lib/dashboard-data";
@@ -40,6 +40,8 @@ interface Props {
 }
 
 const NONE = "__none__";
+/** Label rules shown inline up to this many; more fold into "Etykiety (N)". */
+const LABELS_INLINE = 5;
 const FIELD_LABELS: Record<RuleField, string> = { app: "aplikacja", app_key: "klucz", title: "tytuł" };
 const MATCH_LABELS: Record<RuleMatchKind, string> = { exact: "dokładnie", substring: "zawiera", domain: "domena", regex: "regex" };
 const inputCls = "bg-secondary/40 border border-border/50 rounded-lg px-2 py-1 text-xs text-foreground w-full";
@@ -445,6 +447,11 @@ export default function ComputerTimeApps(props: Props) {
     () => rules.filter((r) => r.source !== "suggested").sort((a, b) => b.priority - a.priority || a.created_at.localeCompare(b.created_at)),
     [rules],
   );
+  // One-click labels pile up (the triage writes dozens): past a handful they fold
+  // into one expandable line, so hand-written rules stay in view.
+  const labelCount = useMemo(() => activeRules.filter((r) => r.source === "label").length, [activeRules]);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const labelsCollapsed = labelCount > LABELS_INLINE && !labelsOpen;
 
   const run = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -593,7 +600,7 @@ export default function ComputerTimeApps(props: Props) {
           <p className="text-[11px] text-muted-foreground italic">Brak reguł. Przypisz klasę w zakładce Foldery albo dodaj regułę ręcznie.</p>
         ) : (
           <div className="space-y-1">
-            {activeRules.map((r) => {
+            {(labelsCollapsed ? activeRules.filter((r) => r.source !== "label") : activeRules).map((r) => {
               const cls = classById.get(r.class_id);
               const project = r.project_id ? projectById.get(r.project_id) : undefined;
               const h = health.get(r.id);
@@ -664,6 +671,18 @@ export default function ComputerTimeApps(props: Props) {
                 </div>
               );
             })}
+            {labelCount > LABELS_INLINE && (
+              <button
+                type="button"
+                onClick={() => setLabelsOpen((v) => !v)}
+                aria-expanded={!labelsCollapsed}
+                className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+              >
+                {labelsCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                Etykiety ({labelCount})
+                <span className="font-normal">· przypisania jednym kliknięciem</span>
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -509,18 +509,28 @@ const NONE: Classification = {
  * the catalog's pick when it is of the same kind ("PyCharm | mindsetforest"
  * goes to the mindsetforest work class, not just the first work class).
  */
-function catalogClassification(m: CatalogMatch | null, ctx: ClassifyContext, index: KeywordIndex, text: string): Classification | null {
+function catalogClassification(
+  m: CatalogMatch | null,
+  ctx: ClassifyContext,
+  index: KeywordIndex,
+  keyText: string,
+  text: string,
+): Classification | null {
   if (!m || m.entry.opaque) return null;
   let cls = catalogClassFor(m.entry, ctx.classes);
   if (!cls) return null;
   let projectId = cls.project_id;
   if (!projectId) {
-    const proj = index.projectNames.find((p) => hasWholeWord(text, p.needle));
+    const inKey = index.projectNames.find((p) => hasWholeWord(keyText, p.needle));
+    const proj = inKey ?? index.projectNames.find((p) => hasWholeWord(text, p.needle));
     if (proj) {
       projectId = proj.projectId;
       const boundId = proj.projectId ? index.classByProject.get(proj.projectId) : undefined;
       const bound = boundId ? index.classById.get(boundId) : undefined;
-      if (bound && bound.kind === cls.kind) cls = bound;
+      // A key that names the project ("PyCharm | Studia") is open on it: the class
+      // bound to the project wins whatever its kind, as it did before the catalog.
+      // A mention in the title (a video about the project) only refines the kind.
+      if (bound && (inKey || bound.kind === cls.kind)) cls = bound;
     }
   }
   return {
@@ -556,7 +566,7 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
 
   // (b) the catalog's exact names
   const exactMatch = matchCatalog(session, "exact");
-  const exact = catalogClassification(exactMatch, ctx, index, text);
+  const exact = catalogClassification(exactMatch, ctx, index, keyText, text);
   if (exact) return exact;
 
   // (c) keywords: class keywords first, then project names. The app key is
@@ -593,7 +603,7 @@ export function classifySession(session: UsageSession, ctx: ClassifyContext): Cl
   }
 
   // (d) the catalog's guesses from the title
-  const loose = catalogClassification(matchCatalog(session, "loose"), ctx, index, text);
+  const loose = catalogClassification(matchCatalog(session, "loose"), ctx, index, keyText, text);
   if (loose) return loose;
 
   // (e) per-app prior. The app-level fallback is only for keys without a

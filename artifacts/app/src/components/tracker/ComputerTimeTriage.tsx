@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Category } from "@/lib/dashboard-data";
 import type { AppClass, AppRule, Classification, UsageSession } from "@/lib/app-usage-classify";
-import { cachedSuggestions, dismissedKeys, type AiDecision, type AiItem, type AiSuggestion, type SuggestionRow } from "@/lib/app-usage-ai";
+import { cachedSuggestions, dismissedKeys, type AiDecision, type AiItem, type AiSuggestion, type DecisionSnapshot, type SuggestionRow } from "@/lib/app-usage-ai";
 import {
   SKIP,
   TRIAGE_MAX,
@@ -16,6 +16,8 @@ import {
   plural,
   toAiItems,
   unassignedAfter,
+  overriddenSeconds,
+  OVERRIDE_MIN_SECONDS,
   type LabelEntry,
   type LabelUndo,
   type TriageChoice,
@@ -44,9 +46,12 @@ interface Props {
   memory: TriageMemory | null;
   refreshMemory: () => Promise<TriageMemory>;
   requestAi: (items: AiItem[]) => Promise<{ suggestions: AiSuggestion[]; error: string | null }>;
-  recordDecisions: (decisions: AiDecision[]) => Promise<boolean>;
+  /** Stores the decisions; resolves to what the keys held before (for "Cofnij"), null on failure. */
+  recordDecisions: (decisions: AiDecision[]) => Promise<DecisionSnapshot | null>;
+  undoDecisions: (snapshot: DecisionSnapshot) => Promise<boolean>;
   labelKeys: (entries: LabelEntry[]) => Promise<LabelUndo | null>;
-  claimCatalogGroups: (answers: Record<string, string>) => Promise<boolean>;
+  /** Resolves to the claims the changed classes held before, null on failure. */
+  claimCatalogGroups: (answers: Record<string, string>) => Promise<{ id: string; catalog_groups: string[] }[] | null>;
   undoLabels: (undo: LabelUndo) => Promise<boolean>;
 }
 
@@ -81,6 +86,7 @@ export default function ComputerTimeTriage({
   refreshMemory,
   requestAi,
   recordDecisions,
+  undoDecisions,
   labelKeys,
   claimCatalogGroups,
   undoLabels,
@@ -94,6 +100,7 @@ export default function ComputerTimeTriage({
   const [aiState, setAiState] = useState<AiState>("idle");
   const [aiError, setAiError] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  const confirmingRef = useRef(false);
 
   const sortedClasses = useMemo(() => [...classes].sort((a, b) => a.sort_order - b.sort_order), [classes]);
   const classById = useMemo(() => new Map(classes.map((c) => [c.id, c])), [classes]);
@@ -143,6 +150,7 @@ export default function ComputerTimeTriage({
   // the rows nothing else can fill. Nothing here blocks the rows.
   useEffect(() => {
     if (!open) return;
+    confirmingRef.current = false;
     let cancelled = false;
     setOverrides({});
     setAnswers({});
@@ -234,6 +242,9 @@ export default function ComputerTimeTriage({
   const nothingToDo = chosen.length === 0 && skippedCount === 0 && questions.length === 0;
 
   const confirm = () => {
+    // Enter held down, or a double click during the closing animation, must not write twice.
+    if (confirmingRef.current) return;
+    confirmingRef.current = true;
     if (nothingToDo) {
       onOpenChange(false);
       return;
@@ -249,26 +260,29 @@ export default function ComputerTimeTriage({
     onOpenChange(false);
     void (async () => {
       const tid = toast.loading("Zapisuję przypisania…");
-      const [groupsOk, undo] = await Promise.all([
-        claims.length > 0 ? claimCatalogGroups(groupAnswers) : Promise.resolve(true),
+      const [claimed, undo] = await Promise.all([
+        claims.length > 0 ? claimCatalogGroups(groupAnswers) : Promise.resolve([]),
         plan.entries.length > 0 ? labelKeys(plan.entries) : Promise.resolve(null),
       ]);
+      const groupsOk = claimed !== null;
+      let decisions: DecisionSnapshot | null = null;
       if (ready && plan.decisions.length > 0) {
-        await recordDecisions(plan.decisions);
+        decisions = await recordDecisions(plan.decisions);
         void refreshMemory().catch(() => undefined);
       }
       const full: LabelUndo = {
         keys: undo?.keys ?? [],
         created: undo?.created ?? [],
         restore: undo?.restore ?? [],
-        classGroups: groupsOk ? claims.map((c) => ({ id: c.id, catalog_groups: c.before })) : [],
+        classGroups: claimed ?? [],
+        decisions,
       };
       const assigned = undo ? plan.assigned.filter((it) => it.appKeys.every((k) => undo.keys.includes(k))).length : 0;
       const parts: string[] = [];
       if (assigned > 0) parts.push(`Przypisano ${assigned} ${plural(assigned, "pozycję", "pozycje", "pozycji")}`);
-      if (plan.skipped.length > 0 && ready) parts.push(`pominięto ${plan.skipped.length}`);
+      if (plan.skipped.length > 0 && ready && decisions) parts.push(`pominięto ${plan.skipped.length}`);
       if (claims.length > 0 && groupsOk) parts.push(assigned > 0 ? "zapisano odpowiedzi" : "Zapisano odpowiedzi");
-      const canUndo = full.created.length + full.restore.length + full.classGroups.length > 0;
+      const canUndo = full.created.length + full.restore.length + full.classGroups.length + (decisions?.keys.length ?? 0) > 0;
       if (parts.length === 0) {
         toast.dismiss(tid);
         return;
@@ -281,8 +295,9 @@ export default function ComputerTimeTriage({
           ? {
               label: "Cofnij",
               onClick: () => {
-                void undoLabels(full).then((ok) => {
-                  if (ok) toast.success("Cofnięto");
+                void Promise.all([undoLabels(full), decisions ? undoDecisions(decisions) : Promise.resolve(true)]).then(([a, b]) => {
+                  if (a && b) toast.success("Cofnięto");
+                  if (decisions) void refreshMemory().catch(() => undefined);
                 });
               },
             }
@@ -308,6 +323,9 @@ export default function ComputerTimeTriage({
       return;
     }
     if (!active) return;
+    // Digits and S act on the active row only while focus is in the rows list,
+    // not on a question chip or the close button.
+    if (!target.closest('ul[aria-label="Pozycje do przypisania"]')) return;
     if (/^[1-9]$/.test(e.key)) {
       const cls = sortedClasses[Number(e.key) - 1];
       if (!cls) return;
@@ -453,6 +471,14 @@ export default function ComputerTimeTriage({
                             ) : null}
                           </div>
                           {it.titles[0] && <div className="text-[10px] text-muted-foreground truncate">{it.titles[0]}</div>}
+                          {choice && choice !== SKIP && (() => {
+                            const moved = overriddenSeconds(it, choice, classById);
+                            return moved >= OVERRIDE_MIN_SECONDS ? (
+                              <div className="text-[10px] text-amber-300/90">
+                                Zmieni też {durationLabel(moved)}, które mają już inną klasę lub projekt
+                              </div>
+                            ) : null;
+                          })()}
                           {keysLine && (
                             <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={it.appKeys.join("\n")}>
                               {keysLine}
@@ -490,7 +516,11 @@ export default function ComputerTimeTriage({
                               toggleSkip(it);
                               focusRow(it.id);
                             }}
-                            title="Zostaw bez klasy i nie pytaj więcej"
+                            title={
+                              it.seconds > it.unassignedSeconds && s
+                                ? `Nie pytaj więcej; zgadnięta klasa zostaje (${classById.get(s.classId)?.name ?? "katalog"})`
+                                : "Zostaw bez klasy i nie pytaj więcej"
+                            }
                             className={`inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
                               choice === SKIP
                                 ? "border-foreground/40 text-foreground bg-white/5"
@@ -582,9 +612,9 @@ function ChoiceChip({
     state === "selected"
       ? { backgroundImage: `linear-gradient(${tint(color, 28)}, ${tint(color, 28)})`, border: `1px solid ${color}` }
       : state === "suggested"
-        ? { background: "transparent", color, border: `1px solid ${tint(color, 60)}` }
+        ? { background: "transparent", border: `1px solid ${tint(color, 60)}` }
         : state === "alt"
-          ? { background: "transparent", color, border: `1px dashed ${tint(color, 50)}` }
+          ? { background: "transparent", border: `1px dashed ${tint(color, 50)}` }
           : undefined;
   return (
     <button
@@ -596,7 +626,11 @@ function ChoiceChip({
       className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap transition-colors max-w-[11rem] ${
         state === "selected"
           ? "bg-secondary text-foreground"
-          : state === "idle"
+          : state === "suggested"
+            ? "text-foreground/90"
+            : state === "alt"
+              ? "text-foreground/75"
+              : state === "idle"
             ? "border border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
             : ""
       }`}

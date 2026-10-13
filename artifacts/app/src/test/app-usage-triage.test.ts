@@ -19,6 +19,7 @@ import {
   durationLabel,
   friendlyName,
   needsAi,
+  overriddenSeconds,
   planConfirm,
   planGroupClaims,
   planLabelBatch,
@@ -40,16 +41,22 @@ const db = vi.hoisted(() => {
   const state = {
     calls: [] as Call[],
     existing: new Map<string, string>(),
+    serverRules: null as unknown[] | null,
+    serverClasses: null as unknown[] | null,
     fail: null as null | ((c: Call) => { code?: string; message?: string } | null),
     reset() {
       state.calls = [];
       state.existing = new Map();
+      state.serverRules = null;
+      state.serverClasses = null;
       state.fail = null;
     },
   };
   const respond = (c: Call) => {
     const error = state.fail?.(c) ?? null;
     if (error) return { data: null, error };
+    if (c.op === "" && c.table === "app_rules") return { data: state.serverRules, error: null };
+    if (c.op === "" && c.table === "app_classes") return { data: state.serverClasses, error: null };
     if (c.op === "upsert" && c.select) {
       const rows = (c.payload as { pattern: string }[]).map((r) => ({ id: state.existing.get(r.pattern) ?? `new:${r.pattern}`, pattern: r.pattern }));
       return { data: rows, error: null };
@@ -187,6 +194,9 @@ describe("friendlyName / deviceOf / siblingNames / displayTitle", () => {
     expect(siblingNames("com.openai.chatgpt", "ChatGPT")).toEqual(["chatgpt"]);
     expect(siblingNames("com.google.android.gm", "Gmail")).toEqual(["gmail"]);
     expect(siblingNames("Browser | X", "Brave")).toEqual([]);
+    // sites on one shared host are not siblings
+    expect(siblingNames("Browser | cookie-clicker.vercel.app", "Brave")).toEqual(["cookie-clicker.vercel.app", "cookie-clicker"]);
+    expect(siblingNames("Browser | mindsetforest.vercel.app", "Brave")).not.toContain("vercel");
   });
 
   it("drops the unread counter and the browser's name from a title", () => {
@@ -261,14 +271,36 @@ describe("buildTriage: rows", () => {
     expect(row.devices).toEqual(["pc", "phone"]);
   });
 
-  it("joins a browser key to an entry only when most of its time matched it in the title", () => {
+  it("never joins a key to an entry on title mentions alone: a key-wide rule needs an exact name", () => {
     const r = run([
+      sess({ app_key: "Browser | Discord", app: "Brave", window_title: "Discord - Brave", seconds: min(10) }),
       sess({ app_key: "Browser | Cybersecurity", app: "Brave", window_title: "(12) Discord | #czat | Cybersecurity - Brave", seconds: min(10) }),
-      sess({ app_key: "Browser | Half", app: "Brave", window_title: "Discord | #x | Half - Brave", seconds: min(5) }),
-      sess({ app_key: "Browser | Half", app: "Brave", window_title: "Half - Brave", seconds: min(5) }),
+      sess({ app_key: "Browser | Wyszukiwanie", app: "Brave", window_title: "Oglądaj Anime - Wyszukiwanie - Brave", seconds: min(10) }),
     ]);
-    expect(byId(r, "cat:discord").appKeys).toEqual(["Browser | Cybersecurity"]);
-    expect(byId(r, "key:Browser | Half").catalogId).toBeNull();
+    expect(byId(r, "cat:discord").appKeys).toEqual(["Browser | Discord"]);
+    expect(byId(r, "key:Browser | Cybersecurity").catalogId).toBeNull();
+    expect(byId(r, "key:Browser | Wyszukiwanie").catalogId).toBeNull();
+  });
+
+  it("does not pre-select a row whose label would move time a user rule, keyword or project already decided", () => {
+    const sessions = [
+      sess({ app_key: "Chatgpt", app: "Chatgpt", window_title: "ChatGPT", seconds: min(30) }),
+      sess({ app_key: "Chatgpt", app: "Chatgpt", window_title: "Udemy kurs", seconds: min(10) }),
+    ];
+    const rules = [rule({ field: "title", match_kind: "substring", pattern: "Udemy", class_id: "learn", source: "learned", priority: 0 })];
+    const it = byId(run(sessions, { rules }), "cat:chatgpt");
+    expect(it.keptSeconds).toEqual({ learn: min(10) });
+    expect(it.suggestion).toMatchObject({ classId: "work", preselect: false });
+    expect(overriddenSeconds(it, "work", new Map(CLASSES.map((c) => [c.id, c])))).toBe(min(10));
+    expect(overriddenSeconds(it, "learn", new Map(CLASSES.map((c) => [c.id, c])))).toBe(0);
+  });
+
+  it("does not pre-select a row whose catalog time carries a project the label would drop", () => {
+    const sessions = [sess({ app_key: "Chatgpt", app: "Chatgpt", window_title: "mindsetforest: refactor", seconds: min(60) })];
+    const classifications = classifyAll(sessions, { classes: CLASSES, rules: [], projects: [{ id: "p1", name: "mindsetforest" }] });
+    const it = byId(run(sessions, { classifications }), "cat:chatgpt");
+    expect(it.projectSeconds).toEqual({ p1: min(60) });
+    expect(it.suggestion?.preselect).toBe(false);
   });
 
   it("keeps the top titles without the browser suffix or the app's own name", () => {
@@ -514,6 +546,23 @@ describe("choices: defaults, estimate, confirm plan", () => {
     expect(accepted.decisions).toEqual([{ app_key: "Browser | rybiapaka.pl", status: "accepted", final_class_id: "waste", preselected: true }]);
   });
 
+  it("re-picking the user's own earlier choice records nothing (a correction stays a correction)", () => {
+    const decided = new Map([["Browser | rybiapaka.pl", ai({ app_key: "Browser | rybiapaka.pl", class_id: "neutral", confidence: 0.5, decided: true })]]);
+    const rd = run(sessions, { classes, ai: decided });
+    const ch = { "key:Browser | rybiapaka.pl": "neutral" };
+    expect(planConfirm(rd.items, ch, classes, decided).decisions).toEqual([]);
+    expect(planConfirm(rd.items, { "key:Browser | rybiapaka.pl": "work" }, classes, decided).decisions).toEqual([
+      { app_key: "Browser | rybiapaka.pl", status: "corrected", final_class_id: "work", preselected: false },
+    ]);
+  });
+
+  it("an answer from the local cache is shown but never pre-selected until the function re-checks it", () => {
+    const stale = new Map([["Browser | rybiapaka.pl", ai({ app_key: "Browser | rybiapaka.pl", class_id: "waste", confidence: 0.95, stale: true })]]);
+    const it = run(sessions, { classes, ai: stale }).items.find((i) => i.id === "key:Browser | rybiapaka.pl");
+    expect(it?.suggestion).toMatchObject({ source: "ai", classId: "waste", preselect: false });
+    expect(it && needsAi(it)).toBe(true);
+  });
+
   it("asks the AI one item per key, named like the row", () => {
     const items = toAiItems(r.items.filter((i) => i.id === "key:Mystery" || i.id === "cat:chatgpt"));
     expect(items).toEqual([
@@ -581,6 +630,7 @@ describe("writeLabelBatch / writeGroupClaims / revertLabels", () => {
 
   it("moves manual rules one by one and upserts everything else in one request", async () => {
     db.state.existing.set("Browser | X", "l1");
+    db.state.serverRules = [manual, learned];
     const { undo, error } = await writeLabelBatch("u1", [manual, learned], [
       { appKey: "Hermes", classId: "learn" },
       { appKey: "Browser | X", classId: "neutral" },
@@ -588,12 +638,14 @@ describe("writeLabelBatch / writeGroupClaims / revertLabels", () => {
       { appKey: "com.openai.chatgpt", classId: "work", projectId: "p1" },
     ]);
     expect(error).toBeNull();
-    const calls = db.state.calls;
+    const [read, ...calls] = db.state.calls;
+    expect(read).toMatchObject({ table: "app_rules", op: "", select: "*" });
+    expect(read.filters).toContainEqual(["in", "pattern", ["Hermes", "Browser | X", "Chatgpt", "com.openai.chatgpt"]]);
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({
       table: "app_rules",
       op: "update",
-      payload: { class_id: "learn", project_id: null },
+      payload: { class_id: "learn", project_id: null, enabled: true },
       filters: [["eq", "id", "m1"], ["eq", "user_id", "u1"]],
     });
     expect(calls[1]).toMatchObject({ table: "app_rules", op: "upsert", options: { onConflict: "user_id,field,match_kind,pattern" }, select: "id,pattern" });
@@ -618,6 +670,14 @@ describe("writeLabelBatch / writeGroupClaims / revertLabels", () => {
     expect(undo.created).toEqual([]);
   });
 
+  it("plans from the server's rules: one written in another tab is restored on undo, never deleted", async () => {
+    const other = rule({ id: "srv", pattern: "Browser | rybiapaka.pl", class_id: "work", source: "manual", priority: 10, project_id: "p1" });
+    db.state.serverRules = [other];
+    const { undo } = await writeLabelBatch("u1", [], [{ appKey: "Browser | rybiapaka.pl", classId: "neutral" }]);
+    expect(undo.created).toEqual([]);
+    expect(undo.restore.map((r) => [r.id, r.source, r.project_id])).toEqual([["srv", "manual", "p1"]]);
+  });
+
   it("treats a rule the server no longer had as created", async () => {
     // Local state knows "Browser | X" as l1, the server answers with a fresh id: it was deleted elsewhere.
     const { undo } = await writeLabelBatch("u1", [learned], [{ appKey: "Browser | X", classId: "neutral" }]);
@@ -627,14 +687,20 @@ describe("writeLabelBatch / writeGroupClaims / revertLabels", () => {
 
   it("writes one update per class whose claims change", async () => {
     const classes = [{ ...WORK, catalog_groups: ["ai_chat"] }, LEARN, NEUTRAL];
-    expect(await writeGroupClaims("u1", classes, { ai_chat: "learn" })).toBeNull();
-    expect(db.state.calls.map((c) => [c.table, c.op, c.payload, c.filters[0][2]])).toEqual([
+    const res = await writeGroupClaims("u1", classes, { ai_chat: "learn" });
+    expect(res).toEqual({ error: null, before: [{ id: "work", catalog_groups: ["ai_chat"] }, { id: "learn", catalog_groups: [] }] });
+    expect(db.state.calls.slice(1).map((c) => [c.table, c.op, c.payload, c.filters[0][2]])).toEqual([
       ["app_classes", "update", { catalog_groups: [] }, "work"],
       ["app_classes", "update", { catalog_groups: ["ai_chat"] }, "learn"],
     ]);
     db.state.reset();
-    db.state.fail = () => ({ code: "PGRST204", message: "column catalog_groups not found" });
-    expect(await writeGroupClaims("u1", classes, { ai_chat: "learn" })).toMatchObject({ code: "PGRST204" });
+    // Another tab claimed "music" for Neutralne meanwhile: the server's claims are kept.
+    db.state.serverClasses = [{ id: "work", catalog_groups: ["ai_chat"] }, { id: "learn", catalog_groups: [] }, { id: "neutral", catalog_groups: ["music"] }];
+    await writeGroupClaims("u1", [WORK, LEARN, NEUTRAL], { ai_chat: "learn" });
+    expect(db.state.calls.slice(1).map((c) => c.filters[0][2])).toEqual(["work", "learn"]);
+    db.state.reset();
+    db.state.fail = (c) => (c.op === "update" ? { code: "PGRST204", message: "column catalog_groups not found" } : null);
+    expect(await writeGroupClaims("u1", classes, { ai_chat: "learn" })).toMatchObject({ error: { code: "PGRST204" }, before: [] });
   });
 
   it("undoes: created rules deleted in one request, the rest restored field by field", async () => {

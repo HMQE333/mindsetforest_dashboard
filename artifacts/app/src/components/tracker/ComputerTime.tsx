@@ -8,7 +8,17 @@ import { useTrackerDevices } from "@/hooks/useTrackerDevices";
 import { addDays, daysBetween, todayKey } from "@/lib/today";
 import { aggregateUsage, PRIORITY_LEARNED, type Classification, type RuleProposal, type UsageSession } from "@/lib/app-usage-classify";
 import { buildTriage, durationLabel, plural, triageWorth } from "@/lib/app-usage-triage";
-import { dismissedKeys, loadSuggestionRows, recordDecisions, requestAiSuggestions, type AiDecision, type AiSuggestion } from "@/lib/app-usage-ai";
+import {
+  dismissedKeys,
+  loadSuggestionRows,
+  recordDecisions,
+  requestAiSuggestions,
+  restoreDecisions,
+  snapshotDecisions,
+  type AiDecision,
+  type AiSuggestion,
+  type DecisionSnapshot,
+} from "@/lib/app-usage-ai";
 import ComputerTimeDashboard from "./ComputerTimeDashboard";
 import ComputerTimeTimeline from "./ComputerTimeTimeline";
 import ComputerTimeWeek from "./ComputerTimeWeek";
@@ -124,7 +134,8 @@ export default function ComputerTime() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(RANGE_KEY, JSON.stringify({ preset, from: custom.from, to: custom.to }));
+      // The custom dates only while they are in use: otherwise "Własny zakres" opens on the last 14 days.
+      localStorage.setItem(RANGE_KEY, JSON.stringify(preset === "custom" ? { preset, from: custom.from, to: custom.to } : { preset }));
     } catch {
       /* ignore */
     }
@@ -170,8 +181,18 @@ export default function ComputerTime() {
   useEffect(() => {
     if (everExpanded && userId && usage.tableReady) void refreshMemory();
   }, [everExpanded, userId, usage.tableReady, refreshMemory]);
+  /** Snapshot first, so "Cofnij" can restore what the keys held (or delete what this confirm created). */
   const record = useCallback(
-    async (decisions: AiDecision[]) => (userId ? recordDecisions(userId, decisions) : false),
+    async (decisions: AiDecision[]): Promise<DecisionSnapshot | null> => {
+      if (!userId) return null;
+      const before = await snapshotDecisions(userId, decisions.map((d) => d.app_key));
+      if (!before) return null;
+      return (await recordDecisions(userId, decisions)) ? before : null;
+    },
+    [userId],
+  );
+  const undoDecisions = useCallback(
+    async (snap: DecisionSnapshot): Promise<boolean> => (userId ? restoreDecisions(userId, snap) : false),
     [userId],
   );
   const dismissed = useMemo(() => (memory ? dismissedKeys(memory.rows) : NO_DISMISSED), [memory]);
@@ -390,6 +411,7 @@ export default function ComputerTime() {
                 refreshMemory={refreshMemory}
                 requestAi={requestAiSuggestions}
                 recordDecisions={record}
+                undoDecisions={undoDecisions}
                 labelKeys={usage.labelKeys}
                 claimCatalogGroups={usage.claimCatalogGroups}
                 undoLabels={usage.undoLabels}

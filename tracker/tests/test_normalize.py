@@ -94,7 +94,7 @@ HOST_KEYS = [
     ("chrome.exe", "about:blank - Google Chrome", "about", "Browser | Browser page"),
     ("chrome.exe", "r/Python - Google Chrome", "old.reddit.com", "Browser | Reddit"),             # whole-site parent
     ("chrome.exe", "Cats - Google Chrome", "m.youtube.com", "Browser | YouTube"),
-    ("chrome.exe", "Song - Google Chrome", "music.youtube.com", "Browser | YouTube"),
+    ("chrome.exe", "Song - Google Chrome", "music.youtube.com", "Browser | YouTube Music"),
     ("chrome.exe", "gist - Google Chrome", "gist.github.com", "Browser | GitHub"),
     ("chrome.exe", "Doc - Google Docs - Google Chrome", "docs.google.com", "Browser | docs.google.com"),  # not Search
     ("chrome.exe", "kot - Szukaj w Google - Google Chrome", "google.com", "Browser | Google Search"),

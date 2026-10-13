@@ -67,7 +67,9 @@ BROWSER_TITLE_WORDS = {
 # A tab's host maps to the same names, so label rules written for a title-derived
 # key (``Browser | Proton Mail``) keep matching once the host is known: keep the names.
 KNOWN_SITES: dict[str, tuple[str, ...]] = {
-    "YouTube": ("youtube.com", "youtu.be", "m.youtube.com", "music.youtube.com"),
+    "YouTube": ("youtube.com", "youtu.be", "m.youtube.com"),
+    # Its own site: listening is not watching, and the title-derived key is "YouTube Music" too.
+    "YouTube Music": ("music.youtube.com",),
     "Discord": ("discord.com", "discordapp.com"),
     "Instagram": ("instagram.com",),
     "Facebook": ("facebook.com",),

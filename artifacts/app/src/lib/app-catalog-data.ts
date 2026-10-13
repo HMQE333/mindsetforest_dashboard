@@ -153,7 +153,8 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
       app: ["Github Desktop", "GitHub Desktop"],
       site: ["GitHub"],
       domain: ["github.com"],
-      token_re: ["^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"],
+      // owner/repo: the owner has a letter, the repo a lower-case one; not r/ or u/ (Reddit), so "2026/2027", "TCP/IP", "r/Polska" stay out
+      token_re: ["^(?![ru]/)(?=[^/]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9-]{1,38}/(?=[^/]*[a-z])[A-Za-z0-9._-]{1,100}$"],
     },
   },
   {
@@ -184,7 +185,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
     id: "cloudconsoles", name: "Konsole chmurowe (GCP, Firebase, AWS, Azure)", kind: "work",
     match: {
       site: ["Google Cloud console", "Konsola Google Cloud", "Firebase console", "Firebase", "AWS Management Console", "Microsoft Azure"],
-      domain: ["console.cloud.google.com", "console.firebase.google.com", "console.aws.amazon.com", "portal.azure.com"],
+      domain: ["console.cloud.google.com", "console.firebase.google.com", "console.aws.amazon.com", "aws.amazon.com", "portal.azure.com"],
     },
   },
   {
@@ -214,7 +215,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
     id: "devportals_pl", name: "Portale deweloperskie (Allegro, AliExpress)", kind: "work",
     match: {
       site: ["Allegro Developer Portal", "Allegro Developer Apps", "AliExpress Open Platform"],
-      domain: ["developer.allegro.pl", "apps.developer.allegro.pl", "openservice.aliexpress.com"],
+      domain: ["developer.allegro.pl", "apps.developer.allegro.pl", "openservice.aliexpress.com", "portals.aliexpress.com"],
     },
   },
   {
@@ -343,7 +344,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
   // Seen in the user's data: lecture streams 'Transmisja - ... - CloudA'. 'Sklep CloudA' is a store page.
   {
     id: "clouda", name: "CloudA (platforma e-learningowa)", kind: "learning",
-    match: { site: ["CloudA"] },
+    match: { site: ["CloudA"], domain: ["clouda.edu.pl"] },
   },
   {
     id: "moodle", name: "Moodle / e-learning uczelni", kind: "learning",
@@ -508,7 +509,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
   },
   // 'Proton Mail: Sign-in' falls into 'Browser | other' (colon is not a tracker separator).
   {
-    id: "protonmail", name: "Proton Mail", kind: "communication",
+    id: "protonmail", name: "Proton Mail", kind: "communication", colon_prefix: true,
     match: { pkg: ["ch.protonmail.android"], site: ["Proton Mail", "Proton Mail: Sign-in"], domain: ["mail.proton.me"] },
   },
   {
@@ -670,7 +671,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
   // verify: package / site names not confirmed
   {
     id: "player", name: "Player.pl (TVN)", kind: "watching",
-    match: { pkg: ["pl.tvn.player"], site: ["Player.pl", "Player"], domain: ["player.pl"] },
+    match: { pkg: ["pl.tvn.player"], site: ["Player.pl"], domain: ["player.pl"] },
   },
   {
     id: "tvpvod", name: "TVP VOD / TVP Stream", kind: "watching",
@@ -684,7 +685,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
   },
   // Polish UI suffix 'Oglądaj na Crunchyroll' is what the user's data shows.
   {
-    id: "crunchyroll", name: "Crunchyroll", kind: "watching",
+    id: "crunchyroll", name: "Crunchyroll", kind: "watching", colon_prefix: true,
     match: { pkg: ["com.crunchyroll.crunchyroid"], site: ["Crunchyroll", "Oglądaj na Crunchyroll"], domain: ["crunchyroll.com"] },
   },
   // Episode pages end with ' - Oglądaj Anime' (checked); its search page puts 'Wyszukiwanie' last, so segment matching matters.
@@ -999,7 +1000,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
   },
   // PayPal pages use 'PayPal: Ustawienia' style titles (seen), one segment, so they need the ': ' split.
   {
-    id: "payments", name: "Płatności (PayPal, Revolut, Wise, Skrill, Przelewy24, Google Wallet)", kind: "neutral", group: "finance",
+    id: "payments", name: "Płatności (PayPal, Revolut, Wise, Skrill, Przelewy24, Google Wallet)", kind: "neutral", group: "finance", colon_prefix: true,
     match: {
       pkg: [
         "com.paypal.android.p2pmobile", "com.revolut.revolut", "com.transferwise.android", "com.moneybookers.skrillpayments",
@@ -1078,7 +1079,7 @@ export const CATALOG_ENTRIES: CatalogEntry[] = [
   },
   // 'New Tab'/'Nowa karta' account for ~22 min of 'Browser | other' (89+34 sessions) in the user's data.
   {
-    id: "browser_chrome", name: "Strony przeglądarki (nowa karta, ustawienia, pobrane)", kind: "neutral",
+    id: "browser_chrome", name: "Strony przeglądarki (nowa karta, ustawienia, pobrane)", kind: "neutral", generic: true,
     match: {
       site: [
         "New Tab", "Nowa karta", "New Private Tab", "Nowa karta prywatna", "New Incognito Tab", "Otwieranie", "Untitled", "Bez tytułu",

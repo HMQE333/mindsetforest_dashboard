@@ -567,6 +567,12 @@ describe("built-in catalog", () => {
     expect(video).toMatchObject({ classId: "watch", projectId: "p1", source: "catalog" });
   });
 
+  it("a project named in the key keeps its bound class even when the kind differs", () => {
+    const studia = cls({ id: "studia", kind: "learning", name: "Studia", project_id: "p1", sort_order: 9 });
+    const c = classifySession(sess({ app_key: "PyCharm | mindsetforest", window_title: "lab3.py" }), ctx([], { classes: [...CLASSES, studia] }));
+    expect(c).toMatchObject({ classId: "studia", projectId: "p1", source: "catalog" });
+  });
+
   it("Messenger (com.facebook.orca) is communication, not the Facebook keyword's waste", () => {
     const classes = CLASSES.map((c) => (c.id === "waste" ? { ...c, keywords: ["Reddit", "Facebook"] } : c));
     const c = classifySession(sess({ app_key: "com.facebook.orca", app: "Messenger", window_title: "Messenger" }), ctx([], { classes }));

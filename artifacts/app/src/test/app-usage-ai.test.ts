@@ -79,6 +79,18 @@ describe("normTitle", () => {
 });
 
 describe("redactForPrompt", () => {
+  it("drops the folders of a file path and masks prefixed tokens", () => {
+    expect(redactForPrompt("C:\\Users\\Jan Kowalski\\Desktop\\umowa_najmu.pdf - Adobe Acrobat Reader", 200)).toBe("umowa_najmu.pdf - Adobe Acrobat Reader");
+    expect(redactForPrompt("/home/jan/notes/diagnoza.md - Obsidian")).toBe("diagnoza.md - Obsidian");
+    // Token-shaped fixtures are assembled at run time so the repo holds nothing a secret scanner flags.
+    const fake = (prefix: string) => [prefix, "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"].join("_");
+    expect(redactForPrompt(`token=${fake("ghp")}`)).toBe("token=<id>");
+    expect(redactForPrompt(fake(["sk", "live"].join("_")))).toBe("<id>");
+    expect(redactForPrompt("https://app.example.com/invite/AbCdEf_GhIjKlMnOpQrStUvWx12345", 200)).toBe("https://app.example.com/invite/<id>");
+    // lower-case slugs stay readable
+    expect(redactForPrompt("kaede-to-suzu-the-animation-episode-12 - Oglądaj Anime", 200)).toBe("kaede-to-suzu-the-animation-episode-12 - Oglądaj Anime");
+  });
+
   it("masks addresses, DM handles, query tokens, ids, tokens and long numbers", () => {
     expect(redactForPrompt("Odebrane | jan.kowalski@proton.me | Proton Mail")).toBe("Odebrane | <email> | Proton Mail");
     expect(redactForPrompt("Browser | @Arnold")).toBe("Browser | @<osoba>");
@@ -205,7 +217,7 @@ describe("suggestion rows", () => {
       row({ app_key: "class-gone", status: "accepted", final_class_id: null }),
       row({ app_key: "skipped", status: "dismissed" }),
     ]);
-    expect(m.get("offered")).toEqual({ app_key: "offered", class_id: "c1", alt_class_id: "c2", confidence: 0.92, multi: true, why: "Czat AI", cached: true });
+    expect(m.get("offered")).toEqual({ app_key: "offered", class_id: "c1", alt_class_id: "c2", confidence: 0.92, multi: true, why: "Czat AI", cached: true, stale: true });
     expect(m.get("none")?.class_id).toBeNull();
     expect(m.get("accepted")).toMatchObject({ class_id: "c1", confidence: DECIDED_CONFIDENCE, decided: true, why: "Twój wcześniejszy wybór" });
     expect(m.get("corrected")).toMatchObject({ class_id: "c3", confidence: 0.3, decided: true, alt_class_id: null });

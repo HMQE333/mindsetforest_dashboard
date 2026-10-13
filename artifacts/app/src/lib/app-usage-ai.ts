@@ -35,6 +35,8 @@ export interface AiSuggestion {
   cached: boolean;
   /** The user's own earlier choice for this key (its rule is gone): shown, never pre-selected. */
   decided?: boolean;
+  /** Read from the local cache, not yet re-checked by the function against the current classes: never pre-selected. */
+  stale?: boolean;
 }
 
 export type SuggestionStatus = "offered" | "accepted" | "corrected" | "dismissed";
@@ -85,13 +87,16 @@ export function normTitle(title: string): string {
 /** What may leave for the model: addresses, DM handles, URL queries, ids, tokens and long numbers masked. */
 export function redactForPrompt(text: string, max = 80): string {
   let t = normTitle(text);
+  // Folders before the file name (they carry the user's name): "C:\Users\Jan\a.pdf" -> "a.pdf".
+  t = t.replace(/(?:\b[A-Za-z]:|\\\\[^\\\s|]+)\\(?:[^\\|]*\\)*/g, "");
+  t = t.replace(/(?:\/(?:home|Users)\/|~\/)(?:[^/|]*\/)*/g, "");
   t = t.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "<email>");
   t = t.replace(/(^|[\s|(])@[^|]*/g, "$1@<osoba> ");
   t = t.replace(/((?:https?:\/\/|blob:)?[\w-]+(?:\.[\w-]+)+(?:\/[^\s?#]*)?)[?#]\S+/gi, "$1");
   t = t.replace(/(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>");
   t = t.replace(/\b[0-9a-f]{20,}\b/gi, "<id>");
   t = t.replace(/\beyJ[\w-]{8,}(?:\.[\w-]+){0,2}/g, "<id>");
-  t = t.replace(/\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])[A-Za-z0-9]{24,}\b/g, "<id>");
+  t = t.replace(/(?<![\w-])(?=[\w-]*\d)(?=[\w-]*[a-z])(?=[\w-]*[A-Z])[\w-]{24,}(?![\w-])/g, "<id>");
   t = t.replace(/(?<![\w.,/])\+?\d(?:[ -]?\d){6,}(?![\w.,/])/g, "#");
   return t.replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -189,7 +194,7 @@ export function cachedSuggestions(rows: SuggestionRow[]): Map<string, AiSuggesti
     if (r.status === "offered") {
       out.set(r.app_key, {
         app_key: r.app_key, class_id: r.class_id, alt_class_id: r.alt_class_id, confidence: r.confidence,
-        multi: r.multi_purpose, why: r.reason, cached: true,
+        multi: r.multi_purpose, why: r.reason, cached: true, stale: true,
       });
     } else if (r.final_class_id) {
       out.set(r.app_key, {
@@ -293,6 +298,58 @@ export async function loadSuggestionRows(userId: string): Promise<{ rows: Sugges
     if ((data || []).length < PAGE_SIZE) break;
   }
   return { rows, ready: true };
+}
+
+/** The decision columns of the given keys before a confirm, so "Cofnij" can put them back. */
+export interface DecisionSnapshot {
+  keys: string[];
+  rows: { app_key: string; status: SuggestionStatus; final_class_id: string | null; preselected: boolean; decided_at: string | null }[];
+}
+
+const KEY_CHUNK = 100;
+
+export async function snapshotDecisions(userId: string, keys: string[]): Promise<DecisionSnapshot | null> {
+  const unique = [...new Set(keys.filter((k) => k.trim()))];
+  const rows: DecisionSnapshot["rows"] = [];
+  for (let i = 0; i < unique.length; i += KEY_CHUNK) {
+    const { data, error } = await supabase
+      .from("app_class_suggestions")
+      .select("app_key,status,final_class_id,preselected,decided_at")
+      .eq("user_id", userId)
+      .eq("item_type", "key")
+      .eq("title_key", "")
+      .in("app_key", unique.slice(i, i + KEY_CHUNK));
+    if (error) return null;
+    for (const r of data || []) {
+      const status = STATUSES.includes(r.status as SuggestionStatus) ? (r.status as SuggestionStatus) : null;
+      if (!status) continue;
+      rows.push({ app_key: r.app_key, status, final_class_id: idOrNull(r.final_class_id), preselected: r.preselected === true, decided_at: r.decided_at ?? null });
+    }
+  }
+  return { keys: unique, rows };
+}
+
+/** Puts the snapshot back: earlier rows get their old decision, rows the confirm created are deleted. */
+export async function restoreDecisions(userId: string, snap: DecisionSnapshot): Promise<boolean> {
+  let ok = true;
+  if (snap.rows.length > 0) {
+    const rows = snap.rows.map((r) => ({ user_id: userId, item_type: "key", title_key: "", ...r }));
+    const { error } = await supabase.from("app_class_suggestions").upsert(rows, { onConflict: SUGGESTION_CONFLICT });
+    if (error) ok = false;
+  }
+  const had = new Set(snap.rows.map((r) => r.app_key));
+  const created = snap.keys.filter((k) => !had.has(k));
+  for (let i = 0; i < created.length; i += KEY_CHUNK) {
+    const { error } = await supabase
+      .from("app_class_suggestions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("item_type", "key")
+      .eq("title_key", "")
+      .in("app_key", created.slice(i, i + KEY_CHUNK));
+    if (error) ok = false;
+  }
+  return ok;
 }
 
 /** Stores what the user did with each key: accepted / corrected (with the class picked) or dismissed. */

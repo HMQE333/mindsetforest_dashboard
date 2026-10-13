@@ -141,13 +141,16 @@ export async function writeLabelBatch(
   rules: AppRule[],
   entries: LabelEntry[],
 ): Promise<{ undo: LabelUndo; error: PgError }> {
-  const plan = planLabelBatch(rules, entries);
+  // The server's rules for these keys, not this tab's copy: a rule written in
+  // another tab since it loaded must be restored by "Cofnij", never deleted.
+  const plan = planLabelBatch(await serverLabelRules(userId, entries, rules), entries);
   const undo: LabelUndo = { keys: [], created: [], restore: [], classGroups: [] };
   let error: PgError = null;
 
   const updates = await Promise.all(
     plan.updates.map((u) =>
-      supabase.from("app_rules").update({ class_id: u.classId, project_id: u.projectId }).eq("id", u.previous.id).eq("user_id", userId),
+      // enabled: a disabled manual rule would make the label do nothing
+      supabase.from("app_rules").update({ class_id: u.classId, project_id: u.projectId, enabled: true }).eq("id", u.previous.id).eq("user_id", userId),
     ),
   );
   updates.forEach((res, i) => {
@@ -189,13 +192,49 @@ export async function writeLabelBatch(
   return { undo, error };
 }
 
-/** Each answered catalog group in exactly one class's catalog_groups: one update per class that changes. */
-export async function writeGroupClaims(userId: string, classes: AppClass[], answers: Record<string, string>): Promise<PgError> {
-  const changes = planGroupClaims(classes, answers);
+const PATTERN_CHUNK = 100;
+
+/** Exact app_key rules the server holds for the batch's keys; this tab's copy when the read fails. */
+async function serverLabelRules(userId: string, entries: LabelEntry[], local: AppRule[]): Promise<AppRule[]> {
+  const keys = [...new Set(entries.map((e) => e.appKey).filter(Boolean))];
+  const out: AppRule[] = [];
+  for (let i = 0; i < keys.length; i += PATTERN_CHUNK) {
+    const { data, error } = await supabase
+      .from("app_rules")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("field", "app_key")
+      .eq("match_kind", "exact")
+      .in("pattern", keys.slice(i, i + PATTERN_CHUNK));
+    if (error || !data) return local;
+    out.push(...data.map(rowToRule));
+  }
+  return out;
+}
+
+/**
+ * Each answered catalog group in exactly one class's catalog_groups: one
+ * update per class that changes, computed from the server's claims (another
+ * tab may have answered since this one loaded). Returns what the changed
+ * classes held before, for "Cofnij".
+ */
+export async function writeGroupClaims(
+  userId: string,
+  classes: AppClass[],
+  answers: Record<string, string>,
+): Promise<{ error: PgError; before: { id: string; catalog_groups: string[] }[] }> {
+  let current = classes;
+  const { data } = await supabase.from("app_classes").select("id,catalog_groups").eq("user_id", userId);
+  if (data) {
+    const fresh = new Map((data as { id: string; catalog_groups: string[] | null }[]).map((r) => [r.id, r.catalog_groups || []]));
+    current = classes.map((c) => (fresh.has(c.id) ? { ...c, catalog_groups: fresh.get(c.id) || [] } : c));
+  }
+  const changes = planGroupClaims(current, answers);
   const results = await Promise.all(
     changes.map((c) => supabase.from("app_classes").update({ catalog_groups: c.after }).eq("id", c.id).eq("user_id", userId)),
   );
-  return results.find((r) => r.error)?.error ?? null;
+  const error = results.find((r) => r.error)?.error ?? null;
+  return { error, before: error ? [] : changes.map((c) => ({ id: c.id, catalog_groups: c.before })) };
 }
 
 /** Undo of a batch: created rules deleted in one request, changed rules and class claims put back as they were. */
@@ -665,10 +704,10 @@ export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {})
    * vocabulary refetch.
    */
   const claimCatalogGroups = useCallback(
-    async (answers: Record<string, string>): Promise<boolean> => {
-      if (!userId) return false;
-      if (planGroupClaims(classes, answers).length === 0) return true;
-      const failed = await writeGroupClaims(userId, classes, answers);
+    async (answers: Record<string, string>): Promise<{ id: string; catalog_groups: string[] }[] | null> => {
+      if (!userId) return null;
+      if (Object.keys(answers).length === 0) return [];
+      const { error: failed, before } = await writeGroupClaims(userId, classes, answers);
       if (failed) {
         if (failed.code === "PGRST204" || failed.code === "42703") {
           toast.error("Brak kolumny catalog_groups: uruchom migrację 20261010120000_usage_categorize.sql");
@@ -677,7 +716,7 @@ export function useAppUsage(range: UsageRange, options: UseAppUsageOptions = {})
         }
       }
       await loadVocabulary();
-      return !failed;
+      return failed ? null : before;
     },
     [userId, classes, guard, loadVocabulary],
   );

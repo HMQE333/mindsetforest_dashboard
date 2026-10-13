@@ -65,6 +65,12 @@ describe("matchCatalog: exact phase", () => {
     expect(id(s("Browser | rybiapaka.pl"))).toBeNull();
   });
 
+  it("tracker 1.2 host keys: CloudA and AWS by domain, the AliExpress affiliate portal is not shopping", () => {
+    expect(id(s("Browser | wsbnlu.clouda.edu.pl"), "exact")).toBe("clouda");
+    expect(id(s("Browser | docs.aws.amazon.com"), "exact")).toBe("cloudconsoles");
+    expect(id(s("Browser | portals.aliexpress.com"), "exact")).toBe("devportals_pl");
+  });
+
   it("never reads the title", () => {
     expect(id(s("Browser | other", "Lecture - YouTube - Brave"), "exact")).toBeNull();
     expect(id(s("Browser | other", "Lecture - YouTube - Brave"), "loose")).toBe("youtube");
@@ -82,6 +88,20 @@ describe("matchCatalog: loose phase", () => {
     expect(m?.entry.id).toBe("youtube");
     expect(id(s("Browser | other", "interia.pl | poczta.interia.pl - Brave"), "loose")).toBe("pl_webmail");
     expect(id(s("Browser | other", "Question about fix.com - Brave"), "loose")).toBeNull();
+    // the domain of an e-mail address is not a site
+    expect(id(s("Browser | poczta.home.pl", "Odebrane (3) - jan.kowalski@wp.pl - Poczta home.pl"), "loose")).toBeNull();
+    expect(id(s("Browser | outlook.office365.com", "Poczta — kontakt@interia.pl — Outlook - Brave"))).toBe("outlook");
+  });
+
+  it("generic page words match only as the whole title, and ': ' only for brands that opt in", () => {
+    expect(id(s("Browser | other", "Ustawienia - Brave"))).toBe("browser_chrome");
+    expect(id(s("Browser | excalidraw.com", "Untitled - Excalidraw - Brave"), "loose")).not.toBe("browser_chrome");
+    expect(id(s("Browser | rybiapaka.pl", "Ustawienia | RybiaPaka.pl - Brave"), "loose")).toBeNull();
+    expect(id(s("Browser | other", "PayPal: Ustawienia - Brave"))).toBe("payments");
+    expect(id(s("Browser | Fandom", "Player | Roblox Wiki | Fandom - Brave"), "loose")).not.toBe("player");
+    // an AI chat titled "Brand: topic" is not that brand
+    expect(id(s("Browser | other", "Max: limit of a function explained - Brave"))).toBeNull();
+    expect(id(s("Browser | other", "Uber: system design interview - Brave"))).toBeNull();
   });
 
   it("title segment equal to a site, last segment first", () => {
@@ -102,6 +122,8 @@ describe("matchCatalog: loose phase", () => {
     expect(m).toMatchObject({ phase: "loose", how: "wzorzec klucza" });
     expect(m?.entry.id).toBe("github");
     expect(id(s("Browser | not a/repo"))).toBeNull();
+    expect(id(s("Browser | HMQE333/mindsetforest_dashboard"))).toBe("github");
+    for (const t of ["2026/2027", "TCP/IP", "UI/UX", "r/Polska", "r/programming", "u/someone"]) expect(id(s(`Browser | ${t}`))).toBeNull();
   });
 
   it("title_re only for 'Browser | other', on the title without the browser's suffix", () => {

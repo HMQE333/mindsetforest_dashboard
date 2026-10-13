@@ -35,7 +35,7 @@ import {
   type RuleSource,
   type UsageSession,
 } from "@/lib/app-usage-classify";
-import type { AiDecision, AiItem, AiSuggestion } from "@/lib/app-usage-ai";
+import type { AiDecision, AiItem, AiSuggestion, DecisionSnapshot } from "@/lib/app-usage-ai";
 import { isPhone } from "@/lib/tracker-devices";
 
 export type Device = "pc" | "phone";
@@ -68,6 +68,13 @@ export interface TriageItem {
   catalogId: string | null;
   group: string | null;
   suggestion: TriageSuggestion | null;
+  /**
+   * Time of these keys that a label would change although it is already
+   * decided: by a rule or keyword of the user (seconds per class id), or
+   * filed under a project (seconds per project id). Not part of `seconds`.
+   */
+  keptSeconds: Record<string, number>;
+  projectSeconds: Record<string, number>;
 }
 
 export interface GroupQuestion {
@@ -166,13 +173,10 @@ export function siblingNames(appKey: string, app: string): string[] {
   const friendly = friendlyName(appKey, app).trim().toLowerCase();
   out.add(friendly);
   if (HOST_RE.test(friendly)) {
-    const labels = friendly.replace(/^www\./, "").split(".");
-    for (let i = labels.length - 2; i >= 0; i--) {
-      if (!NAME_STOP.has(labels[i])) {
-        out.add(labels[i]);
-        break;
-      }
-    }
+    // The leftmost label only: "rybiapaka.pl" -> "rybiapaka", but "a.vercel.app"
+    // and "b.vercel.app" are different sites on one host, not siblings.
+    const first = friendly.replace(/^www\./, "").split(".")[0];
+    if (!NAME_STOP.has(first)) out.add(first);
   }
   if (PACKAGE_RE.test(appKey)) {
     const segments = appKey.toLowerCase().split(".");
@@ -210,17 +214,23 @@ interface KeyStat {
   seconds: number;
   unassigned: number;
   titles: Map<string, number>;
-  /** Catalog entry id -> considered seconds that matched it. */
+  /** Catalog entry id -> considered seconds that matched it by an exact name (row grouping). */
   entries: Map<string, number>;
+  /** Same, any phase: a title mention also moves with a group answer (question time). */
+  mentions: Map<string, number>;
   /** Class id -> considered seconds a prior put there. */
   priors: Map<string, number>;
   priorWhy: string;
   priorConfidence: number;
   bucket: boolean;
+  /** Considered seconds the classifier filed under a project, per project id. */
+  projects: Map<string, number>;
 }
 
 interface Base {
   keys: Map<string, KeyStat>;
+  /** Per key, counted seconds a user rule or keyword decided, per class id: a key-wide label would override them. */
+  kept: Map<string, Map<string, number>>;
   /** First `app` seen per key, for naming labelled keys. */
   appByKey: Map<string, string>;
   totalSeconds: number;
@@ -245,6 +255,7 @@ function computeBase(sessions: UsageSession[], classifications: Classification[]
   if (cached && cached.sessions === sessions && cached.classes === classes) return cached.base;
   const classById = new Map(classes.map((c) => [c.id, c]));
   const keys = new Map<string, KeyStat>();
+  const kept = new Map<string, Map<string, number>>();
   const appByKey = new Map<string, string>();
   let totalSeconds = 0;
   let unassignedSeconds = 0;
@@ -259,7 +270,14 @@ function computeBase(sessions: UsageSession[], classifications: Classification[]
     totalSeconds += secs;
     if (!cls) unassignedSeconds += secs;
     else if (c && (c.source === "catalog" || c.source === "prior")) guessedSeconds += secs;
-    if (!considered(c)) return;
+    if (!considered(c)) {
+      if (cls) {
+        let m = kept.get(s.app_key);
+        if (!m) kept.set(s.app_key, (m = new Map()));
+        m.set(cls.id, (m.get(cls.id) || 0) + secs);
+      }
+      return;
+    }
 
     let k = keys.get(s.app_key);
     if (!k) {
@@ -271,10 +289,12 @@ function computeBase(sessions: UsageSession[], classifications: Classification[]
         unassigned: 0,
         titles: new Map(),
         entries: new Map(),
+        mentions: new Map(),
         priors: new Map(),
         priorWhy: "",
         priorConfidence: 0,
         bucket: isBucketKey(s.app_key),
+        projects: new Map(),
       };
       keys.set(s.app_key, k);
     }
@@ -282,8 +302,14 @@ function computeBase(sessions: UsageSession[], classifications: Classification[]
     k.seconds += secs;
     if (!cls) k.unassigned += secs;
     if (s.window_title) k.titles.set(s.window_title, (k.titles.get(s.window_title) || 0) + secs);
+    if (c?.projectId) k.projects.set(c.projectId, (k.projects.get(c.projectId) || 0) + secs);
+    // Exact names only: a key that merely mentions a site in some titles
+    // ("Oglądaj Anime - Wyszukiwanie") must not get that site's key-wide rule.
     const m = matchCatalog(s);
-    if (m) k.entries.set(m.entry.id, (k.entries.get(m.entry.id) || 0) + secs);
+    if (m) {
+      k.mentions.set(m.entry.id, (k.mentions.get(m.entry.id) || 0) + secs);
+      if (m.phase === "exact") k.entries.set(m.entry.id, (k.entries.get(m.entry.id) || 0) + secs);
+    }
     if (c?.source === "prior" && cls) {
       k.priors.set(cls.id, (k.priors.get(cls.id) || 0) + secs);
       if (!k.priorWhy) {
@@ -292,7 +318,7 @@ function computeBase(sessions: UsageSession[], classifications: Classification[]
       }
     }
   });
-  const base: Base = { keys, appByKey, totalSeconds, unassignedSeconds, guessedSeconds };
+  const base: Base = { keys, kept, appByKey, totalSeconds, unassignedSeconds, guessedSeconds };
   baseCache.set(classifications, { sessions, classes, base });
   return base;
 }
@@ -371,7 +397,7 @@ export function buildTriage(input: TriageInput): TriageResult {
   let otherBucketSeconds = 0;
   for (const k of base.keys.values()) {
     if (dismissed.has(k.appKey)) continue;
-    for (const [entryId, secs] of k.entries) {
+    for (const [entryId, secs] of k.mentions) {
       const group = catalogEntry(entryId)?.group;
       if (!group || !CATALOG_GROUPS[group]?.ask_pl || claimed.has(group)) continue;
       let g = groupTime.get(group);
@@ -459,7 +485,8 @@ export function buildTriage(input: TriageInput): TriageResult {
         source: "ai",
         confidence: a.confidence,
         why: a.decided ? a.why || "Twój wcześniejszy wybór" : `AI: ${a.why || "propozycja"}`,
-        preselect: a.confidence >= AI_PRESELECT_CONFIDENCE && !a.multi && !a.decided,
+        // A locally cached answer may predate a change of classes: the function re-checks it (free) first.
+        preselect: a.confidence >= AI_PRESELECT_CONFIDENCE && !a.multi && !a.decided && !a.stale,
         altClassIds: a.alt_class_id && a.alt_class_id !== a.class_id && classById.has(a.alt_class_id) ? [a.alt_class_id] : [],
       };
     }
@@ -502,6 +529,17 @@ export function buildTriage(input: TriageInput): TriageResult {
       .slice(0, 3)
       .map(([t]) => t);
     const devices = new Set(stats.flatMap((k) => [...k.devices]));
+    const keptSeconds: Record<string, number> = {};
+    const projectSeconds: Record<string, number> = {};
+    for (const k of stats) {
+      for (const [id, secs] of base.kept.get(k.appKey) || []) keptSeconds[id] = (keptSeconds[id] || 0) + secs;
+      for (const [id, secs] of k.projects) projectSeconds[id] = (projectSeconds[id] || 0) + secs;
+    }
+    let suggestion = suggest(d);
+    if (suggestion?.preselect && overriddenSeconds({ keptSeconds, projectSeconds }, suggestion.classId, classById) >= OVERRIDE_MIN_SECONDS) {
+      // Confirming would quietly move time the user already decided (or a project's time): ask instead.
+      suggestion = { ...suggestion, preselect: false };
+    }
     all.push({
       id: d.id,
       name: d.name,
@@ -512,7 +550,9 @@ export function buildTriage(input: TriageInput): TriageResult {
       titles,
       catalogId: d.entry ? d.entry.id : null,
       group: d.entry?.group ?? null,
-      suggestion: suggest(d),
+      suggestion,
+      keptSeconds,
+      projectSeconds,
     });
   }
   all.sort((a, b) => triageWeight(b) - triageWeight(a) || a.name.localeCompare(b.name));
@@ -551,6 +591,26 @@ export function buildTriage(input: TriageInput): TriageResult {
     guessedSeconds: base.guessedSeconds,
     otherBucketSeconds,
   };
+}
+
+/** Below this, time a label would move from another class or project is not worth a warning. */
+export const OVERRIDE_MIN_SECONDS = 60;
+
+/**
+ * Seconds a label to `classId` would take from what is already decided:
+ * time a user rule or keyword put in another class, and project time when
+ * the class is not bound to that project (a label drops the project).
+ */
+export function overriddenSeconds(
+  item: Pick<TriageItem, "keptSeconds" | "projectSeconds">,
+  classId: string,
+  classById: Map<string, AppClass>,
+): number {
+  const project = classById.get(classId)?.project_id ?? null;
+  let n = 0;
+  for (const [id, secs] of Object.entries(item.keptSeconds)) if (id !== classId) n += secs;
+  for (const [id, secs] of Object.entries(item.projectSeconds)) if (id !== project) n += secs;
+  return n;
 }
 
 /** Rows that should ask the AI: no suggestion, or a weak one that is not the catalog's. */
@@ -645,6 +705,9 @@ export function planConfirm(
       for (const app_key of it.appKeys) {
         const a = ai.get(app_key);
         if (!a || !a.class_id) continue;
+        // A decided row already holds the user's pick: re-picking it records nothing
+        // (it must stay "corrected" when the model had said otherwise).
+        if (a.decided && a.class_id === choice) continue;
         decisions.push({
           app_key,
           status: a.class_id === choice ? "accepted" : "corrected",
@@ -681,6 +744,8 @@ export interface LabelUndo {
   restore: RuleSnapshot[];
   /** Previous catalog_groups of classes whose claims changed. */
   classGroups: { id: string; catalog_groups: string[] }[];
+  /** What app_class_suggestions held for the decided keys before the confirm. */
+  decisions?: DecisionSnapshot | null;
 }
 
 export const EMPTY_UNDO: LabelUndo = { keys: [], created: [], restore: [], classGroups: [] };
@@ -715,6 +780,7 @@ export function planLabelBatch(rules: AppRule[], entries: LabelEntry[]): LabelBa
     const projectId = e.projectId ?? null;
     if (existing && existing.source === "manual") {
       plan.updates.push({ appKey: e.appKey, classId: e.classId, projectId, previous: snapshot(existing) });
+      // (the update also switches a disabled manual rule back on, or the label would do nothing)
     } else {
       plan.upserts.push({ appKey: e.appKey, classId: e.classId, projectId, previous: existing ? snapshot(existing) : null });
     }

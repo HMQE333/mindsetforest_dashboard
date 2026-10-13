@@ -70,8 +70,10 @@ def test_the_tabs_domain_is_checked_too():
 
 def test_the_host_only_shapes_app_key_and_is_never_stored_alone():
     t = SessionTracker(min_seconds=0)
-    out = t.feed(0, Sample(exe="brave.exe", title="Prośba o pomoc finansową – Brave", host="chatgpt.com"))
-    out += t.close_current(5)
+    # A real timestamp: to_row works out the local day, and Windows rejects the epoch's.
+    t0 = 1_760_000_000
+    out = t.feed(t0, Sample(exe="brave.exe", title="Prośba o pomoc finansową – Brave", host="chatgpt.com"))
+    out += t.close_current(t0 + 5)
     (row,) = [s.to_row() for s in out]
     assert row["app_key"] == "Browser | ChatGPT" and row["window_title"] == "Prośba o pomoc finansową – Brave"
     assert "host" not in row and "chatgpt.com" not in str(row)

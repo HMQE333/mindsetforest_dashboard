@@ -54,6 +54,14 @@ export interface CatalogEntry {
   heuristic?: boolean;
   /** Recognised but says nothing about the use (a phone browser): never classifies. */
   opaque?: boolean;
+  /**
+   * Its site names are ordinary words ("Ustawienia", "History"): they match
+   * as the site token or the whole title, never as one segment of a longer
+   * title, where they would beat the real site's name.
+   */
+  generic?: boolean;
+  /** Its site names also match before ": " ("PayPal: Ustawienia"); off by default, AI chat titles look like that too. */
+  colon_prefix?: boolean;
 }
 
 export interface CatalogGroup {
@@ -137,9 +145,11 @@ export function catalogEntry(id: string): CatalogEntry | undefined {
 
 const BROWSER_KEY_RE = /^browser\s*\|\s*(.+)$/i;
 const HOST_TOKEN_RE = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/;
-const HOST_IN_TEXT_RE = /(?:[a-z0-9-]+\.)+[a-z]{2,}/g;
-/** Tracker separators plus " :: ", " • ", " >> " and ": " (as in "PayPal: Ustawienia"). */
-const SEGMENT_RE = /\s+(?:[-\u2013\u2014|\u00b7\u2022]|::|>>)\s+|:\s+/;
+/** A host in free text; not the domain of an e-mail address ("jan@wp.pl"), the same bounds as the tracker's. */
+const HOST_IN_TEXT_RE = /(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?![\w-])/g;
+/** Tracker separators plus " :: ", " • " and " >> ". */
+const SEGMENT_RE = /\s+(?:[-\u2013\u2014|\u00b7\u2022]|::|>>)\s+/;
+const COLON_PREFIX_RE = /^([^:]{2,40}):\s+\S/;
 const COUNT_PREFIX_RE = /^\(\d+\+?\)\s*/;
 const LAST_SEGMENT_RE = /\s+[-\u2013\u2014|\u00b7]\s+([^-\u2013\u2014|\u00b7]*)$/;
 const INVISIBLE_RE = /[\u200b-\u200d\u2060\ufeff]/g;
@@ -225,11 +235,17 @@ function matchLoose(session: Pick<UsageSession, "app_key" | "window_title">): Ca
       if (hit && (!best || hit.domain.length > best.domain.length)) best = hit;
     }
     if (best) return found(best.entry, "loose", "domena w tytule");
+    const bare = stripBrowserSuffix(title).replace(COUNT_PREFIX_RE, "").trim().toLowerCase();
+    const whole = INDEX.site.get(bare);
+    if (whole) return found(whole, "loose", "tytuł");
     const segments = titleSegments(title);
     for (let i = segments.length - 1; i >= 0; i--) {
       const bySite = INDEX.site.get(segments[i]);
-      if (bySite) return found(bySite, "loose", "fragment tytułu");
+      if (bySite && !bySite.generic) return found(bySite, "loose", "fragment tytułu");
     }
+    const colon = COLON_PREFIX_RE.exec(bare);
+    const byPrefix = colon ? INDEX.site.get(colon[1].trim()) : undefined;
+    if (byPrefix?.colon_prefix) return found(byPrefix, "loose", "fragment tytułu");
   }
   for (const [re, entry] of INDEX.tokenRe) {
     if (re.test(token)) return found(entry, "loose", "wzorzec klucza");

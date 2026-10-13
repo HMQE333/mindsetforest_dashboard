@@ -33,6 +33,12 @@ const MODEL = Deno.env.get("CLASSIFY_MODEL") || Deno.env.get("OPENROUTER_MODEL")
 const DECIDED_CONFIDENCE = 0.5;
 const DECIDED_WHY = "Twój wcześniejszy wybór";
 const CONFLICT = "user_id,item_type,app_key,title_key";
+// Per user and month, this feature only: the cache keeps a real user near a cent a month,
+// so the cap only stops a script sending fresh keys in a loop.
+const BUDGET_USD = (() => {
+  const n = Number(Deno.env.get("CLASSIFY_BUDGET_USD") || "1");
+  return Number.isFinite(n) && n > 0 ? n : 1;
+})();
 
 interface Item { app_key: string; app: string; device: "pc" | "phone"; minutes: number; titles: string[] }
 interface Usage { prompt_tokens?: number; completion_tokens?: number; cost?: number }
@@ -76,13 +82,16 @@ function normTitle(title: string): string {
 /** What may leave for the model: addresses, DM handles, URL queries, ids, tokens and long numbers masked. */
 function redactForPrompt(text: string, max = 80): string {
   let t = normTitle(text);
+  // Folders before the file name (they carry the user's name): "C:\Users\Jan\a.pdf" -> "a.pdf".
+  t = t.replace(/(?:\b[A-Za-z]:|\\\\[^\\\s|]+)\\(?:[^\\|]*\\)*/g, "");
+  t = t.replace(/(?:\/(?:home|Users)\/|~\/)(?:[^/|]*\/)*/g, "");
   t = t.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "<email>");
   t = t.replace(/(^|[\s|(])@[^|]*/g, "$1@<osoba> ");
   t = t.replace(/((?:https?:\/\/|blob:)?[\w-]+(?:\.[\w-]+)+(?:\/[^\s?#]*)?)[?#]\S+/gi, "$1");
   t = t.replace(/(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>");
   t = t.replace(/\b[0-9a-f]{20,}\b/gi, "<id>");
   t = t.replace(/\beyJ[\w-]{8,}(?:\.[\w-]+){0,2}/g, "<id>");
-  t = t.replace(/\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])[A-Za-z0-9]{24,}\b/g, "<id>");
+  t = t.replace(/(?<![\w-])(?=[\w-]*\d)(?=[\w-]*[a-z])(?=[\w-]*[A-Z])[\w-]{24,}(?![\w-])/g, "<id>");
   t = t.replace(/(?<![\w.,/])\+?\d(?:[ -]?\d){6,}(?![\w.,/])/g, "#");
   return t.replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -118,6 +127,24 @@ async function sha(text: string): Promise<string> {
 function admin() {
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   return key ? createClient(Deno.env.get("SUPABASE_URL")!, key) : null;
+}
+
+/** This month's spend of this feature for the user (service role); 0 when it cannot be read. */
+async function monthSpend(userId: string): Promise<number> {
+  const db = admin();
+  if (!db) return 0;
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await db
+    .from("ai_usage_log")
+    .select("cost_usd")
+    .eq("user_id", userId)
+    .eq("feature", "usage-classify")
+    .gte("created_at", start.toISOString())
+    .limit(5000);
+  if (error || !data) return 0;
+  return data.reduce((n: number, r: { cost_usd: unknown }) => n + (Number(r.cost_usd) || 0), 0);
 }
 
 async function logUsage(userId: string, usage: Usage | null) {
@@ -378,6 +405,9 @@ serve(async (req) => {
     if (misses.length && !Deno.env.get("OPENROUTER_API_KEY")) {
       failed = misses.length;
       failures.push(new ModelError("OPENROUTER_API_KEY is not configured", 500));
+    } else if (misses.length && (await monthSpend(userId)) >= BUDGET_USD) {
+      failed = misses.length;                                                 // cached answers still go back
+      failures.push(new ModelError("Miesięczny limit AI dla kategorii jest wyczerpany", 429));
     } else if (misses.length) {
       const system = systemPrompt(classLines, projectNames.join(", "), notes, history);
       const batches: Item[][] = [];

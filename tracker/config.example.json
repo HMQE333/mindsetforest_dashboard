@@ -9,5 +9,6 @@
   "min_session_seconds": 2,
   "ignored_apps": [],
   "private_keywords": [],
-  "capture_hotkey": "alt+shift+s"
+  "capture_hotkey": "alt+shift+s",
+  "browser_domains": true
 }
