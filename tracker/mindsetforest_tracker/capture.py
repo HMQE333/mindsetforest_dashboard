@@ -29,6 +29,8 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import threading
+import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
@@ -59,6 +61,11 @@ SHELL_OVERLAYS = {
 PID_CACHE_TTL_SAMPLES = 600
 # Reads of the address bar after one that gave nothing (user typing, page still loading).
 HOST_RETRIES = 3
+# How long a tick waits for the address bar on its own thread. A found omnibox
+# answers in milliseconds; a busy or starting browser can block UI Automation
+# for tens of seconds (Edge on CI: 25 s), and then the tab is named from its
+# title until the answer comes.
+HOST_WAIT_SECONDS = 0.3
 GW_OWNER = 4
 
 
@@ -80,17 +87,92 @@ class Sampler(Protocol):
     def sample(self) -> Sample: ...
 
 
+class _HostWorker:
+    """The address-bar reader on a thread of its own, one request at a time.
+
+    The reader is made on this thread and used only here (COM objects belong
+    to the thread that made them). A read that hangs keeps this thread busy,
+    never the capture loop: requests made meanwhile are refused.
+    """
+
+    def __init__(self, factory: Callable[[], Any]) -> None:
+        self._factory = factory
+        self._cv = threading.Condition()
+        self._request: tuple[int, str, Any] | None = None
+        self._result: tuple[int, Any] | None = None
+        self._seq = 0
+        self._busy = False
+        self.broken = False
+        threading.Thread(target=self._run, name="mf-hosts", daemon=True).start()
+
+    def submit(self, kind: str, arg: Any) -> int | None:
+        """Queue a "read" (arg: hwnd) or "prune" (arg: is_window); None while busy."""
+        with self._cv:
+            if self.broken or self._busy or self._request is not None:
+                return None
+            self._seq += 1
+            self._request = (self._seq, kind, arg)
+            self._cv.notify_all()
+            return self._seq
+
+    def wait(self, seq: int, timeout: float) -> tuple[bool, Any]:
+        deadline = time.monotonic() + timeout
+        with self._cv:
+            while not (self._result and self._result[0] == seq):
+                left = deadline - time.monotonic()
+                if left <= 0 or self.broken:
+                    return False, None
+                self._cv.wait(left)
+            return True, self._result[1]
+
+    def _run(self) -> None:
+        try:
+            reader = self._factory()
+        except Exception as exc:
+            with self._cv:
+                self.broken = True
+                self._cv.notify_all()
+            log.warning("Browser domains are off: the address bar reader could not start (%s)", exc)
+            return
+        while True:
+            with self._cv:
+                while self._request is None:
+                    self._cv.wait()
+                seq, kind, arg = self._request
+                self._request = None
+                self._busy = True
+            value: Any = None
+            try:
+                if kind == "read":
+                    value = reader.host(arg)
+                else:
+                    reader.forget({h for h in reader.windows() if arg(h)})
+            except Exception as exc:  # the reader catches its own errors; this is the last line
+                log.debug("address bar job failed: %s", exc)
+            with self._cv:
+                self._busy = False
+                self._result = (seq, value)
+                self._cv.notify_all()
+
+
 class HostReader:
     """When to ask the address bar: on a new window or title, plus ``HOST_RETRIES`` retries after nothing came.
 
     One read per title change is about one UI Automation call a minute;
-    asking every tick would be sixty. The reader itself is made on first use,
-    so on the capture thread that calls ``host``: COM objects stay on the
-    thread that made them.
+    asking every tick would be sixty. With ``threaded`` (the real sampler)
+    the reader runs on a thread of its own and a tick waits at most
+    ``HOST_WAIT_SECONDS``; a slower answer is picked up on a later tick.
+    Without it (the tests) the reader is made on first use on the calling
+    thread and asked directly.
     """
 
-    def __init__(self, reader_factory: Callable[[], Any] = OmniboxReader) -> None:
+    def __init__(self, reader_factory: Callable[[], Any] = OmniboxReader, *, threaded: bool = False,
+                 wait_seconds: float = HOST_WAIT_SECONDS) -> None:
         self._factory = reader_factory
+        self._threaded = threaded
+        self._wait = wait_seconds
+        self._worker: _HostWorker | None = None
+        self._pending: int | None = None
         self._reader: Any = None
         self._broken = False
         self._key: tuple[int, str] | None = None
@@ -101,8 +183,10 @@ class HostReader:
         """Host of the active tab of ``hwnd`` showing ``title``, "" when unknown."""
         key = (hwnd, title)
         if key != self._key:
-            self._key, self._host, self._tries = key, "", 0
-        elif self._host or self._tries > HOST_RETRIES:
+            self._key, self._host, self._tries, self._pending = key, "", 0, None
+        if self._threaded:
+            return self._host_threaded(hwnd)
+        if self._host or self._tries > HOST_RETRIES:
             return self._host
         reader = self._get_reader()
         if reader is None:
@@ -115,8 +199,47 @@ class HostReader:
             self._host = ""
         return self._host
 
+    def _host_threaded(self, hwnd: int) -> str:
+        worker = self._get_worker()
+        if worker is None:
+            return ""
+        if self._pending is not None:
+            done, value = worker.wait(self._pending, 0)
+            if not done:
+                return self._host  # still reading: the title names the tab meanwhile
+            self._pending = None
+            self._host = value or ""
+            return self._host
+        if self._host or self._tries > HOST_RETRIES:
+            return self._host
+        seq = worker.submit("read", hwnd)
+        if seq is None:
+            return self._host  # busy with an earlier window's read
+        self._tries += 1
+        done, value = worker.wait(seq, self._wait)
+        if not done:
+            self._pending = seq
+            return self._host
+        self._host = value or ""
+        return self._host
+
+    def _get_worker(self) -> _HostWorker | None:
+        if self._worker is None and not self._broken:
+            try:
+                self._worker = _HostWorker(self._factory)
+            except Exception as exc:  # no thread: titles only
+                self._broken = True
+                log.warning("Browser domains are off: the address bar thread could not start (%s)", exc)
+        if self._worker is not None and self._worker.broken:
+            return None
+        return self._worker
+
     def prune(self, is_window: Callable[[int], bool]) -> None:
         """Let the reader drop what it keeps for closed windows."""
+        if self._threaded:
+            if self._worker is not None:
+                self._worker.submit("prune", is_window)  # skipped while a read runs: the next prune does it
+            return
         reader = self._reader
         if reader is None:
             return
@@ -202,7 +325,9 @@ class WindowsSampler:
     """
 
     def __init__(self, *, browser_domains: bool = True, api: Any = None,
-                 reader_factory: Callable[[], Any] = OmniboxReader) -> None:
+                 reader_factory: Callable[[], Any] = OmniboxReader, threaded_hosts: bool | None = None) -> None:
+        # The real sampler reads the address bar on a thread of its own; a test's fake api keeps it inline.
+        threaded = api is None if threaded_hosts is None else threaded_hosts
         if api is None:
             if not WIN32_AVAILABLE:
                 raise RuntimeError("win32 is not available: pass api= or use FakeSampler")
@@ -212,7 +337,7 @@ class WindowsSampler:
         self._samples_since_flush = 0
         self._own_pid = os.getpid()
         self._last_good = Sample()
-        self._hosts = HostReader(reader_factory) if browser_domains else None
+        self._hosts = HostReader(reader_factory, threaded=threaded) if browser_domains else None
 
     def _exe_name(self, pid: int) -> str:
         self._samples_since_flush += 1

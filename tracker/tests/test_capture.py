@@ -254,3 +254,83 @@ def test_end_to_end_sessions_from_the_sampler():
         t += 1
     out += tracker.close_current(t)
     assert [(x.app_key, x.seconds) for x in out] == [("Browser | ChatGPT", 12), ("Browser | New Tab", 6)]
+
+
+# -- the reader on a thread of its own ------------------------------------------------
+
+class ThreadedReader:
+    """Records the thread it is made and asked on; ``gate`` holds a read until set."""
+
+    def __init__(self, answers=None, gate=None):
+        import threading as _t
+        self.made_on = _t.current_thread().name
+        self.asked_on = []
+        self.answers = answers or {}
+        self.gate = gate
+        self.forgotten = []
+
+    def host(self, hwnd):
+        import threading as _t
+        self.asked_on.append(_t.current_thread().name)
+        if self.gate is not None:
+            self.gate.wait(10)
+        return self.answers.get(hwnd)
+
+    def windows(self):
+        return set(self.answers)
+
+    def forget(self, live):
+        self.forgotten.append(set(live))
+
+
+def test_threaded_reader_is_made_and_asked_on_its_own_thread():
+    made = []
+    hosts = HostReader(lambda: made.append(ThreadedReader({1: "example.com"})) or made[-1], threaded=True, wait_seconds=2)
+    assert hosts.host(1, "Example - Google Chrome") == "example.com"
+    assert made[0].made_on == "mf-hosts" and made[0].asked_on == ["mf-hosts"]
+    assert hosts.host(1, "Example - Google Chrome") == "example.com"
+    assert made[0].asked_on == ["mf-hosts"]  # same window and title: not asked again
+
+
+def test_a_hung_read_never_stalls_the_tick_and_its_answer_lands_later():
+    import threading
+    import time as _time
+
+    gate = threading.Event()
+    reader = ThreadedReader({1: "chatgpt.com", 2: "example.com"}, gate=gate)
+    hosts = HostReader(lambda: reader, threaded=True, wait_seconds=0.05)
+    started = _time.monotonic()
+    assert hosts.host(1, "Chat - Brave") == ""  # the browser is busy: titles meanwhile
+    assert hosts.host(1, "Chat - Brave") == ""
+    assert hosts.host(2, "Other - Brave") == ""  # another window: refused while the read hangs
+    assert _time.monotonic() - started < 1.0
+    gate.set()
+    deadline = _time.monotonic() + 5
+    while hosts.host(2, "Other - Brave") != "example.com" and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    assert hosts.host(2, "Other - Brave") == "example.com"
+
+
+def test_threaded_reader_that_cannot_start_turns_domains_off(caplog):
+    def broken():
+        raise OSError("no comtypes")
+
+    hosts = HostReader(broken, threaded=True, wait_seconds=0.5)
+    import time as _time
+    deadline = _time.monotonic() + 5
+    while hosts.host(1, "t") == "" and _time.monotonic() < deadline and "no comtypes" not in caplog.text:
+        _time.sleep(0.01)
+    assert hosts.host(1, "t") == "" and hosts.host(2, "u") == ""
+    assert caplog.text.count("no comtypes") == 1
+
+
+def test_threaded_prune_runs_on_the_reader_thread():
+    reader = ThreadedReader({1: "example.com", 77: "gone.example"})
+    hosts = HostReader(lambda: reader, threaded=True, wait_seconds=2)
+    assert hosts.host(1, "Example") == "example.com"
+    hosts.prune(lambda h: h == 1)
+    import time as _time
+    deadline = _time.monotonic() + 5
+    while not reader.forgotten and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    assert reader.forgotten == [{1}]
