@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import { useBookmarks } from "@/hooks/useBookmarks";
@@ -14,8 +14,11 @@ import FileShareView from "./FileShareView";
 import RecordingsView, { type RecordingFocus } from "./RecordingsView";
 import { useKosRecordings, useKosVault } from "@/hooks/useKnowledgeOS";
 import { useAssistant } from "@/hooks/useAssistant";
-import { groupSessions } from "@/lib/kos-vault";
-import { openLectureTutor, type TutorLecture, type TutorMode } from "@/lib/lecture-tutor";
+import { useAuth } from "@/hooks/useAuth";
+import { useStudyPrompts } from "@/hooks/useStudyPrompts";
+import { groupSessions, type LectureSummary } from "@/lib/kos-vault";
+import { loadLectureRecordings } from "@/lib/lecture-tutor";
+import type { StudySource } from "./lectures/study-actions";
 import PlantSeedModal from "./PlantSeedModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -92,13 +95,25 @@ const ArchiveView = () => {
     setSubView("lectures");
   }, []);
 
-  // The tutor goes through the assistant panel; a ref keeps the callback stable while replies stream.
-  const assistant = useAssistant();
-  const assistantRef = useRef(assistant);
-  assistantRef.current = assistant;
-  const onTutor = useCallback((lecture: TutorLecture, mode: TutorMode) => openLectureTutor(assistantRef.current, lecture, mode), []);
-  // On Wykłady the assistant starts in its "knowledge" scope (the Archive tab has none of its own).
-  const { setCurrentScope } = assistant;
+  // Studying runs in ChatGPT / Claude Desktop on the user's subscriptions: the reader copies a
+  // study pack built from the settings' learning mode and the lecture's transcript.
+  const { user } = useAuth();
+  const studyPrompts = useStudyPrompts(kosOn);
+  const userId = user?.id ?? null;
+  const loadRecordings = useCallback(
+    (l: LectureSummary) => (userId ? loadLectureRecordings(userId, l) : Promise.resolve([])),
+    [userId],
+  );
+  const study: StudySource = useMemo(
+    () => ({
+      learningMode: studyPrompts.prompts.learning_mode,
+      projectUrl: studyPrompts.prompts.chatgpt_project_url,
+      recordings: loadRecordings,
+    }),
+    [studyPrompts.prompts, loadRecordings],
+  );
+  // On Wykłady the assistant starts in its "knowledge" scope (short questions; the Archive tab has none of its own).
+  const { setCurrentScope } = useAssistant();
   useEffect(() => {
     if (subView !== "lectures") return;
     setCurrentScope("knowledge");
@@ -311,7 +326,7 @@ const ArchiveView = () => {
                 openPath={lecturePath}
                 onOpen={setLecturePath}
                 onOpenRecording={openRecording}
-                onTutor={onTutor}
+                study={study}
                 onRefresh={refreshKos}
               />
             </Suspense>

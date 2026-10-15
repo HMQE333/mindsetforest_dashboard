@@ -2181,22 +2181,31 @@ export type Database = {
       }
       user_context: {
         Row: {
+          chatgpt_project_url: string
+          learning_mode: string
           lenses: string
           notes: string
+          primer_prompt: string
           season: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          chatgpt_project_url?: string
+          learning_mode?: string
           lenses?: string
           notes?: string
+          primer_prompt?: string
           season?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          chatgpt_project_url?: string
+          learning_mode?: string
           lenses?: string
           notes?: string
+          primer_prompt?: string
           season?: string
           updated_at?: string
           user_id?: string

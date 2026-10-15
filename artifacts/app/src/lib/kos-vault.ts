@@ -12,6 +12,9 @@
  * Vault format 2 adds Lectures/<Course>/<YYYY-MM-DD> <Topic>.md, one summary
  * per session, which the Wykłady tab reads. Older summaries live in
  * Sessions/Summary <session key>.md and are read as summaries of that session.
+ * A course's textbook (`type: course-textbook`, Lectures/<Course>/_Podręcznik.md
+ * or _Textbook.md), written by the routine from that course's summaries, is
+ * read the same way and listed first in its course.
  */
 
 export type FrontValue = string | string[];
@@ -316,8 +319,22 @@ export function parseSessionNote(f: VaultFile): SessionNote {
 
 export type LectureLanguage = "pl" | "en";
 export type LectureSource = "recording" | "import" | "youtube";
-/** What a "## " section of a summary is, by its heading in either language. */
-export type LectureSectionKind = "short" | "stressed" | "clarify" | "concepts" | "section";
+/**
+ * What a "## " section of a summary is, by its heading in either language. A
+ * textbook adds its one-page compression and its diagnostic questions.
+ */
+export type LectureSectionKind =
+  | "short"
+  | "map"
+  | "stressed"
+  | "clarify"
+  | "concepts"
+  | "memorise"
+  | "compression"
+  | "questions"
+  | "section";
+/** A summary of one lecture, or a course's textbook built from its summaries. */
+export type LectureKind = "summary" | "textbook";
 
 export interface LectureSection {
   /** The heading as written, links included: "1. Zdanie logiczne [[Recordings/…#^t0754|12:34]]". */
@@ -330,6 +347,8 @@ export interface LectureSection {
 }
 
 export interface LectureSummary {
+  /** "textbook" for a course's `type: course-textbook` note. */
+  kind: LectureKind;
   path: string;
   /** The file name: "2026-10-11 Zdania logiczne i zbiory", "Summary 2026-10-13 15-53". */
   name: string;
@@ -353,6 +372,8 @@ export interface LectureSummary {
   short: string;
   /** Its "## " sections in order. */
   sections: LectureSection[];
+  /** A textbook's `summaries:`, as link targets ("Lectures/Logika/2026-10-11 Zdania"); empty for a summary. */
+  summaries: string[];
 }
 
 /** A v2 summary in Lectures/, or a legacy one as Sessions/Summary <session key>.md. */
@@ -366,12 +387,23 @@ export function fold(s: string): string {
 }
 
 export function lectureSectionKind(heading: string): LectureSectionKind {
-  const h = fold(heading.trim());
+  const h = fold(heading.trim()).replace(/^[^\p{L}\p{N}]+/u, "");
   if (/^(w skrocie|in short)\b/.test(h)) return "short";
+  // "## Mapa wykładu" / "## Lecture map" (a textbook: "Mapa przedmiotu", "Course map").
+  if (/^(mapa( wykladu| przedmiotu| kursu| tematu)?|(lecture|course|subject|topic) map|map of the (lecture|course|subject))(\s*[(:–—-].*)?$/.test(h)) return "map";
   if (/^(na co prowadz|what the lecturer (stress|emphas))/.test(h)) return "stressed";
   if (/^(do wyjasnienia|to clarify)\b/.test(h)) return "clarify";
   if (/^(pojecia|concepts)\b/.test(h)) return "concepts";
+  if (/^(do zapamietania|co (trzeba )?zapamietac|to memori[sz]e|memori[sz]e or derive|what (must|to) (be )?memori[sz]e)/.test(h)) return "memorise";
+  if (/^(caly (przedmiot|wyklad) na jednej stronie|the (whole )?(course|lecture) on one page|kompresja\b|compression\b)/.test(h)) return "compression";
+  if (/^(pytania (sprawdzajace|diagnostyczne)|diagnostic questions)/.test(h)) return "questions";
   return "section";
+}
+
+/** The note's own `type: course-textbook`, or the routine's file name for one. */
+export function isTextbookFile(path: string, type: string | null | undefined): boolean {
+  if ((type ?? "").trim().toLowerCase() === "course-textbook") return true;
+  return /^Lectures\/[^/]+\/_(Podręcznik|Podrecznik|Textbook)\.md$/i.test(path);
 }
 
 const PL_HINT = /[ąćęłńśźż]|(?:^|\s)(się|jest|nie|oraz|że|dla|przez|są|który|która|które)(?=\s|[.,;:]|$)/gi;
@@ -425,6 +457,7 @@ export function parseLectureSummary(f: VaultFile): LectureSummary {
   const { data, body: raw } = parseFrontmatter(f.content);
   const name = noteName(f.path);
   const legacy = /^Sessions\//i.test(f.path);
+  const textbook = !legacy && isTextbookFile(f.path, scalar(data.type));
   const { title, rest } = stripTitle(raw);
   const body = rest.trim();
   const { preamble, sections } = splitLectureBody(body);
@@ -443,7 +476,41 @@ export function parseLectureSummary(f: VaultFile): LectureSummary {
   const datePart = (s: string | null | undefined) => (s ? /^(\d{4}-\d{2}-\d{2})/.exec(s)?.[1] ?? null : null);
   // A legacy note's "# Summary 2026-10-13 15-53" is its file name, not a topic.
   const heading = title && !/^summary\s+\d{4}-/i.test(title) ? title : null;
+  const language: LectureLanguage = lang === "pl" || lang === "en" ? lang : guessLanguage(body);
+  const parsedSections = sections.map((x) => {
+    const links = wikiLinks(x.heading);
+    const moment = links.map(sourceRef).find((r): r is SourceRef => r !== null) ?? null;
+    return {
+      heading: x.heading,
+      title: replaceWikiLinks(x.heading, (l) => (sourceRef(l) ? "" : l.alias || l.name)).replace(/\s+/g, " ").trim(),
+      kind: lectureSectionKind(x.heading),
+      moment,
+    };
+  });
+  if (textbook) {
+    // The course is the frontmatter's, else the folder the routine wrote it in.
+    const folder = /^Lectures\/([^/]+)\//i.exec(f.path)?.[1] ?? null;
+    return {
+      kind: "textbook",
+      path: f.path,
+      name,
+      vault: f.vault,
+      modified: f.modified_at,
+      course: scalar(data.course) || folder,
+      topic: scalar(data.topic) || heading || (language === "pl" ? "Podręcznik przedmiotu" : "Course textbook"),
+      date: datePart(scalar(data.updated)) || datePart(scalar(data.date)) || datePart(f.modified_at),
+      language,
+      source: "recording",
+      sessions: [],
+      legacy: false,
+      body,
+      short: plainText(short ?? firstPara ?? ""),
+      sections: parsedSections,
+      summaries: [...new Set(list(data.summaries).map((v) => asLink(v)?.target ?? v.replace(/\.md$/i, "").trim()).filter(Boolean))],
+    };
+  }
   return {
+    kind: "summary",
     path: f.path,
     name,
     vault: f.vault,
@@ -451,22 +518,14 @@ export function parseLectureSummary(f: VaultFile): LectureSummary {
     course: scalar(data.course),
     topic: scalar(data.topic) || heading || name.replace(/^(summary\s+)?\d{4}-\d{2}-\d{2}( \d{2}-\d{2})?\s*/i, "") || legacyKey || name,
     date: datePart(scalar(data.date)) || datePart(name) || datePart(legacyKey) || datePart(scalar(data.created)),
-    language: lang === "pl" || lang === "en" ? lang : guessLanguage(body),
+    language,
     source: src === "import" || src === "youtube" ? src : "recording",
     sessions: [...new Set(sessions)],
     legacy,
     body,
     short: plainText(short ?? firstPara ?? ""),
-    sections: sections.map((x) => {
-      const links = wikiLinks(x.heading);
-      const moment = links.map(sourceRef).find((r): r is SourceRef => r !== null) ?? null;
-      return {
-        heading: x.heading,
-        title: replaceWikiLinks(x.heading, (l) => (sourceRef(l) ? "" : l.alias || l.name)).replace(/\s+/g, " ").trim(),
-        kind: lectureSectionKind(x.heading),
-        moment,
-      };
-    }),
+    sections: parsedSections,
+    summaries: [],
   };
 }
 
@@ -477,28 +536,46 @@ export const courseOf = (l: Pick<LectureSummary, "course">) => l.course?.trim() 
 export interface CourseGroup {
   course: string;
   lectures: LectureSummary[];
+  /** The course's textbook, listed before its lectures; null when there is none (or it does not match the search). */
+  textbook: LectureSummary | null;
 }
 
 /**
  * Summaries grouped by course, newest first inside a course and the course
- * with the newest lecture first ("Inne" last). Every word of `query` has to
- * appear in the course, topic or text; case and diacritics do not matter.
+ * with the newest lecture first ("Inne" last), each with its textbook. Every
+ * word of `query` has to appear in the course, topic or text; case and
+ * diacritics do not matter. A course whose textbook matches is listed even
+ * when none of its lectures does.
  */
-export function groupLectures(lectures: LectureSummary[], query = ""): CourseGroup[] {
+export function groupLectures(lectures: LectureSummary[], query = "", textbooks: LectureSummary[] = []): CourseGroup[] {
   const words = fold(query).split(/\s+/).filter(Boolean);
   const hay = (l: LectureSummary) => fold(`${courseOf(l)}\n${l.topic}\n${l.date ?? ""}\n${l.body}`);
-  const shown = words.length ? lectures.filter((l) => { const h = hay(l); return words.every((w) => h.includes(w)); }) : lectures;
+  const matches = (l: LectureSummary) => {
+    if (!words.length) return true;
+    const h = hay(l);
+    return words.every((w) => h.includes(w));
+  };
   const newest = (a: LectureSummary, b: LectureSummary) =>
     (b.date ?? "").localeCompare(a.date ?? "") || b.modified.localeCompare(a.modified) || a.topic.localeCompare(b.topic);
-  const map = new Map<string, LectureSummary[]>();
-  for (const l of [...shown].sort(newest)) map.set(courseOf(l), [...(map.get(courseOf(l)) ?? []), l]);
-  return [...map.entries()]
-    .map(([course, ls]) => ({ course, lectures: ls }))
-    .sort((a, b) =>
+  const map = new Map<string, CourseGroup>();
+  const group = (course: string) => {
+    let g = map.get(course);
+    if (!g) map.set(course, (g = { course, lectures: [], textbook: null }));
+    return g;
+  };
+  for (const l of lectures.filter(matches).sort(newest)) group(courseOf(l)).lectures.push(l);
+  // One textbook per course: the newest, if the routine ever wrote two.
+  for (const t of [...textbooks].sort((a, b) => b.modified.localeCompare(a.modified))) {
+    if (!matches(t) || map.get(courseOf(t))?.textbook) continue;
+    group(courseOf(t)).textbook = t;
+  }
+  const head = (g: CourseGroup) => g.lectures[0] ?? g.textbook!;
+  return [...map.values()].sort(
+    (a, b) =>
       (a.course === OTHER_COURSE ? 1 : 0) - (b.course === OTHER_COURSE ? 1 : 0) ||
-      newest(a.lectures[0], b.lectures[0]) ||
+      newest(head(a), head(b)) ||
       a.course.localeCompare(b.course),
-    );
+  );
 }
 
 // -- the routine's log -------------------------------------------------------------------
@@ -555,7 +632,9 @@ export interface VaultIndex {
   backlinks: Map<string, string[]>;
   /** Lecture summaries, Lectures/ and the legacy Sessions/Summary notes. */
   lectures: LectureSummary[];
-  /** Lower-cased path without ".md", and lower-cased file name -> summary. */
+  /** Course textbooks (`type: course-textbook`), at most one per course in practice. */
+  textbooks: LectureSummary[];
+  /** Lower-cased path without ".md", and lower-cased file name -> summary or textbook. */
   lectureByPath: Map<string, LectureSummary>;
   lectureByName: Map<string, LectureSummary>;
   /** The routine's log, when the tracker mirrors it (1.3 and later). */
@@ -566,12 +645,15 @@ export function indexVault(files: VaultFile[]): VaultIndex {
   const notes: KnowledgeNote[] = [];
   const sessions = new Map<string, SessionNote>();
   const lectures: LectureSummary[] = [];
+  const textbooks: LectureSummary[] = [];
   let routineLog: RoutineLog | null = null;
   for (const f of files) {
     if (!/\.md$/i.test(f.path)) continue;
     if (/^Knowledge\//i.test(f.path)) notes.push(parseKnowledgeNote(f));
-    else if (isLectureSummaryPath(f.path)) lectures.push(parseLectureSummary(f));
-    else if (/^Sessions\//i.test(f.path)) {
+    else if (isLectureSummaryPath(f.path)) {
+      const l = parseLectureSummary(f);
+      (l.kind === "textbook" ? textbooks : lectures).push(l);
+    } else if (/^Sessions\//i.test(f.path)) {
       const s = parseSessionNote(f);
       sessions.set(s.key, s);
     } else if (f.path.toLowerCase() === ROUTINE_LOG_PATH.toLowerCase()) routineLog = parseRoutineLog(f.content);
@@ -587,9 +669,10 @@ export function indexVault(files: VaultFile[]): VaultIndex {
       backlinks.set(to.name, arr);
     }
   }
-  const lectureByPath = new Map(lectures.map((l) => [l.path.replace(/\.md$/i, "").toLowerCase(), l]));
-  const lectureByName = new Map(lectures.map((l) => [l.name.toLowerCase(), l]));
-  return { notes, sessions, byName, backlinks, lectures, lectureByPath, lectureByName, routineLog };
+  const all = [...lectures, ...textbooks];
+  const lectureByPath = new Map(all.map((l) => [l.path.replace(/\.md$/i, "").toLowerCase(), l]));
+  const lectureByName = new Map(all.map((l) => [l.name.toLowerCase(), l]));
+  return { notes, sessions, byName, backlinks, lectures, textbooks, lectureByPath, lectureByName, routineLog };
 }
 
 export type LinkTarget =

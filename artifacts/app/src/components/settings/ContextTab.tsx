@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useUserContext, ContextShelves } from "@/hooks/useUserContext";
 import { fetchAssistantStatus, fetchSpeech, fetchVoices, prettyModelName, type AssistantStatus, type VoicesResult } from "@/lib/assistant-api";
 import { defaultVoiceLang, loadVoiceId, sampleSentence, saveVoiceId, voiceLabel } from "@/lib/voice-mode";
+import StudySettings from "./StudySettings";
 
 interface Shelf {
   key: keyof ContextShelves;
@@ -118,6 +119,7 @@ export default function ContextTab() {
         </div>
       </div>
 
+      <StudySettings />
       <AssistantStatusCard />
       <VoicePicker />
     </div>

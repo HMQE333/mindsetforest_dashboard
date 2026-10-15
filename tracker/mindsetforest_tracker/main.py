@@ -31,7 +31,7 @@ import psutil
 
 from . import __version__, tray
 from .imports import ImportState, ImportWatcher
-from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror
+from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror, write_study_prompts
 from .archive_capture import (
     ArchiveClient, HotkeyListener, clean_source, foreground_title, parse_hotkey, read_selection,
 )
@@ -215,6 +215,9 @@ class TrackerApp:
         sync_worker.on_capture_hotkey = self.on_capture_hotkey
         sync_worker.on_private_keywords = self.on_private_keywords
         sync_worker.on_hotkey_pushed = self.on_hotkey_pushed
+        # The dashboard's study prompts, copied into the vault for Claude (none without a vault).
+        has_vault = bool((getattr(config, "vault_dir", "") or "").strip())
+        sync_worker.on_study_prompts = self.on_study_prompts if has_vault else None
         if getattr(config, "capture_hotkey_push", False):
             # Chosen in the setup window: the dashboard's value would win at the next pull.
             sync_worker.pending_hotkey = config.capture_hotkey
@@ -430,6 +433,7 @@ class TrackerApp:
         if self.login_marker is not None:
             with contextlib.suppress(OSError):
                 self.login_marker.unlink()
+        self.sync_worker.refresh_study_prompts()
         self.sync_worker.request_sync()
         log.info("Signed in as %s", email)
         self._refresh_menu()
@@ -474,6 +478,12 @@ class TrackerApp:
         with self._lock:  # the capture thread feeds the tracker under the same lock
             self._private_keywords = [*self.config.private_keywords, *keywords]
             self.tracker.set_private_keywords(self._private_keywords)
+
+    def on_study_prompts(self, prompts: dict[str, str]) -> None:
+        """The dashboard's study prompts, copied into the vault's _SYSTEM/ for Claude Desktop and the routine."""
+        vault = (getattr(self.config, "vault_dir", "") or "").strip()
+        if vault:
+            write_study_prompts(Path(vault), prompts)
 
     # -- save selection to Archive ---------------------------------------------
 

@@ -1,20 +1,21 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { Download, RefreshCw, Search } from "lucide-react";
 import {
   fold,
   groupLectures,
   staleSessions,
+  type CourseGroup,
   type LectureSummary,
   type RecordingRow,
   type VaultIndex,
 } from "@/lib/kos-vault";
-import type { TutorLecture, TutorMode } from "@/lib/lecture-tutor";
 import HealthLine from "./HealthLine";
 import KnowledgePopover from "./KnowledgePopover";
 import LectureReader from "./LectureReader";
 import { InlineMarkdown } from "./LectureMarkdown";
 import { slug } from "./markdown";
 import { LanguageFlag, longDate } from "./lecture-meta";
+import { downloadCoursePack, type StudySource } from "./study-actions";
 
 export interface LecturesViewProps {
   index: VaultIndex | null;
@@ -25,7 +26,8 @@ export interface LecturesViewProps {
   openPath: string | null;
   onOpen: (path: string | null) => void;
   onOpenRecording: (note: string, seconds: number | null, paragraph?: number) => void;
-  onTutor: (lecture: TutorLecture, mode: TutorMode) => void;
+  /** The settings and transcripts behind the reader's ChatGPT / Claude buttons. */
+  study: StudySource;
   onRefresh: () => void;
 }
 
@@ -34,11 +36,12 @@ const NOTE_CHIPS = 12;
 
 /**
  * Archive > Wykłady: one summary per lecture, grouped by course, newest
- * first, and a reader for one of them. The summaries come from the Claude
- * routine in the Obsidian vault (Lectures/, older ones in Sessions/Summary …),
- * mirrored by the PC tracker; the vault stays the place to edit them.
+ * first, the course's textbook first in its group, and a reader for one of
+ * them. They come from the Claude routine in the Obsidian vault (Lectures/,
+ * older ones in Sessions/Summary …), mirrored by the PC tracker; the vault
+ * stays the place to edit them. Each course downloads as one study pack.
  */
-function LecturesView({ index, loading, failed, recordings, openPath, onOpen, onOpenRecording, onTutor, onRefresh }: LecturesViewProps) {
+function LecturesView({ index, loading, failed, recordings, openPath, onOpen, onOpenRecording, study, onRefresh }: LecturesViewProps) {
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -47,7 +50,10 @@ function LecturesView({ index, loading, failed, recordings, openPath, onOpen, on
   }, []);
 
   const lectures = useMemo(() => index?.lectures ?? [], [index]);
-  const groups = useMemo(() => groupLectures(lectures, query), [lectures, query]);
+  const textbooks = useMemo(() => index?.textbooks ?? [], [index]);
+  const groups = useMemo(() => groupLectures(lectures, query, textbooks), [lectures, query, textbooks]);
+  // A course pack holds the whole course, whatever the search shows.
+  const fullGroups = useMemo(() => new Map(groupLectures(lectures, "", textbooks).map((g) => [g.course, g])), [lectures, textbooks]);
   const open = openPath ? index?.lectureByPath.get(openPath.replace(/\.md$/i, "").toLowerCase()) ?? null : null;
   const waiting = useMemo(() => (index ? [...index.sessions.values()].filter((s) => s.status === "new").length : 0), [index]);
   const stale = useMemo(() => (index ? staleSessions(index, now) : []), [index, now]);
@@ -85,14 +91,14 @@ function LecturesView({ index, loading, failed, recordings, openPath, onOpen, on
         onBack={back}
         onOpenLecture={openLecture}
         onOpenRecording={onOpenRecording}
-        onTutor={onTutor}
+        study={study}
       />
     );
   }
 
   const health = <HealthLine log={index?.routineLog ?? null} waiting={waiting} stale={stale} now={now} />;
 
-  if (!lectures.length) {
+  if (!lectures.length && !textbooks.length) {
     return (
       <div className="space-y-4">
         {health}
@@ -153,19 +159,36 @@ function LecturesView({ index, loading, failed, recordings, openPath, onOpen, on
         </section>
       )}
 
-      {groups.map((g) => (
-        <section key={g.course} className="space-y-2" aria-labelledby={`course-${slug(g.course)}`}>
-          <h3 id={`course-${slug(g.course)}`} className="flex items-baseline gap-2 text-sm font-bold text-foreground">
-            {g.course}
-            <span className="text-xs font-normal text-muted-foreground">{g.lectures.length}</span>
-          </h3>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {g.lectures.map((l) => (
-              <LectureCard key={l.path} lecture={l} onOpen={() => onOpen(l.path)} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {groups.map((g) => {
+        const whole = fullGroups.get(g.course) ?? g;
+        return (
+          <section key={g.course} className="space-y-2" aria-labelledby={`course-${slug(g.course)}`}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h3 id={`course-${slug(g.course)}`} className="flex items-baseline gap-2 text-sm font-bold text-foreground">
+                {g.course}
+                <span className="text-xs font-normal text-muted-foreground">{g.lectures.length}</span>
+              </h3>
+              {whole.lectures.length + (whole.textbook ? 1 : 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => downloadCoursePack(whole)}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                  title="Cały przedmiot w jednym pliku .md: podręcznik, wszystkie podsumowania i słowniczek. Do projektu w ChatGPT albo Claude."
+                  data-course-pack={g.course}
+                >
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" /> Pakiet przedmiotu
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {g.textbook && <TextbookCard textbook={g.textbook} group={whole} onOpen={() => onOpen(g.textbook!.path)} />}
+              {g.lectures.map((l) => (
+                <LectureCard key={l.path} lecture={l} onOpen={() => onOpen(l.path)} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -189,6 +212,41 @@ function LectureCard({ lecture, onOpen }: { lecture: LectureSummary; onOpen: () 
       {lecture.short && (
         <span className="line-clamp-3 text-xs leading-5 text-foreground/75" lang={lecture.language}>
           <InlineMarkdown text={lecture.short} lang={lecture.language} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** The course's textbook, first in its group: how many of the course's lectures it already covers. */
+function TextbookCard({ textbook, group, onOpen }: { textbook: LectureSummary; group: CourseGroup; onOpen: () => void }) {
+  const pl = textbook.language === "pl";
+  const names = new Set(textbook.summaries.map((s) => (s.split("/").pop() ?? s).toLowerCase()));
+  const covered = group.lectures.filter((l) => names.has(l.name.toLowerCase())).length;
+  const total = group.lectures.length;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-textbook={textbook.path}
+      className="glass-card flex flex-col gap-1 border border-sky-400/30 bg-sky-400/[0.04] p-4 text-left transition-all hover:border-sky-300/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+    >
+      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span className="font-semibold text-sky-200">📘 {pl ? "Podręcznik" : "Textbook"}</span>
+        {textbook.date && <span className="shrink-0">· {longDate(textbook.date, "pl-PL", "short")}</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          <LanguageFlag lang={textbook.language} />
+        </span>
+      </span>
+      <span className="text-sm font-semibold leading-snug text-foreground" lang={textbook.language}>{textbook.topic}</span>
+      {textbook.short && (
+        <span className="line-clamp-2 text-xs leading-5 text-foreground/75" lang={textbook.language}>
+          <InlineMarkdown text={textbook.short} lang={textbook.language} />
+        </span>
+      )}
+      {textbook.summaries.length > 0 && total > 0 && (
+        <span className={`text-[11px] ${covered < total ? "text-amber-200/90" : "text-muted-foreground"}`}>
+          {covered < total ? `Obejmuje ${covered} z ${total} wykładów; rutyna go uzupełni.` : `Obejmuje wszystkie wykłady (${total}).`}
         </span>
       )}
     </button>

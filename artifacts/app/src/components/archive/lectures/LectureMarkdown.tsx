@@ -24,6 +24,8 @@ const BlockKey = createContext("");
 const LangCtx = createContext<Lang>("pl");
 /** Inside a card (itself a button): links stay text, so nothing interactive nests. */
 const StaticCtx = createContext(false);
+/** The kind of "## " section a block sits in: the lecture map draws its diagram large. */
+const SectionCtx = createContext<LectureSectionKind | "preamble">("preamble");
 
 const T = {
   pl: { moment: "Pokaż, co zostało powiedziane", missing: "Tej notatki nie ma w kopii skarbca", lecture: "Otwórz podsumowanie", loading: "Ładuję wykres…", ai: "Dodane przez AI dla zrozumienia, nie z wykładu" },
@@ -47,6 +49,7 @@ const STYLE = {
   amber: "border-amber-400/40 bg-amber-400/[0.07]",
   orange: "border-orange-500/40 bg-orange-500/[0.07]",
   rose: "border-rose-500/40 bg-rose-500/[0.07]",
+  fuchsia: "border-fuchsia-400/40 bg-fuchsia-400/[0.07]",
   slate: "border-slate-400/30 bg-slate-400/[0.05]",
   cyan: "border-cyan-400/35 bg-cyan-400/[0.06]",
 };
@@ -58,6 +61,7 @@ const TITLE = {
   amber: "text-amber-200",
   orange: "text-orange-200",
   rose: "text-rose-200",
+  fuchsia: "text-fuchsia-200",
   slate: "text-slate-200",
   cyan: "text-cyan-200",
 };
@@ -75,8 +79,10 @@ function style(kind: string): CalloutStyle {
       return s("blue", "☑️", "Do zrobienia", "To do");
     case "tip":
     case "hint":
-    case "important":
       return s("teal", "💡", "Wskazówka", "Tip");
+    case "important":
+      // "> [!important]- Do zapamiętania": what cannot be derived and has to be learned.
+      return s("fuchsia", "📌", "Ważne", "Important");
     case "success":
     case "check":
     case "done":
@@ -256,7 +262,8 @@ export function InlineMarkdown({ text, lang = "pl" }: { text: string; lang?: Lan
 
 function CodeBlock({ lang: code, v }: { lang: string; v: string }) {
   const lang = useContext(LangCtx);
-  if (code === "mermaid") return <MermaidBlock code={v} lang={lang} />;
+  const section = useContext(SectionCtx);
+  if (code === "mermaid") return <MermaidBlock code={v} lang={lang} prominent={section === "map"} />;
   if (code === "plot" || code === "plot3d") {
     const Comp = code === "plot" ? PlotBlock : Plot3DBlock;
     return (
@@ -361,6 +368,18 @@ function Blocks({ blocks }: { blocks: Block[] }) {
 
 // -- the whole note ------------------------------------------------------------------------
 
+/** "## Mapa wykładu" with a map pin, a size up from the other sections. */
+function MapHeading({ block, id }: { block: Extract<Block, { t: "heading" }>; id?: string }) {
+  return (
+    <h3 id={id} className="scroll-mt-24 mt-5 mb-2 flex items-center gap-2 text-lg font-bold leading-snug text-foreground sm:text-xl">
+      <span aria-hidden="true">🗺️</span>
+      <span>
+        <Inlines c={block.c} />
+      </span>
+    </h3>
+  );
+}
+
 export interface TocEntry {
   id: string;
   title: string;
@@ -376,6 +395,8 @@ interface Section {
 const SECTION_BOX: Partial<Record<LectureSectionKind, string>> = {
   stressed: "rounded-xl border border-amber-400/30 bg-amber-400/[0.05] px-3 sm:px-4 py-1 my-5",
   clarify: "rounded-xl border border-dashed border-border px-3 sm:px-4 py-1 my-5",
+  // "Najpierw mapa": no box, but room, so the diagram reads as the way in.
+  map: "my-6",
 };
 
 /** The note split at its "## " headings, with ids for a table of contents. */
@@ -434,7 +455,7 @@ export default function LectureMarkdown({
               <>
                 {s.heading && (
                   <BlockKey.Provider value={`${si}.h`}>
-                    <BlockView block={s.heading} headingIds={layout.ids} />
+                    {s.kind === "map" ? <MapHeading block={s.heading} id={layout.ids.get(s.heading)} /> : <BlockView block={s.heading} headingIds={layout.ids} />}
                     {after?.(`${si}.h`)}
                   </BlockKey.Provider>
                 )}
@@ -448,9 +469,11 @@ export default function LectureMarkdown({
             );
             const box = s.kind === "preamble" ? undefined : SECTION_BOX[s.kind];
             return (
-              <section key={si} aria-labelledby={s.heading ? layout.ids.get(s.heading) : undefined} className={box} data-kind={s.kind}>
-                {content}
-              </section>
+              <SectionCtx.Provider key={si} value={s.kind}>
+                <section aria-labelledby={s.heading ? layout.ids.get(s.heading) : undefined} className={box} data-kind={s.kind}>
+                  {content}
+                </section>
+              </SectionCtx.Provider>
             );
           })}
         </div>

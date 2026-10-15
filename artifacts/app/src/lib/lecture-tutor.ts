@@ -1,123 +1,58 @@
 /**
- * The AI tutor for lecture summaries (Archive > Wykłady): "Przegadaj temat"
- * talks one lecture through, "Sprawdź się" quizzes the user on it.
+ * Studying a lecture on the user's own subscriptions (Archive > Wykłady):
+ * long study sessions run in ChatGPT or Claude Desktop, never through the
+ * dashboard's paid assistant. The dashboard shows the summary and hands it off.
  *
- * Both go through the ordinary assistant panel. The lecture is pinned like an
- * archive note (its id is "lecture:<vault path>"), and every message then
- * carries its summary in full plus the transcript passages that matter for
- * that message, cut to a fixed budget. A 4-hour lecture is about 100k
- * characters of transcript, so it is never sent whole; a short import is.
- * The edge function sees only the context string, so nothing changes on the
- * server.
+ * - "Ucz się w ChatGPT" / "Test w ChatGPT" copy a study pack (`buildStudyPack`):
+ *   how to teach (the user's learning mode, unless a ChatGPT project holds it),
+ *   the summary as plain Markdown, the transcript passages that matter most
+ *   (what the lecturer stressed first), the rules and the opening move.
+ * - "Przegadaj w Claude" copies one short instruction (`claudeInstruction`):
+ *   Claude Desktop reads the vault itself, so it only needs the note's path
+ *   and `_SYSTEM/learning-mode.md`.
+ * - "Pakiet przedmiotu" (`buildCoursePack`) is one Markdown file per course
+ *   for a ChatGPT or Claude project: the textbook, every summary oldest first
+ *   and one merged glossary.
  *
- * The same file holds the "knowledge" scope's text: every lecture as one index
- * line, the best-matching summaries and knowledge notes in detail, ranked by
- * word overlap. Words are compared without diacritics and by their first five
- * letters, so "zbiory", "zbiorów" and "zbiór" match, and a note's `aliases`
- * (the term in the other language) let a Polish question find it.
+ * A 4-hour lecture is about 100k characters of transcript, so a pack never
+ * carries it whole; `selectExcerpts` picks the passages. The same file holds
+ * the assistant's "knowledge" scope for short questions: summaries and notes
+ * only, never transcripts, ranked by word overlap. Words are compared without
+ * diacritics and by their first five letters, so "zbiory", "zbiorów" and
+ * "zbiór" match, and a note's `aliases` (the term in the other language) let a
+ * Polish question find it.
  */
 import { supabase } from "@/integrations/supabase/client";
-import type { ArchiveItemRef } from "@/lib/assistant-context";
-import type { useAssistant } from "@/hooks/useAssistant";
 import {
   clock,
-  noteName,
+  courseOf,
+  fold,
+  isLectureSummaryPath,
+  lectureSectionKind,
   parseFrontmatter,
   parseKnowledgeNote,
+  parseLectureSummary,
   recordingNote,
   replaceWikiLinks,
   sourceLabel,
+  splitLectureBody,
   wikiLinks,
   type FrontValue,
+  type LectureLanguage,
+  type LectureSectionKind,
+  type LectureSummary,
   type VaultFile,
   type WikiLink,
 } from "@/lib/kos-vault";
 
-export type TutorMode = "explain" | "quiz";
-export type LectureLanguage = "pl" | "en";
+export type { LectureLanguage } from "@/lib/kos-vault";
 
-export interface TutorLecture {
-  /** The summary's path in the vault: "Lectures/Logika/2026-10-11 Zdania logiczne i zbiory.md". */
-  path: string;
-  /** What the chip and the request call it, in the note's language. */
-  title: string;
-  language: LectureLanguage;
-}
-
-/**
- * The part of the assistant the tutor needs. A component passes what
- * `useAssistant()` returns, as is: `openLectureTutor(useAssistant(), lecture, "quiz")`.
- */
-export type TutorApi = Pick<
-  ReturnType<typeof useAssistant>,
-  "openPanel" | "sendMessage" | "prefill" | "isStreaming" | "archiveItems" | "addArchiveItem" | "removeArchiveItem"
->;
-
-// -- the pinned item --------------------------------------------------------------
-
-const ITEM_PREFIX = "lecture:";
-
-export const lectureItemId = (path: string) => `${ITEM_PREFIX}${path}`;
-export const isLectureItem = (item: Pick<ArchiveItemRef, "id">) => item.id.startsWith(ITEM_PREFIX);
-export const lectureItemPath = (item: Pick<ArchiveItemRef, "id">) => item.id.slice(ITEM_PREFIX.length);
-
-/** What the user "says" to start, in the note's language: one note, one language. */
-export function tutorRequest(lecture: Pick<TutorLecture, "title" | "language">, mode: TutorMode): string {
-  const title = lecture.title.trim();
-  if (lecture.language === "pl") {
-    return mode === "quiz"
-      ? `Przepytaj mnie z wykładu „${title}”: 5 pytań, po jednym.`
-      : `Przegadajmy wykład „${title}”. Prowadź mnie krok po kroku i sprawdzaj, czy rozumiem.`;
-  }
-  return mode === "quiz"
-    ? `Quiz me on the lecture "${title}": 5 questions, one at a time.`
-    : `Let's talk through the lecture "${title}". Take me step by step and check that I follow.`;
-}
-
-/**
- * Pins the lecture (and unpins any other lecture, so two summaries never
- * compete for the budget; pinned archive notes stay), opens the panel and
- * starts the conversation. The send gets the new pin list directly, because
- * the hook's state only has it after the next render.
- */
-export function openLectureTutor(api: TutorApi, lecture: TutorLecture, mode: TutorMode): void {
-  const item: ArchiveItemRef = { id: lectureItemId(lecture.path), title: lecture.title };
-  for (const it of api.archiveItems) {
-    if (isLectureItem(it) && it.id !== item.id) api.removeArchiveItem(it.id);
-  }
-  api.addArchiveItem(item);
-  api.openPanel();
-  const text = tutorRequest(lecture, mode);
-  // A reply still streaming would drop the send; the text waits in the input instead.
-  if (api.isStreaming) api.prefill(text);
-  else void api.sendMessage(text, { archiveItems: [...api.archiveItems.filter((it) => !isLectureItem(it)), item] });
-}
-
-/**
- * How to tutor, for the context. Both modes are always described: the mode is
- * in the user's opening request, which the history keeps, and a later
- * "Sprawdź się" on the same lecture switches without re-pinning.
- */
-export function tutorRules(language: LectureLanguage): string {
-  const pl = language === "pl";
-  const name = pl ? "Polish" : "English";
-  const stressed = pl ? "Na co prowadzący kładł nacisk" : "What the lecturer stressed";
-  const toClarify = pl ? "Do wyjaśnienia" : "To clarify";
-  const mine = pl ? "Ode mnie:" : "My addition:";
-  const question = pl ? "Pytanie" : "Question";
-  const grades = pl ? "dobrze / częściowo / źle" : "correct / partly / wrong";
-  return [
-    `TUTORING. The user is studying this lecture with you. Write every reply in ${name}, the lecture's language, even when the user writes in the other one. The other language appears only for a term from the glossary, in brackets.`,
-    `What the lecturer said is the summary and the transcript below. Callouts marked "(AI)" in the summary were added by AI, not said by the lecturer. When you add an explanation or example of your own, start it with "${mine}". Never present your own addition as the lecturer's words.`,
-    `Cite the moment whenever you rely on the lecture, exactly as written in the brackets below, e.g. (12:34) or (¶12). Points under "${toClarify}" are open: never present them as settled. If the summary and the transcript do not cover something, say so; do not guess what was said.`,
-    `If the user asked to talk the lecture through: first one line naming the steps (the numbered sections), then one step per reply, in lecture order: 3 to 6 short sentences, then one short question that checks understanding. Wait for the answer, correct it briefly, then go on. Never put the whole lecture in one reply.`,
-    `If the user asked to be tested: exactly 5 questions, one per reply, numbered "${question} 1/5" to "${question} 5/5". At least 3 come from "${stressed}", the rest from the numbered sections. Never give the answer before the user tries. After each answer: grade it (${grades}), explain in 1 to 3 sentences what was wrong or missing, with the moment, then ask the next question. After the fifth: the score out of 5 and the one or two topics to go over again.`,
-  ].join("\n");
-}
+/** "explain": walk me through it; "test": quiz me, A/B/C/D first. */
+export type StudyMode = "explain" | "test";
 
 // -- words ------------------------------------------------------------------------
 
-/** Function words and the tutor's own request words: they match everything. Without diacritics. */
+/** Function words: they match everything. Without diacritics. */
 const STOP = new Set(
   (
     "a aby ale albo ani az bo by byc byl byla bylo byly bez co czy czyli dla do gdy gdzie go i ich ile ja jak jaka jaki " +
@@ -133,9 +68,7 @@ const STOP = new Set(
 );
 
 /** "Wykłady" -> "wyklady": lower case, no diacritics (ł has none to drop, so it is mapped). */
-export function foldWord(w: string): string {
-  return w.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/ł/g, "l");
-}
+export const foldWord = fold;
 
 /** The words that carry meaning, cut to five letters: "zbiorów" -> "zbior", "Implikację" -> "impli". */
 export function stems(text: string): string[] {
@@ -179,111 +112,37 @@ const list = (v: FrontValue | undefined): string[] => (v === undefined ? [] : Ar
 
 // -- lecture summaries ------------------------------------------------------------
 
-/** A v2 summary in Lectures/, or a legacy one as Sessions/Summary <session key>.md. */
-export function isLectureSummaryPath(path: string): boolean {
-  return /^Lectures\/.+\.md$/i.test(path) || /^Sessions\/Summary .+\.md$/i.test(path);
-}
-
-const PL_LETTERS = /[ąćęłńóśźż]/gi;
-const PL_WORDS = /(?:^|[^\p{L}])(i|w|z|na|się|nie|jest|że|do|jak|czy|oraz|dla|są|przez|po|mnie)(?=[^\p{L}]|$)/giu;
-const EN_WORDS = /(?:^|[^\p{L}])(the|and|is|of|in|that|it|for|are|with|as|this|be|on|me|by)(?=[^\p{L}]|$)/giu;
-
-/** A note without `language:` (legacy): Polish letters and words against English ones. */
-export function guessLanguage(text: string): LectureLanguage {
-  const pl = (text.match(PL_LETTERS)?.length ?? 0) * 2 + (text.match(PL_WORDS)?.length ?? 0);
-  const en = text.match(EN_WORDS)?.length ?? 0;
-  return pl > en ? "pl" : "en";
-}
-
-type SectionKind = "short" | "stressed" | "clarify" | "concepts" | "section";
-
-function sectionKind(heading: string): SectionKind {
-  const h = foldWord(heading.trim());
-  if (/^(w skrocie|in short)\b/.test(h)) return "short";
-  if (/^(na co prowadz|what the lecturer (stress|emphas))/.test(h)) return "stressed";
-  if (/^(do wyjasnienia|to clarify)\b/.test(h)) return "clarify";
-  if (/^(pojecia|concepts)\b/.test(h)) return "concepts";
-  return "section";
-}
 
 interface Section {
   heading: string | null;
-  kind: SectionKind | "preamble";
+  kind: LectureSectionKind | "preamble";
   text: string;
 }
 
-/** The body split at "## " headings; text before the first one is the preamble. */
-function splitSections(body: string): Section[] {
-  const out: Section[] = [];
-  const re = /^##[ \t]+(.+?)[ \t]*$/gm;
-  let last = 0;
-  let heading: string | null = null;
-  for (const m of body.matchAll(re)) {
-    const text = body.slice(last, m.index).trim();
-    if (heading !== null || text) out.push({ heading, kind: heading === null ? "preamble" : sectionKind(heading), text });
-    heading = m[1];
-    last = (m.index ?? 0) + m[0].length;
-  }
-  const text = body.slice(last).trim();
-  if (heading !== null || text) out.push({ heading, kind: heading === null ? "preamble" : sectionKind(heading), text });
-  return out;
+/** The body split at "## " headings (not inside code blocks); text before the first one is the preamble. */
+function sectionsOf(body: string): Section[] {
+  const { preamble, sections } = splitLectureBody(body);
+  return [
+    ...(preamble ? [{ heading: null, kind: "preamble" as const, text: preamble }] : []),
+    ...sections.map((s) => ({ heading: s.heading, kind: lectureSectionKind(s.heading), text: s.text })),
+  ];
 }
 
-export interface LectureDoc {
-  path: string;
-  vault: string;
-  course: string | null;
-  topic: string;
-  date: string | null;
-  language: LectureLanguage;
-  /** Session keys ("2026-10-11 13-32") whose recordings are this lecture's transcript. */
-  sessions: string[];
-  /** Without the frontmatter and the leading "# title". */
-  body: string;
-  /** "W skrócie" in plain words (for a legacy note, its first paragraph). */
-  short: string;
+/** A summary (or a course textbook) with the text of its "what the lecturer stressed" section. */
+export interface LectureDoc extends LectureSummary {
   /** "Na co prowadzący kładł nacisk" as written, or "". */
   stressed: string;
-  modified: string;
 }
 
 export function parseLecture(f: VaultFile): LectureDoc {
-  const { data, body: raw } = parseFrontmatter(f.content);
-  const title = /^\s*#\s+(.+?)\s*(?:\r?\n|$)/.exec(raw);
-  const body = (title ? raw.slice(title[0].length) : raw).trim();
-  const sections = splitSections(body);
-  const name = noteName(f.path);
-  const legacyKey = /^Summary (.+)$/i.exec(name)?.[1] ?? null;
-  const sessions = [...list(data.sessions), ...list(data.session)]
-    .map((v) => wikiLinks(v)[0]?.name ?? noteName(v))
-    .filter(Boolean);
-  if (sessions.length === 0 && legacyKey) sessions.push(legacyKey);
-  const shortSection = sections.find((s) => s.kind === "short")?.text;
-  const firstPara = (sections.find((s) => s.kind === "preamble")?.text ?? body)
-    .split(/\r?\n\s*\r?\n/)
-    .map((b) => b.trim())
-    .find((b) => b && !/^(>|#|```)/.test(b));
-  const lang = scalar(data.language)?.toLowerCase();
-  const topic = scalar(data.topic) || (title ? title[1].trim() : null) || name.replace(/^\d{4}-\d{2}-\d{2}\s+/, "");
-  return {
-    path: f.path,
-    vault: f.vault,
-    course: scalar(data.course),
-    topic,
-    date: scalar(data.date) || /^(\d{4}-\d{2}-\d{2})/.exec(name)?.[1] || (legacyKey ? /^(\d{4}-\d{2}-\d{2})/.exec(legacyKey)?.[1] ?? null : null) || scalar(data.created),
-    language: lang === "pl" || lang === "en" ? lang : guessLanguage(body),
-    sessions: [...new Set(sessions)],
-    body,
-    short: flat(replaceWikiLinks(shortSection ?? firstPara ?? "")),
-    stressed: sections.find((s) => s.kind === "stressed")?.text ?? "",
-    modified: f.modified_at,
-  };
+  const s = parseLectureSummary(f);
+  return { ...s, stressed: sectionsOf(s.body).find((x) => x.kind === "stressed")?.text ?? "" };
 }
 
 const otherCourse = (lang: LectureLanguage) => (lang === "pl" ? "Inne" : "Other");
 
 /** "Logika · 2026-10-11 · Zdania logiczne i zbiory" */
-export function lectureLabel(d: Pick<LectureDoc, "course" | "date" | "topic" | "language">): string {
+export function lectureLabel(d: Pick<LectureSummary, "course" | "date" | "topic" | "language">): string {
   return [d.course || otherCourse(d.language), d.date, d.topic].filter(Boolean).join(" · ");
 }
 
@@ -310,7 +169,7 @@ function anchorOf(l: WikiLink): { seconds: number | null; paragraph: number | nu
 export function lectureMoments(body: string): Moment[] {
   const out: Moment[] = [];
   const seen = new Set<string>();
-  for (const s of splitSections(body)) {
+  for (const s of sectionsOf(body)) {
     // A numbered section's heading carries its own moment: "## 1. Zdania [[…#^t0754|12:34]]".
     for (const l of wikiLinks(`${s.heading ?? ""}\n${s.text}`)) {
       const a = anchorOf(l);
@@ -578,131 +437,423 @@ export function selectExcerpts(parts: TranscriptPart[], opts: ExcerptOptions): E
   return { text: lines.join("\n"), picked, total, full };
 }
 
-// -- the pinned lecture's context -------------------------------------------------
 
-/** Characters for one pinned lecture: rules, summary and transcript together. */
-export const LECTURE_BUDGET = 48_000;
-/** At most this share of it goes to the summary; the transcript gets the rest. */
-const SUMMARY_SHARE = 0.55;
+// -- plain Markdown: a vault note as it reads outside Obsidian --------------------
+
+const CALLOUT_NAMES: Record<string, { pl: string; en: string }> = {
+  example: { pl: "Przykład", en: "Example" },
+  tip: { pl: "Wskazówka", en: "Tip" },
+  important: { pl: "Ważne", en: "Important" },
+  abstract: { pl: "Wizualizacja", en: "Visualisation" },
+  note: { pl: "Notatka", en: "Note" },
+  info: { pl: "Informacja", en: "Info" },
+  question: { pl: "Pytanie", en: "Question" },
+  warning: { pl: "Uwaga", en: "Warning" },
+  quote: { pl: "Cytat", en: "Quote" },
+};
+
+/** "[wykres: sin i cos]": a plot block as one line, named by its title or its curves. */
+function plotLine(kind: string, json: string, lang: LectureLanguage): string {
+  const three = kind === "plot3d";
+  const word = lang === "pl" ? (three ? "wykres 3D" : "wykres") : three ? "3D plot" : "plot";
+  const title = /"title"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(json)?.[1];
+  const curves = [...json.matchAll(/"(?:label|expr)"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+  const what = (title || [...new Set(curves)].slice(0, 3).join(", ")).replace(/\\(.)/g, "$1").trim();
+  return what ? `[${word}: ${what}]` : `[${word}]`;
+}
+
+const FENCE_OPEN = /^(\s*(?:>\s*)*)(`{3,}|~{3,})\s*([^\s`]*)/;
+const FENCE_CLOSE = /^\s*(?:>\s*)*(`{3,}|~{3,})\s*$/;
+const CALLOUT_HEAD = /^(\s*(?:>\s*)*)\[!([A-Za-z0-9_-]+)\][+-]?[ \t]*(.*)$/;
+
+/** What a [[link]] becomes: "(12:34)" for a moment in the transcript, null for any other link. */
+export type MomentText = (l: WikiLink) => string | null;
+
+/** "(12:34)", "(¶12)", or "" for a bare link to a recording; null when the link is not a recording's. */
+export const plainMoment: MomentText = (l) => {
+  const a = anchorOf(l);
+  if (!a) return null;
+  return momentLabel(a, null, false, "pl") || (l.alias ? `(${l.alias})` : "");
+};
 
 /**
- * The summary for the model: moments as "(12:34)", links as plain names, plot
- * JSON as one line. When it is longer than `max`, the sections a tutor needs
- * most come first (in short, what was stressed, what is open), then the
- * numbered sections in order, and the tail is cut.
+ * A note's Markdown as it reads outside Obsidian (pasted into ChatGPT, in a
+ * course pack): [[links]] as their text, transcript moments as "(12:34)",
+ * callout headers as a bold title in the quote ("> **Przykład**"), ```plot /
+ * ```plot3d blocks as one line "[wykres: …]", mermaid and other code kept
+ * as code blocks, %% comments %% dropped.
  */
-export function renderSummary(
-  doc: LectureDoc,
-  parts: TranscriptPart[],
-  max: number,
-): string {
-  const multi = parts.length > 1;
-  const partOf = new Map(parts.map((p) => [p.note.toLowerCase(), p.part]));
-  const plot = doc.language === "pl" ? "wykres" : "plot";
-  const clean = (text: string) =>
-    replaceWikiLinks(
-      text.replace(/```(plot3d|plot)[^\n]*\n([\s\S]*?)```/g, (_m, _kind, json: string) => {
-        const title = /"title"\s*:\s*"([^"]*)"/.exec(json)?.[1];
-        return `(${plot}${title ? `: ${title}` : ""})`;
-      }),
-      (l) => {
-        const a = anchorOf(l);
-        if (!a) return l.alias || l.name;
-        const label = momentLabel(a, partOf.get(l.name.toLowerCase()) ?? null, multi, doc.language);
-        return label || (l.alias ? `(${l.alias})` : "");
-      },
-    ).replace(/\n{3,}/g, "\n\n");
-  const sections = splitSections(doc.body).map((s) => ({
-    ...s,
-    out: `${s.heading ? `## ${clean(s.heading)}\n` : ""}${clean(s.text)}`.trim(),
+export function plainMarkdown(text: string, lang: LectureLanguage, moment: MomentText = plainMoment): string {
+  const link = (s: string) =>
+    replaceWikiLinks(s, (l) => {
+      const m = moment(l);
+      return m === null ? l.alias || l.name : m;
+    });
+  const out: string[] = [];
+  let fence: { marker: string; plot: { prefix: string; kind: string; json: string[] } | null } | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    if (fence) {
+      const close = FENCE_CLOSE.exec(line);
+      if (close && close[1][0] === fence.marker[0] && close[1].length >= fence.marker.length) {
+        if (fence.plot) out.push(`${fence.plot.prefix}${plotLine(fence.plot.kind, fence.plot.json.join("\n"), lang)}`);
+        else out.push(line);
+        fence = null;
+      } else if (fence.plot) fence.plot.json.push(line.replace(/^\s*(?:>\s?)*/, ""));
+      else out.push(line);
+      continue;
+    }
+    const open = FENCE_OPEN.exec(line);
+    if (open) {
+      const kind = open[3].toLowerCase();
+      fence = { marker: open[2], plot: kind === "plot" || kind === "plot3d" ? { prefix: open[1], kind, json: [] } : null };
+      if (!fence.plot) out.push(line);
+      continue;
+    }
+    const prose = line.replace(/%%.*?%%/g, "");
+    if (!prose.trim() && line.trim()) continue;
+    const quoted = /^(\s*(?:>\s*)+)(.*)$/.exec(prose);
+    const callout = quoted ? CALLOUT_HEAD.exec(quoted[2]) : null;
+    if (quoted && callout) {
+      const name = CALLOUT_NAMES[callout[2].toLowerCase()]?.[lang] ?? callout[2];
+      const title = link(callout[3]).trim() || name;
+      out.push(`${quoted[1].trimEnd()} **${title}**`);
+      continue;
+    }
+    out.push(link(prose));
+  }
+  // A block left open at the end of the note.
+  if (fence?.plot) out.push(`${fence.plot.prefix}${plotLine(fence.plot.kind, fence.plot.json.join("\n"), lang)}`);
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * The section order kept when a note is too long: the overview, the map, what
+ * was stressed (a textbook: its one-page compression), what has to be
+ * memorised and the questions, what is open, then the rest.
+ */
+const KEEP_RANK: Record<Section["kind"], number> = {
+  preamble: 0,
+  short: 0,
+  map: 1,
+  stressed: 2,
+  compression: 2,
+  memorise: 3,
+  questions: 3,
+  clarify: 4,
+  section: 5,
+  concepts: 6,
+};
+
+/** "> [!important]- Do zapamiętania" sits under "Pojęcia": a section holding it is kept like "memorise". */
+const keepRank = (s: Section) => Math.min(KEEP_RANK[s.kind], /^\s*>\s*\[!important\]/im.test(s.text) ? KEEP_RANK.memorise : Infinity);
+
+/**
+ * A note in plain Markdown within `max` characters. Too long, it keeps the
+ * sections that matter most whole (in short, the map, what was stressed, what
+ * is open, then the numbered sections in order), cuts the first one that does
+ * not fit, drops the rest, and says so; what it keeps stays in note order.
+ */
+export function plainNote(body: string, lang: LectureLanguage, max: number, moment: MomentText = plainMoment): { text: string; cut: boolean } {
+  const sections = sectionsOf(body).map((s, i) => ({
+    i,
+    rank: keepRank(s),
+    out: `${s.heading ? `## ${plainMarkdown(s.heading, lang, moment)}\n` : ""}${plainMarkdown(s.text, lang, moment)}`.trim(),
   }));
   const whole = sections.map((s) => s.out).join("\n\n");
-  if (whole.length <= max) return whole;
-  const rank = (k: Section["kind"]) =>
-    k === "preamble" || k === "short" ? 0 : k === "stressed" ? 1 : k === "clarify" ? 2 : k === "section" ? 3 : 4;
-  const ordered = sections.map((s, i) => ({ s, i })).sort((a, b) => rank(a.s.kind) - rank(b.s.kind) || a.i - b.i);
-  const note = doc.language === "pl" ? "\n\n(Podsumowanie ucięte tutaj.)" : "\n\n(Summary cut here.)";
-  let out = "";
-  for (const { s } of ordered) {
-    const next = out ? `${out}\n\n${s.out}` : s.out;
-    if (next.length > max - note.length) {
-      const room = max - note.length - out.length - 2;
-      if (room > 200) out = out ? `${out}\n\n${s.out.slice(0, room)}` : s.out.slice(0, room);
-      break;
+  if (whole.length <= max) return { text: whole, cut: false };
+  const note = lang === "pl" ? "(Skrócone, żeby się zmieścić. Całość jest w Obsidianie i w pakiecie przedmiotu.)" : "(Shortened to fit. The whole note is in Obsidian and in the course pack.)";
+  let room = max - note.length - 2;
+  const kept = new Map<number, string>();
+  let partial = false;
+  for (const s of [...sections].sort((a, b) => a.rank - b.rank || a.i - b.i)) {
+    const cost = s.out.length + 2;
+    if (cost <= room) {
+      kept.set(s.i, s.out);
+      room -= cost;
+    } else if (!partial && room > 300) {
+      // Cut at a line end, so a table row or a formula is not split in half.
+      const slice = s.out.slice(0, room - 2);
+      const end = slice.lastIndexOf("\n");
+      kept.set(s.i, `${end > room / 2 ? slice.slice(0, end) : slice}…`);
+      room = 0;
+      partial = true;
     }
-    out = next;
   }
-  return out + note;
+  const text = sections.filter((s) => kept.has(s.i)).map((s) => kept.get(s.i)!).join("\n\n");
+  return { text: `${text}\n\n${note}`, cut: true };
 }
 
-export interface LectureContextInput {
-  file: VaultFile;
-  rows: RecordingInput[];
-  question?: string;
-  previousReply?: string;
-  budget?: number;
+// -- the study pack (ChatGPT) and the instruction (Claude Desktop) ----------------
+
+/** The pack stays under this many characters: a long paste still has to go through. */
+export const STUDY_PACK_MAX = 30_000;
+/** At most this much of the transcript, after the summary. */
+export const PASSAGES_MAX = 6_000;
+/** The learning mode is ~6.6k characters; a much longer text is cut, not the lecture. */
+const LEARNING_MAX = 12_000;
+
+/** The user's method in a few lines, for when Settings has no learning mode yet. */
+export const BUILTIN_LEARNING: Record<LectureLanguage, string> = {
+  pl: [
+    "Prowadź mnie według mojego trybu nauki:",
+    "1. Najpierw mapa: z czego składa się temat, jakie są moduły i jak się łączą. Chcę wiedzieć, gdzie jestem.",
+    "2. Na start bardzo prosty, ale mechanicznie sensowny model (kabel, zawias, filtr, pętla sprzężenia), bez infantylnych analogii.",
+    "3. Pętla Predict → Name → Place → Refine: najpierw daj mi przewidzieć mechanizm, potem go nazwij, umieść w mapie i doprecyzuj.",
+    "4. Pytania zawężaj. Gdy nie odpowiadam, dodaj 1-2 słowa-klucze zamiast od razu podawać odpowiedź.",
+    "5. Retrieval stopniuj: A/B/C/D z sensownymi dystraktorami → dopasowanie → krótkie odtworzenie → własne słowa → pełne odtworzenie.",
+    "6. Moje komendy: mapa, daleko / średnio / blisko, soczewka, relacja, rozróżnienie, kontrast, granica, kompresja, test, articulate.",
+    "7. Co kilka kroków wróć do mapy: gdzie to teraz siedzi?",
+    "8. Zauważaj momenty „aha”, skuteczne metafory i blokery; na koniec wypisz je krótko jako log nauki.",
+  ].join("\n"),
+  en: [
+    "Teach me with my learning mode:",
+    "1. Map first: what the topic is made of, its modules and how they connect. I want to know where I am.",
+    "2. Start with a very simple but mechanically sound model (a cable, a hinge, a filter, a feedback loop), no childish analogies.",
+    "3. The Predict → Name → Place → Refine loop: let me predict the mechanism first, then name it, place it on the map and refine it.",
+    "4. Narrow your questions. When I do not answer, add 1-2 cue words instead of giving the answer away.",
+    "5. Grade retrieval: A/B/C/D with plausible distractors → matching → short recall → my own words → full recall.",
+    "6. My commands: map, far / middle / close, lens, relation, distinction, contrast, boundary, compression, test, articulate.",
+    "7. Every few steps, go back to the map: where does this sit now?",
+    "8. Notice aha moments, metaphors that work and blockers; at the end list them briefly as a learning log.",
+  ].join("\n"),
+};
+
+const PACK_TEXT = {
+  pl: {
+    how: "Jak mnie uczyć",
+    project: "Ucz mnie według instrukcji tego projektu (tryb nauki).",
+    material: "Materiał",
+    passages: "Fragmenty zapisu wykładu",
+    passagesNote: (full: boolean) =>
+      full
+        ? "(Cały zapis. Transkrypcja automatyczna, może przekręcać słowa.)"
+        : "(Najważniejsze fragmenty, najpierw to, na co prowadzący kładł nacisk. Transkrypcja automatyczna, może przekręcać słowa.)",
+    rules: "Zasady: trzymaj się tego materiału. To, co dodajesz od siebie, wyraźnie zaznacz („Ode mnie:”). Kiedy to pomaga, rysuj w czacie diagramy i wykresy.",
+    explain: (textbook: boolean) =>
+      `Zacznij od mapy tego ${textbook ? "przedmiotu" : "wykładu"} (punkt 1 mojego trybu), potem prowadź mnie pętlą Predict → Name → Place → Refine.`,
+    test: (textbook: boolean) =>
+      textbook
+        ? "test: zacznij od pytań A/B/C/D z sensownymi dystraktorami, głównie z „Pytań sprawdzających” i „Do zapamiętania”, po jednym; potem krótkie odtwarzanie."
+        : "test: zacznij od pytań A/B/C/D z sensownymi dystraktorami, głównie z „Na co prowadzący kładł nacisk”, po jednym; potem krótkie odtwarzanie.",
+  },
+  en: {
+    how: "How to teach me",
+    project: "Teach me following this project's instructions (my learning mode).",
+    material: "Material",
+    passages: "Transcript passages",
+    passagesNote: (full: boolean) =>
+      full
+        ? "(The whole transcript. Speech-to-text, may mishear words.)"
+        : "(The most important passages, what the lecturer stressed first. Speech-to-text, may mishear words.)",
+    rules: 'Rules: stick to this material. Mark clearly what you add yourself ("My addition:"). Draw diagrams and plots in the chat when they help.',
+    explain: (textbook: boolean) =>
+      `Start with the map of this ${textbook ? "course" : "lecture"} (point 1 of my learning mode), then take me through the Predict → Name → Place → Refine loop.`,
+    test: (textbook: boolean) =>
+      textbook
+        ? 'test: start with A/B/C/D questions with plausible distractors, mostly from "Diagnostic questions" and "To memorise", one at a time; then short recall.'
+        : 'test: start with A/B/C/D questions with plausible distractors, mostly from "What the lecturer stressed", one at a time; then short recall.',
+  },
+};
+
+export interface StudyPackInput {
+  /** A lecture summary or a course textbook, as the vault index has it. */
+  lecture: Pick<LectureSummary, "kind" | "course" | "topic" | "date" | "language" | "body">;
+  /** The lecture's recordings with their transcripts (none for a textbook). */
+  rows?: RecordingInput[];
+  mode: StudyMode;
+  /** Settings > AI Context > Tryb nauki; empty: a built-in summary of the method. */
+  learningMode?: string;
+  /** Settings > AI Context > ChatGPT project link; set: the project's instructions hold the learning mode. */
+  projectUrl?: string;
 }
 
-/** One pinned lecture as context text: header, tutoring rules, summary, transcript passages. */
-export function lectureContext(input: LectureContextInput): string {
-  const budget = input.budget ?? LECTURE_BUDGET;
-  const doc = parseLecture(input.file);
-  const parts = transcriptParts(input.rows);
-  const lang = doc.language;
-  const head = [
-    `Lecture: ${lectureLabel(doc)} (written in ${lang === "pl" ? "Polish" : "English"}; vault file ${doc.path}).`,
-    tutorRules(lang),
+/**
+ * What "Ucz się w ChatGPT" / "Test w ChatGPT" copy, in the note's language:
+ * how to teach (or one line when a ChatGPT project holds the learning mode),
+ * the material (the summary whole, then up to ~6000 characters of transcript),
+ * the rules and the opening move. Never longer than STUDY_PACK_MAX.
+ */
+export function buildStudyPack(input: StudyPackInput): string {
+  const { lecture, mode } = input;
+  const lang = lecture.language;
+  const t = PACK_TEXT[lang];
+  const textbook = lecture.kind === "textbook";
+  const parts = transcriptParts(input.rows ?? []);
+  const multi = parts.length > 1;
+  const partOf = new Map(parts.map((p) => [p.note.toLowerCase(), p.part]));
+  const moment: MomentText = (l) => {
+    const a = anchorOf(l);
+    if (!a) return null;
+    return momentLabel(a, partOf.get(l.name.toLowerCase()) ?? null, multi, lang) || (l.alias ? `(${l.alias})` : "");
+  };
+
+  const learning = (input.learningMode ?? "").trim() || BUILTIN_LEARNING[lang];
+  const head = input.projectUrl?.trim()
+    ? t.project
+    : `# ${t.how}\n\n${learning.length > LEARNING_MAX ? `${learning.slice(0, LEARNING_MAX).trimEnd()}…` : learning}`;
+  const what = [lecture.course || otherCourse(lang), lecture.topic].filter(Boolean).join(" — ");
+  const title = `# ${t.material}: ${what}${lecture.date ? ` (${lecture.date})` : ""}`;
+  const tail = `---\n\n${t.rules}\n\n${mode === "test" ? t.test(textbook) : t.explain(textbook)}`;
+
+  const fixed = head.length + title.length + tail.length + 12;
+  const summary = plainNote(lecture.body, lang, Math.max(1000, STUDY_PACK_MAX - fixed), moment).text;
+  const blocks = [head, title, summary];
+
+  if (parts.some((p) => p.segments.length > 0)) {
+    const heading = `## ${t.passages}\n${t.passagesNote(false)}`;
+    const room = Math.min(PASSAGES_MAX, STUDY_PACK_MAX - fixed - summary.length - heading.length - 8);
+    if (room >= 400) {
+      const ex = selectExcerpts(parts, { moments: lectureMoments(lecture.body), budget: room, language: lang });
+      if (ex.text) blocks.push(`## ${t.passages}\n${t.passagesNote(ex.full)}\n\n${ex.text}`);
+    }
+  }
+  blocks.push(tail);
+  const pack = blocks.join("\n\n");
+  // The parts are budgeted to fit; this only guards the arithmetic.
+  return pack.length <= STUDY_PACK_MAX ? pack : `${pack.slice(0, STUDY_PACK_MAX - tail.length - 3)}…\n\n${tail}`;
+}
+
+/** The learning mode as the tracker writes it into the vault for Claude Desktop. */
+export const LEARNING_MODE_PATH = "_SYSTEM/learning-mode.md";
+
+/**
+ * What "Przegadaj w Claude" copies: Claude Desktop reads the vault itself,
+ * so it gets the note's path and where the learning mode is, not the text.
+ */
+export function claudeInstruction(lecture: Pick<LectureSummary, "kind" | "path" | "vault" | "language">): string {
+  const textbook = lecture.kind === "textbook";
+  if (lecture.language === "pl") {
+    return [
+      `Przegadajmy ${textbook ? "podręcznik przedmiotu" : "wykład"} z mojego skarbca Obsidiana „${lecture.vault}”: ${lecture.path}`,
+      `Najpierw przeczytaj ${LEARNING_MODE_PATH} (mój tryb nauki) i prowadź mnie według niego.`,
+      textbook
+        ? "Trzymaj się tego podręcznika i podsumowań, z których powstał; to, co dodajesz od siebie, zaznacz. Zacznij od mapy przedmiotu."
+        : "Trzymaj się tej notatki i zapisu wykładu, do którego linkuje (Recordings/); to, co dodajesz od siebie, zaznacz. Zacznij od mapy wykładu.",
+    ].join("\n");
+  }
+  return [
+    `Let's talk through the ${textbook ? "course textbook" : "lecture"} in my Obsidian vault "${lecture.vault}": ${lecture.path}`,
+    `First read ${LEARNING_MODE_PATH} (my learning mode) and teach me with it.`,
+    textbook
+      ? "Stick to this textbook and the summaries it was built from; mark what you add yourself. Start with the course map."
+      : "Stick to this note and the transcript it links to (Recordings/); mark what you add yourself. Start with the lecture map.",
   ].join("\n");
-  const summary = renderSummary(doc, parts, Math.floor((budget - head.length) * SUMMARY_SHARE));
-  const summaryBlock = `--- Summary (written by AI from the transcript; the user reads this one) ---\n${summary}`;
-  const room = budget - head.length - summaryBlock.length - 300;
-  let transcript: string;
-  if (parts.every((p) => p.segments.length === 0)) {
-    transcript = "--- Transcript ---\nNo transcript is stored for this lecture's sessions, so only the summary is available.";
-  } else {
-    const ex = selectExcerpts(parts, {
-      question: input.question,
-      previousReply: input.previousReply,
-      moments: lectureMoments(doc.body),
-      budget: Math.max(0, room),
-      language: lang,
-    });
-    const what = ex.full
-      ? "the whole transcript"
-      : `passages picked for this message: ${ex.picked} of ${ex.total} segments; ask about another part and it is fetched then`;
-    transcript = `--- Transcript (speech-to-text, verbatim, may mishear words; ${what}) ---\n${ex.text || "(no passage fits the budget)"}`;
+}
+
+// -- the course pack (one file for a ChatGPT or Claude project) -------------------
+
+const GLOSSARY_TITLE = /slowniczek|glossary/;
+
+/** The "> [!note]- Słowniczek PL ↔ EN" callouts taken out of a note: the note without them, and their lines. */
+export function takeGlossary(body: string): { body: string; entries: string[] } {
+  const lines = body.split(/\r?\n/);
+  const kept: string[] = [];
+  const entries: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = /^\s*>\s*\[!([A-Za-z0-9_-]+)\][+-]?[ \t]*(.*)$/.exec(lines[i]);
+    if (!head || !GLOSSARY_TITLE.test(fold(head[2]))) {
+      kept.push(lines[i]);
+      continue;
+    }
+    while (i + 1 < lines.length && /^\s*>/.test(lines[i + 1])) {
+      i++;
+      const entry = lines[i].replace(/^\s*>\s?/, "").replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim();
+      if (entry) entries.push(entry);
+    }
   }
-  return [head, summaryBlock, transcript].join("\n\n");
+  return { body: kept.join("\n"), entries };
 }
 
-interface LectureMaterial {
-  file: VaultFile;
-  rows: RecordingInput[];
+/** Glossary lines from several notes as one list: one line per term (the first wins), in alphabetical order. */
+export function mergeGlossary(entries: string[]): string[] {
+  const byTerm = new Map<string, string>();
+  for (const e of entries) {
+    const term = e.split(/\s*(?::|=|→|->|—|–)\s*/)[0].replace(/[*_`]/g, "").trim();
+    const key = fold(term).replace(/\s+/g, " ");
+    if (key && !byTerm.has(key)) byTerm.set(key, e);
+  }
+  return [...byTerm.entries()].sort(([a], [b]) => a.localeCompare(b, "pl")).map(([, e]) => e);
 }
 
-const MATERIAL_TTL = 2 * 60_000;
-const materialCache = new Map<string, { at: number; value: Promise<LectureMaterial | null> }>();
+const COURSE_TEXT = {
+  pl: {
+    file: "pakiet do nauki",
+    intro: (n: number, textbook: boolean) =>
+      `${textbook ? "Podręcznik przedmiotu i podsumowania" : "Podsumowania"} wszystkich wykładów (${n}), od najstarszego; na końcu wspólny słowniczek. Do wgrania do projektu w ChatGPT albo Claude.`,
+    updated: "zaktualizowany",
+    glossary: "Słowniczek PL ↔ EN",
+  },
+  en: {
+    file: "study pack",
+    intro: (n: number, textbook: boolean) =>
+      `${textbook ? "The course textbook and the summaries" : "The summaries"} of every lecture (${n}), oldest first; one merged glossary at the end. For a ChatGPT or Claude project.`,
+    updated: "updated",
+    glossary: "Glossary EN ↔ PL",
+  },
+};
 
-/** The summary file and its recordings. Cached briefly: a tutoring chat asks for them every message. */
-async function loadLecture(userId: string, path: string): Promise<LectureMaterial | null> {
-  const key = `${userId}|${path}`;
+/** A course name made safe as a file name on Windows and phones. */
+const safeFileName = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-").replace(/\s+/g, " ").trim() || "Kurs";
+
+export interface CoursePack {
+  fileName: string;
+  text: string;
+  language: LectureLanguage;
+}
+
+/**
+ * "Pakiet przedmiotu": the course's textbook (if any), then every summary
+ * oldest first in plain Markdown without their glossaries, then one merged
+ * glossary. Built in the browser from the vault copy; nothing is sent anywhere.
+ */
+export function buildCoursePack(group: { course: string; lectures: LectureSummary[]; textbook: LectureSummary | null }): CoursePack {
+  const docs = [...group.lectures].sort(
+    (a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.modified.localeCompare(b.modified) || a.topic.localeCompare(b.topic),
+  );
+  const pl = docs.filter((d) => d.language === "pl").length;
+  const lang: LectureLanguage = group.textbook?.language ?? (pl * 2 >= docs.length ? "pl" : "en");
+  const t = COURSE_TEXT[lang];
+  const glossary: string[] = [];
+  const section = (title: string, body: string, docLang: LectureLanguage) => {
+    const g = takeGlossary(body);
+    glossary.push(...g.entries);
+    return `# ${title}\n\n${plainMarkdown(g.body, docLang)}`;
+  };
+  const blocks = [`# ${group.course} – ${t.file}`, t.intro(docs.length, !!group.textbook)];
+  if (group.textbook) {
+    const tb = group.textbook;
+    blocks.push(section(`${tb.topic}${tb.date ? ` (${t.updated} ${tb.date})` : ""}`, tb.body, tb.language));
+  }
+  for (const d of docs) blocks.push(section(`${d.topic}${d.date ? ` (${d.date})` : ""}`, d.body, d.language));
+  const merged = mergeGlossary(glossary.map((e) => plainMarkdown(e, lang)));
+  if (merged.length > 0) blocks.push(`# ${t.glossary}\n\n${merged.map((e) => `- ${e}`).join("\n")}`);
+  return {
+    fileName: `${safeFileName(group.course)} – ${t.file}.md`,
+    text: `${blocks.join("\n\n---\n\n")}\n`,
+    language: lang,
+  };
+}
+
+// -- loading a lecture's transcript ------------------------------------------------
+
+const MATERIAL_TTL = 5 * 60_000;
+const materialCache = new Map<string, { at: number; value: Promise<RecordingInput[]> }>();
+
+/**
+ * The recordings (with their transcripts) a summary covers: its sessions'
+ * and any the summary cites. Cached for a few minutes, so the reader can fetch
+ * them when it opens and a button press finds them ready.
+ */
+export function loadLectureRecordings(userId: string, lecture: Pick<LectureSummary, "path" | "sessions" | "body">): Promise<RecordingInput[]> {
+  const key = `${userId}|${lecture.path}`;
   const hit = materialCache.get(key);
   if (hit && Date.now() - hit.at < MATERIAL_TTL) return hit.value;
   const value = (async () => {
-    const { data: file, error } = await supabase
-      .from("kos_vault_files")
-      .select("path, vault, content, modified_at")
-      .eq("user_id", userId)
-      .eq("path", path)
-      .maybeSingle();
-    if (error) throw error;
-    if (!file) return null;
-    const doc = parseLecture(file);
     const cols = "note_name, file_name, recorded_at, part, segments";
-    const notes = [...new Set(lectureMoments(doc.body).map((m) => m.note))];
+    const notes = [...new Set(lectureMoments(lecture.body).map((m) => m.note))];
     const [bySession, byNote] = await Promise.all([
-      doc.sessions.length > 0
-        ? supabase.from("kos_recordings").select(cols).eq("user_id", userId).in("session_key", doc.sessions)
+      lecture.sessions.length > 0
+        ? supabase.from("kos_recordings").select(cols).eq("user_id", userId).in("session_key", lecture.sessions)
         : Promise.resolve({ data: [], error: null }),
       notes.length > 0
         ? supabase.from("kos_recordings").select(cols).eq("user_id", userId).in("note_name", notes)
@@ -713,7 +864,7 @@ async function loadLecture(userId: string, path: string): Promise<LectureMateria
     for (const r of [...(bySession.data ?? []), ...(byNote.error ? [] : byNote.data ?? [])] as RecordingInput[]) {
       rows.set(recordingNote(r), r);
     }
-    return { file, rows: [...rows.values()] };
+    return [...rows.values()];
   })();
   materialCache.set(key, { at: Date.now(), value });
   value.catch(() => materialCache.delete(key));
@@ -721,31 +872,10 @@ async function loadLecture(userId: string, path: string): Promise<LectureMateria
   return value;
 }
 
-/** Context for the pinned lectures; the budget is shared when there are several. */
-export async function gatherLectureItems(
-  userId: string,
-  items: ArchiveItemRef[],
-  question?: string,
-  previousReply?: string,
-): Promise<string> {
-  const budget = Math.max(16_000, Math.floor(LECTURE_BUDGET / Math.max(1, items.length)));
-  const blocks = await Promise.all(
-    items.map(async (it) => {
-      try {
-        const m = await loadLecture(userId, lectureItemPath(it));
-        if (!m) return `--- ${it.title} ---\nThis lecture is no longer in the vault mirror.`;
-        return lectureContext({ ...m, question, previousReply, budget });
-      } catch {
-        return `--- ${it.title} ---\n(lecture unavailable)`;
-      }
-    }),
-  );
-  return blocks.join("\n\n");
-}
-
 // -- the "knowledge" scope --------------------------------------------------------
 
-const KNOWLEDGE_MAX_CHARS = 20_000;
+/** The scope's whole text stays under this: short questions, not study sessions. */
+export const KNOWLEDGE_MAX_CHARS = 20_000;
 const DETAILED_LECTURES = 6;
 const INDEXED_LECTURES = 60;
 const NOTE_LINES = 40;
@@ -777,9 +907,12 @@ function rank<T>(items: T[], fields: (t: T) => [string, number][], question?: st
  * The "knowledge" scope's text: every lecture as one index line, the best
  * matching summaries in detail, and the best matching knowledge notes as
  * compact lines with where they were said. Without a match, the newest.
+ * Summaries and notes only, never a transcript, within KNOWLEDGE_MAX_CHARS.
  */
 export function knowledgeContext(files: VaultFile[], question?: string): string {
-  const lectures = files.filter((f) => isLectureSummaryPath(f.path)).map(parseLecture);
+  const docs = files.filter((f) => isLectureSummaryPath(f.path)).map(parseLecture);
+  const lectures = docs.filter((d) => d.kind === "summary");
+  const textbooks = docs.filter((d) => d.kind === "textbook");
   const notes = files
     .filter((f) => /^Knowledge\/.+\.md$/i.test(f.path))
     .map((f) => {
@@ -808,27 +941,39 @@ export function knowledgeContext(files: VaultFile[], question?: string): string 
     const c = d.course || otherCourse(d.language);
     courses.set(c, (courses.get(c) ?? 0) + 1);
   }
-  const out: string[] = [
-    `Lecture summaries: ${lectures.length}${courses.size ? ` (${[...courses].map(([c, n]) => `${c} ${n}`).join(", ")})` : ""}. Knowledge notes: ${notes.length}.`,
-    matched
-      ? "Ranked by word overlap with the message, best first."
-      : "Nothing shares words with the message, so the newest are listed.",
-    'To study one lecture in depth, the user opens it in Archive > Wykłady and presses "Przegadaj temat" or "Sprawdź się".',
-  ];
+  const out: string[] = [];
+  let size = 0;
+  /** Adds a line while the text stays within the cap; false once it is full. */
+  const push = (line: string): boolean => {
+    if (size + line.length + 1 > KNOWLEDGE_MAX_CHARS) return false;
+    out.push(line);
+    size += line.length + 1;
+    return true;
+  };
+  push(`Lecture summaries: ${lectures.length}${courses.size ? ` (${[...courses].map(([c, n]) => `${c} ${n}`).join(", ")})` : ""}. Knowledge notes: ${notes.length}.`);
+  push(matched ? "Ranked by word overlap with the message, best first." : "Nothing shares words with the message, so the newest are listed.");
+  push(
+    'This is for short questions. To study a lecture, the user opens it in Archive > Wykłady and presses "Ucz się w ChatGPT" or "Test w ChatGPT" (a study pack for ChatGPT) or "Przegadaj w Claude" (Claude Desktop reads the vault). Suggest that for a long session.',
+  );
+  if (textbooks.length > 0) {
+    push(`Course textbooks (built from the summaries): ${textbooks.map((d) => `${courseOf(d)} (${d.path}${d.date ? `, ${d.date}` : ""})`).join("; ")}.`);
+  }
 
   if (lectures.length > 0) {
-    out.push("", "All lectures (course · date · topic, language):");
-    for (const d of [...lectures].sort(byDate).slice(0, INDEXED_LECTURES)) out.push(`- ${lectureLabel(d)} [${d.language}]`);
-    if (lectures.length > INDEXED_LECTURES) out.push(`- … and ${lectures.length - INDEXED_LECTURES} older`);
+    push("");
+    push("All lectures (course · date · topic, language):");
+    const sorted = [...lectures].sort(byDate);
+    for (const d of sorted.slice(0, INDEXED_LECTURES)) if (!push(`- ${lectureLabel(d)} [${d.language}]`)) break;
+    if (lectures.length > INDEXED_LECTURES) push(`- … and ${lectures.length - INDEXED_LECTURES} older`);
     const detailed = (matched ? rankedLectures.filter((r) => r.score > 0) : rankedLectures).slice(0, DETAILED_LECTURES);
     if (detailed.length > 0) {
-      out.push("", matched ? "Best matching lectures:" : "Newest lectures:");
+      push("");
+      push(matched ? "Best matching lectures:" : "Newest lectures:");
       for (const { item: d } of detailed) {
         const stressed = flat(replaceWikiLinks(d.stressed, (l) => (anchorOf(l) ? "" : l.alias || l.name)).replace(/^\s*[-*+]\s+/gm, "; "))
           .replace(/^;\s*/, "");
-        out.push(
-          `- ${lectureLabel(d)} [${d.language}] (${d.path}): ${clip(d.short, 320)}` +
-            (stressed ? ` Stressed: ${clip(stressed, 260)}` : ""),
+        push(
+          `- ${lectureLabel(d)} [${d.language}] (${d.path}): ${clip(d.short, 320)}` + (stressed ? ` Stressed: ${clip(stressed, 260)}` : ""),
         );
       }
     }
@@ -837,8 +982,12 @@ export function knowledgeContext(files: VaultFile[], question?: string): string 
   if (notes.length > 0) {
     const picked = matched ? rankedNotes.filter((r) => r.score > 0).slice(0, NOTE_LINES) : rankedNotes.slice(0, RECENT_NOTES);
     if (picked.length > 0) {
-      out.push("", matched ? "Best matching knowledge notes ([type] title (other-language name; course): statement. \"quote\" (where it was said)):" : "Newest knowledge notes:");
-      let size = out.join("\n").length;
+      push("");
+      push(
+        matched
+          ? "Best matching knowledge notes ([type] title (other-language name; course): statement. \"quote\" (where it was said)):"
+          : "Newest knowledge notes:",
+      );
       for (const { item } of picked) {
         const n = item.note;
         const extra = [item.aliases.length ? `= ${item.aliases.join(", ")}` : "", item.course ?? ""].filter(Boolean).join("; ");
@@ -847,9 +996,7 @@ export function knowledgeContext(files: VaultFile[], question?: string): string 
           `- [${n.type || "note"}] ${n.title}${extra ? ` (${extra})` : ""}: ${clip(n.summary, 220)}` +
           (n.quote ? ` "${clip(n.quote, 150)}"` : "") +
           where;
-        if (size + line.length + 1 > KNOWLEDGE_MAX_CHARS) break;
-        out.push(line);
-        size += line.length + 1;
+        if (!push(line)) break;
       }
     }
   }

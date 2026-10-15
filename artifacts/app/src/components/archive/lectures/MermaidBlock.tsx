@@ -31,7 +31,8 @@ function loadMermaid(): Promise<Mermaid> {
 // One diagram at a time: mermaid keeps global state while it renders.
 let queue: Promise<unknown> = Promise.resolve();
 
-export default function MermaidBlock({ code, lang }: { code: string; lang: "pl" | "en" }) {
+/** `prominent`: the lecture map, which opens the note ("najpierw mapa") and gets a little more room. */
+export default function MermaidBlock({ code, lang, prominent = false }: { code: string; lang: "pl" | "en"; prominent?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const id = `kos-mermaid-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [state, setState] = useState<"loading" | "done" | { error: string }>("loading");
@@ -65,9 +66,9 @@ export default function MermaidBlock({ code, lang }: { code: string; lang: "pl" 
     return <BlockError title={lang === "pl" ? "Nie udało się narysować diagramu" : "Could not draw the diagram"} message={state.error} source={code} />;
   }
   return (
-    <figure className="my-2">
+    <figure className={prominent ? "my-3" : "my-2"} data-mermaid={prominent ? "map" : undefined}>
       {state === "loading" && <p className="text-xs text-muted-foreground py-6 text-center">{lang === "pl" ? "Rysuję diagram…" : "Drawing the diagram…"}</p>}
-      <div ref={box} className="flex justify-center overflow-x-auto [&_svg]:max-w-full" />
+      <div ref={box} className={`flex justify-center overflow-x-auto [&_svg]:max-w-full ${prominent ? "py-2" : ""}`} />
     </figure>
   );
 }

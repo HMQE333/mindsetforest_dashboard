@@ -10,6 +10,11 @@ off (60 s, 120 s, ... up to 10 min). When the server *rejects* a batch (4xx
 other than 401/429) it is retried row by row and the rows that fail on their
 own are quarantined (``synced = -1``) and logged, so one bad row never blocks
 the rest. Nothing here can crash the capture thread.
+
+After a good upload the worker also reads the user's settings from the
+dashboard: the never-record keywords and the save-to-Archive hotkey every
+time, the study prompts (Settings -> AI Context -> Nauka) after sign-in and
+then every 10 minutes.
 """
 from __future__ import annotations
 
@@ -32,6 +37,9 @@ PRIVACY_TABLE = "app_tracking_privacy"
 SETTINGS_TABLE = "user_onboarding"  # the dashboard's preferences (Settings -> Keybinds)
 HOTKEY_RPC = "set_tracker_capture_hotkey"  # writes only preferences.hotkeys.trackerCapture
 DEVICES_TABLE = "tracker_devices"  # the dashboard's device names; the tracker writes only reported_name
+CONTEXT_TABLE = "user_context"  # the dashboard's AI context; the tracker reads only the study prompts
+STUDY_FIELDS = ("learning_mode", "primer_prompt")
+STUDY_PROMPTS_SECONDS = 600.0
 MAX_BACKOFF = 600.0
 
 
@@ -76,6 +84,7 @@ class SyncClient:
         self.settings_url = f"{supabase_url.rstrip('/')}/rest/v1/{SETTINGS_TABLE}?select=preferences"
         self.hotkey_rpc_url = f"{supabase_url.rstrip('/')}/rest/v1/rpc/{HOTKEY_RPC}"
         self.devices_url = f"{supabase_url.rstrip('/')}/rest/v1/{DEVICES_TABLE}?on_conflict=user_id,device_id"
+        self.study_url = f"{supabase_url.rstrip('/')}/rest/v1/{CONTEXT_TABLE}?select={','.join(STUDY_FIELDS)}"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
@@ -132,6 +141,20 @@ class SyncClient:
         hotkeys = prefs.get("hotkeys") if isinstance(prefs, dict) else None
         value = hotkeys.get("trackerCapture") if isinstance(hotkeys, dict) else None
         return value.strip().lower() if isinstance(value, str) else None
+
+    def study_prompts(self) -> dict[str, str] | None:
+        """The study prompts set in the dashboard, or None when the user has no AI context row yet.
+
+        {"learning_mode": ..., "primer_prompt": ...}, "" for an empty one.
+        """
+        resp = self._request("get", self.study_url, self.auth.headers(), None)
+        if resp.status_code != 200:
+            raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        rows = resp.json() or []
+        row = rows[0] if rows and isinstance(rows[0], dict) else None
+        if row is None:
+            return None
+        return {k: row[k] if isinstance(row.get(k), str) else "" for k in STUDY_FIELDS}
 
     def set_capture_hotkey(self, spec: str) -> None:
         """Store ``spec`` as the dashboard's save-to-Archive hotkey ("" = off).
@@ -202,6 +225,11 @@ class SyncWorker(threading.Thread):
         # (device_id, device_name) to report once per run, so the dashboard shows a name, not an id.
         self.pending_device_name: tuple[str, str] | None = None
         self.on_hotkey_pushed: Callable[[], None] | None = None
+        # Called with the dashboard's study prompts (see SyncClient.study_prompts) after
+        # sign-in and then every STUDY_PROMPTS_SECONDS; None turns the pull off.
+        self.on_study_prompts: Callable[[dict[str, str]], None] | None = None
+        self._study_pulled_at: float | None = None
+        self._study_error: str | None = None
         self.clock = clock
         self.status = SyncStatus()
         self._wake = threading.Event()
@@ -215,6 +243,10 @@ class SyncWorker(threading.Thread):
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
+
+    def refresh_study_prompts(self) -> None:
+        """Read the study prompts at the next sync instead of up to 10 minutes later (a new sign-in)."""
+        self._study_pulled_at = None
 
     def run(self) -> None:  # pragma: no cover - exercised on the real machine
         while not self._stop.is_set():
@@ -254,6 +286,7 @@ class SyncWorker(threading.Thread):
                 self._report_device_name()
                 self._push_capture_hotkey()
                 self._pull_capture_hotkey()
+                self._pull_study_prompts()
             except AuthRequired as exc:
                 self.status.needs_login = True
                 self.status.last_error = f"sign in required: {exc}"
@@ -335,6 +368,29 @@ class SyncWorker(threading.Thread):
             self.on_capture_hotkey(spec)
         except Exception:
             log.exception("on_capture_hotkey callback failed")
+
+    def _pull_study_prompts(self) -> None:
+        """Fetch the study prompts every STUDY_PROMPTS_SECONDS; a failure waits for the next turn."""
+        if not self.on_study_prompts or not self.client.auth.has_session:
+            return
+        now = self.clock()
+        if self._study_pulled_at is not None and 0 <= now - self._study_pulled_at < STUDY_PROMPTS_SECONDS:
+            return
+        self._study_pulled_at = now
+        try:
+            prompts = self.client.study_prompts()
+        except Exception as exc:  # e.g. the columns are not on the server yet: said once, not every 10 minutes
+            if str(exc) != self._study_error:
+                log.warning("Could not fetch the study prompts: %s", exc)
+            self._study_error = str(exc)
+            return
+        self._study_error = None
+        if prompts is None:
+            return
+        try:
+            self.on_study_prompts(prompts)
+        except Exception:
+            log.exception("on_study_prompts callback failed")
 
     def _upload_individually(self, rows: Sequence[SessionRow]) -> int:
         """Upsert rows one at a time; quarantine the ones the server rejects."""

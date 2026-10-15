@@ -30,7 +30,8 @@ def put(vault: Path, name: str, data: bytes) -> Path:
 
 
 def test_every_text_an_older_tracker_wrote_is_recognised_as_its_own():
-    for name, files in (("routine-prompt.md", ("routine-prompt-v0.md", "routine-prompt-v1.md")),
+    for name, files in (("routine-prompt.md", ("routine-prompt-v0.md", "routine-prompt-v1.md",
+                                               "routine-prompt-v2.md")),
                         ("processing-rules.md", ("processing-rules-v0.md", "processing-rules-v1.md"))):
         for f in files:
             assert text_hash((FIXTURES / f).read_text(encoding="utf-8")) in SHIPPED_TEXTS[name], f
@@ -38,6 +39,11 @@ def test_every_text_an_older_tracker_wrote_is_recognised_as_its_own():
     v1 = (FIXTURES / "routine-prompt-v1.md").read_text(encoding="utf-8")
     assert text_hash("﻿" + v1.replace("\n", "  \r\n") + "\r\n") in SHIPPED_TEXTS["routine-prompt.md"]
     assert text_hash(v1 + "\nMy own line.") not in SHIPPED_TEXTS["routine-prompt.md"]
+    # The current texts are never "shipped before": that would replace them on every start.
+    assert text_hash(ROUTINE) not in SHIPPED_TEXTS["routine-prompt.md"]
+    assert text_hash(RULES) not in SHIPPED_TEXTS["processing-rules.md"]
+    # The first format-2 prompt (the fixture) is format 2 too: only its hash marks it as a default.
+    assert "kos-format: 2" in (FIXTURES / "routine-prompt-v2.md").read_text(encoding="utf-8")
 
 
 def test_the_routine_prompt_describes_format_2():
@@ -52,6 +58,12 @@ def test_the_routine_prompt_describes_format_2():
         "^pNNNN", "**[¶N]** text ^pNNNN", "podsumowanie uczelni", "The transcript is the truth",
         "at most 15 new notes per hour", "at most 5 for a source", "aliases", "Never write a `[[link]]`",
         "last_run:", "- problems: none", "Import/",
+        # The lecture map, what to memorise, the course textbook.
+        "## Mapa wykładu", "[`## Lecture map`]", "At most 15", "> [!important]- Do zapamiętania",
+        "> [!important]- To memorise", "Leave the callout out when nothing qualifies",
+        "Lectures/<Course>/_Podręcznik.md", "Lectures/<Course>/_Textbook.md", "type: course-textbook",
+        "_SYSTEM/primer-prompt.md", "## Mapa przedmiotu", "## Pytania sprawdzające", "8-12", "2500-5000 words",
+        "at most one per run", "Never\n  `Inne` / `Other`", "- textbook: none",
     ):
         assert needed in ROUTINE, needed
     assert "kos-format: 2" in RULES and "_SYSTEM/routine-prompt.md" in RULES
@@ -78,6 +90,23 @@ def check_expressions(obj: dict) -> None:
         assert re.fullmatch(r"[0-9A-Za-z_.+\-*/^() ]+", expr), expr
 
 
+def check_lecture_map(text: str) -> None:
+    """The "Mapa wykładu" section: one mermaid flowchart outside any callout, at most 15 nodes, then <= 2 lines."""
+    section = re.search(r"(?m)^## Mapa wykładu\n(.*?)(?=^## )", text, re.S).group(1).strip()
+    block, after = re.fullmatch(r"```mermaid\n(.*?)\n```\n?(.*)", section, re.S).groups()
+    assert not any(line.startswith(">") for line in section.split("\n"))
+    assert 1 <= len([line for line in after.split("\n") if line.strip()]) <= 2
+    lines = block.split("\n")
+    assert lines[0] in ("flowchart LR", "flowchart TD")
+    ids = set()
+    for line in lines[1:]:
+        for part in line.split("-->"):
+            m = re.fullmatch(r'\s*(?:\|[^|]+\|\s*)?([A-Za-z][A-Za-z0-9]*)(\["[^"]+"\])?\s*', part)
+            assert m, line  # a plain id, an optional quoted label, an optional |label| on the arrow
+            ids.add(m.group(1))
+    assert 3 <= len(ids) <= 15
+
+
 def worked_example() -> str:
     return re.search(r"````markdown\n(.*?)\n````", ROUTINE, re.S).group(1)
 
@@ -90,10 +119,18 @@ def test_the_worked_example_is_a_complete_summary_in_one_language():
                       "date": "2026-10-11", "language": "pl", "sessions": '["[[Sessions/2026-10-11 13-32]]"]',
                       "source": "recording"}
     headings = re.findall(r"(?m)^## (.+?)(?: \[\[.*)?$", text)
-    assert headings == ["W skrócie", "1. Zdanie logiczne", "2. Spójniki i tabele prawdy",
+    assert headings == ["W skrócie", "Mapa wykładu", "1. Zdanie logiczne", "2. Spójniki i tabele prawdy",
                         "3. Zbiory i działania na zbiorach", "4. Funkcja zdaniowa i zbiór spełnienia",
                         "Na co prowadzący kładł nacisk", "Do wyjaśnienia", "Pojęcia"]
     assert text.rstrip().split("\n")[-11] == "> [!note]- Słowniczek PL ↔ EN"  # the glossary comes last
+    # "Do zapamiętania" right after the concept links, before the glossary; each line cites its moment.
+    concepts = text.split("\n## Pojęcia\n", 1)[1]
+    links, memorise, glossary = concepts.strip().split("\n\n")
+    assert all(re.fullmatch(r"- \[\[[^\]]+\]\]", line) for line in links.split("\n"))
+    memorise = memorise.split("\n")
+    assert memorise[0] == "> [!important]- Do zapamiętania" and 3 <= len(memorise) - 1 <= 10
+    assert all(re.fullmatch(r"> - .+ \[\[Recordings/[^\]]+#\^t\d{4}\|[\d:]+\]\]", line) for line in memorise[1:])
+    assert glossary.startswith("> [!note]- Słowniczek PL ↔ EN")
     # Every callout is folded, and at most 2 "for understanding" per section.
     callouts = re.findall(r"(?m)^> \[!(\w+)\](.?)", text)
     assert callouts and all(fold == "-" for _, fold in callouts)
@@ -110,6 +147,7 @@ def test_the_worked_example_is_a_complete_summary_in_one_language():
     for body in re.findall(r"> ```plot\n(.*?)\n> ```", text, re.S):
         check_expressions(json.loads(body.replace("\n> ", "\n").removeprefix("> ")))
     assert "> ```mermaid" in text
+    check_lecture_map(text)
     # English appears only in the glossary.
     body, glossary = text.split("> [!note]- Słowniczek PL ↔ EN")
     for english in ("proposition", "conjunction", "disjunction", "intersection"):
@@ -186,6 +224,65 @@ def test_a_v2_edit_without_the_format_comment_is_the_users_even_unstamped(tmp_pa
     put(vault, "processing-rules.md", RULES.encode("utf-8"))
     assert ensure_system_notes(vault, WHEN) == []
     assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == mine
+
+
+def test_an_unedited_v2_default_follows_the_new_default_in_a_stamped_vault(tmp_path):
+    """Vaults set up by the first 1.3.0 builds are stamped format 2 and hold that build's prompt."""
+    vault = tmp_path / "Vault"
+    v2 = (FIXTURES / "routine-prompt-v2.md").read_bytes()
+    put(vault, ".kos-format", b"2\n")
+    put(vault, "routine-prompt.md", v2.replace(b"\n", b"\r\n"))  # saved again by an editor: still unedited
+    put(vault, "processing-rules.md", RULES.encode("utf-8"))
+    put(vault, "routine-log.md", b"---\nlast_run: 2026-10-14 22:00\n---\n")
+    assert ensure_system_notes(vault, WHEN) == ["routine-prompt.md"]
+    assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == ROUTINE
+    assert not list(sysdir(vault).glob("*moja wersja*"))  # it was the tracker's own text: no copy
+    log = (sysdir(vault) / "routine-log.md").read_text(encoding="utf-8")
+    assert "mapą wykładu" in log and "Zaktualizowane: routine-prompt.md." in log
+    assert "Twoja poprzednia wersja" not in log
+    assert ensure_system_notes(vault, WHEN) == []  # once
+    assert (sysdir(vault) / "routine-log.md").read_text(encoding="utf-8") == log
+
+
+def test_an_edited_v2_prompt_stays_the_users(tmp_path):
+    vault = tmp_path / "Vault"
+    mine = (FIXTURES / "routine-prompt-v2.md").read_text(encoding="utf-8") + "\n## Moje\nMax 1 sesja.\n"
+    put(vault, ".kos-format", b"2\n")
+    put(vault, "routine-prompt.md", mine.encode("utf-8"))
+    put(vault, "processing-rules.md", RULES.encode("utf-8"))
+    assert ensure_system_notes(vault, WHEN) == []
+    assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == mine
+    assert not (sysdir(vault) / "routine-log.md").exists()
+    # Unstamped (the stamp could not be written then), the same edit is still the user's.
+    (sysdir(vault) / ".kos-format").unlink()
+    assert ensure_system_notes(vault, WHEN) == []
+    assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == mine
+
+
+def test_an_unedited_v2_default_is_replaced_in_an_unstamped_vault_too(tmp_path):
+    vault = tmp_path / "Vault"
+    put(vault, "routine-prompt.md", (FIXTURES / "routine-prompt-v2.md").read_bytes())
+    put(vault, "processing-rules.md", RULES.encode("utf-8"))
+    assert ensure_system_notes(vault, WHEN) == ["routine-prompt.md"]
+    assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == ROUTINE
+    assert not list(sysdir(vault).glob("*moja wersja*"))
+    assert (sysdir(vault) / ".kos-format").read_text(encoding="utf-8").strip() == "2"
+
+
+def test_the_steps_are_numbered_in_order_and_the_textbook_runs_on_quiet_runs_too():
+    steps = re.findall(r"(?m)^## (\d)\. (.+)$", ROUTINE.split("## Worked example")[0])
+    assert [int(n) for n, _ in steps] == list(range(9))
+    assert dict(steps)["6"] == "The course textbook (at most one per run)"
+    assert "Nothing new: do only steps 6, 7 and 8." in ROUTINE
+    textbook = ROUTINE.split("## 6. The course textbook", 1)[1].split("## 7. ", 1)[0]
+    order = ["## W skrócie", "## Mapa przedmiotu", "## Mechanizmy", "## Ograniczenia",
+             "## Co zapamiętać, a co wyprowadzić", "## Cały przedmiot na jednej stronie",
+             "## Pytania sprawdzające"]
+    assert [textbook.index(h) for h in order] == sorted(textbook.index(h) for h in order)
+    front = re.search(r"    ---\n(.*?)\n    ---", textbook, re.S).group(1)
+    assert [line.strip().split(":", 1)[0] for line in front.split("\n")] == [
+        "type", "course", "language", "updated", "summaries"]
+    assert "type: course-textbook" in front
 
 
 def test_a_copy_never_overwrites_another_and_an_identical_one_is_reused(tmp_path):
@@ -284,3 +381,18 @@ def test_a_vault_with_only_the_routine_log_never_empties_the_dashboard(tmp_path)
     moved.sync(0)
     assert not any(m == "DELETE" for m, _ in server.log)
     assert "Knowledge/Reciprocity.md" in server.rows
+
+
+def test_the_mirror_sends_the_course_textbook_but_not_the_study_prompts(tmp_path):
+    server = FakeVaultServer()
+    vault, mirror = mirror_for(tmp_path, server)
+    for rel, text in {
+        "Lectures/Logika/_Podręcznik.md": "---\ntype: course-textbook\ncourse: \"Logika\"\n---\n## W skrócie\n",
+        "_SYSTEM/learning-mode.md": "---\nsource: dashboard\n---\nTryb nauki",
+        "_SYSTEM/primer-prompt.md": "---\nsource: dashboard\n---\nPrimer",
+    }.items():
+        (vault / rel).parent.mkdir(parents=True, exist_ok=True)
+        (vault / rel).write_text(text, encoding="utf-8")
+    mirror.sync(0)
+    assert server.rows["Lectures/Logika/_Podręcznik.md"]["content"].startswith("---\ntype: course-textbook")
+    assert not any(path.startswith("_SYSTEM/") and path != "_SYSTEM/routine-log.md" for path in server.rows)

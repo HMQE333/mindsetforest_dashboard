@@ -41,8 +41,10 @@
 >    Zadanie uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi; pominięte uruchomienie nadrobi, gdy wrócisz.
 >    Instalator od razu zapisuje w vaulcie `_SYSTEM/routine-prompt.md` (cała procedura rutyny) i `_SYSTEM/processing-rules.md`
 >    (zasady dobrych notatek), więc rutyna działa jeszcze przed pierwszym nagraniem; zmiany robisz w tych plikach, nie w zadaniu.
->    Rutyna pisze dla każdego wykładu podsumowanie w `Lectures/<przedmiot>/` (w języku wykładu, z tym, na co prowadzący kładł
->    nacisk, i ze słowniczkiem; wyjaśnienia AI są w zwijanych blokach „Dla zrozumienia (AI)”) oraz kilka notatek w `Knowledge/`.
+>    Rutyna pisze dla każdego wykładu podsumowanie w `Lectures/<przedmiot>/` (w języku wykładu: najpierw mapa wykładu, potem
+>    tematy, to, na co prowadzący kładł nacisk, „Do zapamiętania” i słowniczek; wyjaśnienia AI są w zwijanych blokach „Dla
+>    zrozumienia (AI)”) oraz kilka notatek w `Knowledge/`. Gdy przedmiot ma co najmniej dwa podsumowania, pisze też jego
+>    podręcznik (niżej: **Podręcznik przedmiotu**).
 >    Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną: sesje zostają ze `status: new`, a gdy czekają dłużej niż
 >    dobę, tracker przypomina powiadomieniem (najwyżej raz na dobę). Kroki z poleceniem pokaże też później
 >    **Ustawienia... → Pokaż, jak ustawić rutynę Claude**.
@@ -61,8 +63,9 @@
 > - **Aktualizacja**: pobierz nowszy instalator i uruchom go. Podmienia program w miejscu (sam zamyka stary tracker i uruchamia nowy);
 >   logowanie, ustawienia (także wyłączony autostart) i dane zostają. Wersja 1.3.0 wprowadza nowy format rutyny (podsumowania
 >   wykładów) i podmienia `_SYSTEM/routine-prompt.md` oraz `_SYSTEM/processing-rules.md`. Jeśli je zmieniałeś, Twoja wersja
->   zostaje obok jako `... (moja wersja <data>).md`, a wpis w `_SYSTEM/routine-log.md` o tym przypomina. Nowe pliki możesz
->   zmieniać dowolnie: tracker już ich nie nadpisze.
+>   zostaje obok jako `... (moja wersja <data>).md`, a wpis w `_SYSTEM/routine-log.md` o tym przypomina. Potem możesz je
+>   zmieniać dowolnie: zmienionego pliku tracker już nie nadpisze, a niezmieniony podmienia na nowszą wersję z aktualizacji
+>   (też z wpisem w `routine-log.md`).
 > - **Odinstalowanie**: Ustawienia Windows → Aplikacje → Zainstalowane aplikacje (Apps & features) → **MindsetForest Tracker** →
 >   Odinstaluj, albo **Ustawienia... → Odinstaluj...**. Vault i nagrania zostają zawsze; dane lokalne (`%APPDATA%\MindsetForest`)
 >   znikają tylko, jeśli to potwierdzisz.
@@ -88,6 +91,21 @@
 >   .vtt/.srt zachowują czas, inny tekst dostaje numerowane akapity), i przenosi pliki do `Import/_done`. Niczego nie usuwa,
 >   a tego samego pliku drugi raz nie zaimportuje. Plik, którego nie da się odczytać (np. skan PDF bez tekstu), zostaje na
 >   miejscu, a tracker mówi o tym powiadomieniem.
+> - **Podręcznik przedmiotu:** gdy przedmiot ma co najmniej dwa podsumowania, rutyna pisze `Lectures/<przedmiot>/_Podręcznik.md`
+>   (kurs po angielsku: `_Textbook.md`): cały przedmiot jako jeden zwarty model. Najpierw mapa, potem mechanizmy, ograniczenia,
+>   co zapamiętać, a co wyprowadzić, cały przedmiot na jednej stronie i 8-12 pytań sprawdzających na końcu. Pisze go według
+>   Twojego promptu Primer (`_SYSTEM/primer-prompt.md`, bez niego według krótszej wersji wbudowanej), tylko z podsumowań
+>   i notatek tego przedmiotu, w jego języku. Odświeża go po każdym nowym wykładzie, najwyżej jeden podręcznik na uruchomienie.
+>   Plik jest za każdym razem pisany od nowa, więc własne notatki trzymaj obok. W dashboardzie to pierwsza karta przedmiotu
+>   w Archive → Wykłady.
+> - **Nauka z ChatGPT i Claude:** swój tryb nauki i prompt podręcznika (Primer) wpisujesz w dashboardzie: **Settings → AI
+>   Context → Nauka** (**Wczytaj z Archiwum** wstawia je z Twoich notatek). Tam też możesz podać link do projektu w ChatGPT.
+>   Tracker po zalogowaniu i potem co 10 minut kopiuje oba teksty do vaulta jako `_SYSTEM/learning-mode.md` (czyta go Claude
+>   Desktop, gdy przegadujesz wykład) i `_SYSTEM/primer-prompt.md` (według niego rutyna pisze podręcznik). Zmieniaj je
+>   w dashboardzie, nie w vaulcie: kopię w vaulcie tracker nadpisuje, a puste pole niczego nie kasuje. Przyciski przy wykładzie
+>   i podręczniku kopiują materiał do schowka: **Ucz się w ChatGPT** i **Test w ChatGPT** otwierają ChatGPT (albo Twój
+>   projekt), **Przegadaj w Claude** daje krótkie polecenie do wklejenia w Claude Desktop. Długa nauka idzie więc na Twoich
+>   subskrypcjach, nie przez asystenta w dashboardzie.
 > - **Starsze wykłady od nowa**: żeby rutyna zrobiła podsumowanie sesji przerobionej w starym formacie, ustaw w jej notatce
 >   w `Sessions/` z powrotem `status: new`.
 >
@@ -267,15 +285,33 @@ admin) and the installed copy runs the tracker. Logic lives in
 * **The routine's instructions** (`_SYSTEM/routine-prompt.md`,
   `_SYSTEM/processing-rules.md`) carry a `kos-format: 2` marker. The tracker
   (installer, first scan, each new session) writes them when missing,
-  replaces an older tracker's unedited text, and replaces an edited older copy
-  only after saving it as `<name> (moja wersja <date>).md`, then notes the
-  upgrade in `_SYSTEM/routine-log.md` as a `> [!info]` line. A format-2 file
-  is never touched again, edited or not.
+  replaces a text a tracker shipped (`SHIPPED_TEXTS`: the sha256 of every
+  earlier default, also the first format-2 prompt) with the current one,
+  and replaces an edited older-format copy only after saving it as
+  `<name> (moja wersja <date>).md`, then notes the upgrade in
+  `_SYSTEM/routine-log.md` as a `> [!info]` line. Any other format-2 file
+  is the user's and is never touched (`_SYSTEM/.kos-format` remembers that
+  the vault reached format 2). The prompt asks for a lecture map (one
+  mermaid block, at most 15 nodes) after "W skrócie", a folded
+  `> [!important]- Do zapamiętania` callout before the glossary, and one
+  course textbook per run (`Lectures/<Course>/_Podręcznik.md` or
+  `_Textbook.md`, `type: course-textbook`) following
+  `_SYSTEM/primer-prompt.md`. When the text changes, add the old text's hash
+  to `SHIPPED_TEXTS` and a fixture in `tests/fixtures/`.
+* **Study prompts** (`SyncWorker._pull_study_prompts`,
+  `recordings.write_study_prompts`): after sign-in and then every 10 minutes
+  the sync thread reads `user_context.learning_mode` and `.primer_prompt`
+  with the user's token (migration `20261015180000_study_prompts.sql`) and
+  writes `_SYSTEM/learning-mode.md` / `_SYSTEM/primer-prompt.md`
+  (`source: dashboard` frontmatter + the text) when the text differs. An
+  empty prompt leaves the file alone; a file without `source: dashboard` is
+  saved as `(moja wersja <date>)` first; no other `_SYSTEM` file is
+  written, and a missing vault is not created.
 * **Routine log**: the routine keeps `last_run:` in the log's frontmatter
   (every run) and appends `## YYYY-MM-DD HH:MM` entries with `- sessions:`,
-  `- summaries:`, `- notes:` and `- problems:` lines. The mirror copies the
-  log as `_SYSTEM/routine-log.md`; past 64 kB only the frontmatter and the
-  newest entries are sent.
+  `- summaries:`, `- notes:`, `- textbook:` and `- problems:` lines. The
+  mirror copies the log as `_SYSTEM/routine-log.md`; past 64 kB only the
+  frontmatter and the newest entries are sent.
 
 ## Install from source (advanced)
 

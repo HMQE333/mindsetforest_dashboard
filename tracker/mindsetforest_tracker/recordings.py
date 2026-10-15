@@ -28,7 +28,9 @@ routine's last run.
 
 The Claude routine's instructions live in the vault (``_SYSTEM/``), written
 by ``ensure_system_notes``: an older tracker's text is upgraded to the
-current format, and a copy the user edited is saved beside it first.
+current format, and a copy the user edited is saved beside it first. Beside
+them, ``write_study_prompts`` keeps a copy of the study prompts the user set
+in the dashboard (how to teach them, the primer for course textbooks).
 
 Recordings that start within ``session_gap_minutes`` of the previous one's
 end belong to the same session (a lecture recorded in parts). The session
@@ -302,11 +304,12 @@ If you were sent to this file first, read `_SYSTEM/routine-prompt.md` and follow
 ROUTINE = r"""# Knowledge OS routine
 <!-- kos-format: 2. The scheduled task in Claude Desktop only says: read this file and do what it says.
      Edit this file to change how runs work; the task itself never changes. The MindsetForest tracker
-     never overwrites an edited copy. -->
+     never overwrites an edited copy; an unedited one follows the tracker's newer default. -->
 
 This folder is my Obsidian vault. I am a student. Lectures, online courses and long videos arrive here as
 raw transcripts. For each one you write **one lecture summary**, which I read instead of re-listening, and
-a few **atomic notes** in `Knowledge/`, which link what I learn across lectures in Obsidian's graph.
+a few **atomic notes** in `Knowledge/`, which link what I learn across lectures in Obsidian's graph. Once a
+course has a few lectures, you also keep its **textbook**: the whole course as one compact model (step 6).
 
 You only write files here; nothing has to be sent anywhere. The MindsetForest tracker on this PC copies
 `Lectures/`, `Knowledge/`, `Sessions/` and `_SYSTEM/routine-log.md` to my dashboard within a minute.
@@ -347,7 +350,7 @@ You only write files here; nothing has to be sent anywhere. The MindsetForest tr
     correctly and to follow the structure. Something that is only on a slide was not "said".
   - "No transcript came with it": the parts are the institution's summary or the materials. Write the
     summary from them all the same, and say under "Do wyjaśnienia" that there was no transcript.
-- Nothing new: do only steps 6 and 7.
+- Nothing new: do only steps 6, 7 and 8.
 
 ## 2. Read
 - Read the new parts in order as one text. A transcript line is either `**[hh:mm:ss]** text ^tNNNN`
@@ -389,20 +392,32 @@ The frontmatter, exactly these fields:
 
 The body, in this order. Polish headings are shown; an English note uses the English ones in brackets.
 1. `## W skrócie` [`## In short`]: 3-5 sentences: what the lecture was about and what to take from it.
-2. Numbered topic sections in lecture order: `## 1. <section>`. End each heading with a link to the
+2. `## Mapa wykładu` [`## Lecture map`]: the map comes before the details. One `mermaid` block, not in a
+   callout: a `flowchart` of the lecture's main parts (usually the numbered sections below) and how they
+   lead into or depend on each other, or a `mindmap` when they are branches of one topic. At most 15
+   nodes, short labels in the note's language. In a flowchart, node ids are plain letters and labels are
+   quoted (`ZL["Zdanie logiczne"]`), a label on an arrow is `A -->|odpowiada| B`; in a mindmap the
+   indentation sets the levels under `root((Logika))`. Under the block at most 2 lines: what ties the
+   parts together.
+3. Numbered topic sections in lecture order: `## 1. <section>`. End each heading with a link to the
    moment it starts: `[[Recordings/<note>#^t0754|12:34]]` (the label is that anchor as m:ss or h:mm:ss) or,
    without times, `[[Recordings/<note>#^p0012|¶12]]`. The body is what was said, compressed but faithful:
    definitions as given, the lecturer's reasoning, examples and formulas. Short paragraphs, lists, a table
    where the lecturer built one. Usually 3-8 sections for an hour.
-3. `## Na co prowadzący kładł nacisk` [`## What the lecturer stressed`]: one bullet per point the lecturer
+4. `## Na co prowadzący kładł nacisk` [`## What the lecturer stressed`]: one bullet per point the lecturer
    repeated, called important ("to ważne", "proszę zapamiętać") or tied to the exam or a test ("będzie na
    egzaminie", "na kolokwium"), plus dates and requirements given. Each bullet ends with its anchor link.
    Never drop or merge these: this is what I revise from.
-4. `## Do wyjaśnienia` [`## To clarify`]: unclear audio, terms you could not make out, contradictions
+5. `## Do wyjaśnienia` [`## To clarify`]: unclear audio, terms you could not make out, contradictions
    (also with the institution's summary), what I should check. "Brak." [`None.`] when there is nothing.
-5. `## Pojęcia` [`## Concepts`]: one `[[link]]` per line to the Knowledge notes of this lecture, only notes
+6. `## Pojęcia` [`## Concepts`]: one `[[link]]` per line to the Knowledge notes of this lecture, only notes
    that exist or that you write in this run.
-6. The glossary, last: `> [!note]- Słowniczek PL ↔ EN` [`> [!note]- Glossary EN ↔ PL`], one line per key
+7. `> [!important]- Do zapamiętania` [`> [!important]- To memorise`], right after the concept links: only
+   what cannot be worked out from understanding the lecture and has to be learnt as it is: names, symbols
+   and notation, constants, dates, definitions to know word for word, classifications and lists the
+   lecturer gave. One line each, ending with its anchor link. Whatever follows from the reasoning does not
+   belong here. Leave the callout out when nothing qualifies.
+8. The glossary, last: `> [!note]- Słowniczek PL ↔ EN` [`> [!note]- Glossary EN ↔ PL`], one line per key
    term: `> - **term in the note's language**: term in the other language`. The only place the other
    language appears in a summary.
 
@@ -415,7 +430,7 @@ with `> `:
   put your own additions anywhere else.
 - `> [!abstract]- Wizualizacja` [`> [!abstract]- Visualisation`]: one diagram or plot, only when a picture
   explains better than words: the shape of a function, a relation between sets, a process, a hierarchy.
-  Most lectures need 0-2 in total.
+  Most lectures need 0-2 in total (the lecture map apart).
 
 Math is LaTeX: `$...$` inline, `$$...$$` on lines of its own, standard commands only (it is rendered with
 KaTeX).
@@ -509,7 +524,68 @@ One file per note, exactly in this shape (for an English lecture, the same with 
   next time, not lost (search first and you will update, not duplicate).
 - Never change the `<!-- kos:parts -->` block, the "## Imported with it" list or anything in `Recordings/`.
 
-## 6. Gardening (every run, keep it short)
+## 6. The course textbook (at most one per run)
+A textbook turns a course's lectures into one compact model I can learn from: the map first, then the
+mechanisms that produce the rest, then what is left to memorise. It sits beside the summaries:
+`Lectures/<Course>/_Podręcznik.md` (an English course: `Lectures/<Course>/_Textbook.md`). It is rewritten
+as a whole each time; my own notes on a course live in other files.
+
+- **Which course.** One whose folder in `Lectures/` holds at least 2 summaries (`type: lecture-summary`)
+  and no textbook yet, or whose textbook's `summaries` does not list every summary in the folder. Never
+  `Inne` / `Other`: that is not a course. When several qualify, take the one with the newest summary. If
+  this run already wrote 2 summaries, leave the textbook for the next run. None qualifies: skip this step.
+- **What it is built from.** Only that course's summaries and the Knowledge notes they list under
+  "Pojęcia" / "Concepts". Not the transcripts and not your general knowledge: what the material lacks
+  goes only into a folded "Dla zrozumienia (AI)" callout, as in a summary. The structure is your work:
+  the map, which mechanisms produce the rest, what can be derived, the compression and the questions.
+  Show where a part comes from with a link to its summary, labelled with its date:
+  `([[Lectures/Logika/2026-10-11 Zdania logiczne i zbiory|2026-10-11]])`.
+- **How.** If `_SYSTEM/primer-prompt.md` exists, it is my own prompt for a primer: follow its approach
+  and priorities, with [SUBJECT] = the course, my level = a student taking this course, my purpose =
+  understanding the course and passing its exam. Its parts go into the sections below; its length, its
+  tutor mode and anything that needs material beyond the course's notes do not apply here. Without that
+  file, write the sections below as described.
+- **Language and length.** The course's language (that of its summaries), and one language only, as in a
+  summary. About 2500-5000 words; shorter while the course has little material: never pad.
+
+The frontmatter, exactly these fields:
+
+    ---
+    type: course-textbook
+    course: "Logika"
+    language: pl
+    updated: 2026-10-15
+    summaries: ["[[Lectures/Logika/2026-10-11 Zdania logiczne i zbiory]]", "[[Lectures/Logika/2026-10-18 Kwantyfikatory]]"]
+    ---
+
+`updated` is today; `summaries` lists every summary it was built from, oldest first, as quoted links.
+
+The body, in this order (English headings in brackets):
+1. `## W skrócie` [`## In short`]: 3-5 sentences: what the course is about so far and the thread through
+   its lectures.
+2. `## Mapa przedmiotu` [`## Course map`]: one `mermaid` block, not in a callout, at most 20 nodes: the
+   parts of the subject and how they connect. Then a few lines: what problem the subject deals with, what
+   exists in it, what changes, what acts on what, and which lecture covers which part.
+3. `## Mechanizmy` [`## Mechanisms`]: the 5-10 mechanisms or principles that produce most of the rest. For
+   each: what goes in, what happens, what comes out, what it explains and where it stops working. Show
+   how things relate before you name them. Examples from the lectures in folded "Przykład" callouts, a
+   diagram or plot in a folded "Wizualizacja" callout where a picture helps.
+4. `## Ograniczenia` [`## Constraints`]: what the subject rules out, and what follows from that even
+   without details.
+5. `## Co zapamiętać, a co wyprowadzić` [`## Memorise or derive`]: four short lists: `### Wynika z modelu`
+   [`### Follows from the model`], `### Łatwo odtworzyć` [`### Easy to reconstruct`], `### Do zapamiętania`
+   [`### To memorise`] (names, symbols, constants, dates, definitions word for word, classifications; the
+   summaries' "Do zapamiętania" callouts are a start) and `### Na razie pomiń` [`### Skip for now`].
+6. `## Cały przedmiot na jednej stronie` [`## The course on one page`]: the compression: the 5 most
+   important ideas, the key mechanisms, the constraints and the exceptions: the page to keep if I keep one.
+7. `## Pytania sprawdzające` [`## Diagnostic questions`]: 8-12 numbered questions that test whether I can
+   use the model, not recall words: what happens if X changes, which mechanism produces Y, why it is not
+   done another way, where the model fails. Questions only here, at the end: none in the sections above.
+
+Math, callouts, `mermaid`, `plot` and `plot3d` follow the same rules as in a summary. Link only summaries
+and Knowledge notes that exist; no time anchors (those belong to the summaries).
+
+## 7. Gardening (every run, keep it short)
 Only notes created or changed in the last 7 days:
 - add missing links between them (same concept, cause and effect, example of, part of);
 - a duplicate made by mistake (truly the same idea, not just similar): merge into one note keeping every
@@ -519,13 +595,16 @@ Only notes created or changed in the last 7 days:
   to the question's frontmatter.
 Older summaries in `Sessions/Summary *.md` stay where they are.
 
-## 7. Check, log, reply
+## 8. Check, log, reply
 Check every file you wrote or changed, and fix what fails:
 - the frontmatter parses as YAML and has every field above;
 - every `^tNNNN` / `^pNNNN` you cite exists in that transcript file, and every quote is verbatim;
 - every `[[link]]` points to a note that exists;
 - each `plot` block is one valid JSON object, each line of a `plot3d` block is one, and expressions use
-  only the allowed names; each mermaid block is valid;
+  only the allowed names; each mermaid block is valid, and a lecture map has at most 15 nodes;
+- "Do zapamiętania" holds only what has to be learnt as it is, not what follows from the lecture;
+- a textbook's `summaries` lists every summary in its course folder, and its questions come only at the
+  end;
 - every callout is folded (`-`), and your own additions are only in "Dla zrozumienia (AI)" / "For
   understanding (AI)";
 - each note is in one language (the glossary and `aliases` apart);
@@ -534,18 +613,22 @@ Check every file you wrote or changed, and fix what fails:
 Then `_SYSTEM/routine-log.md` (create it if it is missing; never remove lines from it):
 - every run, also one with nothing to do: set `last_run: YYYY-MM-DD HH:MM` (local time) in its frontmatter;
   add the frontmatter at the very top if the file has none;
-- a run that processed or skipped a session, or hit a problem: append one entry at the end, exactly:
+- a run that processed or skipped a session, wrote a textbook, or hit a problem: append one entry at the
+  end, exactly:
 
       ## 2026-10-11 15:05
       - sessions: 2026-10-11 13-32 (Logika: Zdania logiczne i zbiory)
       - summaries: 1 new, 0 updated
       - notes: 6 new, 2 extended
+      - textbook: none
       - problems: none
 
-  `problems:` names anything that went wrong or that you were unsure about, else `none`.
+  `sessions:` is `none` in a run that only wrote a textbook. `textbook:` names the course whose textbook
+  you wrote, with `(new)` or `(updated)`, else `none`. `problems:` names anything that went wrong or that
+  you were unsure about, else `none`.
 
-Reply briefly: the sessions (course: topic), the summaries and notes written, contradictions found, and
-anything you were unsure about. Finally delete `_SYSTEM/routine.lock`.
+Reply briefly: the sessions (course: topic), the summaries, notes and textbook written, contradictions
+found, and anything you were unsure about. Finally delete `_SYSTEM/routine.lock`.
 
 ## Worked example: a complete summary of a Polish lecture
 The file `Lectures/Logika/2026-10-11 Zdania logiczne i zbiory.md`, written from the session
@@ -563,6 +646,18 @@ source: recording
 ---
 ## W skrócie
 Wykład wprowadził zdanie logiczne i pięć spójników, z których buduje się zdania złożone. Prowadzący omówił tabele prawdy, najdłużej implikację. Potem przeszedł do zbiorów i pokazał, że działania na zbiorach odpowiadają spójnikom. Na koniec omówił funkcję zdaniową i jej zbiór spełnienia.
+
+## Mapa wykładu
+```mermaid
+flowchart LR
+  ZL["Zdanie logiczne"] --> SP["Spójniki i tabele prawdy"]
+  ZL --> FZ["Funkcja zdaniowa"]
+  ZB["Zbiory"] --> DZ["Działania na zbiorach"]
+  SP -->|odpowiadają| DZ
+  FZ --> ZS["Zbiór spełnienia"]
+  ZB --> ZS
+```
+Spójniki budują zdania złożone, a każdemu z nich odpowiada działanie na zbiorach. Funkcja zdaniowa łączy obie części: jej zbiór spełnienia jest zbiorem.
 
 ## 1. Zdanie logiczne [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t0754|12:34]]
 Zdanie logiczne to zdanie oznajmujące, o którym można jednoznacznie powiedzieć, czy jest prawdziwe, czy fałszywe. Prawdzie przypisujemy wartość $1$, fałszowi $0$.
@@ -629,6 +724,12 @@ Przykład z wykładu: dla $x^2 < 4$ w liczbach rzeczywistych zbiorem spełnienia
 - [[Działania na zbiorach]]
 - [[Funkcja zdaniowa]]
 
+> [!important]- Do zapamiętania
+> - Symbole spójników: $\neg$ negacja, $\land$ koniunkcja, $\lor$ alternatywa, $\Rightarrow$ implikacja, $\Leftrightarrow$ równoważność. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t1310|21:50]]
+> - Implikacja $p \Rightarrow q$ jest fałszywa tylko dla $p = 1$ i $q = 0$. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t1580|26:20]]
+> - Zbiory liczb: $\mathbb{N}$ naturalne, $\mathbb{Z}$ całkowite, $\mathbb{Q}$ wymierne, $\mathbb{R}$ rzeczywiste. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t2655|44:15]]
+> - Kolokwium z rozdziałów 1-2: zjazd 8 listopada. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t5410|1:30:10]]
+
 > [!note]- Słowniczek PL ↔ EN
 > - **zdanie logiczne**: proposition
 > - **koniunkcja**: conjunction
@@ -644,7 +745,10 @@ Przykład z wykładu: dla $x^2 < 4$ w liczbach rzeczywistych zbiorem spełnienia
 """
 
 # sha256 of each text an older tracker wrote, after _normalise_text: such a file is the tracker's own and
-# is replaced without a copy. 1.0 (the first Knowledge OS build), then 1.1-1.2 (format 1).
+# is replaced by the current text without a copy, also in a vault already at the current format (an
+# unedited default follows the new default; an edited one stays the user's). 1.0 (the first Knowledge
+# OS build), then 1.1-1.2 (format 1), then the first format-2 routine prompt (1.3.0 builds before the
+# lecture map, "Do zapamiętania" and the course textbook).
 SHIPPED_TEXTS = {
     "processing-rules.md": frozenset({
         "984b771d69e6a53669a119ab124cfec43a5ed582102ab74e5c94d4a46a4ca6a9",
@@ -653,6 +757,7 @@ SHIPPED_TEXTS = {
     "routine-prompt.md": frozenset({
         "39a59146783d997ded5f304f12b9f12a3a83eb586be5cd5736afca436246504e",
         "d41bce98a2ea5ffbc70fa40a48db9b7ee9c2388579e7c9111bf271a865ed128b",
+        "36d667b46fa0f5723451abcfc763562dba506804d2a92fcdf1acdd39bf58485a",
     }),
 }
 ROUTINE_LOG = "routine-log.md"
@@ -897,28 +1002,39 @@ def _keep_copy(path: Path, data: bytes, day: date) -> Path:
     raise OSError(f"no free name for a copy of {path}")
 
 
-def _upgrade_note(path: Path, text: str, day: date) -> Path | None | bool:
-    """Bring one _SYSTEM note to the current format.
+def _upgrade_note(path: Path, text: str, day: date, stamped: bool) -> Path | None | bool:
+    """Bring one _SYSTEM note to the current text.
 
-    False: nothing to do (current format, edited or not). None: replaced, it was a tracker's own
-    text. A path: replaced after the user's edited copy was saved there.
+    False: nothing to do (the current text, or the user's own at the current format). None: replaced,
+    it was a text a tracker shipped. A path: replaced after the user's edited copy of an older format
+    was saved there. ``stamped``: the vault was brought to the current format before, so whatever is
+    not a shipped text is the user's.
     """
     data = path.read_bytes()
     current = data.decode("utf-8", errors="replace")
+    digest = text_hash(current)
+    if digest == text_hash(text):
+        return False
+    if digest in SHIPPED_TEXTS.get(path.name, ()):
+        _write_atomic(path, text)  # an unedited default: the new default replaces it
+        return None
+    if stamped:
+        return False
     marker = FORMAT_MARKER.search(current)
     if marker and int(marker.group(1)) >= FORMAT_VERSION:
         return False
-    if not marker and "Lectures/" in current and text_hash(current) not in SHIPPED_TEXTS.get(path.name, ()):
+    if not marker and "Lectures/" in current:
         return False  # the user's own edit of a format-2 note that lost the comment: theirs, not old
-    copy = None if text_hash(current) in SHIPPED_TEXTS.get(path.name, ()) else _keep_copy(path, data, day)
+    copy = _keep_copy(path, data, day)
     _write_atomic(path, text)
     return copy
 
 
 def _note_upgrade(sysdir: Path, names: list[str], copies: list[Path], when: datetime) -> None:
     """One line in routine-log.md, so the user (and the routine) see the new format and the kept copies."""
-    line = (f"> [!info] Tracker {__version__}, {when:%Y-%m-%d %H:%M}: nowy format rutyny (podsumowania wykładów "
-            f"w Lectures/, notatki w języku wykładu). Zaktualizowane: {', '.join(names)}.")
+    line = (f"> [!info] Tracker {__version__}, {when:%Y-%m-%d %H:%M}: nowa wersja instrukcji rutyny "
+            f"(podsumowania wykładów w Lectures/ z mapą wykładu i „Do zapamiętania”, notatki w języku wykładu, "
+            f"podręcznik przedmiotu). Zaktualizowane: {', '.join(names)}.")
     if copies:
         links = ", ".join(f"[[_SYSTEM/{c.stem}]]" for c in copies)
         line += f" Twoja poprzednia wersja: {links}. Co chcesz z niej zachować, przenieś do nowego pliku."
@@ -950,12 +1066,13 @@ def ensure_import_folder(vault: Path) -> Path:
 
 
 def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
-    """The rules and the routine prompt in ``_SYSTEM/`` at the current format; returns the notes upgraded.
+    """The rules and the routine prompt in ``_SYSTEM/`` at the current text; returns the notes upgraded.
 
-    A missing note is written. A note from an older tracker is replaced: as it is when it is that
-    tracker's own text, else after a copy to "<name> (moja wersja <date>).md", so the user's text is
-    never lost. A note already at the current format belongs to the user and is never touched, edited
-    or not. An upgrade is logged once and noted in routine-log.md. Also makes the Import/ folder.
+    A missing note is written. A text a tracker shipped (``SHIPPED_TEXTS``, an unedited default) is
+    replaced by the current one, whatever its format. Any other note from an older format is replaced
+    after a copy to "<name> (moja wersja <date>).md", so the user's text is never lost. Any other note
+    at the current format belongs to the user and is never touched. An upgrade is logged once and
+    noted in routine-log.md. Also makes the Import/ folder.
     """
     now = now or datetime.now()
     sysdir = vault / "_SYSTEM"
@@ -968,10 +1085,8 @@ def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
         if not p.exists():
             p.write_text(text, encoding="utf-8")
             continue
-        if stamped:
-            continue  # this vault was brought to the current format before: its notes are the user's now
         try:
-            result = _upgrade_note(p, text, now.date())
+            result = _upgrade_note(p, text, now.date(), stamped)
         except OSError as exc:  # a locked or unreadable note must not stop transcription
             log.warning("Could not bring %s to format %d: %s", p, FORMAT_VERSION, exc)
             continue
@@ -994,6 +1109,58 @@ def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
     except OSError as exc:
         log.warning("Could not create %s: %s", vault / IMPORT_DIR, exc)
     return upgraded
+
+
+# -- the study prompts, copied from the dashboard -----------------------------------------
+
+# user_context column -> its copy in _SYSTEM/. Claude Desktop reads the learning mode when the user talks a
+# lecture through there; the routine follows the primer prompt when it writes a course textbook.
+STUDY_PROMPT_FILES = {"learning_mode": "learning-mode.md", "primer_prompt": "primer-prompt.md"}
+_FROM_DASHBOARD = re.compile(r"(?m)^source:[ \t]*[\"']?dashboard[\"']?[ \t]*\r?$")
+
+
+def study_prompt_note(text: str) -> str:
+    """A study prompt as its vault copy: a short frontmatter, then the text as written in the dashboard."""
+    return f"---\nsource: dashboard\n---\n{text.strip()}\n"
+
+
+def write_study_prompts(vault: Path, prompts: dict[str, str], now: datetime | None = None) -> list[str]:
+    """The dashboard's study prompts copied into ``<vault>/_SYSTEM/``; returns the files written.
+
+    The dashboard holds the text (Settings -> AI Context -> Nauka) and the vault copy follows it: a
+    file that already holds the text is left as it is, and an empty prompt never empties or deletes
+    one. A file the dashboard did not write (no ``source: dashboard``) is the user's own: it is first
+    saved as "<name> (moja wersja <date>).md". Only the files in ``STUDY_PROMPT_FILES`` are written,
+    and a vault that does not exist (a drive not mounted yet) is not created.
+    """
+    if not vault.is_dir():
+        return []
+    sysdir = vault / "_SYSTEM"
+    written: list[str] = []
+    for field_name, name in STUDY_PROMPT_FILES.items():
+        text = prompts.get(field_name)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        note = study_prompt_note(text)
+        path = sysdir / name
+        try:
+            data = path.read_bytes() if path.exists() else None
+            if data is not None:
+                current = data.decode("utf-8", errors="replace")
+                if _normalise_text(current) == _normalise_text(note):
+                    continue
+                head = _FRONTMATTER.match(current)
+                if head is None or not _FROM_DASHBOARD.search(head.group(1)):
+                    _keep_copy(path, data, (now or datetime.now()).date())
+            sysdir.mkdir(exist_ok=True)
+            _write_atomic(path, note)
+        except OSError as exc:  # a locked file waits for the next turn
+            log.warning("Could not write %s: %s", path, exc)
+            continue
+        written.append(name)
+    if written:
+        log.info("Study prompts from the dashboard written to the vault: %s", ", ".join(written))
+    return written
 
 
 def known_from_row(sha: str, row: dict, path: Path) -> Known:
