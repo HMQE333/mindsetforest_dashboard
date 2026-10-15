@@ -449,7 +449,7 @@ export function parseLectureSummary(f: VaultFile): LectureSummary {
     vault: f.vault,
     modified: f.modified_at,
     course: scalar(data.course),
-    topic: scalar(data.topic) || heading || name.replace(/^(summary\s+)?\d{4}-\d{2}-\d{2}( \d{2}-\d{2})?\s*/i, "") || name,
+    topic: scalar(data.topic) || heading || name.replace(/^(summary\s+)?\d{4}-\d{2}-\d{2}( \d{2}-\d{2})?\s*/i, "") || legacyKey || name,
     date: datePart(scalar(data.date)) || datePart(name) || datePart(legacyKey) || datePart(scalar(data.created)),
     language: lang === "pl" || lang === "en" ? lang : guessLanguage(body),
     source: src === "import" || src === "youtube" ? src : "recording",
@@ -666,11 +666,11 @@ export function noteDate(note: string): Date | null {
   return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
 }
 
-/** "7 Oct, 14:03 · 12:30": where a source points, for a chip. */
-export function sourceLabel(s: SourceRef): string {
+/** "7 Oct, 14:03 · 12:30" ("7 paź, 14:03 · 12:30" with locale "pl-PL"): where a source points, for a chip. */
+export function sourceLabel(s: SourceRef, locale = "en-GB"): string {
   const d = noteDate(s.note);
   const when = d
-    ? `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}, ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    ? `${d.toLocaleDateString(locale, { day: "numeric", month: "short" })}, ${pad(d.getHours())}:${pad(d.getMinutes())}`
     : s.note.length > 28 ? `${s.note.slice(0, 27)}…` : s.note;
   const at = momentLabel(s);
   return at === null ? when : `${when} · ${at}`;

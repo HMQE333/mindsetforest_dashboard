@@ -1,22 +1,42 @@
 import { useEffect, useRef } from "react";
 import { useRecordingSegments } from "@/hooks/useKnowledgeOS";
-import { clock, segmentAt } from "@/lib/kos-vault";
+import { clock, isUntimed, segmentAt, segmentForParagraph } from "@/lib/kos-vault";
 
 interface Props {
   recordingId: string | null;
   /** Seconds to highlight (and scroll to). */
   at?: number | null;
-  /** Show only a few segments around `at` instead of the whole transcript. */
+  /** Or, for an import without times, the paragraph (1-based) to highlight. */
+  paragraph?: number | null;
+  /** Show only a few segments around the moment instead of the whole transcript. */
   context?: boolean;
   /** Words to mark in the text. */
   mark?: string;
+  /** The language of the messages around the transcript (the Recordings tab is English, Wykłady follows the note). */
+  lang?: "pl" | "en";
 }
 
-/** A recording's raw transcript, loaded when shown; one line per Whisper segment. */
-export default function TranscriptPanel({ recordingId, at = null, context = false, mark }: Props) {
+const MSG = {
+  en: { missing: "This recording is not in the dashboard.", loading: "Loading transcript…", failed: "Could not load the transcript.", empty: "Nothing was transcribed." },
+  pl: { missing: "Tego nagrania nie ma w panelu.", loading: "Wczytuję zapis…", failed: "Nie udało się wczytać zapisu.", empty: "Nic nie zostało zapisane." },
+};
+
+/**
+ * A recording's raw transcript, loaded when shown; one line per Whisper
+ * segment, or per paragraph (¶) for an imported text without times.
+ */
+export default function TranscriptPanel({ recordingId, at = null, paragraph = null, context = false, mark, lang = "en" }: Props) {
+  const t = MSG[lang];
   const { segments, loading, error } = useRecordingSegments(recordingId);
   const box = useRef<HTMLDivElement>(null);
-  const hit = segments && segments.length && at !== null ? segmentAt(segments, at) : -1;
+  const untimed = !!segments && isUntimed(segments);
+  const hit = !segments || !segments.length
+    ? -1
+    : paragraph !== null
+      ? segmentForParagraph(segments, paragraph)
+      : at !== null
+        ? segmentAt(segments, at)
+        : -1;
 
   useEffect(() => {
     if (context || hit < 0 || !box.current) return;
@@ -24,13 +44,13 @@ export default function TranscriptPanel({ recordingId, at = null, context = fals
     if (el) box.current.scrollTop = el.offsetTop - box.current.clientHeight / 3;
   }, [hit, context, segments]);
 
-  if (!recordingId) return <p className="text-xs text-muted-foreground">This recording is not in the dashboard.</p>;
-  if (loading) return <p className="text-xs text-muted-foreground">Loading transcript…</p>;
-  if (error || !segments) return <p className="text-xs text-destructive">Could not load the transcript.</p>;
-  if (!segments.length) return <p className="text-xs text-muted-foreground">Nothing was transcribed.</p>;
+  if (!recordingId) return <p className="text-xs text-muted-foreground">{t.missing}</p>;
+  if (loading) return <p className="text-xs text-muted-foreground">{t.loading}</p>;
+  if (error || !segments) return <p className="text-xs text-destructive">{t.failed}</p>;
+  if (!segments.length) return <p className="text-xs text-muted-foreground">{t.empty}</p>;
 
-  const from = context && hit >= 0 ? Math.max(0, hit - 2) : 0;
-  const to = context && hit >= 0 ? Math.min(segments.length, hit + 4) : segments.length;
+  const from = context && hit >= 0 ? Math.max(0, hit - (untimed ? 1 : 2)) : 0;
+  const to = context && hit >= 0 ? Math.min(segments.length, hit + (untimed ? 2 : 4)) : segments.length;
   return (
     <div
       ref={box}
@@ -41,7 +61,9 @@ export default function TranscriptPanel({ recordingId, at = null, context = fals
         const i = from + j;
         return (
           <p key={i} data-i={i} className={`flex gap-2 rounded px-1 ${i === hit ? "bg-primary/15 text-foreground" : "text-foreground/75"}`}>
-            <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground pt-[3px]">{clock(s.start)}</span>
+            <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground pt-[3px] min-w-[2.2rem]">
+              {untimed ? `¶${s.p ?? i + 1}` : clock(s.start)}
+            </span>
             <span>{highlight(s.text, mark)}</span>
           </p>
         );

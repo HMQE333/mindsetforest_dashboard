@@ -64,7 +64,7 @@ export default function PlotBlock({ source, lang }: { source: string; lang: Lang
   const hover = hoverX === null ? null : fns.map((f) => f.fn({ x: hoverX }));
 
   return (
-    <figure className="my-2 space-y-1.5">
+    <figure className="my-2 space-y-1.5" data-plot="2d">
       {spec.title && <figcaption className="text-sm font-semibold text-foreground">{spec.title}</figcaption>}
       <div ref={box} className="relative w-full">
         <svg

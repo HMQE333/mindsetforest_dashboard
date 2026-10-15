@@ -58,7 +58,7 @@ export default function Plot3DBlock({ source, lang }: { source: string; lang: La
   const canvas = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View>(DEFAULT_VIEW);
   const [moved, setMoved] = useState(false);
-  const drag = useRef<{ id: number; x: number; y: number; start: View } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; start: View; touch: boolean; turning: boolean } | null>(null);
   const pinch = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
 
@@ -97,7 +97,7 @@ export default function Plot3DBlock({ source, lang }: { source: string; lang: La
       return;
     }
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, start: view };
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, start: view, touch: e.pointerType === "touch", turning: false };
   };
   const onMove = (e: PointerEvent<HTMLCanvasElement>) => {
     if (pinch.current.has(e.pointerId)) pinch.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -109,8 +109,18 @@ export default function Plot3DBlock({ source, lang }: { source: string; lang: La
     }
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (d.touch) {
+      // A finger turns the plot only sideways; up and down is left to the page, so it still scrolls.
+      if (!d.turning && (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy))) return;
+      d.turning = true;
+      setMoved(true);
+      setView(dragView(d.start, dx, 0));
+      return;
+    }
     setMoved(true);
-    setView(dragView(d.start, e.clientX - d.x, e.clientY - d.y));
+    setView(dragView(d.start, dx, dy));
   };
   const onUp = (e: PointerEvent<HTMLCanvasElement>) => {
     pinch.current.delete(e.pointerId);
@@ -218,7 +228,13 @@ function draw(ctx: CanvasRenderingContext2D, scene: Scene, view: View, W: number
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
-  const text = (s: string, x: number, y: number, color = muted, align: CanvasTextAlign = "center") => {
+  const text = (s: string, x0: number, y0: number, color = muted, align: CanvasTextAlign = "center") => {
+    // Kept inside the canvas: a label past the edge would be cut off.
+    const w = ctx.measureText(s).width;
+    const lo = align === "right" ? w + 4 : align === "center" ? w / 2 + 4 : 4;
+    const hi = align === "left" ? w + 4 : align === "center" ? w / 2 + 4 : 4;
+    const x = Math.min(W - hi, Math.max(lo, x0));
+    const y = Math.min(H - 8, Math.max(8, y0));
     ctx.textAlign = align;
     ctx.textBaseline = "middle";
     ctx.lineWidth = 3;
@@ -233,6 +249,8 @@ function draw(ctx: CanvasRenderingContext2D, scene: Scene, view: View, W: number
   const [y0, y1] = scene.y;
   const [z0, z1] = scene.z;
   const prims: Prim[] = [];
+  // Axis labels go on top of everything, so a surface never hides them.
+  const later: (() => void)[] = [];
 
   if (!scene.originAxes) {
     // The floor at the lowest z: a grid with tick labels on its two nearest edges, and a z axis at its farthest corner.
@@ -253,22 +271,24 @@ function draw(ctx: CanvasRenderingContext2D, scene: Scene, view: View, W: number
     // Tick labels: x along the edge through the nearest corner at y = near y, y along x = near x.
     for (const xv of scene.ticks.x) {
       const p = P(toBox([xv, near[1] + (near[1] === y0 ? -1 : 1) * (y1 - y0) * 0.09, z0]));
-      text(tickLabel(xv), p.x, p.y);
+      later.push(() => text(tickLabel(xv), p.x, p.y));
     }
     for (const yv of scene.ticks.y) {
       const p = P(toBox([near[0] + (near[0] === x0 ? -1 : 1) * (x1 - x0) * 0.09, yv, z0]));
-      text(tickLabel(yv), p.x, p.y);
+      later.push(() => text(tickLabel(yv), p.x, p.y));
     }
     for (const zv of scene.ticks.z) {
       const p = P(toBox([far[0], far[1], zv]));
-      text(tickLabel(zv), p.x - 8, p.y, muted, "right");
+      later.push(() => text(tickLabel(zv), p.x - 8, p.y, muted, "right"));
     }
-    const xl = P(toBox([(x0 + x1) / 2, near[1] + (near[1] === y0 ? -1 : 1) * (y1 - y0) * 0.2, z0]));
-    text("x", xl.x, xl.y, fg);
-    const yl = P(toBox([near[0] + (near[0] === x0 ? -1 : 1) * (x1 - x0) * 0.2, (y0 + y1) / 2, z0]));
-    text("y", yl.x, yl.y, fg);
+    const xEnd = near[0] === x0 ? x1 : x0;
+    const xl = P(toBox([xEnd + (xEnd === x1 ? 1 : -1) * (x1 - x0) * 0.12, near[1] + (near[1] === y0 ? -1 : 1) * (y1 - y0) * 0.09, z0]));
+    later.push(() => text("x", xl.x, xl.y, fg));
+    const yEnd = near[1] === y0 ? y1 : y0;
+    const yl = P(toBox([near[0] + (near[0] === x0 ? -1 : 1) * (x1 - x0) * 0.09, yEnd + (yEnd === y1 ? 1 : -1) * (y1 - y0) * 0.12, z0]));
+    later.push(() => text("y", yl.x, yl.y, fg));
     const zl = P(toBox([far[0], far[1], z1 + (z1 - z0) * 0.08]));
-    text("z", zl.x, zl.y, fg);
+    later.push(() => text("z", zl.x, zl.y, fg));
   } else {
     // Points and vectors: axes through the origin, part of the depth order.
     const axes: [V3, string][] = [
@@ -373,6 +393,8 @@ function draw(ctx: CanvasRenderingContext2D, scene: Scene, view: View, W: number
       if (pr.label) text(pr.label, pr.p.x + 9, pr.p.y - 9, fg, "left");
     }
   }
+
+  for (const f of later) f();
 
   function line(a: { x: number; y: number }, b: { x: number; y: number }) {
     ctx.beginPath();

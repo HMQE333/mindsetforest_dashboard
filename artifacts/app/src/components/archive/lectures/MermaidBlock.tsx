@@ -46,13 +46,8 @@ export default function MermaidBlock({ code, lang }: { code: string; lang: "pl" 
         if (!live || !box.current) return;
         // The SVG comes from mermaid with securityLevel "strict", which sanitises labels.
         box.current.innerHTML = svg;
-        const el = box.current.querySelector("svg");
-        if (el) {
-          el.removeAttribute("height");
-          el.style.maxWidth = "100%";
-          el.style.height = "auto";
-          el.setAttribute("role", "img");
-        }
+        // Mermaid sizes the SVG to its natural width (max-width) and lets it shrink on a narrow screen.
+        box.current.querySelector("svg")?.setAttribute("role", "img");
         setState("done");
       } catch (e) {
         document.getElementById(`d${id}`)?.remove();

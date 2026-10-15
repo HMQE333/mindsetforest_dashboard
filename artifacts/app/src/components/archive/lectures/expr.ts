@@ -30,6 +30,9 @@ export const FUNCTIONS: Record<string, (a: number) => number> = {
 
 const CONSTANTS: Record<string, number> = { pi: Math.PI, e: Math.E };
 
+/** Own keys only: "constructor" or "__proto__" must not reach Object.prototype. */
+const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
 export type ExprErrorCode = "empty" | "unexpected" | "unknown" | "paren" | "call" | "variable" | "end";
 
 export class ExprError extends Error {
@@ -163,7 +166,7 @@ export function compile(src: string, vars: readonly ("x" | "y")[] = ["x", "y"]):
     }
     if (t.k === "id") {
       pos++;
-      const fn = FUNCTIONS[t.v];
+      const fn = own(FUNCTIONS, t.v) ? FUNCTIONS[t.v] : null;
       if (fn) {
         if (!isOp(peek(), "(")) throw new ExprError("call", t.v, t.at);
         pos++;
@@ -172,7 +175,7 @@ export function compile(src: string, vars: readonly ("x" | "y")[] = ["x", "y"]):
         pos++;
         return (v) => fn(arg(v));
       }
-      if (t.v in CONSTANTS) {
+      if (own(CONSTANTS, t.v)) {
         const c = CONSTANTS[t.v];
         return () => c;
       }

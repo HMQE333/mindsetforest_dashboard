@@ -213,9 +213,11 @@ export function ticks(min: number, max: number, count = 6): number[] {
   const raw = (max - min) / Math.max(1, count);
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const norm = raw / mag;
-  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  // The step nearest the raw one on a log scale (as d3 does): 2.15 becomes 2, not 5.
+  const step = (norm >= Math.sqrt(50) ? 10 : norm >= Math.sqrt(10) ? 5 : norm >= Math.SQRT2 ? 2 : 1) * mag;
   const out: number[] = [];
-  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  // Multiples of the step, rounded, so 3 × 0.2 reads 0.6 and not 0.6000000000000001.
+  for (let k = Math.ceil(min / step - 1e-9); k <= Math.floor(max / step + 1e-9); k++) out.push(Number((k * step).toPrecision(12)) || 0);
   return out;
 }
 
