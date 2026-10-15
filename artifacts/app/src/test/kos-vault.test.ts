@@ -44,6 +44,13 @@ describe("frontmatter", () => {
     expect(body).toBe("Body");
     expect(parseFrontmatter("no frontmatter").body).toBe("no frontmatter");
   });
+
+  it("reads a note saved on Windows (CRLF) and gives its body LF line ends", () => {
+    const { data, body } = parseFrontmatter("---\r\ntype: lecture-summary\r\nlanguage: pl\r\n---\r\n## W skrócie\r\nTekst.\r\n");
+    expect(data).toEqual({ type: "lecture-summary", language: "pl" });
+    expect(body).toBe("## W skrócie\nTekst.\n");
+    expect(parseFrontmatter("a\r\nb").body).toBe("a\nb");
+  });
 });
 
 describe("knowledge notes", () => {
@@ -156,7 +163,9 @@ describe("helpers", () => {
 import {
   asSegments,
   groupLectures,
+  isTextbookFile,
   isUntimed,
+  lectureSectionKind,
   momentLabel,
   parseLectureSummary,
   parseRoutineLog,
@@ -165,7 +174,7 @@ import {
   sourceRef,
   staleSessions,
 } from "../lib/kos-vault";
-import { FIXTURE_FILES, FIXTURE_RECORDINGS, REC_EN, REC_PL } from "./lecture-fixtures";
+import { FIXTURE_FILES, FIXTURE_RECORDINGS, REC_EN, REC_PL, REC_PL2, TEXTBOOK_PL } from "./lecture-fixtures";
 
 const byPath = (p: string) => FIXTURE_FILES.find((f) => f.path === p)!;
 
@@ -200,8 +209,9 @@ describe("lecture summaries", () => {
 
   it("indexes summaries apart from session notes, maps them to sessions and reads the routine's log", () => {
     const index = indexVault(FIXTURE_FILES);
-    expect(index.lectures).toHaveLength(3);
-    expect([...index.sessions.keys()].sort()).toEqual(["2026-10-11 13-32", "2026-10-12 09-00", "2026-10-13 15-53", "2026-10-14 08-10"]);
+    expect(index.lectures).toHaveLength(4);
+    expect(index.textbooks.map((t) => t.path)).toEqual(["Lectures/Logika/_Podręcznik.md"]);
+    expect([...index.sessions.keys()].sort()).toEqual(["2026-10-11 13-32", "2026-10-12 09-00", "2026-10-13 15-53", "2026-10-14 08-10", "2026-10-18 13-30"]);
     expect(index.sessions.get("2026-10-11 13-32")?.summary).toBe("Lectures/Logika/2026-10-11 Zdania logiczne i zbiory");
     // The summary link under "## Knowledge" is not a knowledge note.
     expect(index.sessions.get("2026-10-11 13-32")?.knowledge).toEqual(["Zdanie logiczne", "Implikacja"]);
@@ -212,19 +222,67 @@ describe("lecture summaries", () => {
     expect(summaryOf("2026-10-12 09-00")).toBe("Lectures/Intro to Data Science/2026-10-12 Measuring spread.md");
     expect(summaryOf("2026-10-13 15-53")).toBe("Sessions/Summary 2026-10-13 15-53.md");
     expect(summaryOf("2026-10-14 08-10")).toBeNull();
+    // A textbook covers no session of its own.
+    expect(summaryOf("2026-10-18 13-30")).toBe("Lectures/Logika/2026-10-18 Kwantyfikatory.md");
   });
 
   it("groups by course, newest first, unknown courses last as Inne, and searches without diacritics", () => {
     const { lectures } = indexVault(FIXTURE_FILES);
     expect(groupLectures(lectures).map((g) => [g.course, g.lectures.length])).toEqual([
+      ["Logika", 2],
       ["Intro to Data Science", 1],
-      ["Logika", 1],
       ["Inne", 1],
     ]);
+    expect(groupLectures(lectures)[0].lectures.map((l) => l.date)).toEqual(["2026-10-18", "2026-10-11"]);
     expect(groupLectures(lectures, "zbior").map((g) => g.course)).toEqual(["Logika"]);
     expect(groupLectures(lectures, "SPÓJNIKÓW zdanie").map((g) => g.course)).toEqual(["Logika"]);
     expect(groupLectures(lectures, "cloud").map((g) => g.course)).toEqual(["Inne"]);
     expect(groupLectures(lectures, "nothing like this")).toEqual([]);
+  });
+
+  it("puts each course's textbook first in its group, also when only the textbook matches the search", () => {
+    const { lectures, textbooks } = indexVault(FIXTURE_FILES);
+    const groups = groupLectures(lectures, "", textbooks);
+    expect(groups.map((g) => [g.course, g.textbook?.path ?? null])).toEqual([
+      ["Logika", "Lectures/Logika/_Podręcznik.md"],
+      ["Intro to Data Science", null],
+      ["Inne", null],
+    ]);
+    // "Cały przedmiot na jednej stronie" is only in the textbook.
+    const only = groupLectures(lectures, "jednej stronie", textbooks);
+    expect(only.map((g) => [g.course, g.lectures.length, !!g.textbook])).toEqual([["Logika", 0, true]]);
+    expect(groupLectures(lectures, "variance", textbooks).map((g) => [g.course, !!g.textbook])).toEqual([["Intro to Data Science", false]]);
+    // A course with only a textbook still gets a group, sorted by the textbook's date.
+    const lone = parseLectureSummary({ path: "Lectures/Fizyka/_Podręcznik.md", vault: "V", modified_at: "2026-10-20T08:00:00Z", content: "## W skrócie\nRuch." });
+    expect(groupLectures(lectures, "", [lone]).map((g) => g.course)[0]).toBe("Fizyka");
+  });
+
+  it("reads a course textbook: course, language, updated date, the summaries it covers and its sections", () => {
+    const t = parseLectureSummary(byPath("Lectures/Logika/_Podręcznik.md"));
+    expect([t.kind, t.course, t.language, t.date, t.topic, t.legacy, t.sessions]).toEqual(["textbook", "Logika", "pl", "2026-10-19", "Podręcznik przedmiotu", false, []]);
+    expect(t.summaries).toEqual(["Lectures/Logika/2026-10-11 Zdania logiczne i zbiory", "Lectures/Logika/2026-10-18 Kwantyfikatory"]);
+    expect(t.short).toMatch(/^Logika buduje zdania złożone/);
+    expect(t.sections.map((s) => s.kind)).toEqual(["short", "map", "section", "section", "memorise", "compression", "questions"]);
+    // Recognised by its type or by the routine's file name; the folder is the course when the frontmatter has none.
+    const bare = parseLectureSummary({ path: "Lectures/Statistics 101/_Textbook.md", vault: "V", modified_at: "2026-10-20T08:00:00Z", content: "## In short\nThe course so far." });
+    expect([bare.kind, bare.course, bare.language, bare.topic, bare.date]).toEqual(["textbook", "Statistics 101", "en", "Course textbook", "2026-10-20"]);
+    expect(isTextbookFile("Lectures/Logika/2026-10-11 Zdania.md", "lecture-summary")).toBe(false);
+    expect(isTextbookFile("Lectures/Logika/notes.md", "course-textbook")).toBe(true);
+    expect(isTextbookFile("Lectures/Logika/_Podrecznik.md", null)).toBe(true);
+    expect(parseLectureSummary({ path: "Lectures/Logika/_Podręcznik.md", vault: "V", modified_at: "", content: TEXTBOOK_PL }).kind).toBe("textbook");
+    expect(parseLectureSummary(byPath("Lectures/Logika/2026-10-18 Kwantyfikatory.md")).kind).toBe("summary");
+  });
+
+  it("knows the lecture map and what to memorise, in both languages", () => {
+    const kinds = (hs: string[]) => hs.map(lectureSectionKind);
+    expect(kinds(["Mapa wykładu", "Lecture map", "🗺️ Mapa wykładu", "Mapa przedmiotu", "Course map", "Mapa"])).toEqual(Array(6).fill("map"));
+    expect(kinds(["Do zapamiętania", "To memorise", "To memorize", "Co zapamiętać, a co wyprowadzić", "Memorise or derive"])).toEqual(Array(5).fill("memorise"));
+    expect(kinds(["Cały przedmiot na jednej stronie", "The course on one page", "Pytania sprawdzające", "Diagnostic questions"])).toEqual(["compression", "compression", "questions", "questions"]);
+    // A numbered section about maps is still a section.
+    expect(kinds(["1. Mapa myśli w praktyce", "Mapy pojęć", "2. Lecture map of Europe"])).toEqual(["section", "section", "section"]);
+    const l = parseLectureSummary(byPath("Lectures/Logika/2026-10-18 Kwantyfikatory.md"));
+    expect(l.sections.map((s) => s.kind)).toEqual(["short", "map", "section", "section", "section", "stressed", "clarify", "concepts"]);
+    expect(l.sections[2].moment).toEqual({ note: REC_PL2, seconds: 240 });
   });
 
   it("resolves links the way Obsidian does: moments, knowledge notes, other summaries, missing notes", () => {
@@ -237,6 +295,7 @@ describe("lecture summaries", () => {
     expect(kind("[[Knowledge/Zdanie logiczne]]")).toBe("note");
     expect(kind("[[Lectures/Logika/2026-10-11 Zdania logiczne i zbiory]]")).toBe("lecture");
     expect(kind("[[2026-10-12 Measuring spread]]")).toBe("lecture");
+    expect(kind("[[Lectures/Logika/_Podręcznik|podręcznik]]")).toBe("lecture");
     expect(kind("[[Sessions/2026-10-11 13-32]]")).toBe("missing");
     expect(kind("[[Nie istnieje]]")).toBe("missing");
   });

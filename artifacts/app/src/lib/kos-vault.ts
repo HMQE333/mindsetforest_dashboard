@@ -68,10 +68,13 @@ function inlineList(s: string): string[] {
   return out.map(unquote).filter((x) => x !== "");
 }
 
-/** Leading YAML frontmatter, the subset notes use: scalars, [inline] lists and "- item" lists. */
+/**
+ * Leading YAML frontmatter, the subset notes use: scalars, [inline] lists and "- item" lists.
+ * The body comes back with LF line ends (a note saved on Windows may have CRLF).
+ */
 export function parseFrontmatter(raw: string): { data: Record<string, FrontValue>; body: string } {
   const m = /^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(raw);
-  if (!m) return { data: {}, body: raw };
+  if (!m) return { data: {}, body: lf(raw) };
   const data: Record<string, FrontValue> = {};
   let listKey: string | null = null;
   for (const line of m[1].split(/\r?\n/)) {
@@ -91,8 +94,10 @@ export function parseFrontmatter(raw: string): { data: Record<string, FrontValue
     else if (rest.startsWith("[") && rest.endsWith("]") && !rest.startsWith("[[")) data[key] = inlineList(rest);
     else data[key] = unquote(rest);
   }
-  return { data, body: raw.slice(m[0].length) };
+  return { data, body: lf(raw.slice(m[0].length)) };
 }
+
+const lf = (s: string) => (s.includes("\r") ? s.replace(/\r\n?/g, "\n") : s);
 
 function scalar(v: FrontValue | undefined): string | null {
   if (v === undefined) return null;

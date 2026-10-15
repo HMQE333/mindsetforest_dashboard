@@ -38,26 +38,30 @@ const fake = vi.hoisted(() => {
 vi.mock("@/integrations/supabase/client", () => ({ supabase: fake.supabase }));
 
 import {
-  gatherLectureItems,
-  guessLanguage,
-  isLectureItem,
+  BUILTIN_LEARNING,
+  KNOWLEDGE_MAX_CHARS,
+  PASSAGES_MAX,
+  STUDY_PACK_MAX,
+  buildCoursePack,
+  buildStudyPack,
+  claudeInstruction,
   knowledgeContext,
-  lectureContext,
-  lectureItemId,
   lectureMoments,
-  openLectureTutor,
+  loadLectureRecordings,
+  mergeGlossary,
   parseLecture,
+  plainMarkdown,
+  plainNote,
   selectExcerpts,
   stems,
+  takeGlossary,
   transcriptParts,
-  tutorRequest,
-  tutorRules,
   type RecordingInput,
-  type TutorApi,
 } from "../lib/lecture-tutor";
 import { gatherContext } from "../lib/assistant-context";
 import { keywordScopes } from "../lib/scope-hints";
-import type { VaultFile } from "../lib/kos-vault";
+import { groupLectures, guessLanguage, indexVault, parseLectureSummary, type VaultFile } from "../lib/kos-vault";
+import { FIXTURE_FILES, FIXTURE_RECORDINGS, FIXTURE_SEGMENTS, REC_PL } from "./lecture-fixtures";
 
 const NOTE = "2026-10-11 13-32-45 lecture";
 const at = (t: number, label: string) => `[[Recordings/${NOTE}#^t${String(t).padStart(4, "0")}|${label}]]`;
@@ -186,27 +190,7 @@ describe("selectExcerpts", () => {
   const parts = transcriptParts([longRecording()]);
   const moments = lectureMoments(parseLecture(logikaFile).body);
 
-  it("finds the passage the message is about, with its time, within the budget", () => {
-    const ex = selectExcerpts(parts, { question: "Co mówił o kwantyfikatorach?", moments, budget: 3000, language: "pl" });
-    expect(ex.full).toBe(false);
-    expect(ex.text).toContain("Kwantyfikator ogólny");
-    expect(ex.text).toMatch(/\[59:10–1:01:00\] .*Kwantyfikator ogólny/);
-    expect(ex.text.length).toBeLessThanOrEqual(3000);
-    expect(ex.picked).toBeLessThan(ex.total);
-  });
-
-  it("uses the reply being answered too: a bare quiz answer still finds its question's passage", () => {
-    const ex = selectExcerpts(parts, {
-      question: "nie wiem",
-      previousReply: "Pytanie 2/5: Co mówią prawa De Morgana?",
-      moments: [],
-      budget: 1200,
-      language: "pl",
-    });
-    expect(ex.text).toContain("negacja koniunkcji");
-  });
-
-  it("without a question, brings what the lecturer stressed first, then the other cited moments", () => {
+  it("brings what the lecturer stressed first, then the other cited moments", () => {
     const small = selectExcerpts(parts, { moments, budget: 1700, language: "pl" });
     expect(small.text).toContain("to będzie na egzaminie");
     expect(small.text).toContain("Prawa De Morgana");
@@ -219,7 +203,7 @@ describe("selectExcerpts", () => {
   });
 
   it("spreads passages over the recording when there is nothing to aim at", () => {
-    const ex = selectExcerpts(parts, { question: "ok", moments: [], budget: 7000, language: "pl" });
+    const ex = selectExcerpts(parts, { moments: [], budget: 7000, language: "pl" });
     const starts = [...ex.text.matchAll(/^\[([\d:]+)–/gm)].map((m) => m[1].split(":").reduce((t, x) => t * 60 + Number(x), 0));
     expect(starts.length).toBeGreaterThanOrEqual(4);
     // 2000 segments of 10 s: the passages reach from the first quarter to the last.
@@ -233,16 +217,16 @@ describe("selectExcerpts", () => {
     expect(selectExcerpts(parts, { moments: one, budget: 10_000, language: "pl" }).text.length).toBeGreaterThan(2000);
     const two = transcriptParts([longRecording(900), { ...longRecording(900), note_name: "b", recorded_at: "2026-10-11T14:00:00Z" }]);
     for (const budget of [300, 800, 2500, 7000, 20_000]) {
-      for (const question of [undefined, "kwantyfikator ogólny", "sprawy organizacyjne numer"]) {
-        expect(selectExcerpts(two, { question, moments, budget, language: "pl" }).text.length).toBeLessThanOrEqual(budget);
-        expect(selectExcerpts(parts, { question, moments, budget, language: "en" }).text.length).toBeLessThanOrEqual(budget);
+      for (const m of [moments, [], one]) {
+        expect(selectExcerpts(two, { moments: m, budget, language: "pl" }).text.length).toBeLessThanOrEqual(budget);
+        expect(selectExcerpts(parts, { moments: m, budget, language: "en" }).text.length).toBeLessThanOrEqual(budget);
       }
     }
   });
 
   it("sends a short transcript whole", () => {
     const short = transcriptParts([longRecording(20)]);
-    const ex = selectExcerpts(short, { question: "cokolwiek", moments: [], budget: 10_000, language: "pl" });
+    const ex = selectExcerpts(short, { moments: [], budget: 10_000, language: "pl" });
     expect(ex.full).toBe(true);
     expect(ex.picked).toBe(20);
     expect(ex.text.startsWith("[0:00–")).toBe(true);
@@ -278,103 +262,325 @@ describe("selectExcerpts", () => {
   });
 });
 
-describe("lectureContext", () => {
-  it("fits the budget: the summary in full, moments as times, plots as one line, the tutoring rules", () => {
-    const text = lectureContext({ file: logikaFile, rows: [longRecording()], question: "kwantyfikator", budget: 20_000 });
-    expect(text.length).toBeLessThanOrEqual(20_000);
-    expect(text).toContain("Lecture: Logika · 2026-10-11 · Zdania logiczne i zbiory");
-    expect(text).toContain("## Na co prowadzący kładł nacisk");
-    expect(text).toContain("Prawa De Morgana (40:00)");
-    expect(text).toContain("## 1. Zdania i spójniki (2:00)");
-    expect(text).toContain("(wykres: sin i cos)");
-    expect(text).not.toContain('"functions"');
-    expect(text).toContain("Dla zrozumienia (AI)");
-    expect(text).toContain("Pytanie 1/5");
-    expect(text).toContain("Kwantyfikator ogólny");
+// -- the hand-off: a vault note as plain Markdown, the study pack, Claude, the course pack ----
+
+const index = indexVault(FIXTURE_FILES);
+const lectureAt = (p: string) => index.lectureByPath.get(p.replace(/\.md$/i, "").toLowerCase())!;
+const PL = lectureAt("Lectures/Logika/2026-10-11 Zdania logiczne i zbiory.md");
+const PL2 = lectureAt("Lectures/Logika/2026-10-18 Kwantyfikatory.md");
+const EN = lectureAt("Lectures/Intro to Data Science/2026-10-12 Measuring spread.md");
+const TEXTBOOK = lectureAt("Lectures/Logika/_Podręcznik.md");
+const rowsOf = (id: string): RecordingInput[] => {
+  const r = FIXTURE_RECORDINGS.find((x) => x.id === id)!;
+  return [{ note_name: r.note_name, file_name: r.file_name, recorded_at: r.recorded_at, part: r.part, segments: FIXTURE_SEGMENTS[id] }];
+};
+const LEARNING = "Tryb nauki: mój spersonalizowany workflow\nUcz mnie tak, żeby maksymalizować szybkie zrozumienie.\n1. Najpierw mapa dziedziny.";
+
+describe("plainMarkdown", () => {
+  it("turns links into their text, moments into times, callouts into bold titles and plots into one line", () => {
+    const out = plainMarkdown(PL.body, "pl");
+    expect(out).toContain("## 1. Zdanie logiczne (12:34)");
+    expect(out).toContain("## 4. Funkcja zdaniowa i zbiór spełnienia (1:05:20)");
+    expect(out).toContain("(zob. Implikacja)");
+    expect(out).toContain("> **Dla zrozumienia (AI)**");
+    expect(out).toContain("> **Słowniczek PL ↔ EN**");
+    expect(out).toContain("> [wykres: x^2 < 4]");
+    expect(out).toContain("> [wykres 3D: Siodło]");
+    // Mermaid stays a code block; the plot JSON is gone.
+    expect(out).toContain('> ```mermaid\n> flowchart LR\n>   N["ℕ: liczby naturalne"]');
+    expect(out).not.toContain('"functions"');
+    expect(out).not.toMatch(/\[\[|\]\]|\[!\w+\]/);
+    // Math stays LaTeX for the model to read.
+    expect(out).toContain("$p \\Rightarrow q$");
   });
 
-  it("keeps what was stressed when the summary itself is too long", () => {
-    const padded = LOGIKA.replace("## 2. Zbiory", `## 1b. Dygresja\n${"Bardzo długa dygresja o historii logiki. ".repeat(400)}\n\n## 2. Zbiory`);
-    const text = lectureContext({ file: { ...logikaFile, content: padded }, rows: [longRecording()], budget: 12_000 });
-    expect(text.length).toBeLessThanOrEqual(12_000);
-    expect(text).toContain("Prawa De Morgana");
-    expect(text).toContain("## Do wyjaśnienia");
-    expect(text).toContain("(Podsumowanie ucięte tutaj.)");
+  it("uses the note's language for a callout without a title and for plots, and drops Obsidian comments", () => {
+    expect(plainMarkdown("> [!example]-\n> x", "en")).toBe("> **Example**\n> x");
+    expect(plainMarkdown("> [!example]-\n> x", "pl")).toBe("> **Przykład**\n> x");
+    expect(plainMarkdown('```plot\n{"x": [-1, 1], "functions": [{"expr": "x^2", "label": "parabola"}]}\n```', "en")).toBe("[plot: parabola]");
+    expect(plainMarkdown('```plot3d\n{"kind": "points", "points": []}\n```', "pl")).toBe("[wykres 3D]");
+    expect(plainMarkdown("a %%ukryte%% b\n%%cała linia%%\nc", "pl")).toBe("a  b\nc");
+    expect(plainMarkdown("```js\nconst a = [[1]];\n```", "pl")).toBe("```js\nconst a = [[1]];\n```");
   });
 
-  it("says so when there is no transcript", () => {
-    expect(lectureContext({ file: logikaFile, rows: [] })).toContain("only the summary is available");
+  it("labels paragraphs of an import", () => {
+    expect(plainMarkdown(EN.body, "en")).toContain("## 1. Why the mean is not enough (¶3)");
   });
 });
 
-describe("tutor modes", () => {
-  it("asks in the note's language", () => {
-    for (const mode of ["explain", "quiz"] as const) {
-      const pl = tutorRequest({ title: "Zdania logiczne i zbiory", language: "pl" }, mode);
-      expect(pl).toContain("„Zdania logiczne i zbiory”");
-      expect(guessLanguage(pl)).toBe("pl");
-      expect(pl).not.toMatch(/\b(the|and|lecture|quiz|questions?)\b/i);
-      const en = tutorRequest({ title: "Defining data science", language: "en" }, mode);
-      expect(en).toContain('"Defining data science"');
-      expect(guessLanguage(en)).toBe("en");
-      expect(en).not.toMatch(/[ąćęłńóśźż]|wykład|pyta/i);
+describe("plainNote", () => {
+  it("returns a note that fits whole, and when it does not, keeps the map, what was stressed and what to memorise", () => {
+    expect(plainNote(PL2.body, "pl", 50_000)).toEqual({ text: plainMarkdown(PL2.body, "pl"), cut: false });
+    const padded = PL2.body.replace("## 2. Kwantyfikator szczegółowy", `## 1b. Dygresja\n${"Bardzo długa dygresja o historii logiki. ".repeat(300)}\n\n## 2. Kwantyfikator szczegółowy`);
+    const { text, cut } = plainNote(padded, "pl", 6000);
+    expect(cut).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(6000);
+    for (const kept of ["## W skrócie", "## Mapa wykładu", "```mermaid", "## Na co prowadzący kładł nacisk", "> **Do zapamiętania**", "## 3. Negacja"]) {
+      expect(text).toContain(kept);
     }
-    expect(tutorRequest({ title: "X", language: "pl" }, "quiz")).toMatch(/5 pytań, po jednym/);
-    expect(tutorRequest({ title: "X", language: "en" }, "quiz")).toMatch(/5 questions, one at a time/);
-  });
-
-  it("gives each mode its rules, with the note's own headings and words", () => {
-    const pl = tutorRules("pl");
-    expect(pl).toContain("Write every reply in Polish");
-    expect(pl).toContain('"Pytanie 1/5" to "Pytanie 5/5"');
-    expect(pl).toContain('At least 3 come from "Na co prowadzący kładł nacisk"');
-    expect(pl).toContain('start it with "Ode mnie:"');
-    expect(pl).toContain("dobrze / częściowo / źle");
-    expect(pl).toContain("one step per reply");
-    const en = tutorRules("en");
-    expect(en).toContain("Write every reply in English");
-    expect(en).toContain('"Question 1/5"');
-    expect(en).toContain('"What the lecturer stressed"');
-    expect(en).toContain('"My addition:"');
+    expect(text).toMatch(/\(Skrócone, żeby się zmieścić\. Całość jest w Obsidianie i w pakiecie przedmiotu\.\)$/);
+    // What is kept stays in the note's order.
+    expect(text.indexOf("## Mapa wykładu")).toBeLessThan(text.indexOf("## 1. Kwantyfikator ogólny"));
+    expect(text.indexOf("## 1. Kwantyfikator ogólny")).toBeLessThan(text.indexOf("## Na co prowadzący"));
   });
 });
 
-describe("openLectureTutor", () => {
-  const api = (over: Partial<TutorApi> = {}) => ({
-    openPanel: vi.fn(),
-    sendMessage: vi.fn(async () => null),
-    prefill: vi.fn(),
-    isStreaming: false,
-    archiveItems: [
-      { id: "block-1", title: "My note" },
-      { id: lectureItemId("Lectures/Old/2026-10-01 Old.md"), title: "Old" },
-    ],
-    addArchiveItem: vi.fn(),
-    removeArchiveItem: vi.fn(),
-    ...over,
+describe("buildStudyPack", () => {
+  it("without a ChatGPT project: the learning mode first, then the material, the passages, the rules and the start", () => {
+    const pack = buildStudyPack({ lecture: PL, rows: rowsOf("rec-pl"), mode: "explain", learningMode: LEARNING, projectUrl: "" });
+    expect(pack.startsWith(`# Jak mnie uczyć\n\n${LEARNING}\n\n# Materiał: Logika — Zdania logiczne i zbiory (2026-10-11)\n\n## W skrócie\n`)).toBe(true);
+    expect(pack).toContain("## Na co prowadzący kładł nacisk");
+    expect(pack).toContain("(26:20)");
+    expect(pack).toContain("## Fragmenty zapisu wykładu\n(Cały zapis. Transkrypcja automatyczna, może przekręcać słowa.)");
+    expect(pack).toMatch(/^\[0:00–[\d:]+\] Dzień dobry państwu/m);
+    expect(pack).toContain("Z fałszu wynika wszystko, proszę to zapamiętać.");
+    expect(pack).toContain("Zasady: trzymaj się tego materiału. To, co dodajesz od siebie, wyraźnie zaznacz („Ode mnie:”). Kiedy to pomaga, rysuj w czacie diagramy i wykresy.");
+    expect(pack.endsWith("Zacznij od mapy tego wykładu (punkt 1 mojego trybu), potem prowadź mnie pętlą Predict → Name → Place → Refine.")).toBe(true);
+    // The summary comes before the transcript, the rules after both.
+    expect(pack.indexOf("## Pojęcia")).toBeLessThan(pack.indexOf("## Fragmenty zapisu"));
+    expect(pack.indexOf("## Fragmenty zapisu")).toBeLessThan(pack.indexOf("Zasady:"));
+    expect(pack).not.toMatch(/\[\[|\]\]|"functions"/);
   });
-  const lecture = { path: logikaFile.path, title: "Zdania logiczne i zbiory", language: "pl" as const };
 
-  it("pins this lecture instead of any other, opens the panel and asks in one click", () => {
-    const a = api();
-    openLectureTutor(a, lecture, "quiz");
-    const item = { id: lectureItemId(lecture.path), title: lecture.title };
-    expect(isLectureItem(item)).toBe(true);
-    expect(a.removeArchiveItem).toHaveBeenCalledWith(lectureItemId("Lectures/Old/2026-10-01 Old.md"));
-    expect(a.removeArchiveItem).toHaveBeenCalledTimes(1);
-    expect(a.addArchiveItem).toHaveBeenCalledWith(item);
-    expect(a.openPanel).toHaveBeenCalled();
-    expect(a.sendMessage).toHaveBeenCalledWith(tutorRequest(lecture, "quiz"), {
-      archiveItems: [{ id: "block-1", title: "My note" }, item],
+  it("with a ChatGPT project: one line instead of the learning mode", () => {
+    const pack = buildStudyPack({ lecture: PL, rows: [], mode: "explain", learningMode: LEARNING, projectUrl: "https://chatgpt.com/g/g-p-abc/project" });
+    expect(pack.startsWith("Ucz mnie według instrukcji tego projektu (tryb nauki).\n\n# Materiał: Logika")).toBe(true);
+    expect(pack).not.toContain("Jak mnie uczyć");
+    expect(pack).not.toContain("spersonalizowany workflow");
+    // No transcript rows: no passages section.
+    expect(pack).not.toContain("Fragmenty zapisu");
+  });
+
+  it("without a learning mode in Settings: a short built-in summary of the method", () => {
+    const pack = buildStudyPack({ lecture: PL, rows: [], mode: "explain", learningMode: "  ", projectUrl: "" });
+    expect(pack.startsWith(`# Jak mnie uczyć\n\n${BUILTIN_LEARNING.pl}\n\n# Materiał`)).toBe(true);
+    expect(BUILTIN_LEARNING.pl).toMatch(/^Prowadź mnie według mojego trybu nauki:\n1\. Najpierw mapa/);
+    expect(BUILTIN_LEARNING.pl).toContain("Predict → Name → Place → Refine");
+    expect(BUILTIN_LEARNING.pl).toContain("A/B/C/D");
+  });
+
+  it("a link that would not open the project does not stand in for the learning mode", () => {
+    for (const projectUrl of ["https://chatgpt.com:8443/g/x", "https://example.com/g/x", "chatgpt.com/g/x"]) {
+      const pack = buildStudyPack({ lecture: PL, rows: [], mode: "explain", learningMode: LEARNING, projectUrl });
+      expect(pack.startsWith(`# Jak mnie uczyć\n\n${LEARNING.trim()}`)).toBe(true);
+    }
+  });
+
+  it("says which language to talk in, just before the opening move", () => {
+    const pl = buildStudyPack({ lecture: PL, rows: [], mode: "explain", learningMode: LEARNING });
+    expect(pl).toContain("\n\nJęzyk: rozmawiaj ze mną po polsku, w języku tego materiału.\n\nZacznij od mapy");
+    // An English lecture with the user's Polish learning mode: still English.
+    const en = buildStudyPack({ lecture: EN, rows: [], mode: "test", learningMode: LEARNING });
+    expect(en).toContain(LEARNING.trim());
+    expect(en).toContain("\n\nLanguage: talk to me in English, the language of this material, even where my learning mode is written in Polish.\n\ntest: start");
+  });
+
+  it("test mode starts with A/B/C/D questions from what the lecturer stressed", () => {
+    const pack = buildStudyPack({ lecture: PL, rows: [], mode: "test", learningMode: LEARNING });
+    expect(pack.endsWith("test: zacznij od pytań A/B/C/D z sensownymi dystraktorami, głównie z „Na co prowadzący kładł nacisk”, po jednym; potem krótkie odtwarzanie.")).toBe(true);
+  });
+
+  it("speaks the note's language: an English note gets an English pack", () => {
+    const pack = buildStudyPack({ lecture: EN, rows: rowsOf("rec-en"), mode: "test", learningMode: "", projectUrl: "" });
+    expect(pack.startsWith(`# How to teach me\n\n${BUILTIN_LEARNING.en}\n\n# Material: Intro to Data Science — Measuring spread: variance and standard deviation (2026-10-12)`)).toBe(true);
+    expect(pack).toContain("## Transcript passages\n(The whole transcript. Speech-to-text, may mishear words.)");
+    expect(pack).toContain("[¶1–");
+    expect(pack).toContain("(¶3)");
+    expect(pack).toContain('Rules: stick to this material. Mark clearly what you add yourself ("My addition:").');
+    expect(pack.endsWith('test: start with A/B/C/D questions with plausible distractors, mostly from "What the lecturer stressed", one at a time; then short recall.')).toBe(true);
+    const chrome = pack.replace(EN.body, "");
+    expect(chrome).not.toMatch(/[ąćęłńśźż]|Materiał|Zasady|Zacznij/);
+    expect(guessLanguage(pack)).toBe("en");
+    const project = buildStudyPack({ lecture: EN, rows: [], mode: "explain", projectUrl: "https://chatgpt.com/g/g-p-1/project" });
+    expect(project.startsWith("Teach me following this project's instructions (my learning mode).")).toBe(true);
+    expect(project.endsWith("Start with the map of this lecture (point 1 of my learning mode), then take me through the Predict → Name → Place → Refine loop.")).toBe(true);
+  });
+
+  it("keeps a long transcript to its most important passages, stressed moments first", () => {
+    const lecture = parseLectureSummary(logikaFile);
+    const pack = buildStudyPack({ lecture, rows: [longRecording()], mode: "explain", learningMode: LEARNING });
+    const passages = pack.slice(pack.indexOf("## Fragmenty zapisu"), pack.indexOf("---\n\nZasady"));
+    expect(passages).toContain("(Najważniejsze fragmenty, najpierw to, na co prowadzący kładł nacisk.");
+    expect(passages.length).toBeLessThanOrEqual(PASSAGES_MAX + 200);
+    expect(passages).toContain("to będzie na egzaminie");
+    expect(passages).toContain("Prawa De Morgana");
+    expect(passages).toMatch(/^\[\d+:\d{2}–/m);
+  });
+
+  it("never goes over the cap: the summary whole first, then what room is left for passages", () => {
+    const long = parseLectureSummary({
+      ...logikaFile,
+      content: LOGIKA.replace("## 2. Zbiory", `## 1b. Dygresja\n${"Bardzo długa dygresja o historii logiki. ".repeat(600)}\n\n## 2. Zbiory`),
     });
+    const fits = buildStudyPack({ lecture: long, rows: [longRecording()], mode: "explain", learningMode: LEARNING });
+    expect(fits.length).toBeLessThanOrEqual(STUDY_PACK_MAX);
+    expect(fits.match(/Bardzo długa dygresja/g)).toHaveLength(600);
+    expect(fits).not.toContain("Skrócone");
+    // The summary took most of the room: the passages get what is left, not their usual 6000.
+    const passages = fits.slice(fits.indexOf("## Fragmenty zapisu"), fits.indexOf("---\n\nZasady"));
+    expect(passages.length).toBeGreaterThan(400);
+    expect(passages.length).toBeLessThan(PASSAGES_MAX - 1000);
+    const huge = parseLectureSummary({
+      ...logikaFile,
+      content: LOGIKA.replace("## 2. Zbiory", `## 1b. Dygresja\n${"Bardzo długa dygresja o historii logiki. ".repeat(2000)}\n\n## 2. Zbiory`),
+    });
+    for (const learningMode of [LEARNING, "x".repeat(40_000)]) {
+      const pack = buildStudyPack({ lecture: huge, rows: [longRecording()], mode: "test", learningMode });
+      expect(pack.length).toBeLessThanOrEqual(STUDY_PACK_MAX);
+      expect(pack).toContain("Prawa De Morgana");
+      expect(pack).toContain("(Skrócone, żeby się zmieścić.");
+      expect(pack).toContain("test: zacznij od pytań A/B/C/D");
+    }
   });
 
-  it("leaves the request in the input while a reply is still streaming", () => {
-    const a = api({ isStreaming: true });
-    openLectureTutor(a, lecture, "explain");
-    expect(a.sendMessage).not.toHaveBeenCalled();
-    expect(a.prefill).toHaveBeenCalledWith(tutorRequest(lecture, "explain"));
-    expect(a.addArchiveItem).toHaveBeenCalled();
+  it("names the part of a lecture recorded in two files", () => {
+    const two = [
+      { ...rowsOf("rec-pl")[0] },
+      { note_name: "2026-10-11 15-00-00 Logika cz 2", file_name: "b.mp3", recorded_at: "2026-10-11T13:00:00Z", part: 2, segments: [{ start: 5, end: 9, text: "Druga część." }] },
+    ];
+    const pack = buildStudyPack({ lecture: PL, rows: two, mode: "explain", learningMode: LEARNING });
+    expect(pack).toContain("## 1. Zdanie logiczne (cz. 1, 12:34)");
+    expect(pack).toContain("[cz. 2, 0:05–0:09] Druga część.");
+  });
+
+  it("packs a textbook without a transcript, opening on the course map", () => {
+    const pack = buildStudyPack({ lecture: TEXTBOOK, mode: "explain", learningMode: LEARNING });
+    expect(pack).toContain("# Materiał: Logika — Podręcznik przedmiotu (2026-10-19)");
+    expect(pack).toContain("## Mapa przedmiotu\n```mermaid");
+    expect(pack).toContain("## Pytania sprawdzające");
+    expect(pack).toContain("pierwszy wykład (2026-10-11)");
+    expect(pack).not.toContain("Fragmenty zapisu");
+    expect(pack.endsWith("Zacznij od mapy tego przedmiotu (punkt 1 mojego trybu), potem prowadź mnie pętlą Predict → Name → Place → Refine.")).toBe(true);
+    expect(buildStudyPack({ lecture: TEXTBOOK, mode: "test" })).toMatch(/głównie z „Pytań sprawdzających” i „Do zapamiętania”, po jednym; potem krótkie odtwarzanie\.$/);
+  });
+});
+
+describe("a textbook too long for the pack", () => {
+  const section = (heading: string, chars: number) => `## ${heading}\n${"Zdanie o tym, jak działa przedmiot. ".repeat(Math.ceil(chars / 36))}`;
+  const body = [
+    "## W skrócie\nCały przedmiot w trzech zdaniach.",
+    "## Mapa przedmiotu\n```mermaid\nflowchart LR\n  A --> B\n```",
+    section("Mechanizmy", 9000),
+    section("Ograniczenia", 3000),
+    section("Co zapamiętać, a co wyprowadzić", 3000),
+    section("Cały przedmiot na jednej stronie", 2000),
+    section("Pytania sprawdzające", 6000),
+  ].join("\n\n");
+
+  it("keeps the mechanisms and constraints whole and cuts the questions first", () => {
+    const { text, cut } = plainNote(body, "pl", 20_000);
+    expect(cut).toBe(true);
+    const part = (h: string) => text.slice(text.indexOf(`## ${h}`)).split("\n## ")[0];
+    expect(part("Mechanizmy").length).toBeGreaterThan(9000);
+    expect(part("Ograniczenia").length).toBeGreaterThan(3000);
+    expect(text).toContain("## Mapa przedmiotu");
+    expect(text).toContain("## Cały przedmiot na jednej stronie");
+    expect(text.indexOf("## Pytania sprawdzające") === -1 || part("Pytania sprawdzające").length < 6000).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(20_000);
+  });
+});
+
+describe("claudeInstruction", () => {
+  it("names the note's vault path and the learning mode file, in the note's language", () => {
+    const pl = claudeInstruction(PL, "Tryb nauki: …");
+    expect(pl).toBe(
+      "Przegadajmy wykład z mojego skarbca Obsidiana „Studia”: Lectures/Logika/2026-10-11 Zdania logiczne i zbiory.md\n" +
+        "Najpierw przeczytaj _SYSTEM/learning-mode.md (mój tryb nauki) i prowadź mnie według niego.\n" +
+        "Trzymaj się tej notatki i zapisu wykładu, do którego linkuje (Recordings/); to, co dodajesz od siebie, zaznacz. Zacznij od mapy wykładu.\n" +
+        "Nie zmieniaj niczego w _SYSTEM/ (nadpisuje to tracker). Log nauki zapisz, jeśli chcesz, w osobnej notatce poza _SYSTEM/.",
+    );
+    const en = claudeInstruction(EN, "Tryb nauki: …");
+    expect(en).toContain('Let\'s talk through the lecture in my Obsidian vault "Studia": Lectures/Intro to Data Science/2026-10-12 Measuring spread.md');
+    expect(en).toContain("First read _SYSTEM/learning-mode.md (my learning mode)");
+    expect(en).toContain("Talk to me in English");
+    expect(en).toContain("Do not change anything in _SYSTEM/");
+    expect(guessLanguage(en)).toBe("en");
+    expect(claudeInstruction(TEXTBOOK, "x")).toContain("Przegadajmy podręcznik przedmiotu z mojego skarbca Obsidiana „Studia”: Lectures/Logika/_Podręcznik.md");
+    expect(claudeInstruction(TEXTBOOK, "x")).toContain("Zacznij od mapy przedmiotu.");
+  });
+
+  it("brings the built-in method when no learning mode is saved (the tracker then wrote no file)", () => {
+    const pl = claudeInstruction(PL);
+    expect(pl).toContain("Jeśli jest plik _SYSTEM/learning-mode.md (mój tryb nauki), przeczytaj go i prowadź mnie według niego. Jeśli go nie ma:\n");
+    expect(pl).toContain(BUILTIN_LEARNING.pl);
+    expect(pl).not.toContain("Najpierw przeczytaj");
+    expect(claudeInstruction(EN, "  ")).toContain(BUILTIN_LEARNING.en);
+  });
+});
+
+describe("the course pack", () => {
+  it("is the textbook, then every summary oldest first, then one merged glossary", () => {
+    const logika = groupLectures(index.lectures, "", index.textbooks).find((g) => g.course === "Logika")!;
+    const pack = buildCoursePack(logika);
+    expect(pack.fileName).toBe("Logika – pakiet do nauki.md");
+    expect(pack.language).toBe("pl");
+    const heads = pack.text.split("\n").filter((l) => /^# /.test(l));
+    expect(heads).toEqual([
+      "# Logika – pakiet do nauki",
+      "# Podręcznik przedmiotu (zaktualizowany 2026-10-19)",
+      "# Zdania logiczne i zbiory (2026-10-11)",
+      "# Kwantyfikatory (2026-10-18)",
+      "# Słowniczek PL ↔ EN",
+    ]);
+    // The glossaries leave the summaries and come back once, one line per term, the first one kept.
+    expect(pack.text.match(/Słowniczek PL ↔ EN/g)).toHaveLength(1);
+    const glossary = pack.text.slice(pack.text.indexOf("# Słowniczek PL ↔ EN"));
+    expect(glossary.split("\n").filter((l) => l.startsWith("- "))).toEqual([
+      "- **implikacja**: implication",
+      "- **kwantyfikator ogólny**: universal quantifier",
+      "- **kwantyfikator szczegółowy**: existential quantifier",
+      "- **zbiór**: set",
+      "- **zbiór spełnienia**: solution set",
+      "- **zdanie logiczne**: proposition",
+    ]);
+    expect(pack.text).toContain("> **Do zapamiętania**");
+    expect(pack.text).toContain("[wykres 3D: Siodło]");
+    expect(pack.text).not.toMatch(/\[\[|\]\]|"functions"/);
+    expect(pack.text.endsWith("\n")).toBe(true);
+  });
+
+  it("speaks English for an English course and makes the course name safe as a file name", () => {
+    const en = buildCoursePack({ course: "Intro to Data Science", lectures: [EN], textbook: null });
+    expect(en.fileName).toBe("Intro to Data Science – study pack.md");
+    expect(en.text).toContain("# Intro to Data Science – study pack\n\nThe summaries of every lecture (1), oldest first; one merged glossary at the end.");
+    expect(en.text).toContain("# Glossary EN ↔ PL\n\n- **standard deviation**: odchylenie standardowe\n- **variance**: wariancja");
+    expect(buildCoursePack({ course: 'Fizyka: ruch/siły?', lectures: [PL], textbook: null }).fileName).toBe("Fizyka- ruch-siły- – pakiet do nauki.md");
+  });
+
+  it("in a mixed course, merges only the pack language's glossaries; the other note keeps its own", () => {
+    const mixed = buildCoursePack({ course: "Inne", lectures: [PL, EN], textbook: null });
+    expect(mixed.language).toBe("pl");
+    const merged = mixed.text.slice(mixed.text.lastIndexOf("# Słowniczek PL ↔ EN"));
+    expect(merged).toContain("- **zbiór**: set");
+    expect(merged).not.toContain("variance");
+    // The English summary keeps its EN ↔ PL glossary under it.
+    expect(mixed.text).toMatch(/Measuring spread[\s\S]*\*\*variance\*\*[\s\S]*# Słowniczek PL ↔ EN/);
+  });
+
+  it("takes glossary callouts out of a note and merges entries by term", () => {
+    const g = takeGlossary("Tekst.\n\n> [!note]- Słowniczek PL ↔ EN\n> - **zbiór**: set\n> 2. implikacja = implication\n\nDalej.");
+    expect(g.body).toBe("Tekst.\n\n\nDalej.");
+    expect(g.entries).toEqual(["**zbiór**: set", "implikacja = implication"]);
+    expect(takeGlossary("> [!tip]- Wskazówka\n> - a: b").entries).toEqual([]);
+    expect(mergeGlossary(["**Zbiór**: set", "zbior: collection", "*b* — c", "a → d"])).toEqual(["a → d", "*b* — c", "**Zbiór**: set"]);
+  });
+});
+
+describe("loading a lecture's transcript", () => {
+  it("fetches its sessions' recordings and the ones it cites, once", async () => {
+    fake.tables.kos_recordings = [
+      { ...rowsOf("rec-pl")[0], user_id: "u3", session_key: "2026-10-11 13-32" },
+      { ...rowsOf("rec-pl")[0], note_name: "other", user_id: "u3", session_key: "2026-10-01 10-00" },
+    ];
+    const before = fake.calls.length;
+    const rows = await loadLectureRecordings("u3", PL);
+    expect(rows.map((r) => r.note_name)).toEqual([REC_PL]);
+    const calls = fake.calls.slice(before);
+    expect(calls.find((c) => c.filters.some(([, col]) => col === "session_key"))?.filters).toContainEqual(["in", "session_key", ["2026-10-11 13-32"]]);
+    expect(calls.find((c) => c.filters.some(([, col]) => col === "note_name"))?.filters).toContainEqual(["in", "note_name", [REC_PL]]);
+    const again = fake.calls.length;
+    await loadLectureRecordings("u3", PL);
+    expect(fake.calls.length).toBe(again);
   });
 });
 
@@ -428,38 +634,42 @@ describe("knowledge scope", () => {
   it("says where the notes come from when there are none", () => {
     expect(knowledgeContext([], "x")).toMatch(/^No lecture summaries or knowledge notes yet/);
   });
-});
 
-describe("the pinned lecture in the assistant's context", () => {
-  fake.tables.kos_vault_files = [{ ...logikaFile, user_id: "u2" }];
-  fake.tables.kos_recordings = [{ ...longRecording(), user_id: "u2", session_key: "2026-10-11 13-32" }];
-
-  it("loads the summary and its sessions' recordings", async () => {
-    const text = await gatherLectureItems("u2", [{ id: lectureItemId(logikaFile.path), title: "Zdania" }], "kwantyfikator");
-    expect(text).toContain("Kwantyfikator ogólny");
-    expect(text).toContain("## W skrócie");
-    const rec = fake.calls.find((c) => c.table === "kos_recordings" && c.filters.some(([op, col]) => op === "in" && col === "session_key"));
-    expect(rec?.filters).toContainEqual(["in", "session_key", ["2026-10-11 13-32"]]);
+  it("points long study sessions to ChatGPT and Claude, and names textbooks without listing them as lectures", () => {
+    const text = knowledgeContext(FIXTURE_FILES, "kwantyfikator");
+    expect(text).toContain('presses "Ucz się w ChatGPT" or "Test w ChatGPT"');
+    expect(text).toContain("Course textbooks (built from the summaries): Logika (Lectures/Logika/_Podręcznik.md, 2026-10-19).");
+    expect(text).toContain("Lecture summaries: 4 (Logika 2, Intro to Data Science 1, Other 1).");
+    expect(text).not.toContain("Logika · 2026-10-19 · Podręcznik przedmiotu");
+    expect(text).not.toContain("Przegadaj temat");
   });
 
-  it("goes first, with its own citation, and pinned archive notes still load", async () => {
-    fake.tables.archive_blocks = [{ id: "b1", user_id: "u2", title: "Moja notatka", content: "treść" }];
-    const { text, citations } = await gatherContext(
-      "u2",
-      [],
-      [{ id: "b1", title: "Moja notatka" }, { id: lectureItemId(logikaFile.path), title: "Zdania" }],
-      "De Morgan",
-      "Pytanie 1/5: co mówią prawa De Morgana?",
-    );
-    const lecture = text.indexOf("## 🎓 Pinned lecture");
-    expect(lecture).toBeGreaterThan(0);
-    expect(lecture).toBeLessThan(text.indexOf("## 📦 Archive items"));
-    expect(text).toContain("--- Archive note: Moja notatka ---");
-    expect(text).toContain("negacja koniunkcji");
-    expect(citations).toEqual([
-      { key: lectureItemId(logikaFile.path), label: "Zdania", icon: "🎓" },
-      { key: "archive:b1", label: "Moja notatka", icon: "📦" },
-    ]);
+  it("stays under the cap however big the vault is", () => {
+    const many: VaultFile[] = [];
+    for (let i = 0; i < 150; i++) {
+      many.push(file(`Lectures/Kurs ${i % 7}/2026-09-${String((i % 28) + 1).padStart(2, "0")} Temat ${i}.md`, LOGIKA.replace('topic: "Zdania logiczne i zbiory"', `topic: "Temat ${i} o implikacji"`).replace('course: "Logika"', `course: "Kurs ${i % 7}"`)));
+    }
+    for (let i = 0; i < 400; i++) {
+      many.push(file(`Knowledge/Implikacja ${i}.md`, `---\ntype: definition\naliases: [implication]\n---\n# Implikacja ${i}\n\n${"Implikacja jest fałszywa tylko wtedy, gdy poprzednik jest prawdziwy. ".repeat(6)}\n`));
+    }
+    for (const q of ["implikacja", "pogoda", undefined]) {
+      const text = knowledgeContext(many, q);
+      expect(text.length).toBeLessThanOrEqual(KNOWLEDGE_MAX_CHARS);
+      expect(text).toContain("All lectures");
+    }
+  });
+});
+
+describe("the knowledge scope in the assistant's context", () => {
+  it("sends summaries and notes for short questions, never a transcript", async () => {
+    fake.tables.kos_vault_files = [{ ...logikaFile, user_id: "u2" }];
+    fake.tables.kos_recordings = [{ ...longRecording(), user_id: "u2", session_key: "2026-10-11 13-32" }];
+    const before = fake.calls.length;
+    const { text, citations } = await gatherContext("u2", ["knowledge"], [], "Co mówił o kwantyfikatorach?");
+    expect(text).toContain("Logika · 2026-10-11 · Zdania logiczne i zbiory");
+    expect(text).not.toContain("Kwantyfikator ogólny mówi");
+    expect(fake.calls.slice(before).some((c) => c.table === "kos_recordings")).toBe(false);
+    expect(citations).toEqual([{ key: "knowledge", label: "Wykłady", icon: "🎓" }]);
   });
 });
 

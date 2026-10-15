@@ -13,9 +13,12 @@ import {
 
 const COLUMNS = "learning_mode, primer_prompt, chatgpt_project_url";
 
-/** 42703: undefined column, before migration 20261015180000_study_prompts is applied. */
-const missingColumns = (e: { code?: string; message?: string } | null) =>
-  !!e && (e.code === "42703" || /learning_mode|primer_prompt|chatgpt_project_url/.test(e.message ?? ""));
+/**
+ * Before migration 20261015180000_study_prompts is applied: 42703 (undefined column) from Postgres,
+ * PGRST204 (column not in the schema cache) from PostgREST. A check violation (23514) names the
+ * column too, so the message alone is not enough.
+ */
+const missingColumns = (e: { code?: string; message?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
 async function loadStudyPrompts(userId: string): Promise<{ prompts: StudyPrompts; available: boolean }> {
   const { data, error } = await supabase.from("user_context").select(COLUMNS).eq("user_id", userId).maybeSingle();
@@ -53,14 +56,19 @@ export function useStudyPrompts(enabled = true) {
       if (!user) return { ok: false, error: "Nie jesteś zalogowany." };
       const url = next.chatgpt_project_url.trim();
       if (url && !isChatGptUrl(url)) return { ok: false, error: "Link musi zaczynać się od https://chatgpt.com/" };
-      const row = { ...next, chatgpt_project_url: url };
+      // Stored as the browser reads it ("https://chatgpt.com/…"), which is also what the table's check accepts.
+      const row = { ...next, chatgpt_project_url: url ? new URL(url).href : "" };
       const { error } = await supabase
         .from("user_context")
         .upsert([{ user_id: user.id, ...row, updated_at: new Date().toISOString() }], { onConflict: "user_id" });
       if (error) {
         return {
           ok: false,
-          error: missingColumns(error) ? "Baza nie ma jeszcze tych pól (migracja 20261015180000_study_prompts)." : "Nie udało się zapisać.",
+          error: missingColumns(error)
+            ? "Baza nie ma jeszcze tych pól (migracja 20261015180000_study_prompts)."
+            : error.code === "23514"
+              ? "Nieprawidłowy link: wklej link do projektu z paska adresu ChatGPT."
+              : "Nie udało się zapisać.",
         };
       }
       qc.setQueryData(["study-prompts", user.id], { prompts: row, available: true });

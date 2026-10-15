@@ -40,6 +40,10 @@ const shortDate = (iso: string) => {
 const sameAs = (a: StudyPrompts, b: StudyPrompts) =>
   a.learning_mode === b.learning_mode && a.primer_prompt === b.primer_prompt && a.chatgpt_project_url.trim() === b.chatgpt_project_url.trim();
 
+/** "1 znak", "3 znaki", "5 znaków", "22 znaki", "12 znaków". */
+const charsPl = (n: number) =>
+  n === 1 ? "znak" : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? "znaki" : "znaków";
+
 /**
  * Settings > AI Context > Nauka: the study prompts, one source of truth for
  * ChatGPT (the study packs) and Claude Desktop (the tracker copies them into
@@ -90,7 +94,7 @@ export default function StudySettings() {
       <div>
         <h3 id="study-settings-title" className="text-sm font-bold text-foreground mb-1">🎓 Nauka</h3>
         <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Długa nauka idzie przez Twoje subskrypcje (ChatGPT, Claude Desktop), nie przez asystenta. Te teksty dołączają przyciski w Archiwum → Wykłady.
+          Długa nauka idzie przez Twoje subskrypcje (ChatGPT, Claude Desktop), nie przez asystenta. Przyciski w Archiwum → Wykłady dołączają te teksty.
         </p>
         {!available && (
           <p className="mt-2 text-[11px] text-amber-300/90">
@@ -123,7 +127,7 @@ export default function StudySettings() {
             className="w-full bg-background/60 border border-white/10 rounded-xl px-3.5 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary/40 resize-y leading-relaxed disabled:opacity-60"
           />
           <p className="mt-0.5 text-right text-[10px] text-muted-foreground/70 tabular-nums">
-            {draft[f.key].length > 0 ? `${draft[f.key].length.toLocaleString("pl-PL")} znaków` : "puste"}
+            {draft[f.key].length > 0 ? `${draft[f.key].length.toLocaleString("pl-PL")} ${charsPl(draft[f.key].length)}` : "puste"}
           </p>
         </div>
       ))}

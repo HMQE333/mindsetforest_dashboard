@@ -1,9 +1,10 @@
 /**
  * Realistic vault content for the Wykłady tests: a Polish logic lecture in
- * format 2 (LaTeX, folded callouts, a table, mermaid, plot and plot3d), an
- * English data-science course imported from a text file (paragraph anchors),
- * a legacy Sessions/Summary note, knowledge notes, session notes, the
- * routine's log and the recordings with their transcripts.
+ * format 2 (LaTeX, folded callouts, a table, mermaid, plot and plot3d), a
+ * second one with the lecture map and "Do zapamiętania", the course's
+ * textbook, an English data-science course imported from a text file
+ * (paragraph anchors), a legacy Sessions/Summary note, knowledge notes,
+ * session notes, the routine's log and the recordings with their transcripts.
  */
 import type { RecordingRow, Segment, VaultFile } from "../lib/kos-vault";
 
@@ -11,6 +12,7 @@ export const VAULT = "Studia";
 export const REC_PL = "2026-10-11 13-32-05 Logika wykład 2";
 export const REC_EN = "2026-10-12 09-00-00 Intro to Data Science week 3";
 export const REC_OLD = "2026-10-13 15-53-52 bandicam 2026-10-13 15-53-52-852";
+export const REC_PL2 = "2026-10-18 13-30-10 Logika wykład 3";
 
 const at = (s: number) => `[[Recordings/${REC_PL}#^t${String(s).padStart(4, "0")}|${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}]]`;
 const atH = (s: number) => {
@@ -18,6 +20,7 @@ const atH = (s: number) => {
   const m = Math.floor((s % 3600) / 60);
   return `[[Recordings/${REC_PL}#^t${String(s).padStart(4, "0")}|${h}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}]]`;
 };
+const at2 = (s: number) => `[[Recordings/${REC_PL2}#^t${String(s).padStart(4, "0")}|${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}]]`;
 const para = (n: number) => `[[Recordings/${REC_EN}#^p${String(n).padStart(4, "0")}|¶${n}]]`;
 
 export const LECTURE_PL = `---
@@ -118,6 +121,114 @@ Prowadzący pokazał też funkcję dwóch zmiennych $z = x^2 - y^2$ (siodło): p
 > - **zbiór spełnienia**: solution set
 `;
 
+/** Format 2 with the lecture map first and the "Do zapamiętania" callout (routine prompt, round 2). */
+export const LECTURE_PL2 = `---
+type: lecture-summary
+course: "Logika"
+topic: "Kwantyfikatory"
+date: 2026-10-18
+language: pl
+sessions: ["[[Sessions/2026-10-18 13-30]]"]
+source: recording
+---
+## W skrócie
+Wykład wprowadził kwantyfikatory: ogólny $\\forall$ i szczegółowy $\\exists$. Prowadzący pokazał, jak z funkcji zdaniowej powstaje zdanie, i jak zaprzecza się zdaniom z kwantyfikatorem.
+
+## Mapa wykładu
+\`\`\`mermaid
+flowchart LR
+  FZ["Funkcja zdaniowa"] -->|"dla każdego x"| KO["Kwantyfikator ogólny ∀"]
+  FZ -->|"istnieje x"| KS["Kwantyfikator szczegółowy ∃"]
+  KO --> Z["Zdanie logiczne"]
+  KS --> Z
+  KO <-->|"negacja"| KS
+\`\`\`
+Kwantyfikator zamienia funkcję zdaniową w zdanie. Negacja zamienia jeden kwantyfikator w drugi.
+
+## 1. Kwantyfikator ogólny ${at2(240)}
+Zapis $\\forall_{x \\in X}\\, \\varphi(x)$ czytamy „dla każdego $x$ ze zbioru $X$ zachodzi $\\varphi(x)$”. Zdanie jest prawdziwe, gdy zbiór spełnienia to cały zbiór $X$.
+
+## 2. Kwantyfikator szczegółowy ${at2(1260)}
+Zapis $\\exists_{x \\in X}\\, \\varphi(x)$: istnieje co najmniej jeden $x$, dla którego $\\varphi(x)$ jest prawdziwe.
+
+> [!abstract]- Wizualizacja
+> \`\`\`plot
+> {"title": "x^2 - 1 > 0", "x": [-3, 3], "functions": [{"expr": "x^2 - 1", "label": "y = x^2 - 1"}]}
+> \`\`\`
+
+## 3. Negacja zdań z kwantyfikatorem ${at2(2400)}
+$\\neg \\forall_x\\, \\varphi(x) \\iff \\exists_x\\, \\neg \\varphi(x)$ oraz $\\neg \\exists_x\\, \\varphi(x) \\iff \\forall_x\\, \\neg \\varphi(x)$.
+
+> [!tip]- Dla zrozumienia (AI)
+> Żeby obalić „każdy”, wystarczy jeden kontrprzykład.
+
+## Na co prowadzący kładł nacisk
+- Prawa De Morgana dla kwantyfikatorów będą na kolokwium. ${at2(2460)}
+- Kolejność różnych kwantyfikatorów ma znaczenie. ${at2(3000)}
+
+## Do wyjaśnienia
+- Brak.
+
+## Pojęcia
+- [[Kwantyfikator]]
+- [[Funkcja zdaniowa]]
+
+> [!important]- Do zapamiętania
+> - Symbole: $\\forall$ (dla każdego), $\\exists$ (istnieje).
+> - $\\neg \\forall_x\\, \\varphi(x) \\iff \\exists_x\\, \\neg \\varphi(x)$ (prawo De Morgana dla kwantyfikatorów).
+
+> [!note]- Słowniczek PL ↔ EN
+> - **kwantyfikator ogólny**: universal quantifier
+> - **kwantyfikator szczegółowy**: existential quantifier
+> - **zdanie logiczne**: statement
+`;
+
+/** The course's textbook, as the routine writes it (type: course-textbook). */
+export const TEXTBOOK_PL = `---
+type: course-textbook
+course: "Logika"
+language: pl
+updated: 2026-10-19
+summaries: ["[[Lectures/Logika/2026-10-11 Zdania logiczne i zbiory]]", "[[Lectures/Logika/2026-10-18 Kwantyfikatory]]"]
+---
+## W skrócie
+Logika buduje zdania złożone ze zdań prostych przez spójniki, a kwantyfikatory zamieniają funkcje zdaniowe w zdania. Działania na zbiorach to te same spójniki zastosowane do elementów.
+
+## Mapa przedmiotu
+\`\`\`mermaid
+flowchart TD
+  ZL["Zdanie logiczne"] --> SP["Spójniki"]
+  SP --> TP["Tabele prawdy"]
+  SP --> ZB["Działania na zbiorach"]
+  FZ["Funkcja zdaniowa"] --> KW["Kwantyfikatory"]
+  KW --> ZL
+\`\`\`
+Zdania i spójniki to pierwszy wykład ([[Lectures/Logika/2026-10-11 Zdania logiczne i zbiory|2026-10-11]]), kwantyfikatory drugi ([[Lectures/Logika/2026-10-18 Kwantyfikatory|2026-10-18]]).
+
+## Mechanizmy
+### 1. Wartość zdania złożonego zależy tylko od wartości składników
+Wejście: wartości $p$ i $q$. Wyjście: wartość $p \\Rightarrow q$ z tabeli prawdy.
+
+> [!example]- Przykład
+> Implikacja z fałszywym poprzednikiem jest prawdziwa.
+
+## Ograniczenia
+Zdanie ma dokładnie jedną z dwóch wartości: 1 albo 0.
+
+## Co zapamiętać, a co wyprowadzić
+### Wynika z modelu
+- Działania na zbiorach z tabel prawdy.
+### Do zapamiętania
+- Symbole $\\forall$, $\\exists$, $\\Rightarrow$.
+
+## Cały przedmiot na jednej stronie
+Spójniki działają na wartościach, kwantyfikatory na funkcjach zdaniowych, zbiory na elementach.
+
+## Pytania sprawdzające
+1. Co się stanie z wartością $p \\Rightarrow q$, gdy $p$ jest fałszywe?
+2. Jak zaprzeczyć zdaniu „każdy student zdał”?
+`;
+
 export const LECTURE_EN = `---
 type: lecture-summary
 course: "Intro to Data Science"
@@ -205,6 +316,8 @@ const note = (title: string, type: string, body: string, extra = "") =>
 
 export const FIXTURE_FILES: VaultFile[] = [
   file("Lectures/Logika/2026-10-11 Zdania logiczne i zbiory.md", LECTURE_PL),
+  file("Lectures/Logika/2026-10-18 Kwantyfikatory.md", LECTURE_PL2, "2026-10-18T16:00:00Z"),
+  file("Lectures/Logika/_Podręcznik.md", TEXTBOOK_PL, "2026-10-19T06:00:00Z"),
   file("Lectures/Intro to Data Science/2026-10-12 Measuring spread.md", LECTURE_EN),
   file("Sessions/Summary 2026-10-13 15-53.md", LEGACY),
   note(
@@ -219,6 +332,7 @@ export const FIXTURE_FILES: VaultFile[] = [
     `Implikacja $p \\Rightarrow q$ jest fałszywa tylko wtedy, gdy poprzednik jest prawdziwy, a następnik fałszywy.\n\n> "Z fałszu wynika wszystko, proszę to zapamiętać." ([[Recordings/${REC_PL}#^t1580]])`,
     `course: "Logika"\naliases: ["implication", "conditional"]\nsources: ["[[Recordings/${REC_PL}#^t1580]]"]\n`,
   ),
+  note("Kwantyfikator", "definition", "Wyrażenie, które z funkcji zdaniowej robi zdanie: „dla każdego” albo „istnieje”.", `course: "Logika"\naliases: ["quantifier"]\nsources: ["[[Recordings/${REC_PL2}#^t0240]]"]\n`),
   note("Działania na zbiorach", "concept", "Suma, iloczyn i różnica zbiorów odpowiadają spójnikom.", `course: "Logika"\naliases: ["set operations"]\n`),
   note("Funkcja zdaniowa", "definition", "Wyrażenie ze zmienną, które po podstawieniu staje się zdaniem.", `course: "Logika"\naliases: ["propositional function"]\n`),
   note(
@@ -240,6 +354,11 @@ export const FIXTURE_FILES: VaultFile[] = [
   file(
     "Sessions/2026-10-13 15-53.md",
     `---\ntype: session\nstatus: processed\nstarted: 2026-10-13 15-53\nparts: 1\ntopic: Defining data science and the cloud\n---\n# Session 2026-10-13 15-53\n\n## Knowledge\n- [[Data science process steps]] (new)\n`,
+  ),
+  file(
+    "Sessions/2026-10-18 13-30.md",
+    `---\ntype: session\nstatus: processed\nstarted: 2026-10-18 13-30\nparts: 1\ntopic: Kwantyfikatory\ncourse: "Logika"\nsummary: "[[Lectures/Logika/2026-10-18 Kwantyfikatory]]"\n---\n# Session 2026-10-18 13-30\n\n## Knowledge\n- [[Kwantyfikator]] (new)\n`,
+    "2026-10-18T16:00:00Z",
   ),
   file(
     "Sessions/2026-10-14 08-10.md",
@@ -279,6 +398,7 @@ export const FIXTURE_RECORDINGS: RecordingRow[] = [
   }),
   row("rec-old", REC_OLD, "2026-10-13T13:53:52Z", "2026-10-13 15-53", { language: "en", duration_seconds: 14100 }),
   row("rec-new", "2026-10-14 08-10-00 bandicam", "2026-10-14T06:10:00Z", "2026-10-14 08-10", { duration_seconds: 1200 }),
+  row("rec-pl2", REC_PL2, "2026-10-18T11:30:10Z", "2026-10-18 13-30", { duration_seconds: 4800 }),
 ];
 
 const PL_LINES = [
@@ -314,4 +434,12 @@ export const FIXTURE_SEGMENTS: Record<string, Segment[]> = {
   ].map((text, i) => ({ start: 0, end: 0, text, p: i + 1 })),
   "rec-old": [{ start: 2140, end: 2160, text: "First you clarify the question the business wants answered." }],
   "rec-new": [{ start: 0, end: 4, text: "Test." }],
+  "rec-pl2": [
+    [0, "Dzień dobry, dzisiaj kwantyfikatory."],
+    [240, "Kwantyfikator ogólny: dla każdego x ze zbioru X zachodzi fi od x."],
+    [1260, "Kwantyfikator szczegółowy: istnieje co najmniej jeden x."],
+    [2400, "Negacja: zaprzeczenie zdania z dla każdego to istnieje x, dla którego nie."],
+    [2460, "Prawa De Morgana dla kwantyfikatorów będą na kolokwium, proszę to umieć."],
+    [3000, "Uwaga, kolejność różnych kwantyfikatorów ma znaczenie, nie wolno ich zamieniać."],
+  ].map(([start, text], i, all) => ({ start: start as number, end: ((all[i + 1]?.[0] as number) ?? 4800) - 1, text: text as string })),
 };

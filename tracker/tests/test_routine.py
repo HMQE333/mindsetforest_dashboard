@@ -12,6 +12,13 @@ from mindsetforest_tracker.recordings import (
 from test_recordings import FakeVaultServer, mirror_for
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def fixture(name):
+    """A fixture's bytes with LF line ends, however git checked it out (CRLF on Windows)."""
+    return (FIXTURES / name).read_bytes().replace(b"\r\n", b"\n")
+
+
 WHEN = datetime(2026, 10, 15, 14, 3)
 
 
@@ -62,7 +69,7 @@ def test_the_routine_prompt_describes_format_2():
         "## Mapa wykładu", "[`## Lecture map`]", "At most 15", "> [!important]- Do zapamiętania",
         "> [!important]- To memorise", "Leave the callout out when nothing qualifies",
         "Lectures/<Course>/_Podręcznik.md", "Lectures/<Course>/_Textbook.md", "type: course-textbook",
-        "_SYSTEM/primer-prompt.md", "## Mapa przedmiotu", "## Pytania sprawdzające", "8-12", "2500-5000 words",
+        "_SYSTEM/primer-prompt.md", "## Mapa przedmiotu", "## Pytania sprawdzające", "8-12", "2500-3500 words",
         "at most one per run", "Never\n  `Inne` / `Other`", "- textbook: none",
     ):
         assert needed in ROUTINE, needed
@@ -172,8 +179,8 @@ def test_a_new_vault_gets_format_2_and_the_import_folder(tmp_path):
 
 def test_the_trackers_own_older_text_is_replaced_without_a_copy(tmp_path, caplog):
     vault = tmp_path / "Vault"
-    put(vault, "routine-prompt.md", (FIXTURES / "routine-prompt-v1.md").read_bytes().replace(b"\n", b"\r\n"))
-    put(vault, "processing-rules.md", (FIXTURES / "processing-rules-v0.md").read_bytes())
+    put(vault, "routine-prompt.md", fixture("routine-prompt-v1.md").replace(b"\n", b"\r\n"))
+    put(vault, "processing-rules.md", fixture("processing-rules-v0.md"))
     with caplog.at_level("INFO"):
         assert ensure_system_notes(vault, WHEN) == ["processing-rules.md", "routine-prompt.md"]
     assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == ROUTINE
@@ -194,7 +201,7 @@ def test_an_edited_copy_is_kept_before_the_new_format_is_written(tmp_path):
     mine = (FIXTURES / "routine-prompt-v1.md").read_text(encoding="utf-8") + "\nAlso write a summary per lecture.\n"
     raw = mine.encode("cp1250")  # an editor saved it in another encoding: the copy keeps the exact bytes
     put(vault, "routine-prompt.md", raw)
-    put(vault, "processing-rules.md", (FIXTURES / "processing-rules-v1.md").read_bytes())
+    put(vault, "processing-rules.md", fixture("processing-rules-v1.md"))
     put(vault, "routine-log.md", b"---\nlast_run: 2026-10-13 23:47\n---\n- 2026-10-13 23:47 processed 2 sessions")
     assert ensure_system_notes(vault, WHEN) == ["processing-rules.md", "routine-prompt.md"]
     copy = sysdir(vault) / "routine-prompt (moja wersja 2026-10-15).md"
@@ -229,7 +236,7 @@ def test_a_v2_edit_without_the_format_comment_is_the_users_even_unstamped(tmp_pa
 def test_an_unedited_v2_default_follows_the_new_default_in_a_stamped_vault(tmp_path):
     """Vaults set up by the first 1.3.0 builds are stamped format 2 and hold that build's prompt."""
     vault = tmp_path / "Vault"
-    v2 = (FIXTURES / "routine-prompt-v2.md").read_bytes()
+    v2 = fixture("routine-prompt-v2.md")
     put(vault, ".kos-format", b"2\n")
     put(vault, "routine-prompt.md", v2.replace(b"\n", b"\r\n"))  # saved again by an editor: still unedited
     put(vault, "processing-rules.md", RULES.encode("utf-8"))
@@ -261,7 +268,7 @@ def test_an_edited_v2_prompt_stays_the_users(tmp_path):
 
 def test_an_unedited_v2_default_is_replaced_in_an_unstamped_vault_too(tmp_path):
     vault = tmp_path / "Vault"
-    put(vault, "routine-prompt.md", (FIXTURES / "routine-prompt-v2.md").read_bytes())
+    put(vault, "routine-prompt.md", fixture("routine-prompt-v2.md"))
     put(vault, "processing-rules.md", RULES.encode("utf-8"))
     assert ensure_system_notes(vault, WHEN) == ["routine-prompt.md"]
     assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == ROUTINE
@@ -302,7 +309,7 @@ def test_a_copy_never_overwrites_another_and_an_identical_one_is_reused(tmp_path
 def test_a_note_that_cannot_be_upgraded_does_not_stop_the_tracker(tmp_path, monkeypatch, caplog):
     vault = tmp_path / "Vault"
     put(vault, "routine-prompt.md", b"my own routine")
-    put(vault, "processing-rules.md", (FIXTURES / "processing-rules-v1.md").read_bytes())
+    put(vault, "processing-rules.md", fixture("processing-rules-v1.md"))
     real = Path.read_bytes
 
     def locked(self):
@@ -322,7 +329,7 @@ def test_the_installer_and_a_new_recording_upgrade_the_vault(tmp_path):
     from mindsetforest_tracker import winsetup
 
     vault = tmp_path / "Vault"
-    put(vault, "routine-prompt.md", (FIXTURES / "routine-prompt-v1.md").read_bytes())
+    put(vault, "routine-prompt.md", fixture("routine-prompt-v1.md"))
     winsetup._prepare_vault(vault)
     assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == ROUTINE
 

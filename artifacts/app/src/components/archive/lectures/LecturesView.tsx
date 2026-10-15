@@ -233,7 +233,7 @@ function TextbookCard({ textbook, group, onOpen }: { textbook: LectureSummary; g
     >
       <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <span className="font-semibold text-sky-200">📘 {pl ? "Podręcznik" : "Textbook"}</span>
-        {textbook.date && <span className="shrink-0">· {longDate(textbook.date, "pl-PL", "short")}</span>}
+        {textbook.date && <span className="shrink-0">· {longDate(textbook.date, pl ? "pl-PL" : "en-GB", "short")}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           <LanguageFlag lang={textbook.language} />
         </span>
@@ -245,8 +245,14 @@ function TextbookCard({ textbook, group, onOpen }: { textbook: LectureSummary; g
         </span>
       )}
       {textbook.summaries.length > 0 && total > 0 && (
-        <span className={`text-[11px] ${covered < total ? "text-amber-200/90" : "text-muted-foreground"}`}>
-          {covered < total ? `Obejmuje ${covered} z ${total} wykładów; rutyna go uzupełni.` : `Obejmuje wszystkie wykłady (${total}).`}
+        <span className={`text-[11px] ${covered < total ? "text-amber-200/90" : "text-muted-foreground"}`} lang={textbook.language}>
+          {pl
+            ? covered < total
+              ? `Obejmuje ${covered} z ${total} ${total === 1 ? "wykładu" : "wykładów"}; rutyna go uzupełni.`
+              : `Obejmuje wszystkie wykłady (${total}).`
+            : covered < total
+              ? `Covers ${covered} of ${total} ${total === 1 ? "lecture" : "lectures"}; the routine will update it.`
+              : `Covers every lecture (${total}).`}
         </span>
       )}
     </button>

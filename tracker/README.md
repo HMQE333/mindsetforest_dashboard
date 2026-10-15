@@ -96,13 +96,15 @@
 >   co zapamiętać, a co wyprowadzić, cały przedmiot na jednej stronie i 8-12 pytań sprawdzających na końcu. Pisze go według
 >   Twojego promptu Primer (`_SYSTEM/primer-prompt.md`, bez niego według krótszej wersji wbudowanej), tylko z podsumowań
 >   i notatek tego przedmiotu, w jego języku. Odświeża go po każdym nowym wykładzie, najwyżej jeden podręcznik na uruchomienie.
->   Plik jest za każdym razem pisany od nowa, więc własne notatki trzymaj obok. W dashboardzie to pierwsza karta przedmiotu
->   w Archive → Wykłady.
+>   Plik jest za każdym razem pisany od nowa, więc własne notatki trzymaj poza `Lectures/` (np. w `Knowledge/` albo we
+>   własnym folderze): każdą notatkę z `Lectures/` dashboard pokazuje jako wykład. W dashboardzie podręcznik to pierwsza
+>   karta przedmiotu w Archive → Wykłady.
 > - **Nauka z ChatGPT i Claude:** swój tryb nauki i prompt podręcznika (Primer) wpisujesz w dashboardzie: **Settings → AI
 >   Context → Nauka** (**Wczytaj z Archiwum** wstawia je z Twoich notatek). Tam też możesz podać link do projektu w ChatGPT.
 >   Tracker po zalogowaniu i potem co 10 minut kopiuje oba teksty do vaulta jako `_SYSTEM/learning-mode.md` (czyta go Claude
 >   Desktop, gdy przegadujesz wykład) i `_SYSTEM/primer-prompt.md` (według niego rutyna pisze podręcznik). Zmieniaj je
->   w dashboardzie, nie w vaulcie: kopię w vaulcie tracker nadpisuje, a puste pole niczego nie kasuje. Przyciski przy wykładzie
+>   w dashboardzie, nie w vaulcie: kopię w vaulcie tracker nadpisuje (to, co ktoś w niej dopisał, najpierw zapisuje obok jako
+>   „(moja wersja <data>)”), a puste pole niczego nie kasuje. Przyciski przy wykładzie
 >   i podręczniku kopiują materiał do schowka: **Ucz się w ChatGPT** i **Test w ChatGPT** otwierają ChatGPT (albo Twój
 >   projekt), **Przegadaj w Claude** daje krótkie polecenie do wklejenia w Claude Desktop. Długa nauka idzie więc na Twoich
 >   subskrypcjach, nie przez asystenta w dashboardzie.

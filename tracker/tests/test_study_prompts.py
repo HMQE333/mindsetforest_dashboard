@@ -8,7 +8,8 @@ from mindsetforest_tracker.capture import FakeSampler
 from mindsetforest_tracker.config import Config, load_config, save_config
 from mindsetforest_tracker.main import TrackerApp
 from mindsetforest_tracker.recordings import (
-    ROUTINE, STUDY_PROMPT_FILES, ensure_system_notes, study_prompt_note, write_study_prompts,
+    ROUTINE, STUDY_PROMPT_FILES, STUDY_PROMPT_NOTICE, ensure_system_notes, study_prompt_note, text_hash,
+    write_study_prompts,
 )
 from mindsetforest_tracker.sessions import SessionTracker
 from mindsetforest_tracker.store import Store
@@ -140,8 +141,10 @@ def test_each_prompt_becomes_its_system_note_with_a_short_frontmatter(tmp_path):
     vault = vault_at(tmp_path)
     assert write_study_prompts(vault, {"learning_mode": LEARNING, "primer_prompt": PRIMER}, WHEN) == [
         "learning-mode.md", "primer-prompt.md"]
-    assert system(vault, "learning-mode.md") == "---\nsource: dashboard\n---\n" + LEARNING
-    assert system(vault, "primer-prompt.md") == "---\nsource: dashboard\n---\n" + PRIMER
+    assert system(vault, "learning-mode.md") == (
+        f"---\nsource: dashboard\ndashboard_hash: {text_hash(LEARNING)}\n---\n{STUDY_PROMPT_NOTICE}\n\n{LEARNING}")
+    assert system(vault, "primer-prompt.md") == study_prompt_note(PRIMER)
+    assert "Tracker nadpisuje ten plik" in STUDY_PROMPT_NOTICE and "poza _SYSTEM/" in STUDY_PROMPT_NOTICE
     assert sorted(p.name for p in (vault / "_SYSTEM").iterdir()) == ["learning-mode.md", "primer-prompt.md"]
     assert STUDY_PROMPT_FILES == {"learning_mode": "learning-mode.md", "primer_prompt": "primer-prompt.md"}
 
@@ -150,7 +153,8 @@ def test_only_a_changed_text_is_written_and_an_empty_one_leaves_the_file(tmp_pat
     vault = vault_at(tmp_path)
     write_study_prompts(vault, {"learning_mode": LEARNING, "primer_prompt": PRIMER}, WHEN)
     path = vault / "_SYSTEM" / "learning-mode.md"
-    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))  # an editor's line ends are not a change
+    # An editor's line ends are not a change (normalised first: Windows already writes CRLF).
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     before = path.stat().st_mtime_ns
     assert write_study_prompts(vault, {"learning_mode": LEARNING + "\n\n", "primer_prompt": PRIMER}, WHEN) == []
     assert path.stat().st_mtime_ns == before
@@ -158,14 +162,17 @@ def test_only_a_changed_text_is_written_and_an_empty_one_leaves_the_file(tmp_pat
     assert write_study_prompts(vault, {"learning_mode": LEARNING + "2. Prosty model.", "primer_prompt": PRIMER},
                                WHEN) == ["learning-mode.md"]
     assert system(vault, "learning-mode.md").endswith("1. Najpierw mapa dziedziny.\n2. Prosty model.\n")
+    assert not list((vault / "_SYSTEM").glob("*moja wersja*"))  # the tracker's own text: no copy
     # Cleared in the dashboard (or never filled in): the file stays as it is.
     assert write_study_prompts(vault, {"learning_mode": "  \n", "primer_prompt": ""}, WHEN) == []
     assert "2. Prosty model." in system(vault, "learning-mode.md") and system(vault, "primer-prompt.md")
-    # Edited in Obsidian: the dashboard's text is the one that counts, and that copy is the tracker's.
-    path.write_text(system(vault, "learning-mode.md") + "my line\n", encoding="utf-8")
-    assert write_study_prompts(vault, {"learning_mode": LEARNING + "2. Prosty model."}, WHEN) == ["learning-mode.md"]
-    assert "my line" not in system(vault, "learning-mode.md")
-    assert not list((vault / "_SYSTEM").glob("*moja wersja*"))
+    # Edited in the vault (Claude Desktop appended a learning log): the dashboard's text is the one that
+    # counts, but what was written there is kept as a copy first.
+    path.write_bytes(path.read_bytes() + b"\n## Log nauki\n- aha X\n")
+    assert write_study_prompts(vault, {"learning_mode": LEARNING + "2. Prosty model. 3. Pętla."}, WHEN) == [
+        "learning-mode.md"]
+    assert "aha X" not in system(vault, "learning-mode.md")
+    assert "- aha X" in system(vault, "learning-mode (moja wersja 2026-10-15).md")
 
 
 def test_a_file_the_user_made_by_hand_is_kept_as_a_copy_first(tmp_path):
@@ -175,6 +182,10 @@ def test_a_file_the_user_made_by_hand_is_kept_as_a_copy_first(tmp_path):
     assert write_study_prompts(vault, {"primer_prompt": PRIMER}, WHEN) == ["primer-prompt.md"]
     assert system(vault, "primer-prompt (moja wersja 2026-10-15).md") == "# Mój primer\nKrótko.\n"
     assert system(vault, "primer-prompt.md") == study_prompt_note(PRIMER)
+    # "source: dashboard" without the hash of what was written: not provably the tracker's, so kept too.
+    (vault / "_SYSTEM" / "learning-mode.md").write_bytes(b"---\nsource: dashboard\n---\nStary tekst.\n")
+    assert write_study_prompts(vault, {"learning_mode": LEARNING}, WHEN) == ["learning-mode.md"]
+    assert "Stary tekst." in system(vault, "learning-mode (moja wersja 2026-10-15).md")
 
 
 def test_other_system_notes_are_never_touched_and_a_missing_vault_is_not_created(tmp_path):

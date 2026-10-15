@@ -21,11 +21,11 @@ export type StudyPromptKind = "learning" | "primer";
 
 export const CHATGPT_HOME = "https://chatgpt.com/";
 
-/** Only a https link on chatgpt.com: the button opens it in a new tab. */
+/** Only a https link on chatgpt.com (default port, as the table's check wants): the button opens it in a new tab. */
 export function isChatGptUrl(s: string): boolean {
   try {
     const u = new URL(s.trim());
-    return u.protocol === "https:" && u.hostname === "chatgpt.com" && !u.username && !u.password;
+    return u.protocol === "https:" && u.hostname === "chatgpt.com" && u.port === "" && !u.username && !u.password;
   } catch {
     return false;
   }

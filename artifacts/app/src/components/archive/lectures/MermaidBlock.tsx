@@ -31,7 +31,10 @@ function loadMermaid(): Promise<Mermaid> {
 // One diagram at a time: mermaid keeps global state while it renders.
 let queue: Promise<unknown> = Promise.resolve();
 
-/** `prominent`: the lecture map, which opens the note ("najpierw mapa") and gets a little more room. */
+/**
+ * `prominent`: the lecture map, which opens the note ("najpierw mapa"): a
+ * little more room, and on a narrow screen it scrolls rather than shrinks.
+ */
 export default function MermaidBlock({ code, lang, prominent = false }: { code: string; lang: "pl" | "en"; prominent?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const id = `kos-mermaid-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -48,7 +51,11 @@ export default function MermaidBlock({ code, lang, prominent = false }: { code: 
         // The SVG comes from mermaid with securityLevel "strict", which sanitises labels.
         box.current.innerHTML = svg;
         // Mermaid sizes the SVG to its natural width (max-width) and lets it shrink on a narrow screen.
-        box.current.querySelector("svg")?.setAttribute("role", "img");
+        const el = box.current.querySelector("svg");
+        el?.setAttribute("role", "img");
+        // The lecture map shrinks to 3/4 at most: on a phone it scrolls sideways instead of turning unreadable.
+        const natural = parseFloat(el?.style.maxWidth ?? "") || el?.viewBox?.baseVal?.width || 0;
+        if (prominent && el && natural > 0) el.style.minWidth = `${Math.round(natural * 0.75)}px`;
         setState("done");
       } catch (e) {
         document.getElementById(`d${id}`)?.remove();
@@ -60,7 +67,7 @@ export default function MermaidBlock({ code, lang, prominent = false }: { code: 
     return () => {
       live = false;
     };
-  }, [code, id]);
+  }, [code, id, prominent]);
 
   if (typeof state === "object") {
     return <BlockError title={lang === "pl" ? "Nie udało się narysować diagramu" : "Could not draw the diagram"} message={state.error} source={code} />;
@@ -68,7 +75,10 @@ export default function MermaidBlock({ code, lang, prominent = false }: { code: 
   return (
     <figure className={prominent ? "my-3" : "my-2"} data-mermaid={prominent ? "map" : undefined}>
       {state === "loading" && <p className="text-xs text-muted-foreground py-6 text-center">{lang === "pl" ? "Rysuję diagram…" : "Drawing the diagram…"}</p>}
-      <div ref={box} className={`flex justify-center overflow-x-auto [&_svg]:max-w-full ${prominent ? "py-2" : ""}`} />
+      <div
+        ref={box}
+        className={prominent ? "overflow-x-auto py-2 [&_svg]:mx-auto [&_svg]:block" : "flex justify-center overflow-x-auto [&_svg]:max-w-full"}
+      />
     </figure>
   );
 }

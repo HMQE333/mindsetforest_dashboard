@@ -546,7 +546,8 @@ as a whole each time; my own notes on a course live in other files.
   tutor mode and anything that needs material beyond the course's notes do not apply here. Without that
   file, write the sections below as described.
 - **Language and length.** The course's language (that of its summaries), and one language only, as in a
-  summary. About 2500-5000 words; shorter while the course has little material: never pad.
+  summary. About 2500-3500 words, so it fits whole in one study pack; shorter while the course has
+  little material: never pad.
 
 The frontmatter, exactly these fields:
 
@@ -1117,11 +1118,31 @@ def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
 # lecture through there; the routine follows the primer prompt when it writes a course textbook.
 STUDY_PROMPT_FILES = {"learning_mode": "learning-mode.md", "primer_prompt": "primer-prompt.md"}
 _FROM_DASHBOARD = re.compile(r"(?m)^source:[ \t]*[\"']?dashboard[\"']?[ \t]*\r?$")
+_DASHBOARD_HASH = re.compile(r"(?m)^dashboard_hash:[ \t]*[\"']?([0-9a-f]{64})[\"']?[ \t]*\r?$")
+# Read by whoever opens the file (Claude Desktop, Obsidian's editor), so nothing is written here to be lost.
+STUDY_PROMPT_NOTICE = ("<!-- Kopia z dashboardu (Ustawienia → AI Context → Nauka). Tracker nadpisuje ten plik, "
+                       "gdy tekst zmieni się w dashboardzie: zmieniaj go tam, a notatki z nauki zapisuj poza "
+                       "_SYSTEM/. -->")
 
 
 def study_prompt_note(text: str) -> str:
-    """A study prompt as its vault copy: a short frontmatter, then the text as written in the dashboard."""
-    return f"---\nsource: dashboard\n---\n{text.strip()}\n"
+    """A study prompt as its vault copy: a short frontmatter with the text's hash, a notice, then the text."""
+    body = text.strip()
+    return f"---\nsource: dashboard\ndashboard_hash: {text_hash(body)}\n---\n{STUDY_PROMPT_NOTICE}\n\n{body}\n"
+
+
+def _edited_in_vault(current: str) -> bool:
+    """Does this file hold anything the dashboard did not write? Then it is kept as a copy first.
+
+    The tracker's own file carries the hash of the text it wrote; a file without one (made by hand, or
+    rewritten without the frontmatter) or whose text no longer matches it was written by someone else.
+    """
+    head = _FRONTMATTER.match(current)
+    if head is None or not _FROM_DASHBOARD.search(head.group(1)):
+        return True
+    stored = _DASHBOARD_HASH.search(head.group(1))
+    body = current[head.end():].replace(STUDY_PROMPT_NOTICE, "", 1)
+    return stored is None or stored.group(1) != text_hash(body)
 
 
 def write_study_prompts(vault: Path, prompts: dict[str, str], now: datetime | None = None) -> list[str]:
@@ -1129,9 +1150,10 @@ def write_study_prompts(vault: Path, prompts: dict[str, str], now: datetime | No
 
     The dashboard holds the text (Settings -> AI Context -> Nauka) and the vault copy follows it: a
     file that already holds the text is left as it is, and an empty prompt never empties or deletes
-    one. A file the dashboard did not write (no ``source: dashboard``) is the user's own: it is first
-    saved as "<name> (moja wersja <date>).md". Only the files in ``STUDY_PROMPT_FILES`` are written,
-    and a vault that does not exist (a drive not mounted yet) is not created.
+    one. A file the dashboard did not write, or one edited in the vault since (a learning log Claude
+    Desktop appended, a line changed in Obsidian), is first saved as "<name> (moja wersja <date>).md",
+    so nothing written there is lost. Only the files in ``STUDY_PROMPT_FILES`` are written, and a vault
+    that does not exist (a drive not mounted yet) is not created.
     """
     if not vault.is_dir():
         return []
@@ -1149,9 +1171,9 @@ def write_study_prompts(vault: Path, prompts: dict[str, str], now: datetime | No
                 current = data.decode("utf-8", errors="replace")
                 if _normalise_text(current) == _normalise_text(note):
                     continue
-                head = _FRONTMATTER.match(current)
-                if head is None or not _FROM_DASHBOARD.search(head.group(1)):
-                    _keep_copy(path, data, (now or datetime.now()).date())
+                if _edited_in_vault(current):
+                    copy = _keep_copy(path, data, (now or datetime.now()).date())
+                    log.info("%s was edited in the vault: kept as %s", name, copy.name)
             sysdir.mkdir(exist_ok=True)
             _write_atomic(path, note)
         except OSError as exc:  # a locked file waits for the next turn
@@ -1403,7 +1425,8 @@ class VaultMirror:
                 if data is None:
                     data = p.read_bytes()
                     sha = hashlib.sha256(data).hexdigest()
-                text = data.decode("utf-8", errors="replace").lstrip("\ufeff").replace("\x00", "")
+                # LF only: Windows editors (and Python's own text writes there) save CRLF, the dashboard reads LF.
+                text = data.decode("utf-8", errors="replace").lstrip("\ufeff").replace("\x00", "").replace("\r\n", "\n")
                 if rel in MIRROR_FILES:
                     text = log_excerpt(text)
                 changed.append({"vault": name, "path": rel, "content": text, "sha256": sha,

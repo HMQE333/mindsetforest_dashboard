@@ -15,7 +15,7 @@ import type { StudyMode } from "@/lib/lecture-tutor";
 import TranscriptPanel from "../kos/TranscriptPanel";
 import LectureMarkdown, { useLectureLayout, type LinkHandlers } from "./LectureMarkdown";
 import { LanguageFlag, SourceBadge, longDate } from "./lecture-meta";
-import { studyInChatGpt, talkInClaude, type StudySource } from "./study-actions";
+import { studyInChatGpt, talkInClaude, type Material, type StudySource } from "./study-actions";
 
 export interface ReaderProps {
   lecture: LectureSummary;
@@ -49,19 +49,32 @@ export default function LectureReader({ lecture, index, recordings, onBack, onOp
   const [moment, setMoment] = useState<{ key: string; ref: SourceRef; full: boolean } | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
 
-  // The transcript passages go into the study pack: fetched now, so a press finds them ready
-  // (a copy or a new tab after a long wait may be refused by the browser).
+  // The transcript passages go into the study pack: loaded when the lecture opens and kept while
+  // it is open, so a press copies at once (Safari refuses a copy that waits for the network).
   const { recordings: loadRecordings } = study;
+  const [material, setMaterial] = useState<{ path: string; m: Material }>({ path: "", m: { state: "loading" } });
   useEffect(() => {
-    if (lecture.kind === "summary") loadRecordings(lecture).catch(() => undefined);
+    if (lecture.kind !== "summary") return;
+    let live = true;
+    const path = lecture.path;
+    setMaterial((cur) => (cur.path === path && cur.m.state === "ready" ? cur : { path, m: { state: "loading" } }));
+    loadRecordings(lecture).then(
+      (rows) => live && setMaterial({ path, m: { state: "ready", rows } }),
+      () => live && setMaterial((cur) => (cur.path === path && cur.m.state === "ready" ? cur : { path, m: { state: "failed" } })),
+    );
+    return () => {
+      live = false;
+    };
   }, [lecture, loadRecordings]);
+  const held: Material = material.path === lecture.path ? material.m : { state: "loading" };
 
   const run = async (what: Exclude<Busy, null>) => {
     if (busy) return;
     setBusy(what);
     try {
-      if (what === "claude") await talkInClaude(lecture);
-      else await studyInChatGpt(study, lecture, what);
+      // Called inside the click, with no await before the copy.
+      if (what === "claude") await talkInClaude(lecture, study.learningMode);
+      else await studyInChatGpt(study, lecture, what, held);
     } finally {
       setBusy(null);
     }
@@ -150,7 +163,11 @@ export default function LectureReader({ lecture, index, recordings, onBack, onOp
       <header className="glass-card space-y-3 p-4 sm:p-5">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <span className="font-semibold text-foreground/85">{lecture.course ?? (lang === "pl" ? "Inne" : "Other")}</span>
-          {textbook && <span className="rounded-md border border-sky-400/40 bg-sky-400/10 px-1.5 py-px text-[11px] text-sky-200">📘 {t.textbook}</span>}
+          {textbook && (
+            <span className="rounded-md border border-sky-400/40 bg-sky-400/10 px-1.5 py-px text-[11px] text-sky-200">
+              📘{lecture.topic === t.textbook ? "" : ` ${t.textbook}`}
+            </span>
+          )}
           {lecture.date && <span>· {longDate(lecture.date, locale)}</span>}
           <LanguageFlag lang={lang} />
           {!textbook && <SourceBadge source={lecture.source} lang={lang} />}
@@ -158,7 +175,7 @@ export default function LectureReader({ lecture, index, recordings, onBack, onOp
         <h2 id="lecture-title" className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
           {lecture.topic}
         </h2>
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Ucz się poza panelem">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Ucz się w ChatGPT albo w Claude">
           <button
             type="button"
             onClick={() => void run("explain")}

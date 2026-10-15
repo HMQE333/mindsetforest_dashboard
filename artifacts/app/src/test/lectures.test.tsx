@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { compile, exprErrorText, ExprError } from "../components/archive/lectures/expr";
@@ -8,8 +8,12 @@ import { inlineText, parseBlocks, parseInline, splitRow, type Block } from "../c
 import LectureMarkdown, { useLectureLayout, type LinkHandlers } from "../components/archive/lectures/LectureMarkdown";
 import PlotBlock from "../components/archive/lectures/PlotBlock";
 import Plot3DBlock from "../components/archive/lectures/Plot3DBlock";
+import LecturesView from "../components/archive/lectures/LecturesView";
+import type { StudySource } from "../components/archive/lectures/study-actions";
 import { indexVault, parseLectureSummary, resolveLink } from "../lib/kos-vault";
-import { FIXTURE_FILES, LECTURE_EN, LECTURE_PL } from "./lecture-fixtures";
+import { FIXTURE_FILES, FIXTURE_RECORDINGS, LECTURE_EN, LECTURE_PL, LECTURE_PL2 } from "./lecture-fixtures";
+
+vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 
 const ev = (src: string, x = 0, y = 0) => compile(src)({ x, y });
 
@@ -281,6 +285,18 @@ describe("the reader's rendering", () => {
     expect(out).toContain('class="my-3 overflow-x-auto');
   });
 
+  it("puts the lecture map up front with its own heading, and shows 'Do zapamiętania' as a folded callout", () => {
+    const out = html(LECTURE_PL2);
+    expect(out).toContain('data-kind="map"');
+    expect(out).toMatch(/<h3 id="l-mapa-wykladu"[^>]*><span aria-hidden="true">🗺️<\/span><span>Mapa wykładu<\/span><\/h3>/);
+    expect(out).toContain('data-mermaid="map"');
+    // The map comes right after the short overview, before the numbered sections.
+    expect(out.indexOf('data-kind="map"')).toBeLessThan(out.indexOf('id="l-1-kwantyfikator-ogolny"'));
+    expect(out).toMatch(/data-callout="important"[^>]*><button[^>]*data-callout-toggle="closed"[^>]*><span aria-hidden="true">📌<\/span><span class="font-semibold text-fuchsia-200">Do zapamiętania<\/span>/);
+    // Other diagrams keep the ordinary size.
+    expect(html(LECTURE_PL)).not.toContain('data-mermaid="map"');
+  });
+
   it("draws a plot, and shows a bad block as an error box with its source instead of breaking the note", () => {
     const ok = renderToStaticMarkup(createElement(PlotBlock, { source: '{"title": "t", "x": [-1, 1], "functions": [{"expr": "x^2"}]}', lang: "pl" }));
     expect(ok).toContain('role="img"');
@@ -318,5 +334,69 @@ describe("markdown hardening", () => {
     parseInline("*a ".repeat(20000));
     parseInline("[[".repeat(20000));
     expect(performance.now() - start).toBeLessThan(2000);
+  });
+});
+
+describe("the Wykłady list and reader", () => {
+  const index = indexVault(FIXTURE_FILES);
+  const study: StudySource = { learningMode: "", projectUrl: "", recordings: async () => [] };
+  const view = (openPath: string | null = null) =>
+    renderToStaticMarkup(
+      createElement(LecturesView, {
+        index,
+        loading: false,
+        failed: false,
+        recordings: FIXTURE_RECORDINGS,
+        openPath,
+        onOpen: () => {},
+        onOpenRecording: () => {},
+        study,
+        onRefresh: () => {},
+      }),
+    );
+
+  it("lists the course's textbook first, how much it covers, and a course pack per course", () => {
+    const out = view();
+    const logika = out.slice(out.indexOf('id="course-logika"'), out.indexOf('id="course-intro-to-data-science"'));
+    expect(logika.indexOf('data-textbook="Lectures/Logika/_Podręcznik.md"')).toBeGreaterThan(0);
+    expect(logika.indexOf("data-textbook")).toBeLessThan(logika.indexOf("Kwantyfikatory"));
+    expect(logika).toContain("📘 Podręcznik");
+    expect(logika).toContain("Obejmuje wszystkie wykłady (2).");
+    expect(out.match(/data-course-pack=/g)).toHaveLength(3);
+    expect(out).toContain("Pakiet przedmiotu");
+    // The nav count and the search count are lectures, not textbooks.
+    expect(out).not.toContain('data-textbook="Lectures/Intro');
+  });
+
+  it("says when the textbook does not cover every lecture yet", () => {
+    const partial = indexVault(
+      FIXTURE_FILES.map((f) => (f.path === "Lectures/Logika/_Podręcznik.md" ? { ...f, content: f.content.replace(', "[[Lectures/Logika/2026-10-18 Kwantyfikatory]]"', "") } : f)),
+    );
+    const out = renderToStaticMarkup(
+      createElement(LecturesView, { index: partial, loading: false, failed: false, recordings: [], openPath: null, onOpen: () => {}, onOpenRecording: () => {}, study, onRefresh: () => {} }),
+    );
+    expect(out).toContain("Obejmuje 1 z 2 wykładów; rutyna go uzupełni.");
+  });
+
+  it("gives the reader the hand-off buttons, not the old tutor", () => {
+    const out = view("Lectures/Logika/2026-10-18 Kwantyfikatory.md");
+    expect(out).toMatch(/data-handoff="explain"[^>]*>.*Ucz się w ChatGPT<\/button>/);
+    expect(out).toMatch(/data-handoff="test"[^>]*>.*Test w ChatGPT<\/button>/);
+    expect(out).toMatch(/data-handoff="claude"[^>]*>.*Przegadaj w Claude<\/button>/);
+    expect(out).not.toMatch(/Przegadaj temat|Sprawdź się/);
+    expect(out).toContain("🗺️ Mapa wykładu");
+  });
+
+  it("opens a textbook in the same reader with the same buttons and the summaries it was built from", () => {
+    const out = view("Lectures/Logika/_Podręcznik.md");
+    // The badge does not repeat the title when the routine gave the textbook no title of its own.
+    expect(out).toMatch(/text-sky-200">📘<\/span>/);
+    expect(out).toMatch(/id="lecture-title"[^>]*>Podręcznik przedmiotu<\/h2>/);
+    expect(out).toContain('data-handoff="explain"');
+    expect(out).toContain("Zbudowany z:");
+    expect(out).toContain("🎓 2026-10-11 · Zdania logiczne i zbiory");
+    expect(out).toContain("🎓 2026-10-18 · Kwantyfikatory");
+    // No source badge (a textbook is not a recording) and no session footer.
+    expect(out).not.toContain("Źródło:");
   });
 });
