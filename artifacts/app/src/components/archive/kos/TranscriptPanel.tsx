@@ -54,7 +54,9 @@ export default function TranscriptPanel({ recordingId, at = null, paragraph = nu
   return (
     <div
       ref={box}
-      className={`relative rounded-lg bg-muted/30 border border-border/40 px-3 py-2 text-[13px] leading-6 ${context ? "" : "max-h-80 overflow-y-auto"}`}
+      // Context mode is a few lines around the moment; with no moment (a link to the whole recording)
+      // it shows everything, so it keeps the scroll box like the full view.
+      className={`relative rounded-lg bg-muted/30 border border-border/40 px-3 py-2 text-[13px] leading-6 ${context && hit >= 0 ? "" : "max-h-80 overflow-y-auto"}`}
     >
       {from > 0 && <p className="text-[11px] text-muted-foreground">…</p>}
       {segments.slice(from, to).map((s, j) => {

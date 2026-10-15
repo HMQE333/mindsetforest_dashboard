@@ -140,7 +140,7 @@ def test_the_trackers_own_older_text_is_replaced_without_a_copy(tmp_path, caplog
         assert ensure_system_notes(vault, WHEN) == ["processing-rules.md", "routine-prompt.md"]
     assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == ROUTINE
     assert (sysdir(vault) / "processing-rules.md").read_text(encoding="utf-8") == RULES
-    assert sorted(p.name for p in sysdir(vault).iterdir()) == ["processing-rules.md", "routine-log.md",
+    assert sorted(p.name for p in sysdir(vault).iterdir()) == [".kos-format", "processing-rules.md", "routine-log.md",
                                                                "routine-prompt.md"]
     log = (sysdir(vault) / "routine-log.md").read_text(encoding="utf-8")
     assert log.startswith("# Routine log\n\n> [!info] Tracker ")
@@ -171,6 +171,21 @@ def test_an_edited_copy_is_kept_before_the_new_format_is_written(tmp_path):
     (sysdir(vault) / "routine-prompt.md").write_text(edited, encoding="utf-8")
     assert ensure_system_notes(vault, WHEN) == []
     assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == edited
+    # Even a rewrite that drops the format comment and every v2 word stays: the vault is stamped.
+    rewrite = "# Moja rutyna\nPrzetwarzaj tylko wykłady z logiki.\n"
+    (sysdir(vault) / "routine-prompt.md").write_text(rewrite, encoding="utf-8")
+    assert ensure_system_notes(vault, WHEN) == []
+    assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == rewrite
+    assert (sysdir(vault) / ".kos-format").read_text(encoding="utf-8").strip() == "2"
+
+
+def test_a_v2_edit_without_the_format_comment_is_the_users_even_unstamped(tmp_path):
+    vault = tmp_path / "Vault"
+    mine = ROUTINE.split("\n", 1)[1].replace("kos-format: 2", "") + "\n## Moje zasady\nMax 5 sesji.\n"
+    put(vault, "routine-prompt.md", mine.encode("utf-8"))
+    put(vault, "processing-rules.md", RULES.encode("utf-8"))
+    assert ensure_system_notes(vault, WHEN) == []
+    assert (sysdir(vault) / "routine-prompt.md").read_text(encoding="utf-8") == mine
 
 
 def test_a_copy_never_overwrites_another_and_an_identical_one_is_reused(tmp_path):

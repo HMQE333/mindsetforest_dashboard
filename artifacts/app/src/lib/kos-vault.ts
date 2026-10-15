@@ -244,7 +244,7 @@ export function parseKnowledgeNote(f: VaultFile): KnowledgeNote {
     } else if (!/^Sessions\//i.test(l.target) && l.name !== name) links.add(l.name);
   }
   const blocks = rest.split(/\r?\n\s*\r?\n/).map((b) => b.trim()).filter(Boolean);
-  const para = blocks.find((b) => !/^(>|#|[-*+]\s|\d+\.\s|related\s*:)/i.test(b));
+  const para = blocks.find((b) => !/^(>|#|[-*+]\s|\d+\.\s|(?:related|powiązane|powiazane)\s*:)/i.test(b));
   const quoteBlock = blocks.find((b) => b.startsWith(">"));
   const quote = quoteBlock
     ? plain(

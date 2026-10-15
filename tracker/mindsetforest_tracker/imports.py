@@ -51,6 +51,7 @@ log = logging.getLogger(__name__)
 
 DONE_DIR = "_done"
 TEXT_SUFFIXES = (".txt", ".md", ".vtt", ".srt")
+CAPTION_SUFFIXES = (".vtt", ".srt")
 DOCUMENT_SUFFIXES = (".docx", ".pdf")
 SUPPORTED = frozenset(TEXT_SUFFIXES + DOCUMENT_SUFFIXES)
 MAX_FILE_BYTES = 100 * 1024 * 1024
@@ -269,10 +270,15 @@ def timed_paragraphs(paragraphs: list[str]) -> list[dict] | None:
 
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W = "{%s}" % _W_NS
+# Word keeps a text box twice (mc:Choice and an old-style mc:Fallback copy) and a moved paragraph
+# twice (w:moveFrom where it was, w:moveTo where it is): the second copy of each is left out.
+_SKIP_TAGS = frozenset({"{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback", _W + "moveFrom"})
 
 
 def _docx_walk(el: ElementTree.Element, out: list[str], buf: list[str] | None) -> None:
     tag = el.tag
+    if tag in _SKIP_TAGS:
+        return
     if tag == _W + "p":
         own: list[str] = []
         for child in el:
@@ -326,14 +332,29 @@ def pdf_pages(data: bytes) -> list[str]:
 _PAGE_NUMBER = re.compile(r"^(?:(?:strona|str\.|page|p\.)\s*)?\d{1,4}(?:\s*(?:/|z|of)\s*\d{1,4})?$", re.I)
 
 
+_EDGE_LINES = 2
+
+
+def _edges(page: list[str]) -> set[int]:
+    """Indexes of the first and last few non-empty lines: where headers, footers and page numbers sit."""
+    filled = [i for i, line in enumerate(page) if line]
+    return set(filled[:_EDGE_LINES] + filled[-_EDGE_LINES:])
+
+
 def _pdf_lines(pages: list[str]) -> list[list[str]]:
-    """Each page's lines without running headers and footers (a line on 3+ pages and half of them)
-    or page numbers; blank lines stay as ""."""
+    """Each page's lines without running headers and footers or page numbers; blank lines stay as "".
+
+    Only a page's first and last lines can be those: a line repeated there on 3+ pages (and half of
+    them), or a bare number there. The same sentence repeated in the body ("To jest ważne."), a
+    speaker label or a year inside the text is the lecture and stays.
+    """
     lines = [[_squash(line) for line in page.strip().split("\n")] for page in pages]
-    counts = Counter(line for page in lines for line in set(page) if line)
+    edges = [_edges(page) for page in lines]
+    counts = Counter(line for page, edge in zip(lines, edges) for line in {page[i] for i in edge})
     repeated = {line for line, n in counts.items() if n >= 3 and n >= len(pages) / 2}
-    return [[line for line in page if not line or (line not in repeated and not _PAGE_NUMBER.match(line))]
-            for page in lines]
+    return [[line for i, line in enumerate(page)
+             if not line or i not in edge or (line not in repeated and not _PAGE_NUMBER.match(line))]
+            for page, edge in zip(lines, edges)]
 
 
 def _join_lines(lines: list[str], typical: int, cur: str = "") -> tuple[list[str], str]:
@@ -604,9 +625,12 @@ def classify(entry: Path, files: list[Path]) -> Plan:
     """
     if entry.is_file():
         return Plan(list(files))
-    summaries = [f for f in files if SUMMARY_NAME.search(f.stem)]
-    rest = [f for f in files if f not in summaries]
-    transcripts = [f for f in rest if f.suffix.lower() in TEXT_SUFFIXES or TRANSCRIPT_NAME.search(f.stem)]
+    # Captions and anything named like a transcript come first: "Wykład 15 - podsumowanie kursu -
+    # transkrypcja.vtt" is the lecture, not the platform's summary.
+    named = [f for f in files if f.suffix.lower() in CAPTION_SUFFIXES or TRANSCRIPT_NAME.search(f.stem)]
+    summaries = [f for f in files if f not in named and SUMMARY_NAME.search(f.stem)]
+    rest = [f for f in files if f not in named and f not in summaries]
+    transcripts = named + [f for f in rest if f.suffix.lower() in TEXT_SUFFIXES]
     materials = [f for f in rest if f not in transcripts]
     if not transcripts:
         transcripts = [f for f in materials if not MATERIAL_NAME.search(f.stem)]
@@ -813,10 +837,16 @@ def import_source(entry: Path, client: KosClient, state: ImportState, vault: Pat
         return entry.name if path == entry else f"{entry.name}/{path.relative_to(entry).as_posix()}"
 
     parts: list[_Part] = []
+    seen: set[str] = set()
     for path in plan.transcripts:
         data = read_file(path)
         part = _Part(path, data, hashlib.sha256(data).hexdigest())
+        if part.sha in seen:  # "transkrypcja (1).txt", the same file downloaded twice: one part
+            continue
+        seen.add(part.sha)
         part.known = state.done.get(part.sha)
+        if part.known is not None and not (recordings_dir / f"{part.known.get('note', '')}.md").exists():
+            part.known = None  # imported into another vault, or its notes were removed to redo it
         if part.known is None:
             part.remote = client.find_recording(part.sha)
             note = (part.remote or {}).get("note_name")
@@ -878,7 +908,7 @@ def import_source(entry: Path, client: KosClient, state: ImportState, vault: Pat
             "sha256": p.sha, "file_name": p.path.name, "note_name": note,
             "recorded_at": start.astimezone().isoformat(), "duration_seconds": round(tr.duration, 2),
             "session_key": session, "part": part_no, "model": f"import/{tr.kind}", "language": language,
-            "segments": tr.segments, "raw_text": tr.text, "source": "import", "original_name": original(p.path),
+            "segments": tr.segments, "raw_text": tr.text, "source": source, "original_name": original(p.path),
         }))
 
     ensure_system_notes(vault)
@@ -967,6 +997,11 @@ class ImportWatcher:
                 continue
             try:
                 if entry.is_file() and entry.suffix.lower() not in SUPPORTED:
+                    present.add(name)
+                    if name not in self._problems:  # once per file: "Wykład 3.pptx" must not vanish in silence
+                        self._problems[name] = ()
+                        self._tell(f"Import: „{name}” – tego typu pliku nie czytam "
+                                   f"(obsługuję {' '.join(sorted(SUPPORTED))}).")
                     continue
                 sig = _signature(entry)
             except OSError:

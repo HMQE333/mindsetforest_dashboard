@@ -656,6 +656,9 @@ SHIPPED_TEXTS = {
     }),
 }
 ROUTINE_LOG = "routine-log.md"
+# Remembers in the vault itself that its _SYSTEM notes reached a format, so a later edit that drops the
+# format comment (or rewrites the whole prompt) is never taken for an old text and replaced.
+FORMAT_STAMP = ".kos-format"
 IMPORT_DIR = "Import"
 IMPORT_README = "_jak to działa.md"
 IMPORT_README_TEXT = """# Import
@@ -905,6 +908,8 @@ def _upgrade_note(path: Path, text: str, day: date) -> Path | None | bool:
     marker = FORMAT_MARKER.search(current)
     if marker and int(marker.group(1)) >= FORMAT_VERSION:
         return False
+    if not marker and "Lectures/" in current and text_hash(current) not in SHIPPED_TEXTS.get(path.name, ()):
+        return False  # the user's own edit of a format-2 note that lost the comment: theirs, not old
     copy = None if text_hash(current) in SHIPPED_TEXTS.get(path.name, ()) else _keep_copy(path, data, day)
     _write_atomic(path, text)
     return copy
@@ -925,6 +930,14 @@ def _note_upgrade(sysdir: Path, names: list[str], copies: list[Path], when: date
             fh.write(f"{head}\n{line}\n")
     except OSError as exc:
         log.warning("Could not note the routine upgrade in %s: %s", logfile, exc)
+
+
+def _vault_format(sysdir: Path) -> int:
+    """The format this vault's _SYSTEM notes were last brought to (0 when never stamped)."""
+    try:
+        return int((sysdir / FORMAT_STAMP).read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return 0
 
 
 def ensure_import_folder(vault: Path) -> Path:
@@ -949,11 +962,14 @@ def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
     sysdir.mkdir(parents=True, exist_ok=True)
     upgraded: list[str] = []
     copies: list[Path] = []
+    stamped = _vault_format(sysdir) >= FORMAT_VERSION
     for name, text in (("processing-rules.md", RULES), ("routine-prompt.md", ROUTINE)):
         p = sysdir / name
         if not p.exists():
             p.write_text(text, encoding="utf-8")
             continue
+        if stamped:
+            continue  # this vault was brought to the current format before: its notes are the user's now
         try:
             result = _upgrade_note(p, text, now.date())
         except OSError as exc:  # a locked or unreadable note must not stop transcription
@@ -964,6 +980,11 @@ def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
         upgraded.append(name)
         if isinstance(result, Path):
             copies.append(result)
+    if not stamped:
+        try:
+            (sysdir / FORMAT_STAMP).write_text(f"{FORMAT_VERSION}\n", encoding="utf-8")
+        except OSError as exc:
+            log.warning("Could not stamp %s: %s", sysdir / FORMAT_STAMP, exc)
     if upgraded:
         log.info("Routine notes upgraded to format %d: %s%s", FORMAT_VERSION, ", ".join(upgraded),
                  f" (edited copies kept: {', '.join(c.name for c in copies)})" if copies else "")

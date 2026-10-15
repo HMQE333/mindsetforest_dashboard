@@ -297,3 +297,26 @@ describe("the reader's rendering", () => {
     expect(ok3).toContain('aria-label="Rotate left"');
   });
 });
+
+describe("markdown hardening", () => {
+  it("keeps %% inside a fenced block (mermaid comments) and hides it in prose", () => {
+    const blocks = parseBlocks("Tekst %%ukryte%% dalej\n\n```mermaid\nflowchart LR\n%% start\nA --> B\n%% end\n```");
+    const code = blocks.find((b) => b.t === "code") as Extract<Block, { t: "code" }>;
+    expect(code.v).toContain("A --> B");
+    expect(code.v).toContain("%% start");
+    expect(JSON.stringify(blocks[0])).not.toContain("ukryte");
+  });
+
+  it("allows obsidian:// only to open or search", () => {
+    const live = (md: string) => parseInline(md).some((n) => n.t === "link");
+    expect(live("[otwórz](obsidian://open?vault=V&file=Lectures%2Fa)")).toBe(true);
+    expect(live("[kliknij](obsidian://new?vault=V&file=_SYSTEM/routine-prompt&content=x&overwrite=true)")).toBe(false);
+  });
+
+  it("stays fast on malformed emphasis and unclosed links", () => {
+    const start = performance.now();
+    parseInline("*a ".repeat(20000));
+    parseInline("[[".repeat(20000));
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+});

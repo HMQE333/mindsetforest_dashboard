@@ -44,7 +44,7 @@ export default function HealthLine({
 }) {
   const problems = log?.last?.problems ?? null;
   return (
-    <div className="space-y-2" aria-live="polite">
+    <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span aria-hidden="true">🤖</span>
         {log?.lastRun ? (

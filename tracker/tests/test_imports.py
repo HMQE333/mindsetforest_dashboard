@@ -627,7 +627,7 @@ def test_youtube_captions_are_marked_for_the_routine(tmp_path):
     write(w.inbox / "Linear algebra lecture [dQw4w9WgXcQ].en.vtt", VTT)
     w.settle()
     session = w.server.rows[0]["session_key"]
-    assert w.server.rows[0]["source"] == "import"
+    assert w.server.rows[0]["source"] == "youtube"
     assert "source: youtube" in w.read(f"Sessions/{session}.md")
     assert session.endswith("Linear algebra lecture (dQw4w9WgXcQ).en")
 
@@ -694,3 +694,68 @@ def test_the_worker_imports_only_when_signed_in(tmp_path):
 def test_the_self_check_reads_a_docx_and_a_pdf():
     pytest.importorskip("pypdf")
     imports.self_check()
+
+
+def test_repeated_sentences_inside_pages_are_the_lecture_not_headers():
+    pytest.importorskip("pypdf")
+    body = ["Logika - wyklad 2", "Prowadzacy: Zaczynamy.", "To jest wazne.", "Rok 1989 byl przelomowy.", "Prowadzacy: Tak.",
+            "Dalsza czesc wykladu na tej stronie.", "1"]
+    pages = pdf_pages(sample_pdf([body, [*body[:-1], "2"], [*body[:-1], "3"]]))
+    text = " ".join(pdf_paragraphs(pages))
+    assert text.count("To jest wazne.") == 3 and text.count("Prowadzacy: Tak.") == 3 and "1989" in text
+    assert "Logika - wyklad 2" not in text  # the running header at the top still goes
+
+
+def test_a_transcript_named_like_a_summary_is_still_the_transcript(tmp_path):
+    folder = tmp_path / "Wyklad 15"
+    vtt = write(folder / "Wyklad 15 - podsumowanie kursu - transkrypcja.vtt", VTT)
+    ai = write(folder / "Podsumowanie AI.docx", sample_docx(["Podsumowanie."]))
+    plan = classify(folder, source_files(folder))
+    assert plan.transcripts == [vtt] and plan.summaries == [ai] and plan.stand_in is None
+
+
+def test_the_same_file_twice_in_a_folder_is_one_part(tmp_path):
+    w = World(tmp_path)
+    write(w.inbox / "Logika" / "transkrypcja.txt", "Akapit pierwszy.\n\nAkapit drugi.")
+    write(w.inbox / "Logika" / "transkrypcja (1).txt", "Akapit pierwszy.\n\nAkapit drugi.")
+    w.settle()
+    assert len(w.server.posts) == 1
+
+
+def test_a_file_known_locally_is_imported_again_into_a_vault_without_its_notes(tmp_path):
+    w = World(tmp_path)
+    write(w.inbox / "lecture.txt", "Akapit pierwszy.\n\nAkapit drugi.")
+    w.settle()
+    note = w.server.rows[0]["note_name"]
+    # The user removed the notes to redo the import (or switched vaults): the same file comes back.
+    (w.vault / "Recordings" / f"{note}.md").unlink()
+    write(w.inbox / "lecture again.txt", "Akapit pierwszy.\n\nAkapit drugi.")
+    w.settle(NOW + 600)
+    assert (w.vault / "Recordings" / f"{note}.md").is_file()  # rebuilt from the server's row
+    assert len(w.server.posts) == 1  # and not stored twice
+
+
+def test_word_text_boxes_and_moved_paragraphs_are_read_once():
+    import io as _io
+    import zipfile as _zip
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    box = '<w:txbxContent><w:p><w:r><w:t>W ramce</w:t></w:r></w:p></w:txbxContent>'
+    body = (f'<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps">{box}</mc:Choice>'
+            f'<mc:Fallback>{box}</mc:Fallback></mc:AlternateContent></w:r></w:p>'
+            '<w:p><w:moveFrom><w:r><w:t>Przeniesiony</w:t></w:r></w:moveFrom></w:p>'
+            '<w:p><w:moveTo><w:r><w:t>Przeniesiony</w:t></w:r></w:moveTo></w:p>')
+    doc = f'<?xml version="1.0"?><w:document {w} {mc}><w:body>{body}</w:body></w:document>'
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w") as z:
+        z.writestr("word/document.xml", doc)
+    assert docx_paragraphs(buf.getvalue()) == ["W ramce", "Przeniesiony"]
+
+
+def test_an_unsupported_file_is_reported_once(tmp_path):
+    w = World(tmp_path)
+    write(w.inbox / "Wyklad 3.pptx", b"PK fake")
+    w.settle()
+    w.settle(NOW + 600)
+    told = [m for m in w.told if "Wyklad 3.pptx" in m]
+    assert len(told) == 1 and ".docx" in told[0] and w.server.posts == []

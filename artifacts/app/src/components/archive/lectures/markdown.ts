@@ -127,9 +127,36 @@ const startsBlock = (line: string, next: string | undefined) =>
   (line.includes("|") && next !== undefined && TABLE_DELIM.test(next) && next.includes("-"));
 
 export function parseBlocks(src: string): Block[] {
-  // Obsidian comments are hidden in reading view.
-  const text = src.replace(/%%[\s\S]*?%%/g, "");
-  return blocks(text.split(/\r?\n/));
+  return blocks(stripComments(src).split(/\r?\n/));
+}
+
+/**
+ * Obsidian comments (%%...%%) are hidden in reading view, but not inside a
+ * fenced code block, where "%%" is mermaid's own comment syntax.
+ */
+function stripComments(src: string): string {
+  const chunks: string[] = [];
+  let prose: string[] = [];
+  let fence: string | null = null;
+  const flushProse = () => {
+    if (prose.length) chunks.push(prose.join("\n").replace(/%%[\s\S]*?%%/g, ""));
+    prose = [];
+  };
+  for (const line of src.split(/\r?\n/)) {
+    const m = /^\s*(?:>\s*)*(`{3,}|~{3,})/.exec(line);
+    if (fence === null && m) {
+      flushProse();
+      fence = m[1];
+      chunks.push(line);
+    } else if (fence !== null) {
+      chunks.push(line);
+      if (m && m[1][0] === fence[0] && m[1].length >= fence.length) fence = null;
+    } else {
+      prose.push(line);
+    }
+  }
+  flushProse();
+  return chunks.join("\n");
 }
 
 function blocks(lines: string[]): Block[] {
@@ -304,11 +331,16 @@ function list(lines: string[], start: number): { block: Block; next: number } {
 
 // -- inline ------------------------------------------------------------------------------
 
-const SAFE_HREF = /^(https?:|mailto:|obsidian:)/i;
+// obsidian:// only to open or search: its other actions (new, overwrite...) would let a
+// note written from third-party text change the vault with one click.
+const SAFE_HREF = /^(https?:|mailto:|obsidian:\/\/(?:open|search)\?)/i;
+/** How far an emphasis run looks for its end: keeps a malformed paragraph linear. */
+const EMPHASIS_REACH = 500;
 
 /** Where a closing `marker` is, for an emphasis run that starts at `from` (not after a space). */
 function closing(s: string, marker: string, from: number): number {
-  for (let j = from; j <= s.length - marker.length; j++) {
+  const last = Math.min(s.length - marker.length, from + EMPHASIS_REACH);
+  for (let j = from; j <= last; j++) {
     if (s[j] === "\\") {
       j++;
       continue;
@@ -333,6 +365,7 @@ function closing(s: string, marker: string, from: number): number {
 export function parseInline(s: string): Inline[] {
   const out: Inline[] = [];
   let text = "";
+  let noClose = Infinity;
   const flush = () => {
     if (text) out.push({ t: "text", v: text });
     text = "";
@@ -406,7 +439,9 @@ export function parseInline(s: string): Inline[] {
     if (rest.startsWith("[[") || rest.startsWith("![[")) {
       const embed = c === "!";
       const open = embed ? i + 1 : i;
-      const end = s.indexOf("]]", open + 2);
+      // Once no "]]" is left, later "[[" need not look again (20000 of them must not be quadratic).
+      const end = noClose <= open ? -1 : s.indexOf("]]", open + 2);
+      if (end < 0) noClose = Math.min(noClose, open);
       if (end > 0) {
         const link = wikiLinks(s.slice(open, end + 2))[0];
         if (link) {
@@ -418,7 +453,8 @@ export function parseInline(s: string): Inline[] {
       }
     }
     if (c === "[") {
-      const m = /^\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/.exec(rest);
+      // Bounded label and address: an unclosed "[" must not scan the rest of the paragraph each time.
+      const m = /^\[([^\]\n]{1,500})\]\(\s*<?([^)\s>]{1,2000})>?(?:\s+"[^"\n]{0,300}")?\s*\)/.exec(rest);
       if (m) {
         flush();
         const inner = parseInline(m[1]);
