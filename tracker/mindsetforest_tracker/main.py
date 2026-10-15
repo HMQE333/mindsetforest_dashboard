@@ -30,6 +30,7 @@ from typing import Any
 import psutil
 
 from . import __version__, tray
+from .imports import ImportState, ImportWatcher
 from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror
 from .archive_capture import (
     ArchiveClient, HotkeyListener, clean_source, foreground_title, parse_hotkey, read_selection,
@@ -615,10 +616,13 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
                 return False
             return tray.notify(icon, message)
 
+        vault = Path(config.vault_dir)
         app.intake = IntakeWorker(
-            Path(config.recordings_dir) if config.recordings_dir else None, Path(config.vault_dir),
+            Path(config.recordings_dir) if config.recordings_dir else None, vault,
             config.session_gap_minutes, kos, IntakeState.load(data_dir / "recordings.json"),
-            notify=notify, mirror=VaultMirror(Path(config.vault_dir), kos), since=config.recordings_since,
+            notify=notify, mirror=VaultMirror(vault, kos), since=config.recordings_since,
+            # Transcripts dropped into <vault>/Import/ (a lecture platform, a course, YouTube captions).
+            importer=ImportWatcher(vault, kos, ImportState.load(data_dir / "imports.json"), notify=notify),
         )
     return app
 

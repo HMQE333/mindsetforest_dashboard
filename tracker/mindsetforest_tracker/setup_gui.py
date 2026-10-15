@@ -42,7 +42,7 @@ from . import winsetup
 from .archive_capture import parse_hotkey
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .config import Config
-from .recordings import MIRROR_FOLDERS, count_recordings
+from .recordings import count_recordings
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +77,9 @@ COPIED = "Skopiowano"
 BROWSER_DOMAINS_LABEL = "Rozpoznawaj stronę po domenie aktywnej karty (bez pełnego adresu)"
 BROWSER_DOMAINS_HINT = ("Chrome, Edge, Brave: tracker czyta z paska adresu tylko domenę (np. chatgpt.com), "
                         "nigdy ścieżki ani wyszukiwania. Bez tego karty rozpoznaje tylko po tytule.")
+VAULT_HINT = ("Tu trafią transkrypty, podsumowania wykładów i notatki; widać je też w dashboardzie (Archive). "
+              "Pobrane transkrypcje i materiały (.txt, .vtt, .srt, .docx, .pdf) wrzucaj do folderu Import "
+              "w vaulcie.")
 RECORDINGS_COUNT_CAP = 1000  # counting a whole drive must not take long; shown as "999+"
 
 # -- hotkeys -------------------------------------------------------------------------
@@ -1079,8 +1082,7 @@ class SetupWindow:
             # The combobox's own wheel binding cycles its values: scrolling the page would switch vaults.
             self.vault_combo.bind(seq, lambda e: (self._wheel(e), "break")[1])
         ttk.Button(box, text="Wybierz...", command=self._pick_vault).grid(row=0, column=1, padx=(self.px(8), 0))
-        folders = " i ".join(f"{f}/" for f in MIRROR_FOLDERS)
-        hint = f"Tu trafią transkrypty i notatki. Notatki z {folders} widać w dashboardzie (Archive)."
+        hint = VAULT_HINT
         if self.obsidian_list:
             hint += " Twoje vaulty z Obsidiana są na liście; osobny folder MindsetForest też jest w porządku."
         self._hint(box, hint).grid(row=1, column=0, columnspan=2, sticky="w", pady=(self.px(2), 0))

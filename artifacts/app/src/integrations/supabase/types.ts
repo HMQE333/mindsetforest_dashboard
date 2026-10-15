@@ -1332,12 +1332,14 @@ export type Database = {
           language: string | null
           model: string
           note_name: string | null
+          original_name: string | null
           part: number
           raw_text: string
           recorded_at: string
           segments: Json
           session_key: string
           sha256: string
+          source: string
           user_id: string
         }
         Insert: {
@@ -1348,12 +1350,14 @@ export type Database = {
           language?: string | null
           model: string
           note_name?: string | null
+          original_name?: string | null
           part?: number
           raw_text: string
           recorded_at: string
           segments: Json
           session_key: string
           sha256: string
+          source?: string
           user_id: string
         }
         Update: {
@@ -1364,12 +1368,14 @@ export type Database = {
           language?: string | null
           model?: string
           note_name?: string | null
+          original_name?: string | null
           part?: number
           raw_text?: string
           recorded_at?: string
           segments?: Json
           session_key?: string
           sha256?: string
+          source?: string
           user_id?: string
         }
         Relationships: []

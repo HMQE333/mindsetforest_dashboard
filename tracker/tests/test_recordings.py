@@ -380,7 +380,9 @@ def test_a_restart_neither_rereads_known_recordings_nor_announces_them(tmp_path,
 
     reads = []
     real_read = Path.read_bytes
-    monkeypatch.setattr(Path, "read_bytes", lambda self: reads.append(self.name) or real_read(self))
+    # Audio reads only: the vault's _SYSTEM notes are read too, to keep the routine's format current.
+    monkeypatch.setattr(Path, "read_bytes",
+                        lambda self: (self.suffix == ".mp3" and reads.append(self.name)) or real_read(self))
 
     def run_tracker():
         notes = []

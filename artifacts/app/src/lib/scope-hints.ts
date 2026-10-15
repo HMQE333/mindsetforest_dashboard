@@ -39,11 +39,14 @@ const HINTS: { scope: ScopeId; pattern: RegExp }[] = [
   { scope: "cooking", pattern: hint(String.raw`przepis\w*|recipe\w*|gotowani\w*|cooking|posi[lł]\w*|meal\w*`) },
   { scope: "breathing", pattern: hint(String.raw`oddech\w*|breath\w*|breathing`) },
   { scope: "oracle", pattern: hint(String.raw`oracle|wyroczni\w*|nagrod\w*|reward\w*`) },
+  // "zajęci" (busy) and "wiedzieć" (to know) stay out: only the nouns count.
+  { scope: "knowledge", pattern: hint(String.raw`wyk[lł]ad\w*|zajęć|zaj[eę]ci[aeou]\w*|nagrani\w*|transkrypc\w*|egzamin\w*|kolokwi\w*|wiedz[aąęy]|lectur\w*|courses?|knowledge`) },
 ];
 
 /** Sections a message names outright. Empty when it names none. */
 export function keywordScopes(text: string): ScopeId[] {
-  const t = text.normalize("NFC");
+  // "of course" is a yes, not a course.
+  const t = text.normalize("NFC").replace(/\bof course\b/gi, " ");
   const out: ScopeId[] = [];
   for (const h of HINTS) if (h.pattern.test(t)) out.push(h.scope);
   return out;

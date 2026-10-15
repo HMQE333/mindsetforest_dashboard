@@ -6,7 +6,12 @@
  * the view can change without anyone reinstalling the tracker.
  *
  * A knowledge note cites its recording as [[Recordings/<note>#^t0750]]: the
- * block id is the segment's start in whole seconds (0750 = 12:30).
+ * block id is the segment's start in whole seconds (0750 = 12:30). An import
+ * without times cites a paragraph instead: #^p0012 is paragraph 12.
+ *
+ * Vault format 2 adds Lectures/<Course>/<YYYY-MM-DD> <Topic>.md, one summary
+ * per session, which the Wykłady tab reads. Older summaries live in
+ * Sessions/Summary <session key>.md and are read as summaries of that session.
  */
 
 export type FrontValue = string | string[];
@@ -135,17 +140,27 @@ export interface SourceRef {
   note: string;
   /** Start of the cited segment, in seconds from the start of that recording. */
   seconds: number | null;
+  /** The cited paragraph (1-based) of an import without times (#^p0012); only set for those. */
+  paragraph?: number;
 }
 
 /**
  * A link to a recording as a source: anything in Recordings/, or any link to a
- * transcript moment (#^tNNNN), since Obsidian resolves [[name#^t0750]] without
- * the folder and a routine may well write it that way. Null for other links.
+ * transcript moment (#^tNNNN, or #^pNNNN for a paragraph), since Obsidian
+ * resolves [[name#^t0750]] without the folder and a routine may well write it
+ * that way. Null for other links.
  */
 export function sourceRef(l: WikiLink): SourceRef | null {
-  const t = l.anchor ? /^\^?t(\d+)$/i.exec(l.anchor) : null;
-  if (!t && !/^Recordings\//i.test(l.target)) return null;
-  return { note: l.name, seconds: t ? Number(t[1]) : null };
+  const a = l.anchor ? /^\^?([tp])(\d+)$/i.exec(l.anchor) : null;
+  if (!a && !/^Recordings\//i.test(l.target)) return null;
+  if (a && a[1].toLowerCase() === "p") return { note: l.name, seconds: null, paragraph: Number(a[2]) };
+  return { note: l.name, seconds: a ? Number(a[2]) : null };
+}
+
+/** "12:34" for a moment, "¶12" for a paragraph, null for a link to the whole recording. */
+export function momentLabel(s: Pick<SourceRef, "seconds" | "paragraph">): string | null {
+  if (s.paragraph !== undefined) return `¶${s.paragraph}`;
+  return s.seconds === null ? null : clock(s.seconds);
 }
 
 export const noteName = (path: string) => (path.split("/").pop() || path).replace(/\.md$/i, "");
@@ -191,6 +206,10 @@ export interface KnowledgeNote {
   summary: string;
   /** The first "> quote", without its link. */
   quote: string | null;
+  /** Other names for it, mostly the term in the other language (format 2). */
+  aliases: string[];
+  /** The course it came from (format 2), else null. */
+  course: string | null;
 }
 
 function stripTitle(body: string): { title: string | null; rest: string } {
@@ -217,7 +236,7 @@ export function parseKnowledgeNote(f: VaultFile): KnowledgeNote {
   for (const l of all) {
     const s = sourceRef(l);
     if (s) {
-      const key = `${s.note}|${s.seconds}`;
+      const key = `${s.note}|${s.seconds}|${s.paragraph ?? ""}`;
       if (!seen.has(key)) {
         seen.add(key);
         sources.push(s);
@@ -252,6 +271,8 @@ export function parseKnowledgeNote(f: VaultFile): KnowledgeNote {
     body: rest.trim(),
     summary: para ? plain(para) : "",
     quote,
+    aliases: list(data.aliases).map((a) => a.trim()).filter(Boolean),
+    course: scalar(data.course),
   };
 }
 
@@ -263,14 +284,19 @@ export interface SessionNote {
   status: string;
   topic: string | null;
   continues: string | null;
-  /** Names of the knowledge notes listed under "## Knowledge". */
+  /** Names of the knowledge notes listed under "## Knowledge" (not the summary). */
   knowledge: string[];
+  /** The lecture summary the routine linked (`summary:`), as a vault path without ".md". */
+  summary: string | null;
+  /** When the note last changed: a session still "new" long after this is waiting for the routine. */
+  modified: string;
 }
 
 export function parseSessionNote(f: VaultFile): SessionNote {
   const { data, body } = parseFrontmatter(f.content);
   const section = /^##\s+Knowledge\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/im.exec(body);
   const continues = scalar(data.continues);
+  const summary = scalar(data.summary);
   return {
     key: noteName(f.path),
     path: f.path,
@@ -278,9 +304,247 @@ export function parseSessionNote(f: VaultFile): SessionNote {
     status: (scalar(data.status) || "new").toLowerCase(),
     topic: scalar(data.topic),
     continues: continues ? wikiLinks(continues)[0]?.name ?? continues : null,
-    knowledge: section ? [...new Set(wikiLinks(section[1]).map((l) => l.name))] : [],
+    knowledge: section
+      ? [...new Set(wikiLinks(section[1]).filter((l) => !/^Lectures\//i.test(l.target)).map((l) => l.name))]
+      : [],
+    summary: summary ? wikiLinks(summary)[0]?.target ?? summary.replace(/\.md$/i, "") : null,
+    modified: f.modified_at,
   };
 }
+
+// -- lecture summaries (format 2) ------------------------------------------------------
+
+export type LectureLanguage = "pl" | "en";
+export type LectureSource = "recording" | "import" | "youtube";
+/** What a "## " section of a summary is, by its heading in either language. */
+export type LectureSectionKind = "short" | "stressed" | "clarify" | "concepts" | "section";
+
+export interface LectureSection {
+  /** The heading as written, links included: "1. Zdanie logiczne [[Recordings/…#^t0754|12:34]]". */
+  heading: string;
+  /** The heading in plain words, without its moment link: "1. Zdanie logiczne". */
+  title: string;
+  kind: LectureSectionKind;
+  /** Where the section starts in the transcript, from a moment link in its heading. */
+  moment: SourceRef | null;
+}
+
+export interface LectureSummary {
+  path: string;
+  /** The file name: "2026-10-11 Zdania logiczne i zbiory", "Summary 2026-10-13 15-53". */
+  name: string;
+  vault: string;
+  modified: string;
+  /** As in the frontmatter; null when unknown (every legacy summary). */
+  course: string | null;
+  topic: string;
+  /** "2026-10-11", or null. */
+  date: string | null;
+  /** The language of the whole note, which is the source's. */
+  language: LectureLanguage;
+  source: LectureSource;
+  /** Keys of the sessions it covers ("2026-10-11 13-32"). */
+  sessions: string[];
+  /** Sessions/Summary <key>.md, written before format 2. */
+  legacy: boolean;
+  /** Without the frontmatter and a leading "# title". */
+  body: string;
+  /** "W skrócie" / "In short" in plain words; for a legacy note its first paragraph. */
+  short: string;
+  /** Its "## " sections in order. */
+  sections: LectureSection[];
+}
+
+/** A v2 summary in Lectures/, or a legacy one as Sessions/Summary <session key>.md. */
+export function isLectureSummaryPath(path: string): boolean {
+  return /^Lectures\/.+\.md$/i.test(path) || /^Sessions\/Summary .+\.md$/i.test(path);
+}
+
+/** Lower case without diacritics ("Ł" has none to drop, so it is mapped): "Wykłady" -> "wyklady". */
+export function fold(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/ł/g, "l");
+}
+
+export function lectureSectionKind(heading: string): LectureSectionKind {
+  const h = fold(heading.trim());
+  if (/^(w skrocie|in short)\b/.test(h)) return "short";
+  if (/^(na co prowadz|what the lecturer (stress|emphas))/.test(h)) return "stressed";
+  if (/^(do wyjasnienia|to clarify)\b/.test(h)) return "clarify";
+  if (/^(pojecia|concepts)\b/.test(h)) return "concepts";
+  return "section";
+}
+
+const PL_HINT = /[ąćęłńśźż]|(?:^|\s)(się|jest|nie|oraz|że|dla|przez|są|który|która|które)(?=\s|[.,;:]|$)/gi;
+const EN_HINT = /(?:^|\s)(the|and|is|of|that|for|are|with|this|which|from)(?=\s|[.,;:]|$)/gi;
+
+/** For a note without `language:`: Polish letters and words against English ones. */
+export function guessLanguage(text: string): LectureLanguage {
+  const pl = text.match(PL_HINT)?.length ?? 0;
+  const en = text.match(EN_HINT)?.length ?? 0;
+  return pl > en ? "pl" : "en";
+}
+
+/** The "## " sections of a body, with the text before the first one as the preamble. */
+export function splitLectureBody(body: string): { preamble: string; sections: { heading: string; text: string }[] } {
+  const sections: { heading: string; text: string }[] = [];
+  let preamble = "";
+  let current: { heading: string; lines: string[] } | null = null;
+  const pre: string[] = [];
+  let fence: string | null = null;
+  for (const line of body.split(/\r?\n/)) {
+    const f = /^\s*(?:>\s*)*(```+|~~~+)/.exec(line);
+    if (f) fence = fence === null ? f[1][0] : f[1][0] === fence ? null : fence;
+    const h = fence === null && !f ? /^##[ \t]+(.+?)[ \t]*$/.exec(line) : null;
+    if (h) {
+      if (current) sections.push({ heading: current.heading, text: current.lines.join("\n").trim() });
+      current = { heading: h[1], lines: [] };
+    } else if (current) current.lines.push(line);
+    else pre.push(line);
+  }
+  if (current) sections.push({ heading: current.heading, text: current.lines.join("\n").trim() });
+  preamble = pre.join("\n").trim();
+  return { preamble, sections };
+}
+
+/** Text with links as their labels, math and emphasis marks dropped: for cards and search. */
+export function plainText(s: string): string {
+  return replaceWikiLinks(s, (l) => (sourceRef(l) ? "" : l.alias || l.name))
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^\s*>\s?\[![^\]]+\][+-]?/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1$2")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const asLink = (v: string) => wikiLinks(v)[0] ?? null;
+
+export function parseLectureSummary(f: VaultFile): LectureSummary {
+  const { data, body: raw } = parseFrontmatter(f.content);
+  const name = noteName(f.path);
+  const legacy = /^Sessions\//i.test(f.path);
+  const { title, rest } = stripTitle(raw);
+  const body = rest.trim();
+  const { preamble, sections } = splitLectureBody(body);
+  const legacyKey = /^Summary (.+)$/i.exec(name)?.[1] ?? null;
+  const sessions = [...list(data.sessions), ...list(data.session)]
+    .map((v) => asLink(v)?.name ?? noteName(v))
+    .filter(Boolean);
+  if (sessions.length === 0 && legacyKey) sessions.push(legacyKey);
+  const lang = scalar(data.language)?.toLowerCase();
+  const src = scalar(data.source)?.toLowerCase();
+  const short = sections.find((x) => lectureSectionKind(x.heading) === "short")?.text;
+  const firstPara = (preamble || body)
+    .split(/\r?\n\s*\r?\n/)
+    .map((b) => b.trim())
+    .find((b) => b && !/^(>|#|```|\$\$|[-*+]\s|\|)/.test(b));
+  const datePart = (s: string | null | undefined) => (s ? /^(\d{4}-\d{2}-\d{2})/.exec(s)?.[1] ?? null : null);
+  // A legacy note's "# Summary 2026-10-13 15-53" is its file name, not a topic.
+  const heading = title && !/^summary\s+\d{4}-/i.test(title) ? title : null;
+  return {
+    path: f.path,
+    name,
+    vault: f.vault,
+    modified: f.modified_at,
+    course: scalar(data.course),
+    topic: scalar(data.topic) || heading || name.replace(/^(summary\s+)?\d{4}-\d{2}-\d{2}( \d{2}-\d{2})?\s*/i, "") || name,
+    date: datePart(scalar(data.date)) || datePart(name) || datePart(legacyKey) || datePart(scalar(data.created)),
+    language: lang === "pl" || lang === "en" ? lang : guessLanguage(body),
+    source: src === "import" || src === "youtube" ? src : "recording",
+    sessions: [...new Set(sessions)],
+    legacy,
+    body,
+    short: plainText(short ?? firstPara ?? ""),
+    sections: sections.map((x) => {
+      const links = wikiLinks(x.heading);
+      const moment = links.map(sourceRef).find((r): r is SourceRef => r !== null) ?? null;
+      return {
+        heading: x.heading,
+        title: replaceWikiLinks(x.heading, (l) => (sourceRef(l) ? "" : l.alias || l.name)).replace(/\s+/g, " ").trim(),
+        kind: lectureSectionKind(x.heading),
+        moment,
+      };
+    }),
+  };
+}
+
+/** The course a summary is listed under: unknown courses (every legacy summary) go to "Inne". */
+export const OTHER_COURSE = "Inne";
+export const courseOf = (l: Pick<LectureSummary, "course">) => l.course?.trim() || OTHER_COURSE;
+
+export interface CourseGroup {
+  course: string;
+  lectures: LectureSummary[];
+}
+
+/**
+ * Summaries grouped by course, newest first inside a course and the course
+ * with the newest lecture first ("Inne" last). Every word of `query` has to
+ * appear in the course, topic or text; case and diacritics do not matter.
+ */
+export function groupLectures(lectures: LectureSummary[], query = ""): CourseGroup[] {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const hay = (l: LectureSummary) => fold(`${courseOf(l)}\n${l.topic}\n${l.date ?? ""}\n${l.body}`);
+  const shown = words.length ? lectures.filter((l) => { const h = hay(l); return words.every((w) => h.includes(w)); }) : lectures;
+  const newest = (a: LectureSummary, b: LectureSummary) =>
+    (b.date ?? "").localeCompare(a.date ?? "") || b.modified.localeCompare(a.modified) || a.topic.localeCompare(b.topic);
+  const map = new Map<string, LectureSummary[]>();
+  for (const l of [...shown].sort(newest)) map.set(courseOf(l), [...(map.get(courseOf(l)) ?? []), l]);
+  return [...map.entries()]
+    .map(([course, ls]) => ({ course, lectures: ls }))
+    .sort((a, b) =>
+      (a.course === OTHER_COURSE ? 1 : 0) - (b.course === OTHER_COURSE ? 1 : 0) ||
+      newest(a.lectures[0], b.lectures[0]) ||
+      a.course.localeCompare(b.course),
+    );
+}
+
+// -- the routine's log -------------------------------------------------------------------
+
+export interface RoutineEntry {
+  /** "2026-10-11 15:05", as in the entry's heading. */
+  when: string;
+  /** The entry's "- key: value" lines in order: sessions, summaries, notes, problems. */
+  items: { key: string; value: string }[];
+  /** The "problems:" line, null when it says none. */
+  problems: string | null;
+}
+
+export interface RoutineLog {
+  /** The newest of `last_run:` and the last entry's time, local; null when neither parses. */
+  lastRun: Date | null;
+  last: RoutineEntry | null;
+}
+
+export const ROUTINE_LOG_PATH = "_SYSTEM/routine-log.md";
+
+/** "2026-10-11 15:05" (or "…T15:05", seconds optional) as a local time. */
+export function parseLocalStamp(s: string | null | undefined): Date | null {
+  const m = s ? /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2})[:-](\d{2}))?/.exec(s.trim()) : null;
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) : null;
+}
+
+/** `_SYSTEM/routine-log.md`: `last_run:` in the frontmatter and the last "## <time>" entry. */
+export function parseRoutineLog(content: string): RoutineLog {
+  const { data, body } = parseFrontmatter(content);
+  let last: RoutineEntry | null = null;
+  const re = /^##[ \t]+(\d{4}-\d{2}-\d{2}[ T]\d{1,2}[:-]\d{2})[^\n]*\n([\s\S]*?)(?=^##[ \t]|(?![\s\S]))/gm;
+  for (const m of body.matchAll(re)) {
+    const items: { key: string; value: string }[] = [];
+    for (const line of m[2].split(/\r?\n/)) {
+      const kv = /^\s*[-*]\s+([^:]+):\s*(.*)$/.exec(line);
+      if (kv) items.push({ key: kv[1].trim().toLowerCase(), value: kv[2].trim() });
+    }
+    const p = items.find((i) => /^(problems?|problemy)$/.test(i.key))?.value ?? "";
+    last = { when: m[1], items, problems: !p || /^(none|brak|nie ma|-)\.?$/i.test(p) ? null : p };
+  }
+  const stamps = [parseLocalStamp(scalar(data.last_run)), parseLocalStamp(last?.when)].filter((d): d is Date => d !== null);
+  return { lastRun: stamps.length ? new Date(Math.max(...stamps.map((d) => d.getTime()))) : null, last };
+}
+
+// -- the index ---------------------------------------------------------------------------
 
 export interface VaultIndex {
   notes: KnowledgeNote[];
@@ -289,18 +553,28 @@ export interface VaultIndex {
   byName: Map<string, KnowledgeNote>;
   /** Note name -> names of the notes that link to it. */
   backlinks: Map<string, string[]>;
+  /** Lecture summaries, Lectures/ and the legacy Sessions/Summary notes. */
+  lectures: LectureSummary[];
+  /** Lower-cased path without ".md", and lower-cased file name -> summary. */
+  lectureByPath: Map<string, LectureSummary>;
+  lectureByName: Map<string, LectureSummary>;
+  /** The routine's log, when the tracker mirrors it (1.3 and later). */
+  routineLog: RoutineLog | null;
 }
 
 export function indexVault(files: VaultFile[]): VaultIndex {
   const notes: KnowledgeNote[] = [];
   const sessions = new Map<string, SessionNote>();
+  const lectures: LectureSummary[] = [];
+  let routineLog: RoutineLog | null = null;
   for (const f of files) {
     if (!/\.md$/i.test(f.path)) continue;
     if (/^Knowledge\//i.test(f.path)) notes.push(parseKnowledgeNote(f));
+    else if (isLectureSummaryPath(f.path)) lectures.push(parseLectureSummary(f));
     else if (/^Sessions\//i.test(f.path)) {
       const s = parseSessionNote(f);
       sessions.set(s.key, s);
-    }
+    } else if (f.path.toLowerCase() === ROUTINE_LOG_PATH.toLowerCase()) routineLog = parseRoutineLog(f.content);
   }
   const byName = new Map(notes.map((n) => [n.name.toLowerCase(), n]));
   const backlinks = new Map<string, string[]>();
@@ -313,7 +587,38 @@ export function indexVault(files: VaultFile[]): VaultIndex {
       backlinks.set(to.name, arr);
     }
   }
-  return { notes, sessions, byName, backlinks };
+  const lectureByPath = new Map(lectures.map((l) => [l.path.replace(/\.md$/i, "").toLowerCase(), l]));
+  const lectureByName = new Map(lectures.map((l) => [l.name.toLowerCase(), l]));
+  return { notes, sessions, byName, backlinks, lectures, lectureByPath, lectureByName, routineLog };
+}
+
+export type LinkTarget =
+  | { kind: "moment"; ref: SourceRef }
+  | { kind: "note"; note: KnowledgeNote }
+  | { kind: "lecture"; lecture: LectureSummary }
+  | { kind: "missing" };
+
+/** What a [[link]] in a summary points at, resolved as Obsidian does: the path first, then the name. */
+export function resolveLink(index: Pick<VaultIndex, "byName" | "lectureByPath" | "lectureByName">, l: WikiLink): LinkTarget {
+  const ref = sourceRef(l);
+  if (ref) return { kind: "moment", ref };
+  const key = l.target.toLowerCase();
+  const lecture = index.lectureByPath.get(key) ?? (key.includes("/") ? undefined : index.lectureByName.get(key));
+  if (lecture) return { kind: "lecture", lecture };
+  if (!/^(Sessions|Lectures|_SYSTEM)\//i.test(l.target) && (!key.includes("/") || /^Knowledge\//i.test(l.target))) {
+    const note = index.byName.get(l.name.toLowerCase());
+    if (note) return { kind: "note", note };
+  }
+  return { kind: "missing" };
+}
+
+/** Sessions still waiting for the routine (`status: new`) whose note has not changed for `hours`. */
+export function staleSessions(index: Pick<VaultIndex, "sessions">, now = new Date(), hours = 24): SessionNote[] {
+  const limit = now.getTime() - hours * 3600_000;
+  return [...index.sessions.values()].filter((s) => {
+    const t = Date.parse(s.modified);
+    return s.status === "new" && Number.isFinite(t) && t < limit;
+  });
 }
 
 // -- recordings --------------------------------------------------------------------
@@ -322,6 +627,8 @@ export interface Segment {
   start: number;
   end: number;
   text: string;
+  /** The paragraph number (1-based) of an import without times; the anchor ^pNNNN points at it. */
+  p?: number;
 }
 
 export interface RecordingRow {
@@ -334,6 +641,10 @@ export interface RecordingRow {
   part: number;
   language: string | null;
   model: string;
+  /** "recording" (a transcribed MP3), "import" (a file from the vault's Import/ folder) or "youtube"; absent before tracker 1.3. */
+  source?: string | null;
+  /** An import's file or folder name, as the user downloaded it. */
+  original_name?: string | null;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -361,7 +672,8 @@ export function sourceLabel(s: SourceRef): string {
   const when = d
     ? `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}, ${pad(d.getHours())}:${pad(d.getMinutes())}`
     : s.note.length > 28 ? `${s.note.slice(0, 27)}…` : s.note;
-  return s.seconds === null ? when : `${when} · ${clock(s.seconds)}`;
+  const at = momentLabel(s);
+  return at === null ? when : `${when} · ${at}`;
 }
 
 /** 750 -> "12:30", 4000 -> "1:06:40". */
@@ -379,6 +691,16 @@ export function durationLabel(seconds: number): string {
   return `${Math.floor(m / 60)}h ${pad(m % 60)}m`;
 }
 
+/** A transcript without times (an imported text): its moments are paragraphs, not seconds. */
+export const isUntimed = (segments: Segment[]) => segments.length > 0 && segments.every((s) => !s.start && !s.end);
+
+/** The segment holding paragraph `n` (its `p`, else the n-th segment). */
+export function segmentForParagraph(segments: Segment[], n: number): number {
+  const i = segments.findIndex((s) => s.p === n);
+  if (i >= 0) return i;
+  return Math.min(segments.length - 1, Math.max(0, n - 1));
+}
+
 /** The segment playing at `seconds` (the last one that started by then). */
 export function segmentAt(segments: Segment[], seconds: number): number {
   let found = -1;
@@ -393,7 +715,13 @@ export function asSegments(v: unknown): Segment[] {
   if (!Array.isArray(v)) return [];
   return v
     .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
-    .map((s) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text ?? "").trim() }))
+    .map((s, i) => {
+      const seg: Segment = { start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text ?? "").trim() };
+      const p = Number(s.p ?? s.paragraph);
+      if (Number.isFinite(p) && p > 0) seg.p = p;
+      else if (!seg.start && !seg.end) seg.p = i + 1;
+      return seg;
+    })
     .filter((s) => s.text);
 }
 
@@ -405,6 +733,8 @@ export interface Session {
   note: SessionNote | null;
   /** Knowledge notes citing any of its parts or listed in its session note. */
   knowledge: KnowledgeNote[];
+  /** Its lecture summary: one listing this session, or the one its session note links. */
+  summary: LectureSummary | null;
 }
 
 /** Recordings grouped by session, newest first, with the session note and the notes citing them. */
@@ -414,6 +744,14 @@ export function groupSessions(rows: RecordingRow[], index: VaultIndex | null): S
   const citing = new Map<string, KnowledgeNote[]>();
   for (const n of index?.notes ?? []) {
     for (const note of new Set(n.sources.map((s) => s.note))) citing.set(note, [...(citing.get(note) ?? []), n]);
+  }
+  const summaryOf = new Map<string, LectureSummary>();
+  for (const l of index?.lectures ?? []) {
+    for (const k of l.sessions) {
+      const had = summaryOf.get(k);
+      // A v2 summary wins over a legacy one for the same session.
+      if (!had || (had.legacy && !l.legacy)) summaryOf.set(k, l);
+    }
   }
   const out: Session[] = [];
   for (const [key, parts] of map) {
@@ -431,6 +769,10 @@ export function groupSessions(rows: RecordingRow[], index: VaultIndex | null): S
       seconds: parts.reduce((s, p) => s + Number(p.duration_seconds), 0),
       note: index?.sessions.get(key) ?? null,
       knowledge: [...knowledge],
+      summary: (() => {
+        const linked = index?.sessions.get(key)?.summary;
+        return (linked ? index?.lectureByPath.get(linked.toLowerCase()) : undefined) ?? summaryOf.get(key) ?? null;
+      })(),
     });
   }
   return out.sort((a, b) => b.start.getTime() - a.start.getTime());

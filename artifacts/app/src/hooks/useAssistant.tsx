@@ -287,7 +287,9 @@ function useAssistantValue() {
   }, [location.search]);
 
   const sendMessage = useCallback(
-    async (text: string, opts?: { voice?: boolean }): Promise<AssistantMessage | null> => {
+    // `archiveItems` replaces the pinned items for this send: a caller that pins
+    // and sends in one click (the lecture tutor) cannot wait for the state.
+    async (text: string, opts?: { voice?: boolean; archiveItems?: ArchiveItemRef[] }): Promise<AssistantMessage | null> => {
       const trimmed = text.trim();
       if (!trimmed || isStreaming || !user) return null;
 
@@ -342,11 +344,13 @@ function useAssistantValue() {
           }
         }
 
+        const previousReply = [...messages].reverse().find((m) => m.role === "assistant" && !m.error)?.content;
         const { text: context, citations } = await gatherContext(
           user.id,
           scopesForSend,
-          archiveItems,
+          opts?.archiveItems ?? archiveItems,
           trimmed,
+          previousReply,
         );
 
         // The action protocol rides inside `context` (the function embeds it in

@@ -15,10 +15,20 @@ MP3 that has stopped growing is:
    one line per segment, each with a timestamp block id (``^t0750`` = 12:30),
    and added to its session note.
 
+Transcripts downloaded by hand (a lecture platform, a course, YouTube
+captions) come in through ``<vault>/Import/`` instead; ``imports.py`` turns
+them into the same kind of session.
+
 The vault's own notes travel the other way: every minute ``VaultMirror``
-copies the .md files under ``Knowledge/`` and ``Sessions/`` into
-``kos_vault_files`` as plain text (changed files only, deleted files are
-deleted), so the dashboard shows the knowledge notes and each session's status.
+copies the .md files under ``Lectures/``, ``Knowledge/`` and ``Sessions/``,
+plus ``_SYSTEM/routine-log.md``, into ``kos_vault_files`` as plain text
+(changed files only, deleted files are deleted), so the dashboard shows the
+lecture summaries, the knowledge notes, each session's status and the
+routine's last run.
+
+The Claude routine's instructions live in the vault (``_SYSTEM/``), written
+by ``ensure_system_notes``: an older tracker's text is upgraded to the
+current format, and a copy the user edited is saved beside it first.
 
 Recordings that start within ``session_gap_minutes`` of the previous one's
 end belong to the same session (a lecture recorded in parts). The session
@@ -48,13 +58,14 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Protocol
 from urllib.parse import quote
 
 import requests
 
+from . import __version__
 from .auth import AuthRequired, SupabaseAuth
 from .sync import SyncError, SyncRejected
 
@@ -242,139 +253,421 @@ def session_note(existing: str | None, session: str, parts: list[tuple[int, str]
     return text
 
 
-RULES = """# Processing rules for the Claude routine
+# -- the routine's instructions, kept in the vault ---------------------------------
 
-You turn raw recordings into atomic, linked knowledge notes. **Everything you write is in English**
-(quotes stay verbatim in the language they were spoken).
+# The routine writes vault format 2: one summary per session in Lectures/, atomic notes in the source's
+# language. The marker below tells a copy of this text (edited or not) from an older tracker's text.
+FORMAT_VERSION = 2
+FORMAT_MARKER = re.compile(r"kos-format:\s*(\d+)")
 
-## What to process
-Notes in `Sessions/` with `status: new` in their frontmatter. Read every part listed under
-"Recordings" (the files in `Recordings/`). Never edit files in `Recordings/`: they are the raw source.
+RULES = r"""# Processing rules for the Claude routine
+<!-- kos-format: 2. The procedure and the exact formats are in _SYSTEM/routine-prompt.md; this file holds
+     my standing rules. Edit it freely: the MindsetForest tracker never overwrites an edited copy. -->
 
-## What to create
-Atomic notes in `Knowledge/`, one meaningful piece of knowledge per note (not a paragraph, not a summary).
-Frontmatter:
-```
-type: concept | claim | principle | definition | model | example | observation | question | decision | contradiction | assumption
-sources: ["[[Recordings/<note>#^t0750]]"]   # every unit cites the exact segment(s)
-confidence: high | medium | low              # how firmly it was stated / how well supported
-created: YYYY-MM-DD
-```
-Body: the statement in your own words (1-4 sentences), then a `> quote` copied verbatim from the transcript
-with its link, then `Related:` with [[links]] to other Knowledge notes and the relation in words
-(supports, refines, contradicts, example of, part of, depends on).
+If you were sent to this file first, read `_SYSTEM/routine-prompt.md` and follow it: that is the procedure.
+
+## What I want
+- For every lecture, course part or long video: **one summary** in `Lectures/<Course>/` that I read instead
+  of re-listening, and a few atomic notes in `Knowledge/` that link what I learn across lectures.
+- **One note, one language: the language of the source.** A Polish lecture gives Polish notes, titles and
+  headings included; an English course gives English ones. The other language appears only in the folded
+  glossary and in `aliases`.
 
 ## Rules
-1. **No quote, no note.** Every note must quote the transcript and link the segment (`#^tNNNN`).
-2. **Search before creating.** Look for existing notes on the same idea. If it is the same, add the new
-   source and quote to that note instead of creating a duplicate. If it is similar but different,
-   create a separate note and link both, saying what the difference is. Never merge just because
-   things sound alike.
-3. **Contradictions:** do not resolve them. Create a `contradiction` note linking both sides with quotes.
-4. **Uncertainty stays:** "I think", "maybe" -> `confidence: low` and say so.
-5. **Do not summarise the recording.** In the session note, under "## Knowledge", list the notes you
-   created or extended, one line each, add `topic: <3-8 words naming what was discussed>` to its
-   frontmatter, then set `status: processed`.
-6. **Continuations:** if the session clearly continues an earlier one (same lecture, same topic picked up
-   again), add `continues: "[[Sessions/<earlier>]]"` to its frontmatter and link them; never merge files.
-7. Concept hubs: when several notes share a concept, keep or create a `concept` note that links them
-   (a map, not a merged text). Repetition from different recordings is evidence: keep every source.
+1. **The source is the truth.** A summary follows what was said, in that order. Anything you add yourself
+   goes only into a folded "Dla zrozumienia (AI)" / "For understanding (AI)" callout, at most 2 per section.
+2. **No quote, no note.** Every atomic note quotes the transcript verbatim and links its exact anchor
+   (`#^tNNNN` or `#^pNNNN`), copied from the line, never computed.
+3. **Search before creating.** Same idea, same language: extend that note instead of writing a duplicate.
+   Similar but different: a separate note, linked both ways, saying how they differ. Never merge just
+   because things sound alike.
+4. **Contradictions:** do not resolve them. A `contradiction` note links both sides with their quotes; in
+   the summary they go under "Do wyjaśnienia" / "To clarify".
+5. **Uncertainty stays:** "chyba", "maybe" -> `confidence: low`, and say so.
+6. **What the lecturer stressed is never compressed away:** repeated points, "to ważne", anything about the
+   exam or a test.
+7. **Few notes, well linked:** at most 15 new notes per hour of real lecture and at most 5 for a source
+   under 15 minutes. Never write a `[[link]]` to a note that does not exist.
+8. **The institution's summary only cross-checks.** It never replaces the transcript as a source.
+9. **Never delete, never edit sources.** `Recordings/` and `Import/` stay as they are; a retired note moves
+   to `_SYSTEM/merged/`.
+10. **Continuations:** a session that picks up an earlier one gets `continues:`; files are never merged.
+11. **Concept hubs:** when 3 or more notes share a concept, keep a `concept` note linking them (a map, not
+    merged text). Repetition across lectures is evidence: keep every source.
+
+## My own rules
+(Add yours here.)
 """
 
-ROUTINE = """# Knowledge OS routine
+ROUTINE = r"""# Knowledge OS routine
+<!-- kos-format: 2. The scheduled task in Claude Desktop only says: read this file and do what it says.
+     Edit this file to change how runs work; the task itself never changes. The MindsetForest tracker
+     never overwrites an edited copy. -->
 
-<!-- The scheduled task in Claude Desktop only says: read this file and do what it says.
-     Edit this file to change how runs work; the task itself never needs changing. -->
+This folder is my Obsidian vault. I am a student. Lectures, online courses and long videos arrive here as
+raw transcripts. For each one you write **one lecture summary**, which I read instead of re-listening, and
+a few **atomic notes** in `Knowledge/`, which link what I learn across lectures in Obsidian's graph.
 
-This folder is my Obsidian vault. Recordings arrive as raw transcripts; you turn them into atomic,
-linked knowledge notes. Write everything in English; quotes stay verbatim in the language spoken.
+You only write files here; nothing has to be sent anywhere. The MindsetForest tracker on this PC copies
+`Lectures/`, `Knowledge/`, `Sessions/` and `_SYSTEM/routine-log.md` to my dashboard within a minute.
 
-You only write files here. Nothing has to be sent anywhere: the MindsetForest tracker on this PC
-copies `Knowledge/` and `Sessions/` to my dashboard within a minute of any change.
+## The four rules that matter most
+1. **One note, one language: the language of the source.** A Polish lecture gives a Polish summary and
+   Polish notes, titles and headings included. An English course gives English ones. Never mix languages
+   inside a text. The other language appears only in the folded glossary and in `aliases`.
+2. **Follow what was said.** A summary is the lecture compressed, in its order, not your own essay on the
+   topic. Anything that was not in the source goes only into a folded "Dla zrozumienia (AI)" callout.
+3. **Cite exactly.** Every anchor (`^tNNNN`, `^pNNNN`) is copied from its line in the transcript, never
+   computed or guessed. Every quote is verbatim.
+4. **Never delete, never edit sources.** Change nothing in `Recordings/` or `Import/`. A note you retire
+   moves to `_SYSTEM/merged/`.
 
 ## 0. Start
-1. Read `_SYSTEM/processing-rules.md`: my standing rules for good notes. This file is the procedure.
-   If the two disagree on note format, keep the format in step 4 (the dashboard reads it).
-2. If `_SYSTEM/routine.lock` exists and holds a time less than 3 hours ago, another run is going:
-   reply "Already running" and stop. Otherwise write the current date and time into it.
-   Delete it when you finish, also when you stop early.
+1. Read `_SYSTEM/processing-rules.md`: my standing rules. If it disagrees with this file on a format, this
+   file wins (the dashboard reads these formats).
+2. If `_SYSTEM/routine.lock` exists and holds a time less than 3 hours ago, another run is going: reply
+   "Already running" and stop. Otherwise write the current date and time into it. Delete it when you
+   finish, also when you stop early or something fails.
 
 ## 1. Pick the work
-- Notes in `Sessions/` with `status: new` in their frontmatter, oldest first (by file name).
-  At most 3 sessions per run; the rest wait for the next run.
+- Notes in `Sessions/` whose frontmatter has `status: new`, oldest first (by file name). At most 2
+  sessions per run: a long lecture is a lot of reading and quality comes first. The rest wait.
 - The parts are listed between `<!-- kos:parts -->` and `<!-- /kos:parts -->`. If the frontmatter has
-  `processed_parts: [1, 2]`, only the other parts are new (a session reopens when a new part is
-  recorded); read the processed parts only for context.
-- Nothing new: do only step 5.
+  `processed_parts: [1, 2]`, only the other parts are new (a session reopens when a new part arrives):
+  read the processed parts for context and **update** the session's existing summary, never write a
+  second one. If every part is already in `processed_parts`, I set `status: new` back by hand because I
+  want the session redone: treat all parts as new.
+- `source: import` (or `youtube`) in the session note: the transcript comes from a file I downloaded (the
+  university's platform, a course, YouTube captions). Its "## Imported with it" list may name:
+  - **the institution's summary** (`... (podsumowanie uczelni)`): the platform's own AI summary. Use it only
+    to check that you missed nothing important. **The transcript is the truth**: never take a statement
+    from the institution's summary that the transcript does not support, and never cite it. If it
+    mentions something the transcript lacks, say so under "Do wyjaśnienia".
+  - **materials** (`... (materiały)`): slides or handouts. Use them to spell names, terms and formulas
+    correctly and to follow the structure. Something that is only on a slide was not "said".
+  - "No transcript came with it": the parts are the institution's summary or the materials. Write the
+    summary from them all the same, and say under "Do wyjaśnienia" that there was no transcript.
+- Nothing new: do only steps 6 and 7.
 
-## 2. Read and extract
-- Read the new parts in order as one continuous text. Each line is `**[hh:mm:ss]** text ^tNNNN`,
-  where NNNN is that segment's start in seconds.
-- Whisper mishears words. Fix obvious mistakes in your own wording, never inside a quote. If a key
-  term stays unclear, say so and use `confidence: low`.
-- List candidate units, one idea each: concept, claim, principle, definition, model, example,
-  observation, question, decision, contradiction, assumption. Skip small talk, logistics, repeats that
-  add nothing, and private talk about other people. An hour of lecture is usually 5-20 units, not 50.
-- No knowledge in the session at all (silence, music, a phone call): set `status: skipped`, write one
-  line why under "## Knowledge", add its parts to `processed_parts`, move on.
+## 2. Read
+- Read the new parts in order as one text. A transcript line is either `**[hh:mm:ss]** text ^tNNNN`
+  (NNNN = the segment's start in seconds) or, for a file without times, `**[¶N]** text ^pNNNN`
+  (paragraph N).
+- The language is the language the transcript is spoken in: `pl` or `en`. Not the language of the
+  institution's summary, not the language of older notes.
+- Speech recognition mishears words. Fix obvious mistakes in your own wording (the materials and the
+  context help), never inside a quote. A key term that stays unclear goes under "Do wyjaśnienia".
+- The course: an existing folder in `Lectures/` when it is the same course (same subject, same lecturer,
+  a continuation); else from the session's `original_name`, the file name or what is said ("na
+  dzisiejszych zajęciach z logiki"); else `Inne` (pl) / `Other` (en). Short, in the note's language, the
+  same spelling every time.
+- No knowledge at all (silence, music, a private call): set `status: skipped`, write one line why under
+  "## Knowledge", add its parts to `processed_parts`, and move on.
 
-## 3. Search before writing
-For each unit, search the whole vault except `Recordings/` and `_SYSTEM/` (titles and text, with
-synonyms), then:
-- **Same idea already in `Knowledge/`**: extend that note. Add the source to `sources`, add the quote,
-  add one line on what the new recording adds. Change its statement only if it was wrong, and say so.
-- **Similar but different**: a new note; link both ways, saying how they differ.
-- **Conflicts with a note**: a `contradiction` note linking both sides, each with its quote. Do not
-  decide who is right.
-- **My own notes elsewhere in the vault**: link to them; never edit them.
+## 3. Write the lecture summary
+One file per session: `Lectures/<Course>/<YYYY-MM-DD> <Topic>.md`. The date is the session's (the start of
+`started`); the topic is 3-8 words in the note's language. File and folder names use only letters,
+digits, spaces, hyphens, commas and parentheses. First search `Lectures/` for a summary whose `sessions`
+already lists this session: if there is one, update that file instead of creating another.
 
-## 4. Write
-One file per unit in `Knowledge/` (subfolders are fine), exactly in this shape:
+The frontmatter, exactly these fields:
 
     ---
-    type: principle
-    sources: ["[[Recordings/<recording note name>#^t0750]]"]
+    type: lecture-summary
+    course: "Logika"
+    topic: "Zdania logiczne i zbiory"
+    date: 2026-10-11
+    language: pl
+    sessions: ["[[Sessions/2026-10-11 13-32]]"]
+    source: recording
+    ---
+
+- `language`: `pl` or `en`, the language of the whole note.
+- `sessions`: every session this summary covers, as quoted links.
+- `source`: `recording` when the session note has no `source`; otherwise the session note's `source`
+  (`import` or `youtube`).
+
+The body, in this order. Polish headings are shown; an English note uses the English ones in brackets.
+1. `## W skrócie` [`## In short`]: 3-5 sentences: what the lecture was about and what to take from it.
+2. Numbered topic sections in lecture order: `## 1. <section>`. End each heading with a link to the
+   moment it starts: `[[Recordings/<note>#^t0754|12:34]]` (the label is that anchor as m:ss or h:mm:ss) or,
+   without times, `[[Recordings/<note>#^p0012|¶12]]`. The body is what was said, compressed but faithful:
+   definitions as given, the lecturer's reasoning, examples and formulas. Short paragraphs, lists, a table
+   where the lecturer built one. Usually 3-8 sections for an hour.
+3. `## Na co prowadzący kładł nacisk` [`## What the lecturer stressed`]: one bullet per point the lecturer
+   repeated, called important ("to ważne", "proszę zapamiętać") or tied to the exam or a test ("będzie na
+   egzaminie", "na kolokwium"), plus dates and requirements given. Each bullet ends with its anchor link.
+   Never drop or merge these: this is what I revise from.
+4. `## Do wyjaśnienia` [`## To clarify`]: unclear audio, terms you could not make out, contradictions
+   (also with the institution's summary), what I should check. "Brak." [`None.`] when there is nothing.
+5. `## Pojęcia` [`## Concepts`]: one `[[link]]` per line to the Knowledge notes of this lecture, only notes
+   that exist or that you write in this run.
+6. The glossary, last: `> [!note]- Słowniczek PL ↔ EN` [`> [!note]- Glossary EN ↔ PL`], one line per key
+   term: `> - **term in the note's language**: term in the other language`. The only place the other
+   language appears in a summary.
+
+Callouts use Obsidian's syntax, folded by default (`-` right after the type); every line inside starts
+with `> `:
+- `> [!example]- Przykład` [`> [!example]- Example`]: an example from the source, worked as it was given.
+- `> [!tip]- Dla zrozumienia (AI)` [`> [!tip]- For understanding (AI)`]: the **only** place for anything
+  that was not in the source: background, an intuition, a simpler example, a common mistake. At most 2 per
+  section; plain, correct and short (2-5 sentences). Never put the lecture's own content here, and never
+  put your own additions anywhere else.
+- `> [!abstract]- Wizualizacja` [`> [!abstract]- Visualisation`]: one diagram or plot, only when a picture
+  explains better than words: the shape of a function, a relation between sets, a process, a hierarchy.
+  Most lectures need 0-2 in total.
+
+Math is LaTeX: `$...$` inline, `$$...$$` on lines of its own, standard commands only (it is rendered with
+KaTeX).
+
+A visualisation callout holds exactly one of these blocks (inside the callout, so every line starts with
+`> `):
+- a `mermaid` block (`flowchart`, `sequenceDiagram`, `classDiagram`, `stateDiagram-v2`, `mindmap`,
+  `timeline`); put labels with special characters in quotes: `A["x ∈ A"]`;
+- a `plot` block, one JSON object (it may span lines):
+
+      ```plot
+      {"title": "sin i cos", "x": [-6.28, 6.28], "y": [-1.5, 1.5],
+       "functions": [{"expr": "sin(x)", "label": "sin x"}, {"expr": "cos(x)"}],
+       "points": [{"x": 0, "y": 0, "label": "0"}]}
+      ```
+
+  `x` is the [min, max] of the horizontal axis, `y` (optional) of the vertical one; `functions` is a list
+  of `{"expr": ..., "label": ...}` (label optional); `points` is optional.
+- a `plot3d` block, one JSON object **per line**: a surface, points, vectors:
+
+      ```plot3d
+      {"title": "Siodło", "kind": "surface", "expr": "x^2 - y^2", "x": [-2, 2], "y": [-2, 2]}
+      {"kind": "points", "points": [{"x": 1, "y": 2, "z": 3, "label": "A"}]}
+      {"kind": "vectors", "vectors": [{"from": [0,0,0], "to": [1,2,3], "label": "v"}]}
+      ```
+
+The JSON is strict: double quotes, no comments, no trailing commas, numbers as numbers. An expression uses
+only numbers, `x`, `y`, `pi`, `e`, `+ - * / ^`, parentheses, unary minus and the functions `sin cos tan
+asin acos atan sqrt abs exp ln log floor ceil`. Write every multiplication (`2*x`, not `2x`) and powers
+with `^` (`x^2`, not `x²`). Titles and labels are in the note's language.
+
+## 4. Atomic notes in Knowledge/
+The summary is what I read; atomic notes are what links lectures together. Write few, good ones.
+- **Limit:** at most 15 new notes per hour of real lecture and at most 5 for a source under 15 minutes.
+  Without times, count about 150 words as one minute. Small talk, logistics and repetition give none.
+- **Search first,** in the whole vault except `Recordings/`, `Import/` and `_SYSTEM/`: titles, `aliases`
+  and text, in both languages.
+  - Same idea, note in the same language: extend it. Add the source to `sources`, add the quote, add one
+    line on what this lecture adds. Change its statement only if it was wrong, and say so.
+  - Same idea, note in the other language: do not mix languages inside it. Write the note in this language,
+    with the other note's term in `aliases`, and link the two.
+  - Similar but different: a new note; link both ways, saying how they differ.
+  - In conflict with a note: a `contradiction` note linking both sides, each with its quote. Do not decide
+    who is right.
+  - My own notes elsewhere in the vault: link to them, never edit them.
+- Older notes may have English titles for Polish lectures: leave them as they are and do not rename them
+  (links point at them).
+
+One file per note, exactly in this shape (for an English lecture, the same with English words):
+
+    ---
+    type: definition
+    course: "Logika"
+    aliases: ["proposition"]
+    sources: ["[[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t0754]]"]
     confidence: high
-    created: YYYY-MM-DD
+    created: 2026-10-11
     ---
-    # Reciprocity
+    # Zdanie logiczne
 
-    One to four sentences in your own words.
+    Jedno do czterech zdań własnymi słowami, w języku źródła.
 
-    > "Verbatim words from the transcript." ([[Recordings/<recording note name>#^t0750]])
+    > "Zdanie logiczne to zdanie oznajmujące, o którym możemy powiedzieć, czy jest prawdziwe, czy fałszywe." ([[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t0754]])
 
-    Related: supports [[Commitment]]; example of [[Influence]].
+    Powiązane: część [[Spójniki logiczne]]; przykład: [[Tabela prawdy]].
 
-- File name = the title: short, unique, English, only letters, digits, spaces, hyphens, commas,
-  apostrophes and parentheses.
-- Every `^tNNNN` you cite must exist in that recording file: copy it from the line, never compute it.
-- `sources` is a list of quoted strings and the frontmatter must stay valid YAML.
-- When 3 or more notes share a concept, keep a `concept` hub note linking them, one line each on how
-  it relates (a map, not merged text).
-- A session that continues an earlier one (same course, same topic picked up again) gets
-  `continues: "[[Sessions/<earlier session>]]"` in its frontmatter.
+- `type` is one of: concept, claim, principle, definition, model, example, observation, question,
+  decision, contradiction, assumption. Frontmatter keys and `type` values stay in English: the dashboard
+  reads them.
+- `aliases`: the term in the other language (and common synonyms). `course`: as in the summary.
+- The file name is the title, in the note's language: short, unique, only letters, digits, spaces,
+  hyphens, commas, apostrophes and parentheses.
+- No quote, no note: every note quotes the transcript verbatim with its anchor link. Uncertainty stays
+  ("chyba", "maybe" -> `confidence: low`, and say so).
+- `sources` is a list of quoted strings; the frontmatter must stay valid YAML.
+- The last line names the relation in the note's language: `Powiązane:` (wspiera, doprecyzowuje,
+  przeczy, przykład, część, zależy od) / `Related:` (supports, refines, contradicts, example of, part of,
+  depends on).
+- When 3 or more notes share a concept, keep a `concept` hub note linking them, one line each on how it
+  relates (a map, not merged text).
+- Never write a `[[link]]` to a note that does not exist and that you are not writing in this run.
 
-Then update the session note:
-- under "## Knowledge" one line per note: `- [[Note]] (new)` or `- [[Note]] (extended)`;
-- in the frontmatter: `topic: <3-8 words>`, `processed_parts: [<every part done>]`, `status: processed`.
-Never change the `<!-- kos:parts -->` block or anything in `Recordings/`.
+## 5. Update the session note
+- Under "## Knowledge", one line per file: `- [[Lectures/<Course>/<YYYY-MM-DD> <Topic>]] (summary)`, then
+  `- [[Note]] (new)` or `- [[Note]] (extended)`.
+- In the frontmatter: `topic: <3-8 words, the note's language>`, `course: "<Course>"`,
+  `summary: "[[Lectures/<Course>/<YYYY-MM-DD> <Topic>]]"`, `processed_parts: [<every part done>]`.
+- A session that continues an earlier one (same course, same topic picked up again) also gets
+  `continues: "[[Sessions/<earlier session>]]"`.
+- Set `status: processed` last, after every other file is written, so a run that stops halfway is redone
+  next time, not lost (search first and you will update, not duplicate).
+- Never change the `<!-- kos:parts -->` block, the "## Imported with it" list or anything in `Recordings/`.
 
-## 5. Gardening (every run, keep it short)
+## 6. Gardening (every run, keep it short)
 Only notes created or changed in the last 7 days:
 - add missing links between them (same concept, cause and effect, example of, part of);
-- a duplicate made by mistake (truly the same idea, not just similar): merge into one note keeping
-  every source and quote, point links at the kept note, and move the other file to
-  `_SYSTEM/merged/` with one line `Merged into [[Kept note]]`. Never delete files;
-- an open `question` that a newer recording answers: link the answer and add
-  `answered_by: "[[Answer note]]"` to the question's frontmatter.
+- a duplicate made by mistake (truly the same idea, not just similar): merge into one note keeping every
+  source and quote, point links at the kept note, and move the other file to `_SYSTEM/merged/` with one
+  line `Merged into [[Kept note]]`. Never delete files;
+- an open `question` that a newer lecture answers: link the answer and add `answered_by: "[[Answer note]]"`
+  to the question's frontmatter.
+Older summaries in `Sessions/Summary *.md` stay where they are.
 
-## 6. Check, log, reply
-- Check every file you wrote: the frontmatter parses, each cited `^tNNNN` exists in its recording, every
-  `[[link]]` points to a note that exists, nothing in `Recordings/` changed. Fix what fails.
-- Append to `_SYSTEM/routine-log.md`: date and time, sessions processed, notes new / extended,
-  anything that went wrong.
-- Reply briefly: sessions (topic), notes created and extended (names), contradictions found, and
-  anything you were unsure about.
+## 7. Check, log, reply
+Check every file you wrote or changed, and fix what fails:
+- the frontmatter parses as YAML and has every field above;
+- every `^tNNNN` / `^pNNNN` you cite exists in that transcript file, and every quote is verbatim;
+- every `[[link]]` points to a note that exists;
+- each `plot` block is one valid JSON object, each line of a `plot3d` block is one, and expressions use
+  only the allowed names; each mermaid block is valid;
+- every callout is folded (`-`), and your own additions are only in "Dla zrozumienia (AI)" / "For
+  understanding (AI)";
+- each note is in one language (the glossary and `aliases` apart);
+- nothing in `Recordings/` or `Import/` changed and nothing was deleted.
+
+Then `_SYSTEM/routine-log.md` (create it if it is missing; never remove lines from it):
+- every run, also one with nothing to do: set `last_run: YYYY-MM-DD HH:MM` (local time) in its frontmatter;
+  add the frontmatter at the very top if the file has none;
+- a run that processed or skipped a session, or hit a problem: append one entry at the end, exactly:
+
+      ## 2026-10-11 15:05
+      - sessions: 2026-10-11 13-32 (Logika: Zdania logiczne i zbiory)
+      - summaries: 1 new, 0 updated
+      - notes: 6 new, 2 extended
+      - problems: none
+
+  `problems:` names anything that went wrong or that you were unsure about, else `none`.
+
+Reply briefly: the sessions (course: topic), the summaries and notes written, contradictions found, and
+anything you were unsure about. Finally delete `_SYSTEM/routine.lock`.
+
+## Worked example: a complete summary of a Polish lecture
+The file `Lectures/Logika/2026-10-11 Zdania logiczne i zbiory.md`, written from the session
+`Sessions/2026-10-11 13-32.md` with one part, `Recordings/2026-10-11 13-32-05 Logika wykład 2.md`:
+
+````markdown
+---
+type: lecture-summary
+course: "Logika"
+topic: "Zdania logiczne i zbiory"
+date: 2026-10-11
+language: pl
+sessions: ["[[Sessions/2026-10-11 13-32]]"]
+source: recording
+---
+## W skrócie
+Wykład wprowadził zdanie logiczne i pięć spójników, z których buduje się zdania złożone. Prowadzący omówił tabele prawdy, najdłużej implikację. Potem przeszedł do zbiorów i pokazał, że działania na zbiorach odpowiadają spójnikom. Na koniec omówił funkcję zdaniową i jej zbiór spełnienia.
+
+## 1. Zdanie logiczne [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t0754|12:34]]
+Zdanie logiczne to zdanie oznajmujące, o którym można jednoznacznie powiedzieć, czy jest prawdziwe, czy fałszywe. Prawdzie przypisujemy wartość $1$, fałszowi $0$.
+Pytania, polecenia i wyrażenia ze zmienną, takie jak $x > 3$, zdaniami logicznymi nie są.
+
+> [!example]- Przykład
+> „Warszawa jest stolicą Polski” to zdanie prawdziwe, „$2 + 2 = 5$” to zdanie fałszywe, a „Zamknij okno” w ogóle nie jest zdaniem logicznym.
+
+## 2. Spójniki i tabele prawdy [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t1310|21:50]]
+Pięć spójników: negacja $\neg p$, koniunkcja $p \land q$, alternatywa $p \lor q$, implikacja $p \Rightarrow q$ i równoważność $p \Leftrightarrow q$. Wartość zdania złożonego zależy tylko od wartości zdań, z których je zbudowano.
+
+| $p$ | $q$ | $p \land q$ | $p \lor q$ | $p \Rightarrow q$ | $p \Leftrightarrow q$ |
+|---|---|---|---|---|---|
+| 1 | 1 | 1 | 1 | 1 | 1 |
+| 1 | 0 | 0 | 1 | 0 | 0 |
+| 0 | 1 | 0 | 1 | 1 | 0 |
+| 0 | 0 | 0 | 0 | 1 | 1 |
+
+Implikacja jest fałszywa tylko wtedy, gdy z prawdy wynika fałsz. Gdy poprzednik jest fałszywy, cała implikacja jest prawdziwa.
+
+> [!tip]- Dla zrozumienia (AI)
+> Implikację można czytać jak obietnicę: „jeśli zdasz egzamin, dostaniesz nagrodę”. Obietnica jest złamana tylko wtedy, gdy egzamin zdasz, a nagrody nie dostaniesz. Jeśli egzaminu nie zdasz, obietnica nie została złamana, cokolwiek się stanie.
+
+## 3. Zbiory i działania na zbiorach [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t2655|44:15]]
+Zbiór jest pojęciem pierwotnym: nie definiujemy go, tylko wskazujemy jego elementy. Zapis $x \in A$ czytamy „$x$ należy do $A$”.
+- suma: $A \cup B = \{x : x \in A \lor x \in B\}$,
+- iloczyn (część wspólna): $A \cap B = \{x : x \in A \land x \in B\}$,
+- różnica: $A \setminus B = \{x : x \in A \land x \notin B\}$.
+
+Każde działanie odpowiada spójnikowi: suma alternatywie, iloczyn koniunkcji. Jako przykład zawierania zbiorów prowadzący podał $\mathbb{N} \subset \mathbb{Z} \subset \mathbb{Q} \subset \mathbb{R}$.
+
+> [!abstract]- Wizualizacja
+> ```mermaid
+> flowchart LR
+>   N["ℕ: liczby naturalne"] --> Z["ℤ: liczby całkowite"] --> Q["ℚ: liczby wymierne"] --> R["ℝ: liczby rzeczywiste"]
+> ```
+
+## 4. Funkcja zdaniowa i zbiór spełnienia [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t3920|1:05:20]]
+Funkcja zdaniowa to wyrażenie ze zmienną, które staje się zdaniem logicznym po podstawieniu za zmienną konkretnej wartości. Zbiór spełnienia to zbiór tych wartości, dla których powstaje zdanie prawdziwe.
+Przykład z wykładu: dla $x^2 < 4$ w liczbach rzeczywistych zbiorem spełnienia jest przedział $(-2, 2)$.
+
+> [!abstract]- Wizualizacja
+> ```plot
+> {"title": "x^2 < 4", "x": [-3, 3], "y": [-1, 6],
+>  "functions": [{"expr": "x^2", "label": "y = x^2"}, {"expr": "4", "label": "y = 4"}],
+>  "points": [{"x": -2, "y": 4, "label": "-2"}, {"x": 2, "y": 4, "label": "2"}]}
+> ```
+
+> [!tip]- Dla zrozumienia (AI)
+> Na wykresie zbiór spełnienia to te $x$, dla których parabola leży poniżej prostej $y = 4$. Końce $-2$ i $2$ do niego nie należą, bo nierówność jest ostra.
+
+## Na co prowadzący kładł nacisk
+- Implikacja z fałszywym poprzednikiem jest zawsze prawdziwa: powtórzył to trzy razy i zapowiedział takie zadanie na kolokwium. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t1580|26:20]]
+- Tabele prawdy wszystkich pięciu spójników trzeba umieć napisać z pamięci. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t1702|28:22]]
+- „To jest ważne”: działania na zbiorach zapisujemy przez spójniki, a nie samym rysunkiem. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t3012|50:12]]
+- Kolokwium z rozdziałów 1-2 będzie na zjeździe 8 listopada. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t5410|1:30:10]]
+
+## Do wyjaśnienia
+- Około 52:40 nagranie jest niewyraźne; chyba chodzi o różnicę symetryczną zbiorów. Warto sprawdzić w materiałach. [[Recordings/2026-10-11 13-32-05 Logika wykład 2#^t3160|52:40]]
+
+## Pojęcia
+- [[Zdanie logiczne]]
+- [[Implikacja]]
+- [[Działania na zbiorach]]
+- [[Funkcja zdaniowa]]
+
+> [!note]- Słowniczek PL ↔ EN
+> - **zdanie logiczne**: proposition
+> - **koniunkcja**: conjunction
+> - **alternatywa**: disjunction
+> - **implikacja**: implication
+> - **równoważność**: equivalence
+> - **zbiór**: set
+> - **suma zbiorów**: union
+> - **iloczyn zbiorów**: intersection
+> - **funkcja zdaniowa**: propositional function
+> - **zbiór spełnienia**: solution set
+````
+"""
+
+# sha256 of each text an older tracker wrote, after _normalise_text: such a file is the tracker's own and
+# is replaced without a copy. 1.0 (the first Knowledge OS build), then 1.1-1.2 (format 1).
+SHIPPED_TEXTS = {
+    "processing-rules.md": frozenset({
+        "984b771d69e6a53669a119ab124cfec43a5ed582102ab74e5c94d4a46a4ca6a9",
+        "43c4ad13d0b018a212d507b527c7098405170c5a44e5ec654169f0d732e1f994",
+    }),
+    "routine-prompt.md": frozenset({
+        "39a59146783d997ded5f304f12b9f12a3a83eb586be5cd5736afca436246504e",
+        "d41bce98a2ea5ffbc70fa40a48db9b7ee9c2388579e7c9111bf271a865ed128b",
+    }),
+}
+ROUTINE_LOG = "routine-log.md"
+IMPORT_DIR = "Import"
+IMPORT_README = "_jak to działa.md"
+IMPORT_README_TEXT = """# Import
+
+Wrzuć tu pobrane pliki z wykładu, kursu albo filmu: transkrypcję (.txt, .md, .vtt, .srt, .docx, .pdf).
+
+- Jeden plik to jeden wykład. Kilka plików jednego wykładu włóż razem do podfolderu.
+- W podfolderze plik z „podsumowanie” albo „summary” w nazwie to podsumowanie z platformy: rutyna tylko
+  sprawdza nim, czy nic nie umknęło. Inne pliki .pdf i .docx obok transkrypcji to materiały (slajdy).
+- Data w nazwie (np. „Logika 2026-10-11 13-30”) to data wykładu; bez niej liczy się data pliku.
+- Po minucie bez zmian tracker robi z tego sesję dla rutyny Claude i przenosi pliki do `_done`.
+  Niczego nie usuwa, a tego samego pliku drugi raz nie zaimportuje.
 """
 
 
@@ -564,14 +857,122 @@ class IntakeState:
             log.warning("Could not save %s: %s", self.path.name, exc)
 
 
-def ensure_system_notes(vault: Path) -> None:
-    """The rules and the routine prompt, written once; the user may edit them afterwards."""
+def _normalise_text(text: str) -> str:
+    """The text as compared with what a tracker shipped: no BOM, LF line ends, no trailing spaces."""
+    text = text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+    return "\n".join(line.rstrip() for line in text.split("\n")).strip("\n")
+
+
+def text_hash(text: str) -> str:
+    return hashlib.sha256(_normalise_text(text).encode("utf-8")).hexdigest()
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _keep_copy(path: Path, data: bytes, day: date) -> Path:
+    """``data`` saved as "<name> (moja wersja <day>).md" beside ``path``, never over another file.
+
+    An identical copy saved earlier (an upgrade that failed halfway) is reused.
+    """
+    base = f"{path.stem} (moja wersja {day.isoformat()})"
+    for n in range(1, 100):
+        copy = path.with_name(f"{base}{'' if n == 1 else f' ({n})'}{path.suffix}")
+        try:
+            with copy.open("xb") as fh:
+                fh.write(data)
+            return copy
+        except FileExistsError:
+            try:
+                if copy.read_bytes() == data:
+                    return copy
+            except OSError:
+                pass
+    raise OSError(f"no free name for a copy of {path}")
+
+
+def _upgrade_note(path: Path, text: str, day: date) -> Path | None | bool:
+    """Bring one _SYSTEM note to the current format.
+
+    False: nothing to do (current format, edited or not). None: replaced, it was a tracker's own
+    text. A path: replaced after the user's edited copy was saved there.
+    """
+    data = path.read_bytes()
+    current = data.decode("utf-8", errors="replace")
+    marker = FORMAT_MARKER.search(current)
+    if marker and int(marker.group(1)) >= FORMAT_VERSION:
+        return False
+    copy = None if text_hash(current) in SHIPPED_TEXTS.get(path.name, ()) else _keep_copy(path, data, day)
+    _write_atomic(path, text)
+    return copy
+
+
+def _note_upgrade(sysdir: Path, names: list[str], copies: list[Path], when: datetime) -> None:
+    """One line in routine-log.md, so the user (and the routine) see the new format and the kept copies."""
+    line = (f"> [!info] Tracker {__version__}, {when:%Y-%m-%d %H:%M}: nowy format rutyny (podsumowania wykładów "
+            f"w Lectures/, notatki w języku wykładu). Zaktualizowane: {', '.join(names)}.")
+    if copies:
+        links = ", ".join(f"[[_SYSTEM/{c.stem}]]" for c in copies)
+        line += f" Twoja poprzednia wersja: {links}. Co chcesz z niej zachować, przenieś do nowego pliku."
+    logfile = sysdir / ROUTINE_LOG
+    try:
+        old = logfile.read_bytes() if logfile.exists() else None
+        head = "# Routine log\n" if old is None else ("\n" if old and not old.endswith(b"\n") else "")
+        with logfile.open("a", encoding="utf-8") as fh:
+            fh.write(f"{head}\n{line}\n")
+    except OSError as exc:
+        log.warning("Could not note the routine upgrade in %s: %s", logfile, exc)
+
+
+def ensure_import_folder(vault: Path) -> Path:
+    """``<vault>/Import/``, with a short how-to the first time it is made (never written again)."""
+    folder = vault / IMPORT_DIR
+    if not folder.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / IMPORT_README).write_text(IMPORT_README_TEXT, encoding="utf-8")
+    return folder
+
+
+def ensure_system_notes(vault: Path, now: datetime | None = None) -> list[str]:
+    """The rules and the routine prompt in ``_SYSTEM/`` at the current format; returns the notes upgraded.
+
+    A missing note is written. A note from an older tracker is replaced: as it is when it is that
+    tracker's own text, else after a copy to "<name> (moja wersja <date>).md", so the user's text is
+    never lost. A note already at the current format belongs to the user and is never touched, edited
+    or not. An upgrade is logged once and noted in routine-log.md. Also makes the Import/ folder.
+    """
+    now = now or datetime.now()
     sysdir = vault / "_SYSTEM"
     sysdir.mkdir(parents=True, exist_ok=True)
+    upgraded: list[str] = []
+    copies: list[Path] = []
     for name, text in (("processing-rules.md", RULES), ("routine-prompt.md", ROUTINE)):
         p = sysdir / name
         if not p.exists():
             p.write_text(text, encoding="utf-8")
+            continue
+        try:
+            result = _upgrade_note(p, text, now.date())
+        except OSError as exc:  # a locked or unreadable note must not stop transcription
+            log.warning("Could not bring %s to format %d: %s", p, FORMAT_VERSION, exc)
+            continue
+        if result is False:
+            continue
+        upgraded.append(name)
+        if isinstance(result, Path):
+            copies.append(result)
+    if upgraded:
+        log.info("Routine notes upgraded to format %d: %s%s", FORMAT_VERSION, ", ".join(upgraded),
+                 f" (edited copies kept: {', '.join(c.name for c in copies)})" if copies else "")
+        _note_upgrade(sysdir, upgraded, copies, now)
+    try:
+        ensure_import_folder(vault)
+    except OSError as exc:
+        log.warning("Could not create %s: %s", vault / IMPORT_DIR, exc)
+    return upgraded
 
 
 def known_from_row(sha: str, row: dict, path: Path) -> Known:
@@ -725,13 +1126,18 @@ def routine_reminder(count: int) -> str:
 
 # -- the vault mirror ---------------------------------------------------------------
 
-MIRROR_FOLDERS = ("Knowledge", "Sessions")
+MIRROR_FOLDERS = ("Lectures", "Knowledge", "Sessions")
+MIRROR_FILES = ("_SYSTEM/" + ROUTINE_LOG,)  # single files, mirrored under the same path
 MAX_NOTE_BYTES = 256_000
+MAX_LOG_CHARS = 64_000  # of a longer routine log only its frontmatter and newest entries are sent
 RELOAD_SECONDS = 3600
 
 
 def vault_notes(vault: Path) -> dict[str, Path]:
-    """The notes the dashboard shows: every .md under Knowledge/ and Sessions/, by vault-relative path."""
+    """The notes the dashboard shows, by vault-relative path.
+
+    Every .md under Lectures/, Knowledge/ and Sessions/ (hidden ones apart), and the routine's log.
+    """
     out: dict[str, Path] = {}
     for folder in MIRROR_FOLDERS:
         base = vault / folder
@@ -741,11 +1147,26 @@ def vault_notes(vault: Path) -> dict[str, Path]:
             rel = p.relative_to(vault)
             if p.is_file() and not any(part.startswith(".") for part in rel.parts):
                 out[rel.as_posix()] = p
+    for rel in MIRROR_FILES:
+        if (vault / rel).is_file():
+            out[rel] = vault / rel
     return out
 
 
+def log_excerpt(text: str, limit: int = MAX_LOG_CHARS) -> str:
+    """A long routine log cut to its frontmatter (``last_run``) and the newest entries that fit."""
+    if len(text) <= limit:
+        return text
+    m = _FRONTMATTER.match(text)
+    head = m.group(0) if m else ""
+    tail = text[-max(limit - len(head), limit // 2):]
+    cut = tail.find("\n## ")
+    tail = tail[cut + 1:] if cut >= 0 else tail[tail.find("\n") + 1:]
+    return f"{head}\n(Older entries are in the vault's copy of this file.)\n\n{tail}"
+
+
 class VaultMirror:
-    """Keeps kos_vault_files equal to the vault's Knowledge/ and Sessions/ notes, one way: vault -> database.
+    """Keeps kos_vault_files equal to the vault's notes (``vault_notes``), one way: vault -> database.
 
     The server's list (path -> sha256) is the state, read at start and again every hour, so
     nothing is kept on disk and a lost row is sent again. A file is hashed only when its size
@@ -779,7 +1200,7 @@ class VaultMirror:
         for rel, p in vault_notes(self.vault).items():
             try:
                 st = p.stat()
-                if st.st_size > MAX_NOTE_BYTES:
+                if st.st_size > MAX_NOTE_BYTES and rel not in MIRROR_FILES:
                     continue
                 key = (st.st_mtime_ns, st.st_size)
                 cached = self._hashes.get(rel)
@@ -795,6 +1216,8 @@ class VaultMirror:
                     data = p.read_bytes()
                     sha = hashlib.sha256(data).hexdigest()
                 text = data.decode("utf-8", errors="replace").lstrip("\ufeff").replace("\x00", "")
+                if rel in MIRROR_FILES:
+                    text = log_excerpt(text)
                 changed.append({"vault": name, "path": rel, "content": text, "sha256": sha,
                                 "modified_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat()})
             except OSError:
@@ -802,7 +1225,7 @@ class VaultMirror:
         for i in range(0, len(changed), 50):
             self._send(changed[i:i + 50])
         gone = [rel for rel in self.remote if rel not in local]
-        if gone and not local:
+        if gone and not local.difference(MIRROR_FILES):  # the routine's log alone is not a vault's notes
             if not self._held_back:  # once, not every minute
                 log.warning("Vault mirror: %s has no notes but the dashboard has %d; nothing deleted. "
                             "Check vault_dir in config.json.", self.vault, len(gone))
@@ -829,8 +1252,15 @@ class VaultMirror:
             self.remote[r["path"]] = (r["sha256"], r["vault"])  # type: ignore[index]
 
 
+class Importer(Protocol):
+    """What the worker needs of ``imports.ImportWatcher``: one look at the vault's Import/ folder."""
+
+    def scan(self, now: float) -> list[str]: ...
+
+
 class IntakeWorker(threading.Thread):
-    """Every minute: transcribes recordings that stopped growing (oldest first), then mirrors the vault.
+    """Every minute: transcribes recordings that stopped growing (oldest first), imports what waits in
+    the vault's Import/ folder, then mirrors the vault.
 
     Once a day at most it also reminds the user when sessions wait for the
     Claude routine.
@@ -843,11 +1273,12 @@ class IntakeWorker(threading.Thread):
 
     def __init__(self, folder: Path | None, vault: Path, gap_minutes: float, client: KosClient, state: IntakeState,
                  notify: Callable[[str], bool | None] | None = None, interval: float = 60,
-                 mirror: VaultMirror | None = None, since: float = 0.0) -> None:
+                 mirror: VaultMirror | None = None, since: float = 0.0, importer: Importer | None = None) -> None:
         super().__init__(name="mf-recordings", daemon=True)
         self.folder, self.vault, self.gap = folder, vault, gap_minutes
         self.client, self.state, self.notify, self.interval = client, state, notify, interval
         self.mirror = mirror
+        self.importer = importer
         self.since = since
         self.started_at = time.time()
         self._sizes: dict[Path, int] = {}
@@ -868,6 +1299,12 @@ class IntakeWorker(threading.Thread):
             except Exception:
                 log.exception("recordings scan failed")
             try:
+                self.import_files(time.time())
+            except AuthRequired:
+                pass
+            except Exception:
+                log.exception("import scan failed")
+            try:
                 self.mirror_vault(time.time())
             except AuthRequired:
                 pass
@@ -880,6 +1317,12 @@ class IntakeWorker(threading.Thread):
             except Exception:
                 log.exception("routine reminder failed")
             self._stop.wait(self.interval)
+
+    def import_files(self, now: float) -> list[str]:
+        """One look at Import/ (the importer moves what it took to Import/_done); the sources imported."""
+        if self.importer is None or not self.client.auth.user_id:
+            return []
+        return self.importer.scan(now)
 
     def mirror_vault(self, now: float) -> None:
         if self.mirror is None or not self.client.auth.user_id:

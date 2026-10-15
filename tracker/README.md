@@ -41,6 +41,8 @@
 >    Zadanie uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi; pominięte uruchomienie nadrobi, gdy wrócisz.
 >    Instalator od razu zapisuje w vaulcie `_SYSTEM/routine-prompt.md` (cała procedura rutyny) i `_SYSTEM/processing-rules.md`
 >    (zasady dobrych notatek), więc rutyna działa jeszcze przed pierwszym nagraniem; zmiany robisz w tych plikach, nie w zadaniu.
+>    Rutyna pisze dla każdego wykładu podsumowanie w `Lectures/<przedmiot>/` (w języku wykładu, z tym, na co prowadzący kładł
+>    nacisk, i ze słowniczkiem; wyjaśnienia AI są w zwijanych blokach „Dla zrozumienia (AI)”) oraz kilka notatek w `Knowledge/`.
 >    Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną: sesje zostają ze `status: new`, a gdy czekają dłużej niż
 >    dobę, tracker przypomina powiadomieniem (najwyżej raz na dobę). Kroki z poleceniem pokaże też później
 >    **Ustawienia... → Pokaż, jak ustawić rutynę Claude**.
@@ -57,7 +59,10 @@
 > - **Logowanie wygasło**: gdy serwer odrzuci zapisane logowanie (np. po wylogowaniu w dashboardzie), Ustawienia pokazują
 >   **Logowanie wygasło (e-mail): zaloguj się ponownie** z polami logowania; po **Zapisz** tracker używa nowego logowania.
 > - **Aktualizacja**: pobierz nowszy instalator i uruchom go. Podmienia program w miejscu (sam zamyka stary tracker i uruchamia nowy);
->   logowanie, ustawienia (także wyłączony autostart) i dane zostają.
+>   logowanie, ustawienia (także wyłączony autostart) i dane zostają. Wersja 1.3.0 wprowadza nowy format rutyny (podsumowania
+>   wykładów) i podmienia `_SYSTEM/routine-prompt.md` oraz `_SYSTEM/processing-rules.md`. Jeśli je zmieniałeś, Twoja wersja
+>   zostaje obok jako `... (moja wersja <data>).md`, a wpis w `_SYSTEM/routine-log.md` o tym przypomina. Nowe pliki możesz
+>   zmieniać dowolnie: tracker już ich nie nadpisze.
 > - **Odinstalowanie**: Ustawienia Windows → Aplikacje → Zainstalowane aplikacje (Apps & features) → **MindsetForest Tracker** →
 >   Odinstaluj, albo **Ustawienia... → Odinstaluj...**. Vault i nagrania zostają zawsze; dane lokalne (`%APPDATA%\MindsetForest`)
 >   znikają tylko, jeśli to potwierdzisz.
@@ -72,9 +77,19 @@
 >   (Whisper large-v3-turbo w chmurze, ze znacznikami czasu) i trafia do vaulta jako notatka w `Recordings/` plus sesja w `Sessions/`
 >   (`status: new`), którą potem przerabia rutyna Claude. Nagrania zaczęte do 20 min po końcu poprzedniego to ta sama sesja (części
 >   jednego wykładu). Oryginalne pliki nie są ruszane. Foldery zmienisz w **Ustawienia...**; `session_gap_minutes` tylko w `config.json`
->   (po zmianie zrestartuj tracker). Notatki z `Knowledge/` i `Sessions/` tracker co minutę kopiuje do dashboardu (Archive → 🧠 Knowledge
->   i 🎙️ Recordings, ze statusem sesji); zmieniona notatka idzie ponownie, usunięta znika. Vault zostaje źródłem: w dashboardzie notatek
->   się nie edytuje.
+>   (po zmianie zrestartuj tracker). Podsumowania z `Lectures/`, notatki z `Knowledge/`, sesje z `Sessions/` i dziennik rutyny
+>   (`_SYSTEM/routine-log.md`) tracker co minutę kopiuje do dashboardu (Archive → Wykłady i 🎙️ Recordings, ze statusem sesji);
+>   zmieniona notatka idzie ponownie, usunięta znika. Vault zostaje źródłem: w dashboardzie notatek się nie edytuje.
+> - **Import (transkrypcje z platformy uczelni, kursy, YouTube):** pobrane pliki wrzucaj do folderu `Import` w vaulcie: .txt, .md,
+>   .vtt, .srt, .docx, .pdf. Jeden plik albo jeden podfolder to jeden wykład. W podfolderze plik z „podsumowanie” lub „summary”
+>   w nazwie to podsumowanie z platformy (rutyna tylko sprawdza nim, czy nic nie umknęło; źródłem jest transkrypcja), a inne .pdf
+>   i .docx to materiały (slajdy). Data w nazwie (`2026-10-11` albo `11.10.2026`, opcjonalnie z godziną, np. `13-30`) to data
+>   wykładu; bez niej liczy się data pliku. Minutę po ostatniej zmianie tracker robi z tego sesję, tak jak z nagrania (napisy
+>   .vtt/.srt zachowują czas, inny tekst dostaje numerowane akapity), i przenosi pliki do `Import/_done`. Niczego nie usuwa,
+>   a tego samego pliku drugi raz nie zaimportuje. Plik, którego nie da się odczytać (np. skan PDF bez tekstu), zostaje na
+>   miejscu, a tracker mówi o tym powiadomieniem.
+> - **Starsze wykłady od nowa**: żeby rutyna zrobiła podsumowanie sesji przerobionej w starym formacie, ustaw w jej notatce
+>   w `Sessions/` z powrotem `status: new`.
 >
 > **Zaawansowane: wersja ze źródeł (Python)** (zip z dashboardu albo ten folder; szczegóły w *Install from source* niżej)
 >
@@ -170,7 +185,8 @@ admin) and the installed copy runs the tracker. Logic lives in
 * **What install does**: stops a running tracker (it writes `quit.request` in
   the data folder and the tracker quits gracefully), copies the exe, writes
   `%APPDATA%\MindsetForest\config.json` (keeping every setting it does not
-  show, e.g. `ignored_apps`), creates the vault and its `_SYSTEM/` notes,
+  show, e.g. `ignored_apps`), creates the vault with its `_SYSTEM/` notes
+  and `Import/` folder (upgrading an older tracker's notes, see below),
   removes the old zip install's Startup shortcut, sets the `HKCU\...\Run` value
   `MindsetForest Tracker` to `"<exe>" --autostart`, adds a Start menu shortcut
   and an Apps & features entry, and starts the tracker. The vault folder is
@@ -206,7 +222,7 @@ admin) and the installed copy runs the tracker. Logic lives in
   *Ustawienia... -> Odinstaluj...*; the vault and recordings are never deleted.
   With `--remove-data` (or *Tak* in the window) only the tracker's own files
   in the data folder go (`config.json`, `session*.bin`, `tracker.db`,
-  `recordings.json`, `tracker.log`, `setup.log`, lock and marker files); the
+  `recordings.json`, `imports.json`, `tracker.log`, `setup.log`, lock and marker files); the
   folder itself only when nothing else is left in it. A running exe cannot
   delete itself, so after the last message box a hidden PowerShell cleanup
   waits for the uninstaller (and its onefile bootloader) to exit, then removes
@@ -224,6 +240,42 @@ admin) and the installed copy runs the tracker. Logic lives in
   `--uninstall [--silent] [--remove-data]`; `--settings`;
   `--self-test OUT.json` (Windows smoke checks). A silent install logs to
   `%APPDATA%\MindsetForest\setup.log`.
+
+## Knowledge OS: imports and the routine's instructions
+
+* **Imports** (`mindsetforest_tracker/imports.py`): every minute the tracker
+  looks at `<vault>/Import/`. Each file or subfolder (up to 3 levels inside)
+  is one source; names starting with `_`, `.` or `~$` are ignored. Supported:
+  .txt .md .vtt .srt .docx (zipfile + XML) .pdf (pypdf; without it PDFs are
+  skipped with a log line). In a subfolder a name containing "podsumowanie"
+  or "summary" is the institution's summary, other .pdf/.docx are materials,
+  the rest is the transcript (several transcript files are parts of one
+  session). A source unchanged for a minute is hashed per transcript file
+  (sha256; a hash known locally in `imports.json` or in `kos_recordings` is
+  not imported again), stored in `kos_recordings` with `source = 'import'`
+  and `original_name` (migration `20261015120000_kos_imports.sql`; until it
+  is applied the row is stored without those two columns), and written as
+  `Recordings/<note>.md` (`^tNNNN` = seconds for captions and text with
+  times at line starts, else `^pNNNN` = paragraph), `Recordings/<note>
+  (podsumowanie uczelni).md`, `Recordings/<note> (materiały).md` and a
+  `Sessions/` note at `status: new` with `source: import` (or `youtube`).
+  Then it moves to `Import/_done/`. Segments without times are
+  `{"p": N, "start": null, "end": null, "text": ...}`. The date comes from a
+  `YYYY-MM-DD` / `DD.MM.YYYY` (+ optional `HH-MM`) in the folder or file
+  name, else the file time. A source that cannot be read gets one
+  notification and waits until it changes; network errors retry in 10 min.
+* **The routine's instructions** (`_SYSTEM/routine-prompt.md`,
+  `_SYSTEM/processing-rules.md`) carry a `kos-format: 2` marker. The tracker
+  (installer, first scan, each new session) writes them when missing,
+  replaces an older tracker's unedited text, and replaces an edited older copy
+  only after saving it as `<name> (moja wersja <date>).md`, then notes the
+  upgrade in `_SYSTEM/routine-log.md` as a `> [!info]` line. A format-2 file
+  is never touched again, edited or not.
+* **Routine log**: the routine keeps `last_run:` in the log's frontmatter
+  (every run) and appends `## YYYY-MM-DD HH:MM` entries with `- sessions:`,
+  `- summaries:`, `- notes:` and `- problems:` lines. The mirror copies the
+  log as `_SYSTEM/routine-log.md`; past 64 kB only the frontmatter and the
+  newest entries are sent.
 
 ## Install from source (advanced)
 
@@ -341,6 +393,7 @@ A balloon confirms it, and the note is indexed for semantic search.
 | encrypted refresh token | `%APPDATA%\MindsetForest\session.bin` |
 | single-instance lock | `%APPDATA%\MindsetForest\tracker.lock` |
 | settings written by the installer | `%APPDATA%\MindsetForest\config.json` |
+| hashes of imported transcripts | `%APPDATA%\MindsetForest\imports.json` |
 | installed program | `%LOCALAPPDATA%\Programs\MindsetForest\MindsetForestTracker.exe` |
 | cloud | table `app_usage_sessions` in your Supabase project |
 
@@ -388,7 +441,7 @@ data folder.
   Brave).
 * **Dev run on Linux/macOS** - the code imports without pywin32/pystray and uses
   a fake sampler; only the test-suite is meaningful there:
-  `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt psutil requests pillow && python -m pytest -q`.
+  `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt psutil requests pillow pypdf && python -m pytest -q`.
 
 ## Layout
 
@@ -404,7 +457,8 @@ tracker/
     auth.py       Supabase password/refresh auth, DPAPI-encrypted session file
     sync.py       background upload thread with back-off
     archive_capture.py  hotkey that saves the selected text to the Archive
-    recordings.py Bandicam MP3 -> transcript -> vault, vault mirror, routine reminder
+    recordings.py Bandicam MP3 -> transcript -> vault, vault mirror, routine reminder, the routine's prompt
+    imports.py    the vault's Import/ folder: .txt/.md/.vtt/.srt/.docx/.pdf -> sessions like recordings
     tray.py       pystray icon, menu, sign-in dialog
     winsetup.py   install / upgrade / uninstall, folder and vault detection
     setup_gui.py  the setup and "Ustawienia..." window (tkinter)

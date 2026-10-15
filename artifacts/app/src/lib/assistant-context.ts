@@ -15,6 +15,7 @@ import { DAILY_COLUMNS, dailyRowToSession, rowToClass, rowToRule } from "@/lib/a
 import { formatMissionList, listTodayMissions } from "@/lib/mission-match";
 import { parseMissionMap } from "@/lib/mission-presets";
 import { loadMetrics } from "@/lib/assistant-writes";
+import { gatherLectureItems, isLectureItem, knowledgeContext, loadKnowledgeFiles } from "@/lib/lecture-tutor";
 
 export type ScopeId =
   | "dashboard"
@@ -26,6 +27,7 @@ export type ScopeId =
   | "finance"
   | "oracle"
   | "archive"
+  | "knowledge"
   | "breathing"
   | "cooking"
   | "calendar"
@@ -49,6 +51,7 @@ export const SCOPES: ScopeDef[] = [
   { id: "finance", label: "Finance", icon: "💰", description: "Money: income, expenses by category, subscriptions, monthly totals and budgets." },
   { id: "oracle", label: "Oracle", icon: "🔮", description: "Oracle: XP sacrifices, rewards and boons the user bought with XP, reward history." },
   { id: "archive", label: "Archive", icon: "📦", description: "Archive of notes and ideas with tags and pillars; a semantic search over the notes for the question. Needed for add_note and questions about what the user wrote down." },
+  { id: "knowledge", label: "Wykłady", icon: "🎓", description: "Lectures and courses: summaries per lecture (course, date, topic, what the lecturer stressed, open points) and atomic knowledge notes with quotes and the moment in the recording. Needed for what was said in a lecture or course, exam or test prep, and concepts learned." },
   { id: "breathing", label: "Breathing", icon: "🫁", description: "Breathing exercise sessions: patterns practised, minutes, frequency." },
   { id: "cooking", label: "Cooking", icon: "🍳", description: "Recipes, meal plans, ingredients and cooking history." },
   { id: "calendar", label: "Calendar", icon: "📅", description: "Calendar events for the coming days: appointments, blocks, deadlines with times." },
@@ -506,6 +509,17 @@ async function gatherArchive(userId: string, question?: string): Promise<string>
   ].filter(Boolean).join("\n");
 }
 
+/**
+ * Lecture summaries and knowledge notes from the vault mirror, ranked by word
+ * overlap with the question (see knowledgeContext). A lecture pinned for
+ * tutoring comes in separately, with its transcript.
+ */
+async function gatherKnowledge(userId: string, question?: string): Promise<string> {
+  const files = await loadKnowledgeFiles(userId).catch(() => null);
+  if (!files) return "Lectures could not be loaded (the vault mirror table is missing or unreachable).";
+  return knowledgeContext(files, question);
+}
+
 async function gatherBreathing(userId: string): Promise<string> {
   const { data } = await supabase
     .from("breathing_sessions")
@@ -646,6 +660,7 @@ const GATHERERS: Record<ScopeId, (userId: string, question?: string) => Promise<
   finance: gatherFinance,
   oracle: gatherOracle,
   archive: gatherArchive,
+  knowledge: gatherKnowledge,
   breathing: gatherBreathing,
   cooking: gatherCooking,
   calendar: gatherCalendar,
@@ -681,14 +696,35 @@ export async function searchArchiveItems(userId: string, query: string): Promise
   }));
 }
 
+/**
+ * `previousReply` is the assistant's last answer: a pinned lecture uses it to
+ * pick transcript passages, since a quiz answer ("only when p is true") means
+ * little without the question it answers.
+ */
 export async function gatherContext(
   userId: string,
   scopes: ScopeId[],
   archiveItems: ArchiveItemRef[] = [],
   question?: string,
+  previousReply?: string,
 ): Promise<{ text: string; citations: Citation[] }> {
   const sections: string[] = [];
   const citations: Citation[] = [];
+  const lectures = archiveItems.filter(isLectureItem);
+  const notes = archiveItems.filter((it) => !isLectureItem(it));
+
+  // A pinned lecture goes first: when the whole context is too long, the
+  // client cuts from the end, and the lecture is what the user asked about.
+  if (lectures.length > 0) {
+    let body: string;
+    try {
+      body = await gatherLectureItems(userId, lectures, question, previousReply);
+    } catch {
+      body = "(lecture unavailable)";
+    }
+    sections.push(`## 🎓 Pinned lecture\n${body}`);
+    for (const it of lectures) citations.push({ key: it.id, label: it.title, icon: "🎓" });
+  }
 
   for (const scope of scopes) {
     const gatherer = GATHERERS[scope];
@@ -704,15 +740,15 @@ export async function gatherContext(
     citations.push({ key: scope, label: def.label, icon: def.icon });
   }
 
-  if (archiveItems.length > 0) {
+  if (notes.length > 0) {
     let body: string;
     try {
-      body = await gatherArchiveItems(userId, archiveItems);
+      body = await gatherArchiveItems(userId, notes);
     } catch {
       body = "(archive items unavailable)";
     }
     sections.push(`## 📦 Archive items\n${body}`);
-    for (const it of archiveItems) {
+    for (const it of notes) {
       citations.push({ key: `archive:${it.id}`, label: it.title, icon: "📦" });
     }
   }

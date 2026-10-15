@@ -272,7 +272,10 @@ jobs:
             foreach ($note in 'routine-prompt.md', 'processing-rules.md') {
               $path = Join-Path $Vault "_SYSTEM\$note"
               if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Install: $path is missing; the Claude routine reads it" }
+              if ((Get-Content -LiteralPath $path -Raw -Encoding UTF8) -notmatch 'kos-format: 2') { throw "Install: $path is not the format-2 text" }
             }
+            $inbox = Join-Path $Vault 'Import'
+            if (-not (Test-Path -LiteralPath $inbox -PathType Container)) { throw "Install: $inbox is missing; downloaded transcripts go there" }
             Assert-RunValue 'Install'
             if (-not (Test-Path -LiteralPath $StartMenuLnk -PathType Leaf)) { throw "Install: Start menu shortcut $StartMenuLnk is missing" }
             $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($StartMenuLnk)
@@ -388,6 +391,7 @@ jobs:
           1. Pobierz **MindsetForestSetup.exe** i uruchom. Windows może ostrzec (aplikacja bez podpisu): **Więcej informacji -> Uruchom mimo to**.
           2. Zaloguj się, wybierz folder nagrań (Bandicam) i vault Obsidian, kliknij **Zainstaluj i uruchom**.
           3. **Ustaw rutynę Claude w Claude Desktop**: w lewym pasku Scheduled -> New task -> Set up manually, częstotliwość Hourly, jako folder zadania folder vaulta. Zadanie musi działać lokalnie, na tym komputerze (nie w chmurze), i uruchamia się tylko, gdy Claude Desktop jest włączony, a komputer nie śpi. Na koniec instalator pokaże polecenie do skopiowania i kolejne kroki. Bez rutyny nagrania się transkrybują, ale notatki wiedzy nie powstaną; tracker przypomni o tym powiadomieniem.
+          4. Pobrane transkrypcje i materiały (z platformy uczelni, kursów, YouTube: .txt, .md, .vtt, .srt, .docx, .pdf) wrzucaj do folderu **Import** w vaulcie. Rutyna zrobi z nich podsumowanie wykładu, tak jak z nagrania.
 
           Nowsza wersja instaluje się tak samo, na miejsce starej: logowanie, ustawienia i dane zostają. Ustawienia otworzysz z ikonki drzewa przy zegarze (Ustawienia...; jeśli ikonki nie widać, kliknij strzałkę ^ obok zegara) albo z menu Start (MindsetForest), odinstalujesz w Ustawieniach Windows (Aplikacje).
 

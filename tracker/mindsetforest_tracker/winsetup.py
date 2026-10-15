@@ -338,7 +338,8 @@ def _local_appdata() -> Path:
 
 
 # What a tracker keeps per install: losing it makes the same PC a new device in the dashboard.
-STATE_FILES = ("tracker.db", "tracker.db-wal", "tracker.db-shm", "session.bin", "recordings.json", "recordings-index.json")
+STATE_FILES = ("tracker.db", "tracker.db-wal", "tracker.db-shm", "session.bin", "recordings.json",
+               "recordings-index.json", "imports.json")
 
 
 def store_python_data_dirs() -> list[Path]:
@@ -1197,7 +1198,7 @@ def _remove_tree(root: Path, keep: list[Path]) -> None:
 # because MINDSETFOREST_HOME may point at a folder that also holds the user's own files.
 TRACKER_DATA_FILES = (
     CONFIG_FILE_NAME, "session*.bin*", "tracker.db*", "recordings.json", "recordings.tmp", "recordings-index.json",
-    "recordings-index.tmp", LOCK_FILE,
+    "recordings-index.tmp", "imports.json", "imports.tmp", LOCK_FILE,
     QUIT_REQUEST, NEEDS_LOGIN, "tracker.log*", "setup.log*",
 )
 
@@ -1384,6 +1385,13 @@ def _check_uia() -> None:
     self_check()
 
 
+def _check_imports() -> None:
+    """Import/ reads .docx (zipfile + XML) and .pdf (pypdf, bundled by build-exe.ps1)."""
+    from .imports import self_check
+
+    self_check()
+
+
 def _check_certifi() -> None:
     import certifi
 
@@ -1411,6 +1419,7 @@ def self_test(out: Path, ops: WinOps) -> bool:
     check("dpapi", _check_dpapi)
     check("certifi", _check_certifi)
     check("uia", _check_uia)
+    check("imports", _check_imports)
     check("shortcut", lambda: _check_shortcut(ops))
     check("registry_run", lambda: _check_run(ops))
     check("known_folders", lambda: _check_known_folders(ops))

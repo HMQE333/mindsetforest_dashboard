@@ -20,7 +20,10 @@ async function loadVaultFiles(): Promise<VaultFile[]> {
   }
 }
 
-/** The vault's Knowledge/ and Sessions/ notes as the tracker mirrors them, parsed. Loads once `enabled`. */
+/**
+ * The vault's notes as the tracker mirrors them (Lectures/, Knowledge/, Sessions/
+ * and the routine's log), parsed. Loads once `enabled`.
+ */
 export function useKosVault(enabled: boolean) {
   const { user } = useAuth();
   const q = useQuery({
@@ -33,20 +36,31 @@ export function useKosVault(enabled: boolean) {
   return { index, loading: q.isLoading && enabled, error: q.error, refetch: q.refetch, fetching: q.isFetching };
 }
 
+const RECORDING_COLUMNS = "id, file_name, note_name, recorded_at, duration_seconds, session_key, part, language, model";
+/** Added by migration 20261015120000_kos_imports; a database without them still lists recordings. */
+const IMPORT_COLUMNS = "source, original_name";
+
+async function loadRecordings(): Promise<RecordingRow[]> {
+  const query = (cols: string) =>
+    supabase.from("kos_recordings").select(cols).order("recorded_at", { ascending: false }).limit(2000);
+  let { data, error } = await query(`${RECORDING_COLUMNS}, ${IMPORT_COLUMNS}`);
+  // 42703: undefined column, before the migration is applied.
+  if (error && (error.code === "42703" || /source|original_name/.test(error.message ?? ""))) {
+    ({ data, error } = await query(RECORDING_COLUMNS));
+  }
+  if (error) throw error;
+  return ((data ?? []) as unknown as RecordingRow[]).map((r) => ({
+    ...r,
+    duration_seconds: Number(r.duration_seconds) || 0,
+  }));
+}
+
 /** Every recording's details, newest first, without the transcripts (those load one at a time). */
 export function useKosRecordings(enabled: boolean) {
   const { user } = useAuth();
   const q = useQuery({
     queryKey: ["kos", "recordings", user?.id],
-    queryFn: async (): Promise<RecordingRow[]> => {
-      const { data, error } = await supabase
-        .from("kos_recordings")
-        .select("id, file_name, note_name, recorded_at, duration_seconds, session_key, part, language, model")
-        .order("recorded_at", { ascending: false })
-        .limit(2000);
-      if (error) throw error;
-      return (data ?? []).map((r) => ({ ...r, duration_seconds: Number(r.duration_seconds) }));
-    },
+    queryFn: loadRecordings,
     enabled: enabled && !!user,
     staleTime: 60_000,
   });

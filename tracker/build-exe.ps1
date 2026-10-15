@@ -6,8 +6,9 @@
     PyInstaller --onefile --noconsole. The same exe is the setup window, the
     settings window and the tracker itself (main.decide_action picks the mode),
     so everything the setup needs is bundled too: tkinter, pywin32 (shortcuts,
-    DPAPI), pystray, Pillow and comtypes with its generated UI Automation
-    wrapper (browser_url.py reads the active tab's domain). build.bat runs
+    DPAPI), pystray, Pillow, comtypes with its generated UI Automation
+    wrapper (browser_url.py reads the active tab's domain) and pypdf (PDFs
+    dropped into the vault's Import/ folder). build.bat runs
     this for a local build and CI
     (.github/workflows/tracker-windows.yml) runs it before the exe's
     --self-test, so a missing hidden import fails there and not on a user's PC.
@@ -49,6 +50,7 @@ $HiddenImports = @(
     'requests'
     'comtypes'             # UI Automation for the address bar; browser_url imports it on first use
     'comtypes.client'
+    'pypdf'                # .pdf files in the vault's Import/ folder; imports.py imports it on first use
 )
 
 function Invoke-Native {
@@ -106,6 +108,8 @@ try {
         '--collect-submodules', 'mindsetforest_tracker'
         # The wrappers generated above (UIAutomationClient and the stdole it imports).
         '--collect-submodules', 'comtypes.gen'
+        # pypdf loads its filters and crypto fallbacks lazily; --self-test reads a PDF to prove they are in.
+        '--collect-submodules', 'pypdf'
     )
     foreach ($module in $HiddenImports) { $pyiArgs += @('--hidden-import', $module) }
     $pyiArgs += 'run_tracker.py'
