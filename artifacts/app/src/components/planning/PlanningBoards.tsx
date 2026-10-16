@@ -1,138 +1,165 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronRight, LayoutDashboard, Trash2, Link2 } from "lucide-react";
-import { useBoards } from "@/hooks/useBoards";
-import { usePlanningState } from "@/hooks/usePlanningState";
+import { Check, ChevronDown, FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DEFAULT_BOARD_EMOJI, type PlanningBoard } from "@/hooks/useBoards";
 
-interface Props {
-  onOpenBoard: (id: string) => void;
-}
+/**
+ * Boards are the 📁 folder above one tree. They live in the Planning header as
+ * a switcher; the only full-page board UI left is the empty state that creates
+ * the first one.
+ */
 
-const EMOJI_CHOICES = ["🗂️", "🎯", "🚀", "🧭", "💡", "📌", "🌱", "🔥", "⚡", "🏆"];
+const EMOJI_CHOICES = ["📁", "🎯", "🚀", "🧭", "💡", "📌", "🌱", "🔥", "⚡", "🏆", "📥", "🗂️"];
 
-export default function PlanningBoards({ onOpenBoard }: Props) {
-  const { boards, links, addBoard, deleteBoard, loading } = useBoards();
-  const { tasks } = usePlanningState();
-  const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newEmoji, setNewEmoji] = useState("🗂️");
+/** Name + emoji, used to create and to rename a board. */
+function BoardForm({ initialName = "", initialEmoji = DEFAULT_BOARD_EMOJI, submitLabel, onSubmit, onCancel, autoFocus = true }: {
+  initialName?: string;
+  initialEmoji?: string;
+  submitLabel: string;
+  onSubmit: (name: string, emoji: string) => Promise<void> | void;
+  onCancel?: () => void;
+  autoFocus?: boolean;
+}) {
+  const [name, setName] = useState(initialName);
+  const [emoji, setEmoji] = useState(initialEmoji);
+  const [busy, setBusy] = useState(false);
 
-  const handleAdd = async () => {
-    if (!newName.trim()) return;
-    const board = await addBoard(newName.trim(), newEmoji);
-    setNewName("");
-    setNewEmoji("🗂️");
-    setShowAdd(false);
-    if (board) onOpenBoard(board.id);
-  };
-
-  const boardStats = (boardId: string) => {
-    const linkedProjectIds = links.filter(l => l.board_id === boardId).map(l => l.project_id);
-    const boardTasks = tasks.filter(t =>
-      t.level !== "link" && (t.board_id === boardId || (t.project_id && linkedProjectIds.includes(t.project_id)))
-    );
-    const done = boardTasks.filter(t => t.done).length;
-    const total = boardTasks.length;
-    return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0, linkedCount: linkedProjectIds.length };
+  const submit = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    try { await onSubmit(name.trim(), emoji.trim() || DEFAULT_BOARD_EMOJI); } finally { setBusy(false); }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Boards</h2>
-          <p className="text-sm text-muted-foreground">Independent planning spaces. Link projects or plan freely</p>
-        </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl gradient-purple text-primary-foreground font-bold text-sm glow-sm hover:opacity-90 transition-all"
-        >
-          <Plus className="h-4 w-4" /> New Board
-        </button>
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <input
+          value={emoji}
+          onChange={e => setEmoji(e.target.value.slice(0, 8))}
+          className="w-12 text-center bg-muted/30 border border-white/10 rounded-xl px-1 py-2 text-lg outline-none focus:border-primary/50"
+          aria-label="Board emoji"
+        />
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") void submit(); if (e.key === "Escape") onCancel?.(); }}
+          placeholder="Board name…"
+          className="flex-1 min-w-0 bg-muted/30 border border-white/10 rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
+          autoFocus={autoFocus}
+        />
       </div>
-
-      {showAdd && (
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <input
-              value={newEmoji}
-              onChange={e => setNewEmoji(e.target.value.slice(0, 2) || "🗂️")}
-              className="w-14 text-center bg-muted/30 border border-white/10 rounded-xl px-2 py-2 text-lg outline-none focus:border-primary/50"
-              aria-label="Board emoji"
-            />
-            <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setShowAdd(false); }}
-              placeholder="Board name..."
-              className="flex-1 bg-muted/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
-              autoFocus
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {EMOJI_CHOICES.map(e => (
-              <button
-                key={e}
-                onClick={() => setNewEmoji(e)}
-                className={`w-8 h-8 rounded-lg text-base transition-all ${newEmoji === e ? "bg-primary/20 ring-1 ring-primary/50" : "bg-muted/30 hover:bg-muted/50"}`}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleAdd} className="px-4 py-2 rounded-xl gradient-purple text-primary-foreground font-bold text-xs">Create</button>
-            <button onClick={() => { setShowAdd(false); setNewName(""); setNewEmoji("🗂️"); }} className="px-4 py-2 rounded-xl bg-muted/30 text-muted-foreground text-xs">Cancel</button>
-          </div>
-        </motion.div>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-muted-foreground py-10 text-center">Loading boards…</p>
-      ) : boards.length === 0 ? (
-        <div className="glass-card p-10 text-center space-y-3">
-          <LayoutDashboard className="h-10 w-10 mx-auto text-muted-foreground opacity-40" />
-          <p className="text-sm text-muted-foreground">No boards yet. Create your first board to start planning.</p>
-        </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {boards.map(board => {
-            const { done, total, pct, linkedCount } = boardStats(board.id);
-            return (
-              <button
-                key={board.id}
-                onClick={() => onOpenBoard(board.id)}
-                className="glass-card p-5 text-left group hover:border-primary/30 transition-all relative"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="text-2xl">{board.emoji}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{board.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><Link2 className="h-3 w-3" />{linkedCount} linked</span>
-                      {total > 0 && <span className="font-mono">{done}/{total} done</span>}
-                    </div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
-                </div>
-                {total > 0 && (
-                  <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
-                    <div className="h-full rounded-full gradient-purple transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                )}
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); if (confirm(`Delete board "${board.name}"? This removes the board and any tasks created directly on it. Linked projects are not affected.`)) deleteBoard(board.id); }}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1">
+        {EMOJI_CHOICES.map(e => (
+          <button
+            key={e}
+            type="button"
+            onClick={() => setEmoji(e)}
+            className={`w-7 h-7 rounded-lg text-sm transition-all ${emoji === e ? "bg-primary/20 ring-1 ring-primary/50" : "bg-muted/30 hover:bg-muted/50"}`}
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => void submit()} disabled={!name.trim() || busy} className="px-3.5 py-1.5 rounded-xl gradient-purple text-primary-foreground font-bold text-xs disabled:opacity-50">{submitLabel}</button>
+        {onCancel && <button onClick={onCancel} className="px-3.5 py-1.5 rounded-xl bg-muted/30 text-muted-foreground text-xs">Cancel</button>}
+      </div>
     </div>
+  );
+}
+
+/** The header switcher: emoji + name ▾, the other boards, + New board, rename, delete. */
+export function BoardSwitcher({ boards, current, onSelect, onCreate, onRename, onDelete }: {
+  boards: PlanningBoard[];
+  current: PlanningBoard;
+  onSelect: (id: string) => void;
+  onCreate: (name: string, emoji: string) => Promise<boolean>;
+  onRename: (name: string, emoji: string) => Promise<boolean>;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"list" | "create" | "rename">("list");
+
+  const close = () => { setOpen(false); setMode("list"); };
+
+  return (
+    <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) setMode("list"); }}>
+      <PopoverTrigger asChild>
+        <button className="flex items-center gap-2 min-w-0 max-w-full px-3 py-2 rounded-xl bg-muted/30 border border-white/10 hover:bg-muted/50 transition-all">
+          <span className="text-lg leading-none">{current.emoji}</span>
+          <span className="text-sm font-bold text-foreground truncate">{current.name}</span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-2 rounded-xl border-white/10 bg-background/95 backdrop-blur-xl">
+        {mode === "list" && (
+          <div className="space-y-1">
+            <p className="text-[9px] text-muted-foreground px-2 pt-1 pb-0.5 font-medium uppercase tracking-wider">Boards</p>
+            <div className="max-h-64 overflow-y-auto space-y-0.5" onWheel={e => e.stopPropagation()}>
+              {boards.map(b => (
+                <button
+                  key={b.id}
+                  onClick={() => { onSelect(b.id); close(); }}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all ${b.id === current.id ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-white/5 hover:text-foreground"}`}
+                >
+                  <span className="text-base leading-none">{b.emoji}</span>
+                  <span className="truncate flex-1 text-left">{b.name}</span>
+                  {b.id === current.id && <Check className="h-3.5 w-3.5 text-primary flex-shrink-0" />}
+                </button>
+              ))}
+            </div>
+            <div className="h-px bg-white/10 my-1" />
+            <button onClick={() => setMode("create")} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-foreground hover:bg-white/5 transition-all">
+              <Plus className="h-3.5 w-3.5 text-primary" /> New board
+            </button>
+            <button onClick={() => setMode("rename")} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all">
+              <Pencil className="h-3.5 w-3.5" /> Rename “{current.name}”
+            </button>
+            <button onClick={() => { close(); onDelete(); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all">
+              <Trash2 className="h-3.5 w-3.5" /> Delete board…
+            </button>
+          </div>
+        )}
+        {mode === "create" && (
+          <div className="p-1.5">
+            <p className="text-xs font-semibold text-foreground mb-2">New board</p>
+            <BoardForm
+              submitLabel="Create"
+              onSubmit={async (name, emoji) => { if (await onCreate(name, emoji)) close(); }}
+              onCancel={() => setMode("list")}
+            />
+          </div>
+        )}
+        {mode === "rename" && (
+          <div className="p-1.5">
+            <p className="text-xs font-semibold text-foreground mb-2">Rename board</p>
+            <BoardForm
+              initialName={current.name}
+              initialEmoji={current.emoji}
+              submitLabel="Save"
+              onSubmit={async (name, emoji) => { if (await onRename(name, emoji)) close(); }}
+              onCancel={() => setMode("list")}
+            />
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** No board yet: create the first one. */
+export default function PlanningBoards({ onCreate }: { onCreate: (name: string, emoji: string) => Promise<boolean> }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-md mx-auto glass-card p-6 space-y-4">
+      <div className="text-center space-y-2">
+        <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground opacity-50" />
+        <h2 className="text-lg font-bold text-foreground">Start your first board</h2>
+        <p className="text-sm text-muted-foreground">
+          A board holds one plan: steps to do and questions to answer. Name it after what you're aiming at.
+        </p>
+      </div>
+      <BoardForm submitLabel="Create board" onSubmit={async (name, emoji) => { await onCreate(name, emoji); }} autoFocus={false} />
+    </motion.div>
   );
 }

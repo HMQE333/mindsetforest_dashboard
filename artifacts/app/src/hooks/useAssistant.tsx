@@ -17,7 +17,6 @@ import { revisePathPlan, findPathByName } from "@/lib/path-writes";
 import { notifyPathsChanged } from "@/hooks/usePaths";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboardState } from "@/hooks/useDashboardState";
-import { PLANNING_TASKS_CHANGED_EVENT } from "@/hooks/usePlanningState";
 import {
   gatherContext,
   SCOPE_MAP,
@@ -42,15 +41,19 @@ import {
   addCalendarEvent,
   addBooks,
   addFinanceTransaction,
+  addPlanningNodes,
   completePlanningTask,
   createPath,
   createPresetFromMissions,
-  defaultPlanningBoard,
   logMetricEntry,
   logPathStepToday,
   patchPreferences,
   saveCurrentAsPreset,
+  nodesLabel,
+  resolveAttachTarget,
+  resolvePlanningCompletion,
   setModuleEnabled,
+  type PlanningBoardLabel,
 } from "@/lib/assistant-writes";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { replaceDashes } from "@/lib/text-style";
@@ -121,17 +124,49 @@ function loadScopes(): ScopeId[] {
 }
 
 /** Toast line saying where assistant-made planning rows landed. */
-function planningPlacement(board: { name: string } | null): string {
-  return board
-    ? `Tablica „${board.name}” w Planning`
-    : "Zapisano bez tablicy: nie masz jeszcze żadnej tablicy w Planning, więc nie będzie tam widoczne.";
+function planningPlacement(board: PlanningBoardLabel): string {
+  const name = `${board.emoji ? `${board.emoji} ` : ""}${board.name}`.trim();
+  return name ? `Tablica „${name}” w Planning` : "Na otwartej tablicy w Planning";
 }
 
-/** "1 węzeł", "3 węzły", "5 węzłów". */
-function nodesLabel(n: number): string {
-  if (n === 1) return "1 węzeł";
-  const few = n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14);
-  return `${n} ${few ? "węzły" : "węzłów"}`;
+/**
+ * complete_task and extend_mindmap are matched against the plan before their
+ * confirm card, so the card names the exact node (with its parent, and the
+ * options an answer drops; or that new nodes become roots), and a question
+ * without an answer, or a title that fits two open nodes, is refused here: the
+ * assistant never answers for the user. Other actions pass through.
+ */
+async function resolvePlanningActions(
+  userId: string,
+  actions: AssistantAction[],
+): Promise<{ actions: AssistantAction[]; refused: string[] }> {
+  const out: AssistantAction[] = [];
+  const refused: string[] = [];
+  for (const a of actions) {
+    if (a.type === "extend_mindmap") {
+      try {
+        const r = await resolveAttachTarget(userId, a.attachTo);
+        out.push(r.ok ? { ...a, target: r.target } : a);
+      } catch {
+        out.push(a); // unreachable plan: the write matches by title when applied
+      }
+      continue;
+    }
+    if (a.type !== "complete_task") { out.push(a); continue; }
+    let r: Awaited<ReturnType<typeof resolvePlanningCompletion>>;
+    try {
+      r = await resolvePlanningCompletion(userId, { title: a.title, outcome: a.outcome });
+    } catch {
+      out.push(a); // unreachable plan: the write matches by title when applied
+      continue;
+    }
+    if (!r.ok) { refused.push(r.error); continue; }
+    out.push({
+      ...a, title: r.title, nodeId: r.nodeId, ask: r.ask, parentTitle: r.parentTitle, drops: r.drops,
+      ...(r.ask ? {} : { outcome: undefined }),
+    });
+  }
+  return { actions: out, refused };
 }
 
 function useAssistantValue() {
@@ -430,10 +465,16 @@ function useAssistantValue() {
           // Pull any proposed write actions out of the reply and gate them by the
           // sections in play. Navigation runs right away; the rest wait for a click
           // (or a spoken yes in voice mode).
-          const { text: parsedText, actions, dropped, broken } = parseActions(replaceDashes(acc), scopesForSend);
-          // A block that was cut off or malformed is never shown as raw JSON.
-          const display = broken
-            ? `${parsedText}\n\n(Nie udało się odczytać proponowanych akcji. Poproś jeszcze raz, krócej.)`.trim()
+          const { text: parsedText, actions: parsed, dropped, broken } = parseActions(replaceDashes(acc), scopesForSend);
+          const { actions, refused } = await resolvePlanningActions(user.id, parsed);
+          // A block that was cut off or malformed is never shown as raw JSON;
+          // a planning close that was refused says why, in the reply itself.
+          const notes = [
+            ...refused,
+            ...(broken ? ["Nie udało się odczytać proponowanych akcji. Poproś jeszcze raz, krócej."] : []),
+          ];
+          const display = notes.length > 0
+            ? `${parsedText}\n\n${notes.map((n) => `(${n})`).join("\n")}`.trim()
             : parsedText;
           const pending = actions.filter((a) => !isAutoApply(a));
           for (const a of actions.filter(isAutoApply)) void runActionRef.current(a);
@@ -627,8 +668,8 @@ function useAssistantValue() {
             if (r.ok) { ok++; toast.success(`Utworzono ścieżkę „${action.name}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "complete_task") {
-            const r = await completePlanningTask(user.id, action.title);
-            if (r.ok) { ok++; toast.success(`Zadanie zrobione: „${r.title}”`); }
+            const r = await completePlanningTask(user.id, { title: action.title, outcome: action.outcome, nodeId: action.nodeId });
+            if (r.ok) { ok++; toast.success(r.ask ? `Pytanie zamknięte: „${r.title}” = ${action.outcome ?? ""}` : `Krok zrobiony: „${r.title}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_event") {
             const r = await addCalendarEvent(user.id, { title: action.title, date: action.date, time: action.time, notes: action.notes, tag: action.tag });
@@ -721,42 +762,13 @@ function useAssistantValue() {
               window.dispatchEvent(new CustomEvent(MISSION_PRESETS_CHANGED_EVENT));
             }
           } else if (action.type === "add_task") {
-            // Planning only lists rows of a board, so the task goes on the
-            // default board (see defaultPlanningBoard); with no board at all
-            // it is still saved, and the toast says where it went.
-            const board = await defaultPlanningBoard(user.id);
-            const { error } = await (supabase.from("planning_tasks" as never) as never as {
-              insert: (rows: unknown[]) => Promise<{ error: unknown }>;
-            }).insert([
-              {
-                user_id: user.id,
-                project_id: null,
-                board_id: board?.id ?? null,
-                parent_id: null,
-                level: action.level || "task",
-                title: action.title,
-                done: false,
-                deadline: action.deadline ?? null,
-                leverage: null,
-                energy: null,
-                time_minutes: null,
-                url: null,
-                icon: null,
-                notes: action.notes || "",
-                standalone: true,
-                position_x: null,
-                position_y: null,
-                mentions: [],
-              },
-            ]);
-            if (error) {
-              failed++;
-            } else {
+            // One node on the default board (the one open in Planning, see
+            // defaultPlanningBoard); a title ending in '?' is a question.
+            const r = await addPlanningNodes(user.id, [{ title: action.title, ask: action.ask, notes: action.notes }]);
+            if (!r.ok) { failed++; toast.error(r.error); }
+            else {
               ok++;
-              toast.success(`Dodano zadanie „${action.title}”`, { description: planningPlacement(board) });
-              // Page-scoped planning hooks don't share state with this
-              // provider, so nudge them to refetch immediately.
-              window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
+              toast.success(`Dodano ${action.ask ? "pytanie" : "krok"} „${action.title}”`, { description: planningPlacement(r.board) });
             }
           } else if (action.type === "add_note") {
             // Always auto-tag with "ainote"
@@ -818,132 +830,28 @@ function useAssistantValue() {
               }
             }
           } else if (action.type === "add_mindmap_nodes") {
-            // Batch insert: insert all nodes first, then link parent references.
-            // Each node is inserted with standalone=false so it's part of a tree.
-            const nodes = action.nodes;
-            const realIds: (string | null)[] = new Array(nodes.length).fill(null);
-            // A new tree goes on the default board, like add_task.
-            const board = await defaultPlanningBoard(user.id);
-
-            // Phase 1: insert all nodes
-            for (let i = 0; i < nodes.length; i++) {
-              const n = nodes[i];
-              const { data: inserted, error } = await supabase.from("planning_tasks").insert([{
-                user_id: user.id,
-                project_id: null,
-                board_id: board?.id ?? null,
-                parent_id: null,
-                level: n.level,
-                title: n.title,
-                done: false,
-                deadline: null,
-                leverage: null,
-                energy: null,
-                time_minutes: null,
-                url: null,
-                icon: null,
-                notes: "",
-                standalone: false,
-                position_x: null,
-                position_y: null,
-                mentions: [],
-              }]).select("id");
-              if (error || !inserted?.[0]?.id) {
-                failed++;
-              } else {
-                realIds[i] = inserted[0].id;
-              }
+            // The whole tree is ONE insert with client ids (addPlanningNodes):
+            // it lands on the default board complete, or not at all.
+            const r = await addPlanningNodes(user.id, action.nodes);
+            if (!r.ok) { failed++; toast.error(r.error); }
+            else {
+              ok++;
+              toast.success(`Utworzono drzewo „${action.nodes[0].title}” (${nodesLabel(r.created)})`, { description: planningPlacement(r.board) });
             }
-
-            // Phase 2: link parent references
-            for (let i = 0; i < nodes.length; i++) {
-              const n = nodes[i];
-              if (n.parentIndex != null && n.parentIndex >= 0 && n.parentIndex < nodes.length) {
-                const parentId = realIds[n.parentIndex];
-                const childId = realIds[i];
-                if (parentId && childId) {
-                  const { error } = await supabase.from("planning_tasks").update({ parent_id: parentId }).eq("id", childId).eq("user_id", user.id);
-                  if (!error) ok++;
-                }
-              }
-            }
-
-            // Count successful top-level inserts (those without write errors in phase 1)
-            const created = realIds.filter(id => id !== null).length;
-            ok += created;
-            if (created > 0) {
-              toast.success(`Utworzono mapę „${nodes[0].title}” (${nodesLabel(created)})`, { description: planningPlacement(board) });
-            }
-            window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
           } else if (action.type === "extend_mindmap") {
-            // Find an existing node whose title partially matches attachTo (case-insensitive)
-            const search = action.attachTo.toLowerCase();
-            const { data: existing } = await supabase.from("planning_tasks").select("id,title,project_id,board_id").eq("user_id", user.id).ilike("title", `%${search}%`).limit(5);
-            const match = (existing || []).find((t: any) => t.title?.toLowerCase().includes(search));
-            const parentId = match?.id || null;
-            // New nodes live where the node they hang from lives (its board or
-            // its project), like a child added by hand; with no match they
+            // Under the node attachTo names (the board open in Planning is
+            // searched first), on that node's board; with no match the nodes
             // become new roots on the default board.
-            const board = match ? null : await defaultPlanningBoard(user.id);
-            const container = match
-              ? { project_id: match.project_id ?? null, board_id: match.board_id ?? null }
-              : { project_id: null, board_id: board?.id ?? null };
-
-            const nodes = action.nodes;
-            const realIds: (string | null)[] = new Array(nodes.length).fill(null);
-
-            // Phase 1: insert all nodes (if parent found, set parent_id directly for root-of-batch nodes)
-            for (let i = 0; i < nodes.length; i++) {
-              const n = nodes[i];
-              const nodeParentId = n.parentIndex == null ? parentId : null; // only root-of-batch gets the target parent
-              const { data: inserted, error } = await supabase.from("planning_tasks").insert([{
-                user_id: user.id,
-                ...container,
-                parent_id: nodeParentId,
-                level: n.level,
-                title: n.title,
-                done: false,
-                deadline: null,
-                leverage: null,
-                energy: null,
-                time_minutes: null,
-                url: null,
-                icon: null,
-                notes: "",
-                standalone: false,
-                position_x: null,
-                position_y: null,
-                mentions: [],
-              }]).select("id");
-              if (error || !inserted?.[0]?.id) {
-                failed++;
-              } else {
-                realIds[i] = inserted[0].id;
-              }
+            // The node the card named (target), or new roots when the card said nothing matched.
+            const r = action.target === null
+              ? await addPlanningNodes(user.id, action.nodes)
+              : await addPlanningNodes(user.id, action.nodes, { attachTo: action.attachTo, attachId: action.target?.id });
+            if (!r.ok) { failed++; toast.error(r.error); }
+            else {
+              ok++;
+              if (r.attachedTo) toast.success(`Dopięto ${nodesLabel(r.created)} pod „${r.attachedTo}”`, { description: planningPlacement(r.board) });
+              else toast.success(`Nie znaleziono „${action.attachTo}”, dodano ${nodesLabel(r.created)} jako nowe drzewo`, { description: planningPlacement(r.board) });
             }
-
-            // Phase 2: link internal parent references (parentIndex within the batch)
-            for (let i = 0; i < nodes.length; i++) {
-              const n = nodes[i];
-              if (n.parentIndex != null && n.parentIndex >= 0 && n.parentIndex < nodes.length) {
-                const batchParentId = realIds[n.parentIndex];
-                const childId = realIds[i];
-                if (batchParentId && childId) {
-                  const { error } = await supabase.from("planning_tasks").update({ parent_id: batchParentId }).eq("id", childId).eq("user_id", user.id);
-                  if (!error) ok++;
-                }
-              }
-            }
-
-            const created = realIds.filter(id => id !== null).length;
-            ok += created;
-            if (created > 0) {
-              toast.success(
-                match ? `Dopięto ${nodesLabel(created)} pod „${match.title}”` : `Nie znaleziono „${action.attachTo}”, dodano ${nodesLabel(created)} jako nową mapę`,
-                match ? undefined : { description: planningPlacement(board) },
-              );
-            }
-            window.dispatchEvent(new CustomEvent(PLANNING_TASKS_CHANGED_EVENT));
           }
         } catch {
           failed++;

@@ -1,5 +1,6 @@
 import { CATEGORIES } from "@/lib/dashboard-data";
 import type { ScopeId } from "@/lib/assistant-context";
+import { parseLine } from "@/lib/planning-model";
 import { replaceDashesDeep } from "@/lib/text-style";
 
 /** Sections of the app the assistant can open with `navigate`. */
@@ -41,10 +42,10 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  */
 export type AssistantAction =
   | {
+      /** One planning node: a step, or a question when its title ends in '?' (see draftLine). */
       type: "add_task";
       title: string;
-      level?: "goal" | "phase" | "task" | "action";
-      deadline?: string | null;
+      ask: boolean;
       notes?: string;
     }
   | {
@@ -118,7 +119,27 @@ export type AssistantAction =
       diagnosis?: string;
       steps: { title: string; stage?: string | null; days?: number; xp?: number }[];
     }
-  | { type: "complete_task"; title: string }
+  | {
+      /**
+       * Close an open planning node. A step is ticked; a question is settled
+       * with `outcome`, the answer in the user's words, and is refused without
+       * one. Verdicts are never set here: grading a guess is the user's.
+       */
+      type: "complete_task";
+      title: string;
+      outcome?: string;
+      /**
+       * Filled in once the reply is read (resolvePlanningCompletion): the node
+       * it matched, so the confirm card names it exactly and the write hits
+       * that node rather than a fresh title match.
+       */
+      nodeId?: string;
+      ask?: boolean;
+      /** The matched node's parent, so the card tells two same-titled nodes apart. */
+      parentTitle?: string | null;
+      /** Open options the answer drops as "chosen over" (it names one of them). */
+      drops?: number;
+    }
   | { type: "add_event"; title: string; date: string; time?: string; notes?: string; tag?: string }
   | { type: "add_book"; books: BookDraft[] }
   | {
@@ -146,11 +167,7 @@ export type AssistantAction =
     }
   | {
       type: "add_mindmap_nodes";
-      nodes: {
-        title: string;
-        level: "goal" | "phase" | "task" | "action";
-        parentIndex?: number;
-      }[];
+      nodes: PlanDraft[];
     }
   | {
       /**
@@ -169,12 +186,26 @@ export type AssistantAction =
   | {
       type: "extend_mindmap";
       attachTo: string;
-      nodes: {
-        title: string;
-        level: "goal" | "phase" | "task" | "action";
-        parentIndex?: number;
-      }[];
+      nodes: PlanDraft[];
+      /**
+       * Filled in once the reply is read (resolveAttachTarget): the node the
+       * nodes go under, named on the card, or null when nothing matches and
+       * they become new roots. Absent: not resolved (matched by title on apply).
+       */
+      target?: { id: string; title: string } | null;
     };
+
+/**
+ * One planning node the assistant proposes: a Step, or a Question (`ask`) when
+ * its title ends in '?'. There are no levels any more; a node's role (target,
+ * option, test) is its place in the tree. parentIndex points at an EARLIER
+ * node of the same array.
+ */
+export interface PlanDraft {
+  title: string;
+  ask: boolean;
+  parentIndex?: number;
+}
 
 /** A book the assistant puts on the Library shelf. */
 export interface BookDraft {
@@ -223,7 +254,6 @@ export const ACTION_SCOPE: Record<ActionType, ScopeId | null> = {
 
 export const ACTIONS_SENTINEL = "[[ACTIONS_ENABLED]]";
 
-const VALID_LEVELS = new Set(["goal", "phase", "task", "action"]);
 const VALID_CATEGORY_IDS = new Set(CATEGORIES.map((c) => c.id));
 
 const PILLAR_NAMES: Record<string, string> = Object.fromEntries(
@@ -232,12 +262,40 @@ const PILLAR_NAMES: Record<string, string> = Object.fromEntries(
 PILLAR_NAMES["uncategorized"] = "Uncategorized";
 const VALID_PILLAR_IDS = new Set(Object.keys(PILLAR_NAMES));
 
-const LEVEL_ICONS: Record<string, string> = {
-  goal: "\u{1F3AF}", phase: "\u{1F6A9}", task: "\u2705", action: "\u26A1",
-};
+/** The List's markers: an open step and an open question. */
+const STEP_MARK = "\u25CB"; // ○
+const QUESTION_MARK = "?";
+
+/**
+ * A planning title the assistant wrote, read with the List's own grammar
+ * (parseLine) and stripped of anything that would speak for the user. The user
+ * writes his own priors and answers, so "Q? ~ g" and "Q? = a" keep only the
+ * bare question "Q?"; "= text" (a decision with no question) becomes a plain
+ * step, as does a note-shaped line ("> x", a bare link). Markers count only
+ * after the LAST '?', so "Czy X ~ N(0,1)?" stays a question. Null when nothing
+ * is left.
+ */
+export function draftLine(raw: string): { title: string; ask: boolean } | null {
+  // The List reads markers after the LAST '?', so a hedged guess or an answer
+  // that itself has a '?' ("Which channel? ~ creators?") would stay in the
+  // title. From the model, the first '?' followed by '~' or '=' ends the
+  // question; "Czy X ~ N(0,1)?" has no '?' before its '~' and is unaffected.
+  const cut = /\?\s*[~=]/.exec(raw);
+  if (cut) {
+    const title = raw.slice(0, cut.index + 1).trim();
+    if (title.length > 1) return { title, ask: true };
+  }
+  const p = parseLine(raw);
+  const title = p.title.trim();
+  if (!title) return null;
+  if (p.kind === "question") return { title, ask: true };
+  // "Q? = a" settles a question: keep the question, drop the answer.
+  if (p.kind === "settled") return { title, ask: title.endsWith("?") };
+  return { title, ask: false };
+}
 
 /** Parse flat nodes array (with parentIndex) into a formatted tree string. */
-function nodesToTreePreview(nodes: { title: string; level: string; parentIndex?: number }[]): string {
+function nodesToTreePreview(nodes: { title: string; ask?: boolean; parentIndex?: number }[]): string {
   const lines: string[] = [];
   // Each node has one parent, so walking down from the roots visits it at most
   // once; nodes caught in a parent loop (only possible in replies restored from
@@ -245,8 +303,7 @@ function nodesToTreePreview(nodes: { title: string; level: string; parentIndex?:
   function walk(parentIdx: number | null, depth: number) {
     nodes.forEach((n, i) => {
       if ((n.parentIndex ?? null) !== parentIdx) return;
-      const icon = LEVEL_ICONS[n.level] || "";
-      lines.push("  ".repeat(depth) + icon + " " + n.title);
+      lines.push("  ".repeat(depth) + (n.ask ? QUESTION_MARK : STEP_MARK) + " " + n.title);
       walk(i, depth + 1);
     });
   }
@@ -254,12 +311,14 @@ function nodesToTreePreview(nodes: { title: string; level: string; parentIndex?:
   return lines.join("\n");
 }
 
-function nodesLevelBreakdown(nodes: { level: string }[]): string {
-  const counts: Record<string, number> = {};
-  for (const n of nodes) counts[n.level] = (counts[n.level] || 0) + 1;
-  return Object.entries(counts)
-    .map(([lvl, n]) => `${LEVEL_ICONS[lvl] || ""} ${n} ${lvl}${n > 1 ? "s" : ""}`)
-    .join(" · ");
+/** "3 steps, 1 question". */
+function kindBreakdown(nodes: { ask?: boolean }[]): string {
+  const questions = nodes.filter((n) => n.ask).length;
+  const steps = nodes.length - questions;
+  return [
+    steps > 0 && `${steps} step${steps === 1 ? "" : "s"}`,
+    questions > 0 && `${questions} question${questions === 1 ? "" : "s"}`,
+  ].filter(Boolean).join(", ");
 }
 
 export function buildActionInstructions(scopes: ScopeId[]): string {
@@ -307,24 +366,28 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
 
   if (scopes.includes("planning")) {
     specs.push(
-      "- add_task: create a standalone planning task. Fields: title (string, required), " +
-        'level (one of "goal","phase","task","action"; default "task"), ' +
-        'deadline (ISO date "YYYY-MM-DD" or omit), notes (string, optional).',
+      "- add_task: add ONE node to the user's plan in Planning (it lands on the board they have open there). " +
+        'Fields: title (string, required: a step, or a question when it ends with "?"), notes (string, optional).',
     );
     specs.push(
-      "- add_mindmap_nodes: create a BRAND NEW mindmap tree from scratch. " +
-        "Use when brainstorming a completely new topic. " +
-        "Field: nodes (array, max 15). Each node: title, level, optional parentIndex (0-based index into this same array). " +
-        "Root nodes = no parentIndex. " +
-        'Example: "nodes":[{"title":"Launch","level":"goal"},{"title":"Research","level":"phase","parentIndex":0}].',
+      "- add_mindmap_nodes: create a BRAND NEW tree in Planning, for a topic that is not in the plan yet. " +
+        'Field: nodes (array, max 15). Each node: title (a step, or a question when it ends with "?"), ' +
+        "optional parentIndex (0-based index of an EARLIER node in this same array; roots have none). " +
+        "A root is the aim; under a question put its options or the ways to find out; under a step, the steps it breaks into. " +
+        'Example: "nodes":[{"title":"Reach 1,000 users"},{"title":"Which channel do we push next?","parentIndex":0},' +
+        '{"title":"Creator partnerships","parentIndex":1},{"title":"Referral system","parentIndex":1}].',
     );
     specs.push(
-      "- extend_mindmap: ADD nodes into an EXISTING mindmap tree. " +
-        'Use when the user says "add to my X plan" or references an existing node from the "Mindmap tree:" context. ' +
-        "Fields: attachTo (string — approximate title of an existing node to attach under; partial case-insensitive match; if no match, nodes become new roots), " +
-        "nodes (array, max 15 — same format as add_mindmap_nodes). " +
-        "Look at the tree shown above to pick the right attachTo. " +
-        'Example: {"attachTo":"Research","nodes":[{"title":"Hire designer","level":"task","parentIndex":0}]}.',
+      "- extend_mindmap: ADD nodes under an EXISTING node of the plan shown in the Planning data. " +
+        'Use when the user says "add to my X plan" or names a node that is already there. ' +
+        "Fields: attachTo (string: the title of the existing node to attach under; partial, case-insensitive; the board open in Planning is searched first; " +
+        "with no match the nodes become new roots), nodes (array, max 15, same format as add_mindmap_nodes). " +
+        'Example: {"attachTo":"Creator partnerships","nodes":[{"title":"Will creators accept CPA?"},{"title":"Contact 10 creators","parentIndex":0}]}.',
+    );
+    specs.push(
+      "- Planning titles never carry a guess or an answer: the user writes his own priors and answers. " +
+        'Do not put "~ ..." or "= ..." after a question mark (it is saved as the bare question), never answer an open [?] question for him, ' +
+        "never add a node that reopens a settled [=] decision, and never re-propose an option shown as dropped [-].",
     );
   }
 
@@ -409,7 +472,13 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
   }
 
   if (scopes.includes("planning")) {
-    specs.push("- complete_task: mark an open planning task as done. Field: title (exact or unambiguous part of the title).");
+    specs.push(
+      "- complete_task: close an open node of the plan. Fields: title (exact or unambiguous part of an open [ ] or [?] title from the Planning data; " +
+        'when two open nodes share that title, write "Parent > Title" with the title of the node above it), ' +
+        "outcome (string: REQUIRED for an open question [?], and it is the answer in the user's own words from this conversation; " +
+        "never invent, infer or guess an answer: if the user has not said it, ask them and emit nothing; leave it out for a step). " +
+        "A step is ticked; a question is settled with that answer. Whether the user's guess held is theirs to grade, never yours.",
+    );
   }
 
   if (scopes.includes("calendar")) {
@@ -450,7 +519,7 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
     "",
     "When (and only when) the user asks you to create/add something you support, first give a short normal reply, then append a single fenced block exactly like this:",
     "```action",
-    '[{"type":"add_task","title":"Draft the pitch deck","level":"task"}]',
+    '[{"type":"add_task","title":"Draft the pitch deck"}]',
     "```",
     "Rules:",
     "- The block must contain a JSON array of one or more action objects.",
@@ -470,28 +539,28 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
  * the model's index into its own array; it is remapped to the kept nodes and
  * only honoured when it points at an earlier node, so the tree has no cycles
  * and a dropped parent turns its child into a root rather than a dangling ref.
+ * Titles go through draftLine (a '?' makes a question; a guess or an answer
+ * the model wrote is left out). A legacy `level` is accepted and ignored.
  */
-function coerceNodes(raw: unknown): { title: string; level: "goal" | "phase" | "task" | "action"; parentIndex?: number }[] {
+function coerceNodes(raw: unknown): PlanDraft[] {
   const nodesRaw = Array.isArray(raw) ? raw : [];
-  const nodes: { title: string; level: "goal" | "phase" | "task" | "action"; parentIndex?: number }[] = [];
+  const nodes: PlanDraft[] = [];
   // raw index -> index in `nodes`, for the entries that were kept
   const kept = new Map<number, number>();
   for (let i = 0; i < nodesRaw.length && nodes.length < 15; i++) {
     const n = nodesRaw[i];
     if (!n || typeof n !== "object") continue;
-    const title = typeof (n as any).title === "string" ? (n as any).title.trim().slice(0, 200) : "";
-    if (!title) continue;
-    const level =
-      typeof (n as any).level === "string" && VALID_LEVELS.has((n as any).level)
-        ? (n as any).level as "goal" | "phase" | "task" | "action"
-        : "task";
-    const rawParent = typeof (n as any).parentIndex === "number" && Number.isFinite((n as any).parentIndex)
-      ? Math.floor((n as any).parentIndex)
+    const x = n as Record<string, unknown>;
+    // Parsed first and cut after: cutting the raw text could take a long question's '?' with it.
+    const draft = typeof x.title === "string" ? draftLine(x.title.slice(0, 4000)) : null;
+    if (!draft) continue;
+    const rawParent = typeof x.parentIndex === "number" && Number.isFinite(x.parentIndex)
+      ? Math.floor(x.parentIndex)
       : -1;
     // Only an earlier node can be a parent; kept.get() is undefined when it was dropped.
     const parentIndex = rawParent >= 0 && rawParent < i ? kept.get(rawParent) : undefined;
     kept.set(i, nodes.length);
-    nodes.push({ title, level, parentIndex });
+    nodes.push({ title: draft.title.slice(0, 200), ask: draft.ask, parentIndex });
   }
   return nodes;
 }
@@ -503,18 +572,11 @@ function coerceAction(raw: unknown): AssistantAction | null {
   const type = o.type;
 
   if (type === "add_task") {
-    const title = typeof o.title === "string" ? o.title.trim() : "";
-    if (!title) return null;
-    const level =
-      typeof o.level === "string" && VALID_LEVELS.has(o.level)
-        ? (o.level as "goal" | "phase" | "task" | "action")
-        : "task";
-    const deadline =
-      typeof o.deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.deadline)
-        ? o.deadline
-        : null;
-    const notes = typeof o.notes === "string" ? o.notes.slice(0, 2000) : "";
-    return { type: "add_task", title: title.slice(0, 300), level, deadline, notes };
+    // A legacy level or deadline is accepted and ignored (new code never writes them).
+    const draft = typeof o.title === "string" ? draftLine(o.title.slice(0, 4000)) : null;
+    if (!draft) return null;
+    const notes = typeof o.notes === "string" ? o.notes.trim().slice(0, 2000) : "";
+    return { type: "add_task", title: draft.title.slice(0, 300), ask: draft.ask, ...(notes ? { notes } : {}) };
   }
 
   if (type === "add_mission") {
@@ -653,7 +715,10 @@ function coerceAction(raw: unknown): AssistantAction | null {
 
   if (type === "complete_task") {
     const title = typeof o.title === "string" ? o.title.trim().slice(0, 300) : "";
-    return title ? { type: "complete_task", title } : null;
+    if (!title) return null;
+    const outcome = typeof o.outcome === "string" ? o.outcome.trim().slice(0, 500) : "";
+    // nodeId and ask are never taken from the model: they come from the match.
+    return { type: "complete_task", title, ...(outcome ? { outcome } : {}) };
   }
 
   if (type === "add_event") {
@@ -891,7 +956,7 @@ export function parseActions(text: string, allowedScopes: ScopeId[]): ParseResul
 /** Returns a multi-line tree preview string for mindmap actions, or null. */
 export function mindmapPreview(action: AssistantAction): string | null {
   if (action.type === "add_mindmap_nodes") {
-    return "New map\n" + nodesToTreePreview(action.nodes);
+    return "New tree\n" + nodesToTreePreview(action.nodes);
   }
   if (action.type === "create_preset") {
     return Object.entries(action.missions)
@@ -915,7 +980,8 @@ export function mindmapPreview(action: AssistantAction): string | null {
       .join("\n");
   }
   if (action.type === "extend_mindmap") {
-    return `+ Attach to "${action.attachTo}"\n` + nodesToTreePreview(action.nodes);
+    const head = action.target === null ? "+ As new roots" : `+ Under "${action.target?.title ?? action.attachTo}"`;
+    return `${head}\n` + nodesToTreePreview(action.nodes);
   }
   return null;
 }
@@ -923,10 +989,7 @@ export function mindmapPreview(action: AssistantAction): string | null {
 /** Human-readable one-liner describing an action for the confirm card. */
 export function describeAction(action: AssistantAction): string {
   if (action.type === "add_task") {
-    const parts = [`Add task: "${action.title}"`];
-    if (action.level && action.level !== "task") parts.push(`(${action.level})`);
-    if (action.deadline) parts.push(`due ${action.deadline}`);
-    return parts.join(" ");
+    return `Add ${action.ask ? "question" : "step"} to Planning: "${action.title}"${action.notes ? " (with a note)" : ""}`;
   }
   if (action.type === "add_mission") {
     const cat = CATEGORIES.find((c) => c.id === action.categoryId)?.name || action.categoryId;
@@ -962,7 +1025,16 @@ export function describeAction(action: AssistantAction): string {
   if (action.type === "log_metric") return `Log ${action.value} for "${action.metric}" today`;
   if (action.type === "log_path_step") return `Log today on path "${action.pathName}" (active step)`;
   if (action.type === "create_path") return `Create path "${action.name}" (${action.steps.length} steps)`;
-  if (action.type === "complete_task") return `Mark task done: "${action.title}"`;
+  if (action.type === "complete_task") {
+    // After the match (nodeId) the title is the node's exact title.
+    const under = action.parentTitle ? ` (under "${action.parentTitle}")` : "";
+    if (action.nodeId && action.ask) {
+      const drops = action.drops ? `; drops the other ${action.drops === 1 ? "open option" : `${action.drops} open options`}` : "";
+      return `Settle question "${action.title}"${under} = "${action.outcome ?? ""}"${drops}`;
+    }
+    if (action.nodeId) return `Tick step "${action.title}"${under}`;
+    return action.outcome ? `Settle "${action.title}" = "${action.outcome}"` : `Mark done in Planning: "${action.title}"`;
+  }
   if (action.type === "add_book") {
     const one = (b: BookDraft) => `"${b.title}"${b.author ? ` (${b.author})` : ""}`;
     if (action.books.length === 1) {
@@ -990,9 +1062,8 @@ export function describeAction(action: AssistantAction): string {
     return "Reset today: untick today's missions and clear today's counters (XP stays)";
   }
   if (action.type === "add_mindmap_nodes") {
-    const breakdown = nodesLevelBreakdown(action.nodes);
     const first = action.nodes[0];
-    return `New mindmap "${first?.title || "..."}"  (${action.nodes.length} nodes — ${breakdown})`;
+    return `New tree in Planning "${first?.title || "..."}" (${kindBreakdown(action.nodes)})`;
   }
   if (action.type === "revise_path") {
     const repeated = action.steps.filter((s) => (s.days || 1) > 1).length;
@@ -1000,13 +1071,33 @@ export function describeAction(action: AssistantAction): string {
     return `Rewrite path "${action.pathName}" (${shape}) - ${action.reason}`;
   }
   if (action.type === "extend_mindmap") {
-    const breakdown = nodesLevelBreakdown(action.nodes);
-    return `Extend "${action.attachTo}" +${action.nodes.length} nodes (${breakdown})`;
+    // After the match the card names the node itself, or says nothing matched.
+    if (action.target === null) return `Add as new roots in Planning (nothing matches "${action.attachTo}"): ${kindBreakdown(action.nodes)}`;
+    return `Add under "${action.target?.title ?? action.attachTo}" in Planning: ${kindBreakdown(action.nodes)}`;
   }
   // add_note
   const pillar = PILLAR_NAMES[action.pillars?.[0] || ""] || "Uncategorized";
   const tagBits = action.tags && action.tags.length > 0 ? ` #${action.tags.join(" #")}` : "";
   return `Save note to ${pillar}: "${action.title}"${tagBits} #ainote`;
+}
+
+/**
+ * What a spoken confirm reads out before asking "confirm?": the exact node
+ * and answer of each complete_task. Voice mode never shows the confirm card,
+ * so without this a "tak" could settle a question with an answer the model
+ * wrote and the user never heard. Empty when there is nothing to read back.
+ */
+export function spokenReadBack(actions: AssistantAction[], lang: "pl-PL" | "en-US"): string {
+  const pl = lang === "pl-PL";
+  return actions
+    .filter((a): a is Extract<AssistantAction, { type: "complete_task" }> => a.type === "complete_task")
+    .map((a) => {
+      if (a.ask || (a.ask === undefined && a.outcome)) {
+        return pl ? `Zamknę pytanie „${a.title}” odpowiedzią „${a.outcome ?? ""}”.` : `I will settle "${a.title}" with the answer "${a.outcome ?? ""}".`;
+      }
+      return pl ? `Odhaczę krok „${a.title}”.` : `I will tick "${a.title}".`;
+    })
+    .join(" ");
 }
 
 /** Actions that run as soon as they are parsed, without the confirm card. */

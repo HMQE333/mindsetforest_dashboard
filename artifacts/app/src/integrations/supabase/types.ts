@@ -1750,17 +1750,22 @@ export type Database = {
       }
       planning_tasks: {
         Row: {
+          ask: boolean
           board_id: string | null
+          closed_at: string | null
           created_at: string
           deadline: string | null
           done: boolean
+          dropped: boolean
           energy: string | null
+          guess: string | null
           icon: string | null
           id: string
           level: string
           leverage: string | null
           mentions: Json
           notes: string
+          outcome: string | null
           parent_id: string | null
           position_x: number | null
           position_y: number | null
@@ -1771,19 +1776,25 @@ export type Database = {
           title: string
           url: string | null
           user_id: string
+          verdict: string | null
         }
         Insert: {
+          ask?: boolean
           board_id?: string | null
+          closed_at?: string | null
           created_at?: string
           deadline?: string | null
           done?: boolean
+          dropped?: boolean
           energy?: string | null
+          guess?: string | null
           icon?: string | null
           id?: string
           level?: string
           leverage?: string | null
           mentions?: Json
           notes?: string
+          outcome?: string | null
           parent_id?: string | null
           position_x?: number | null
           position_y?: number | null
@@ -1794,19 +1805,25 @@ export type Database = {
           title?: string
           url?: string | null
           user_id: string
+          verdict?: string | null
         }
         Update: {
+          ask?: boolean
           board_id?: string | null
+          closed_at?: string | null
           created_at?: string
           deadline?: string | null
           done?: boolean
+          dropped?: boolean
           energy?: string | null
+          guess?: string | null
           icon?: string | null
           id?: string
           level?: string
           leverage?: string | null
           mentions?: Json
           notes?: string
+          outcome?: string | null
           parent_id?: string | null
           position_x?: number | null
           position_y?: number | null
@@ -1817,6 +1834,7 @@ export type Database = {
           title?: string
           url?: string | null
           user_id?: string
+          verdict?: string | null
         }
         Relationships: [
           {

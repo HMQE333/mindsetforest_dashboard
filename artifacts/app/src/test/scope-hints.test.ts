@@ -24,6 +24,13 @@ describe("keywordScopes", () => {
     expect(keywordScopes("to jest sensowny pomysł")).toEqual([]);
     expect(keywordScopes("zdrowiu szkodzi sen")).toEqual(["health"]);
   });
+
+  it("pulls Planning for its open questions, not for any question", () => {
+    expect(keywordScopes("jakie mam otwarte pytania?")).toEqual(["planning"]);
+    expect(keywordScopes("which open questions are left on the board")).toEqual(["planning"]);
+    expect(keywordScopes("rozstrzygnąłem: idziemy w partnerstwa z twórcami")).toEqual(["planning"]);
+    expect(keywordScopes("mam pytanie o pogodę")).toEqual([]);
+  });
 });
 
 describe("annotateHistory", () => {

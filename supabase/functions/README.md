@@ -57,10 +57,13 @@ remembered.
 `ai-mission-suggest` and `ai-path-suggest` both build their prompt with
 `_shared/planner.ts`. It authenticates the caller, then reads their written
 personal context (`user_context.notes`) plus a factual snapshot - today's
-progress, 14 days of completions, tasks they keep skipping, active paths, open
-planning nodes, today's calendar, latest watch numbers, and which past
-suggestions they accepted or rejected (`ai_suggestion_log`). Everything degrades
-to silence if a table is missing, so a partly set-up account still works.
+progress, 14 days of completions, tasks they keep skipping, active paths, the
+Planning tree's open questions (with the user's guesses) and settled questions
+(with the options they were chosen over), a separate tally of how often those
+plan guesses held (`_shared/planning-lines.ts`), today's calendar, latest watch
+numbers, and which past suggestions they accepted or rejected
+(`ai_suggestion_log`). Everything degrades to silence if a table or column is
+missing, so a partly set-up account still works.
 
 The LLM functions previously used the Lovable AI gateway; they now call
 `https://openrouter.ai/api/v1/chat/completions`. The default model is

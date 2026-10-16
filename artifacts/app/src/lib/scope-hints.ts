@@ -29,7 +29,8 @@ const HINTS: { scope: ScopeId; pattern: RegExp }[] = [
   { scope: "archive", pattern: hint(String.raw`notatk\w*|note[sd]?|zapisz|zanotuj|zapamietaj|zapamiętaj|archiw\w*|archive|jot|remember this`) },
   { scope: "dashboard", pattern: hint(String.raw`misj\w*|mission\w*|preset\w*|odhacz\w*|zrobi[lł]\w*|done with|completed|tick|xp|streak|home|monk mode|lock in`) },
   { scope: "paths", pattern: hint(String.raw`path\w*|[sś]cie[zż]k\w*|krok\w*|step\w*|plan\w* [sś]cie[zż]k\w*`) },
-  { scope: "planning", pattern: hint(String.raw`task\w*|zadani\w*|mindmap\w*|mapa my[sś]li|planning|planowani\w*|deadline\w*|termin\w*`) },
+  // Planning nodes are steps and questions: "open question" and "settle" (rozstrzygnąć) name a question plainly.
+  { scope: "planning", pattern: hint(String.raw`task\w*|zadani\w*|mindmap\w*|mapa my[sś]li|planning|planowani\w*|deadline\w*|termin\w*|otwart\w* pytani\w*|pytani\w* otwart\w*|open questions?|rozstrzyg\w*`) },
   { scope: "calendar", pattern: hint(String.raw`calendar|kalendarz\w*|spotkani\w*|meeting\w*|wydarzeni\w*|event\w*|wizyt\w*|appointment\w*|um[oó]wi\w*|umów|schedul\w*`) },
   { scope: "finance", pattern: hint(String.raw`finans\w*|finance\w*|pieni[aą]dz\w*|money|wydatk\w*|expense\w*|bud[zż]et\w*|budget\w*|subskrypcj\w*|subscription\w*`) },
   { scope: "health", pattern: hint(String.raw`zdrowi\w*|health|waga|weight|sen|sleep|hrv|t[eę]tno|heart rate|trening\w*|workout\w*`) },

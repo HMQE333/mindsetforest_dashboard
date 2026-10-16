@@ -13,7 +13,7 @@ import {
   type ScopeId,
   type ArchiveItemRef,
 } from "@/lib/assistant-context";
-import { describeAction, mindmapPreview } from "@/lib/assistant-actions";
+import { describeAction, mindmapPreview, spokenReadBack } from "@/lib/assistant-actions";
 import { processVoiceTranscript } from "@/lib/voice-format";
 import { pickRecorderMime, transcribeBlob } from "@/lib/transcribe";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
@@ -356,7 +356,9 @@ export default function AssistantPanel() {
     if (reply.error) return reply.content;
     if (reply.actions && reply.actions.length > 0) {
       awaitingConfirmRef.current = reply.id;
-      return `${reply.content} ${prompts.confirm}`;
+      // The card is not read out, so a planning close says exactly what it will write.
+      const readBack = spokenReadBack(reply.actions, voiceLangRef.current);
+      return `${reply.content}${readBack ? ` ${readBack}` : ""} ${prompts.confirm}`;
     }
     return reply.content;
   }, []);

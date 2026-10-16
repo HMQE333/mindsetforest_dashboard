@@ -16,6 +16,8 @@ import { formatMissionList, listTodayMissions } from "@/lib/mission-match";
 import { parseMissionMap } from "@/lib/mission-presets";
 import { loadMetrics } from "@/lib/assistant-writes";
 import { knowledgeContext, loadKnowledgeFiles } from "@/lib/lecture-tutor";
+import { getRememberedBoard } from "@/lib/planning-board";
+import { childrenMap, stateOf, type PlanNode } from "@/lib/planning-model";
 
 export type ScopeId =
   | "dashboard"
@@ -46,7 +48,7 @@ export const SCOPES: ScopeDef[] = [
   { id: "tracker", label: "Tracker stats", icon: "📊", description: "Daily tracked metrics for the last 30 days (sleep, steps, reading minutes, custom numbers), totals and active days." },
   { id: "computer", label: "Komputer", icon: "💻", description: "Screen time from the desktop tracker: apps and window titles by day, work vs waste vs learning classes, folders and rules." },
   { id: "paths", label: "Paths", icon: "🪜", description: "Long-term goals as paths with ordered steps, the active step, reps logged per day, diagnoses of the binding constraint. Needed for revise_path." },
-  { id: "planning", label: "Planning", icon: "🧠", description: "Planning board: tasks with deadlines, mindmap trees of goals/phases/tasks, what is overdue. Needed for add_task and mindmap actions." },
+  { id: "planning", label: "Planning", icon: "🧠", description: "Planning: the user's plan as a tree of steps and questions per board, open questions with the guesses the user wrote, settled decisions and the options they were chosen over. Needed for add_task, mindmap actions and complete_task." },
   { id: "health", label: "Health", icon: "❤️", description: "Health log: weight, workouts, watch data (HRV, resting HR, sleep), lab results, recovery." },
   { id: "finance", label: "Finance", icon: "💰", description: "Money: income, expenses by category, subscriptions, monthly totals and budgets." },
   { id: "oracle", label: "Oracle", icon: "🔮", description: "Oracle: XP sacrifices, rewards and boons the user bought with XP, reward history." },
@@ -340,51 +342,195 @@ async function gatherPaths(userId: string): Promise<string> {
   return lines.length > 0 ? ["Paths:", ...lines].join("\n") : "All paths archived.";
 }
 
-async function gatherPlanning(userId: string): Promise<string> {
-  const { data: planningRows } = await supabase
-    .from("planning_tasks")
-    .select("id,title,level,done,deadline,parent_id,notes")
-    .eq("user_id", userId)
-    .limit(500);
-  if (!planningRows || planningRows.length === 0) return "No planning tasks yet.";
-  const data = planningRows;
+// ---------------------------------------------------------------- planning
 
-  const total = data.length;
-  const done = data.filter((t) => t.done).length;
-  const byLevel: Record<string, number> = {};
-  for (const t of data) byLevel[t.level] = (byLevel[t.level] || 0) + 1;
+/**
+ * The two lines every planning reader gets. supabase/functions/_shared/
+ * planning-lines.ts writes the same two for the server planner
+ * (ai-mission-suggest, ai-path-suggest, ai-review); the headers and the item
+ * format must stay identical (test/planning-context.test.ts checks both).
+ */
+export const PLAN_OPEN_QUESTIONS_HEADER = "Open questions (do not invent answers; you may suggest how to find out)";
+export const PLAN_SETTLED_HEADER = "Settled (treat as decided; do not reopen or re-propose what was dropped)";
+/** Each of the two lines stops near this many characters ("; +N more"). */
+export const PLAN_LINE_MAX_CHARS = 1500;
+/** The tree stops near this many characters ("... and N more nodes"). */
+export const PLAN_TREE_MAX_CHARS = 4000;
 
-  const upcoming = data
-    .filter((t) => !t.done && t.deadline)
-    .sort((a, b) => String(a.deadline).localeCompare(String(b.deadline)))
-    .slice(0, 8)
-    .map((t) => `- ${t.title} (due ${t.deadline})`);
+export interface PlanningBoardRef {
+  id: string;
+  name: string;
+  emoji?: string | null;
+}
 
-  // Build a tree view for the mindmap context
-  const rootTasks = data.filter((t) => !t.parent_id);
-  function buildTree(parentId: string | null, depth: number): string[] {
-    const children = data.filter((t) => t.parent_id === parentId);
-    if (children.length === 0) return [];
-    const lines: string[] = [];
-    const prefix = "  ".repeat(depth);
-    for (const child of children) {
-      const doneMark = child.done ? " ✓" : "";
-      lines.push(`${prefix}- [${child.level}] ${child.title}${doneMark}`);
-      lines.push(...buildTree(child.id, depth + 1));
-    }
-    return lines;
+/**
+ * A planning_tasks row as read with select("*"). Rows from before the
+ * open-loops migration have none of its columns: they read as open steps.
+ */
+export function toPlanNode(r: Record<string, unknown>): PlanNode {
+  const verdict = r.verdict;
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    id: String(r.id ?? ""),
+    board_id: str(r.board_id),
+    parent_id: str(r.parent_id),
+    title: String(r.title ?? ""),
+    ask: r.ask === true,
+    done: r.done === true,
+    dropped: r.dropped === true,
+    guess: str(r.guess),
+    outcome: str(r.outcome),
+    verdict: verdict === "right" || verdict === "wrong" || verdict === "unknown" ? verdict : null,
+    closed_at: str(r.closed_at),
+    sort_order: Number(r.sort_order) || 0,
+    created_at: String(r.created_at ?? ""),
+  };
+}
+
+/** Items joined with "; ", stopping near `max` characters with "; +N more". */
+export function capItems(items: string[], max = PLAN_LINE_MAX_CHARS): string {
+  const out: string[] = [];
+  let len = 0;
+  for (let i = 0; i < items.length; i++) {
+    const add = (out.length > 0 ? 2 : 0) + items[i].length;
+    if (out.length > 0 && len + add > max) return `${out.join("; ")}; +${items.length - i} more`;
+    out.push(items[i]);
+    len += add;
   }
-  const tree = buildTree(null, 0);
-  const treePreview = tree.length > 0 ? ["Mindmap tree:", ...tree.slice(0, 40)] : [];
-  if (tree.length > 40) treePreview.push(`  ... and ${tree.length - 40} more nodes`);
+  return out.join("; ");
+}
 
-  const parts = [
-    `Planning: ${done}/${total} tasks done. Breakdown: ${Object.entries(byLevel).map(([l, n]) => `${l}=${n}`).join(", ")}.`,
+/**
+ * "Q (their guess: g; dropped: X, Y)" - an open question in the open-questions
+ * line. The options already dropped under it are named, so "you may suggest
+ * how to find out" never re-proposes one the user ruled out (the tree, where
+ * they also show, is capped and may not reach them).
+ */
+export function openQuestionItem(n: Pick<PlanNode, "title" | "guess">, dropped: string[] = []): string {
+  const guess = n.guess?.trim();
+  const notes = [guess ? `their guess: ${guess}` : "", dropped.length > 0 ? `dropped: ${dropped.join(", ")}` : ""].filter(Boolean);
+  return notes.length > 0 ? `${n.title.trim()} (${notes.join("; ")})` : n.title.trim();
+}
+
+/**
+ * "Q → a (dropped: X, Y)" - a settled question in the settled line. A rule
+ * ("= text": its answer is its own title) is just the text; a settled question
+ * with no answer written says so rather than reading as a rule.
+ */
+export function settledItem(n: Pick<PlanNode, "title" | "outcome">, dropped: string[]): string {
+  const title = n.title.trim();
+  const outcome = n.outcome?.trim();
+  const head = outcome && outcome !== title
+    ? `${title} → ${outcome}`
+    : !outcome && title.endsWith("?") ? `${title} → (no answer written)` : title;
+  return dropped.length > 0 ? `${head} (dropped: ${dropped.join(", ")})` : head;
+}
+
+const PLAN_MARKER: Record<string, string> = { step: "[ ]", question: "[?]", done: "[x]", settled: "[=]", dropped: "[-]" };
+const VERDICT_WORDS: Record<string, string> = { right: "it held", wrong: "it missed", unknown: "can't tell" };
+
+/** One row of the tree: marker, title, and "~ guess" / "= answer" / why it closed. */
+export function planNodeLine(n: PlanNode): string {
+  const state = stateOf(n);
+  const title = n.title.trim();
+  const guess = n.guess?.trim();
+  const outcome = n.outcome?.trim();
+  if (state === "open") return `${PLAN_MARKER[n.ask ? "question" : "step"]} ${title}${n.ask && guess ? ` ~ ${guess}` : ""}`;
+  if (state === "settled") {
+    const answer = outcome && outcome !== title ? ` = ${outcome}` : "";
+    const graded = guess ? ` (their guess: ${guess}, ${n.verdict ? VERDICT_WORDS[n.verdict] : "not graded yet"})` : "";
+    return `${PLAN_MARKER.settled} ${title}${answer}${graded}`;
+  }
+  if (state === "done") return `${PLAN_MARKER.done} ${title}${outcome ? ` (${outcome})` : ""}`;
+  return `${PLAN_MARKER.dropped} ${title}${outcome ? ` (why dropped: ${outcome})` : ""}`;
+}
+
+/**
+ * The plan as the assistant reads it: the board open in Planning first (where
+ * its writes land), then the other boards, each an indented tree in sibling
+ * order with the List's markers, capped near PLAN_TREE_MAX_CHARS; then the open
+ * questions and the settled ones across every board, in the same order.
+ */
+export function planningContext(nodes: PlanNode[], boards: PlanningBoardRef[], rememberedId: string | null): string {
+  if (nodes.length === 0) return "No planning nodes yet.";
+  const known = new Map(boards.map((b) => [b.id, b]));
+  const boardOrder = [
+    ...boards.filter((b) => b.id === rememberedId),
+    ...boards.filter((b) => b.id !== rememberedId),
   ];
-  if (treePreview.length) parts.push(...treePreview);
-  if (upcoming.length) parts.push("Upcoming deadlines:", ...upcoming);
+  const groups: { label: string; nodes: PlanNode[] }[] = boardOrder.map((b) => ({
+    label: `📁 ${b.emoji ? `${b.emoji} ` : ""}${b.name}${b.id === rememberedId ? " (open in Planning; new nodes land here)" : ""}`,
+    nodes: nodes.filter((n) => n.board_id === b.id),
+  }));
+  groups.push({ label: "📁 (no board)", nodes: nodes.filter((n) => !n.board_id || !known.has(n.board_id)) });
 
-  return parts.join("\n");
+  // Outline order with depth, per board. A node whose parent is on another
+  // board (or gone) is a root of its own board's tree.
+  const ordered: { node: PlanNode; depth: number; group: number }[] = [];
+  groups.forEach((g, gi) => {
+    const kids = childrenMap(g.nodes);
+    const seen = new Set<string>();
+    const walk = (n: PlanNode, depth: number) => {
+      if (seen.has(n.id)) return;
+      seen.add(n.id);
+      ordered.push({ node: n, depth, group: gi });
+      for (const c of kids.get(n.id) ?? []) walk(c, depth + 1);
+    };
+    for (const r of kids.get(null) ?? []) walk(r, 0);
+  });
+
+  const count = (s: string) => nodes.filter((n) => stateOf(n) === s).length;
+  const openSteps = nodes.filter((n) => stateOf(n) === "open" && !n.ask).length;
+  const openQuestions = nodes.filter((n) => stateOf(n) === "open" && n.ask).length;
+  const lines = [
+    `Planning: ${openSteps} open step(s), ${openQuestions} open question(s), ${count("settled")} settled, ${count("done")} done, ${count("dropped")} dropped.`,
+    "Markers: [ ] open step, [x] done step, [?] open question (~ the guess the user wrote), [=] settled question (= the answer), [-] dropped.",
+  ];
+
+  let used = 0;
+  let shown = 0;
+  let lastGroup = -1;
+  for (const { node, depth, group } of ordered) {
+    const row = `${"  ".repeat(depth + 1)}${planNodeLine(node)}`;
+    const head = group !== lastGroup ? groups[group].label : null;
+    const cost = row.length + 1 + (head ? head.length + 1 : 0);
+    if (shown > 0 && used + cost > PLAN_TREE_MAX_CHARS) break;
+    if (head) { lines.push(head); lastGroup = group; }
+    lines.push(row);
+    used += cost;
+    shown++;
+  }
+  if (shown < ordered.length) lines.push(`  ... and ${ordered.length - shown} more node(s) not shown`);
+
+  // The two lines, over every board, in the tree's order.
+  const allKids = childrenMap(nodes);
+  const droppedUnder = (id: string) =>
+    (allKids.get(id) ?? []).filter((c) => c.dropped && c.title.trim()).map((c) => c.title.trim());
+  const openItems = ordered
+    .filter(({ node }) => node.ask && stateOf(node) === "open" && node.title.trim())
+    .map(({ node }) => openQuestionItem(node, droppedUnder(node.id)));
+  const settledItems = ordered
+    .filter(({ node }) => stateOf(node) === "settled" && node.title.trim())
+    .map(({ node }) => settledItem(node, droppedUnder(node.id)));
+  if (openItems.length > 0) lines.push(`${PLAN_OPEN_QUESTIONS_HEADER}: ${capItems(openItems)}`);
+  if (settledItems.length > 0) lines.push(`${PLAN_SETTLED_HEADER}: ${capItems(settledItems)}`);
+  return lines.join("\n");
+}
+
+async function gatherPlanning(userId: string): Promise<string> {
+  // select("*"): naming a column the database has not got yet (before the
+  // open-loops migration) would turn "here is your plan" into "no plan".
+  const [{ data: rows, error }, { data: boards }] = await Promise.all([
+    supabase.from("planning_tasks").select("*").eq("user_id", userId).limit(2000),
+    supabase.from("planning_boards").select("id,name,emoji").eq("user_id", userId).order("created_at", { ascending: false }),
+  ]);
+  if (error) return "The plan could not be loaded right now (do not conclude it is empty).";
+  if (!rows || rows.length === 0) return "No planning nodes yet.";
+  return planningContext(
+    (rows as unknown as Record<string, unknown>[]).map(toPlanNode),
+    (boards || []) as PlanningBoardRef[],
+    getRememberedBoard(userId),
+  );
 }
 
 async function gatherHealth(userId: string): Promise<string> {

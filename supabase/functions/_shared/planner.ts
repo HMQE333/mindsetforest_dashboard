@@ -1,6 +1,6 @@
 /**
  * Shared planner plumbing for the AI functions that suggest work
- * (`ai-mission-suggest`, `ai-path-suggest`).
+ * (`ai-mission-suggest`, `ai-path-suggest`, `ai-review`).
  *
  * Before this existed, each function wrote its own prompt from whatever the
  * client happened to pass in - a category name and a list of titles. It did not
@@ -9,6 +9,7 @@
  */
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { planGuessLines, planningLines } from "./planning-lines.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,7 +110,13 @@ export async function buildPlannerContext(
       .eq("user_id", userId).gte("date", daysAgo(14)).order("date", { ascending: false })),
     safe(client.from("paths").select("id,name,category_id,archived,diagnosis,diagnosis_verdict,diagnosis_actual").eq("user_id", userId)),
     safe(client.from("path_steps").select("path_id,title,mode,reps_target,reps_done,done,sort_order").eq("user_id", userId)),
-    safe(client.from("planning_tasks").select("title,level,done,deadline").eq("user_id", userId).eq("done", false).limit(50)),
+    // The plan's open loops (planning-lines.ts): open questions with the
+    // user's guesses, settled ones with what they were chosen over, and the
+    // graded guesses. Before the open-loops migration this names columns the
+    // table has not got, and safe() turns the error into no lines at all.
+    safe(client.from("planning_tasks")
+      .select("id,parent_id,board_id,title,ask,done,dropped,guess,outcome,verdict,closed_at,sort_order,created_at")
+      .eq("user_id", userId).order("created_at", { ascending: false }).limit(1000)),
     safe(client.from("calendar_events").select("title,date").eq("user_id", userId).eq("date", today)),
     safe(client.from("watch_entries").select("entry_date,body_battery,sleep_score,resting_hr,stress_level,recovery_time_hrs")
       .eq("user_id", userId).order("entry_date", { ascending: false }).limit(3)),
@@ -216,11 +223,10 @@ export async function buildPlannerContext(
     lines.push(`Active paths:\n${pathLines.join("\n")}`);
   }
 
-  const openTasks = (planning as Record<string, unknown>[] | null) || [];
-  if (openTasks.length > 0) {
-    const withDeadline = openTasks.filter((t) => t.deadline).slice(0, 5);
-    lines.push(`Planning: ${openTasks.length} open node(s).${withDeadline.length ? ` Nearest deadlines: ${withDeadline.map((t) => `${t.title} (${t.deadline})`).join("; ")}.` : ""}`);
-  }
+  // What the user's plan leaves open and what it has decided. No "next steps"
+  // line: the rules forbid re-skinning a task the user already has.
+  const planRows = (planning as unknown[] | null) || [];
+  lines.push(...planningLines(planRows));
 
   const todayEvents = (events as Record<string, unknown>[] | null) || [];
   if (todayEvents.length > 0) {
@@ -261,6 +267,9 @@ export async function buildPlannerContext(
       lines.push(`Where they misread the obstacle before: ${misses.join("; ")}. Watch for the same mistake.`);
     }
   }
+  // The same habit at node size: guesses written on plan questions, graded when
+  // they settled. A separate count, never pooled with the diagnoses above.
+  lines.push(...planGuessLines(planRows));
 
   // ---- their own account, from the morning / monthly reviews ----
   const reviewRows = (reviews || []) as { kind: string; period: string; qa: { question: string; answer: string }[] }[];

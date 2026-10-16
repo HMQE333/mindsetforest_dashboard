@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseActions, describeAction, buildActionInstructions, ACTION_SCOPE } from "../lib/assistant-actions";
+import { parseActions, describeAction, buildActionInstructions, draftLine, spokenReadBack, ACTION_SCOPE } from "../lib/assistant-actions";
 
 const block = (json: unknown) => `Sure.\n\`\`\`action\n${JSON.stringify(json)}\n\`\`\``;
 
@@ -176,7 +176,7 @@ describe("action blocks in replies", () => {
   it("returns actions left out for a section that is not in play", () => {
     const r = parseActions(block([{ type: "add_task", title: "Pitch deck" }, { type: "navigate", module: "planning" }]), ["dashboard"]);
     expect(r.actions).toEqual([{ type: "navigate", module: "planning" }]);
-    expect(r.dropped).toEqual([{ type: "add_task", title: "Pitch deck", level: "task", deadline: null, notes: "" }]);
+    expect(r.dropped).toEqual([{ type: "add_task", title: "Pitch deck", ask: false }]);
     expect(parseActions(block([{ type: "add_task", title: "x" }]), ["planning"]).dropped).toEqual([]);
     expect(parseActions("no block here", []).dropped).toEqual([]);
   });
@@ -275,7 +275,7 @@ describe("mindmap node trees", () => {
       ],
     }]), ["planning"]).actions;
     const lines = mindmapPreview(a)!.split("\n");
-    expect(lines).toEqual(["New map", "🎯 Launch", "  🚩 Research", "    ✅ Interview users", "  🚩 Build"]);
+    expect(lines).toEqual(["New tree", "○ Launch", "  ○ Research", "    ○ Interview users", "  ○ Build"]);
   });
 
   it("does not loop on a cyclic tree restored from an older session", async () => {
@@ -284,13 +284,156 @@ describe("mindmap node trees", () => {
       type: "extend_mindmap",
       attachTo: "X",
       nodes: [
-        { title: "A", level: "task" },
-        { title: "B", level: "task", parentIndex: 2 },
-        { title: "C", level: "task", parentIndex: 1 },
-        { title: "D", level: "task", parentIndex: 3 },
+        { title: "A", ask: false },
+        { title: "B", ask: false, parentIndex: 2 },
+        { title: "C", ask: false, parentIndex: 1 },
+        { title: "D", ask: false, parentIndex: 3 },
       ],
     });
-    expect(preview).toBe('+ Attach to "X"\n✅ A');
+    expect(preview).toBe('+ Under "X"\n○ A');
+  });
+});
+
+describe("planning: two kinds of open loop", () => {
+  it("reads a title with the List's grammar but keeps no guess or answer the model wrote", () => {
+    expect(draftLine("Contact 10 creators")).toEqual({ title: "Contact 10 creators", ask: false });
+    expect(draftLine("Which channel do we push next?")).toEqual({ title: "Which channel do we push next?", ask: true });
+    // The user writes his own priors and answers: both come back as the bare question.
+    expect(draftLine("Will creators accept CPA? ~ yes if payout > X")).toEqual({ title: "Will creators accept CPA?", ask: true });
+    expect(draftLine("Kto wysyła nagrody? = sponsor")).toEqual({ title: "Kto wysyła nagrody?", ask: true });
+    // A decision with no question is not the model's to settle: a plain step.
+    expect(draftLine("= ZAKAZ LOSOWANIA")).toEqual({ title: "ZAKAZ LOSOWANIA", ask: false });
+    // Markers count only after the LAST '?', so maths inside a question stays text.
+    expect(draftLine("Czy X ~ N(0,1)?")).toEqual({ title: "Czy X ~ N(0,1)?", ask: true });
+    expect(draftLine("Why? Because it is cheaper.")).toEqual({ title: "Why? Because it is cheaper.", ask: false });
+    expect(draftLine("> a note")).toEqual({ title: "a note", ask: false });
+    expect(draftLine("   ")).toBeNull();
+    expect(draftLine("Q? ~")).toEqual({ title: "Q?", ask: true });
+  });
+
+  it("cuts at the first '?' before a marker, so a hedged guess or answer never stays in the title", () => {
+    expect(draftLine("Which channel? ~ creators?")).toEqual({ title: "Which channel?", ask: true });
+    expect(draftLine("Czy działa? = tak, ale czy stabilnie?")).toEqual({ title: "Czy działa?", ask: true });
+    expect(draftLine("Kto płaci? = sponsor (może?)")).toEqual({ title: "Kto płaci?", ask: true });
+    expect(draftLine("Kto płaci?=sponsor")).toEqual({ title: "Kto płaci?", ask: true });
+    // No '?' before the '~': maths inside the question is still text.
+    expect(draftLine("Czy X ~ N(0,1)?")).toEqual({ title: "Czy X ~ N(0,1)?", ask: true });
+  });
+
+  it("parses a long title before cutting it, so the cut never turns a question into a step", () => {
+    const long = `${"Czy ".repeat(150)}to ma sens?`;
+    const [a] = parseActions(block([{ type: "add_mindmap_nodes", nodes: [{ title: long }] }]), ["planning"]).actions;
+    expect(a).toMatchObject({ type: "add_mindmap_nodes", nodes: [{ ask: true }] });
+    expect((a as { nodes: { title: string }[] }).nodes[0].title.length).toBeLessThanOrEqual(200);
+  });
+
+  it("add_task: a '?' makes a question, a legacy level or deadline is ignored", () => {
+    const { actions } = parseActions(block([
+      { type: "add_task", title: "Draft the pitch deck", level: "goal", deadline: "2026-11-01", notes: " why " },
+      { type: "add_task", title: "Which creator size converts best? ~ micro" },
+      { type: "add_task", title: "   " },
+    ]), ["planning"]);
+    expect(actions).toEqual([
+      { type: "add_task", title: "Draft the pitch deck", ask: false, notes: "why" },
+      { type: "add_task", title: "Which creator size converts best?", ask: true },
+    ]);
+    expect(describeAction(actions[0])).toBe('Add step to Planning: "Draft the pitch deck" (with a note)');
+    expect(describeAction(actions[1])).toBe('Add question to Planning: "Which creator size converts best?"');
+  });
+
+  it("mindmap actions carry steps and questions, never a level, guess or answer", async () => {
+    const { mindmapPreview } = await import("../lib/assistant-actions");
+    const [a, b] = parseActions(block([
+      {
+        type: "add_mindmap_nodes",
+        nodes: [
+          { title: "Reach 1,000 active users", level: "goal" },
+          { title: "Which channel do we push next month? ~ creators", level: "phase", parentIndex: 0 },
+          { title: "Creator partnerships", parentIndex: 1 },
+          { title: "Referral system = chosen", parentIndex: 1 },
+        ],
+      },
+      { type: "extend_mindmap", attachTo: "Creator partnerships", nodes: [{ title: "Will creators accept CPA? = yes" }, { title: "Contact 10 creators", parentIndex: 0 }] },
+    ]), ["planning"]).actions;
+    expect(a).toEqual({
+      type: "add_mindmap_nodes",
+      nodes: [
+        { title: "Reach 1,000 active users", ask: false, parentIndex: undefined },
+        { title: "Which channel do we push next month?", ask: true, parentIndex: 0 },
+        { title: "Creator partnerships", ask: false, parentIndex: 1 },
+        { title: "Referral system = chosen", ask: false, parentIndex: 1 },
+      ],
+    });
+    expect(JSON.stringify(a)).not.toContain("level");
+    expect(describeAction(a)).toBe('New tree in Planning "Reach 1,000 active users" (3 steps, 1 question)');
+    expect(mindmapPreview(a)!.split("\n")).toEqual([
+      "New tree",
+      "○ Reach 1,000 active users",
+      "  ? Which channel do we push next month?",
+      "    ○ Creator partnerships",
+      "    ○ Referral system = chosen",
+    ]);
+    expect(b).toEqual({
+      type: "extend_mindmap",
+      attachTo: "Creator partnerships",
+      nodes: [{ title: "Will creators accept CPA?", ask: true, parentIndex: undefined }, { title: "Contact 10 creators", ask: false, parentIndex: 0 }],
+    });
+    expect(describeAction(b)).toBe('Add under "Creator partnerships" in Planning: 1 step, 1 question');
+    expect(mindmapPreview(b)).toBe('+ Under "Creator partnerships"\n? Will creators accept CPA?\n  ○ Contact 10 creators');
+  });
+
+  it("complete_task takes the answer for a question but never a node id or a kind from the model", () => {
+    const [a] = parseActions(block([
+      { type: "complete_task", title: " Which channel? ", outcome: " Creator partnerships ", nodeId: "x", ask: true, verdict: "right" },
+    ]), ["planning"]).actions;
+    expect(a).toEqual({ type: "complete_task", title: "Which channel?", outcome: "Creator partnerships" });
+    expect(parseActions(block([{ type: "complete_task", title: "Ship it", outcome: "  " }]), ["planning"]).actions)
+      .toEqual([{ type: "complete_task", title: "Ship it" }]);
+    // Before the match the card says what was asked; after it, the exact node and the answer.
+    expect(describeAction(a)).toBe('Settle "Which channel?" = "Creator partnerships"');
+    expect(describeAction({ type: "complete_task", title: "ship" })).toBe('Mark done in Planning: "ship"');
+    expect(describeAction({ type: "complete_task", title: "Which channel do we push next month?", outcome: "Creator partnerships", nodeId: "n1", ask: true }))
+      .toBe('Settle question "Which channel do we push next month?" = "Creator partnerships"');
+    expect(describeAction({ type: "complete_task", title: "Contact 10 creators", nodeId: "n2", ask: false })).toBe('Tick step "Contact 10 creators"');
+    // Two same-titled nodes are told apart by their parent; an answer naming an option says what it drops.
+    expect(describeAction({ type: "complete_task", title: "Ile to kosztuje?", outcome: "500 zł", nodeId: "n3", ask: true, parentTitle: "Referral" }))
+      .toBe('Settle question "Ile to kosztuje?" (under "Referral") = "500 zł"');
+    expect(describeAction({ type: "complete_task", title: "Which channel?", outcome: "Creators", nodeId: "n4", ask: true, parentTitle: null, drops: 1 }))
+      .toBe('Settle question "Which channel?" = "Creators"; drops the other open option');
+  });
+
+  it("extend_mindmap's card names the node it resolved to, or says they become new roots", async () => {
+    const { mindmapPreview } = await import("../lib/assistant-actions");
+    const nodes = [{ title: "Will creators accept CPA?", ask: true }];
+    const resolved = { type: "extend_mindmap" as const, attachTo: "Domain", nodes, target: { id: "x", title: "Domain setup" } };
+    expect(describeAction(resolved)).toBe('Add under "Domain setup" in Planning: 1 question');
+    expect(mindmapPreview(resolved)!.split("\n")[0]).toBe('+ Under "Domain setup"');
+    const none = { type: "extend_mindmap" as const, attachTo: "Domain", nodes, target: null };
+    expect(describeAction(none)).toBe('Add as new roots in Planning (nothing matches "Domain"): 1 question');
+    expect(mindmapPreview(none)!.split("\n")[0]).toBe("+ As new roots");
+  });
+
+  it("reads a planning close back in voice mode, where no card is shown", () => {
+    const settle = { type: "complete_task" as const, title: "Which channel?", outcome: "Creators", nodeId: "q", ask: true };
+    expect(spokenReadBack([settle], "pl-PL")).toBe("Zamknę pytanie „Which channel?” odpowiedzią „Creators”.");
+    expect(spokenReadBack([settle], "en-US")).toBe('I will settle "Which channel?" with the answer "Creators".');
+    expect(spokenReadBack([{ type: "complete_task", title: "Contact 10 creators", nodeId: "s", ask: false }], "pl-PL"))
+      .toBe("Odhaczę krok „Contact 10 creators”.");
+    expect(spokenReadBack([{ type: "navigate", module: "tracker" }], "pl-PL")).toBe("");
+  });
+
+  it("tells the model about questions and forbids writing the user's guesses and answers", () => {
+    const text = buildActionInstructions(["planning"]);
+    expect(text).not.toMatch(/"level"|"goal","phase"|level \(/);
+    expect(text).toContain('[{"type":"add_task","title":"Draft the pitch deck"}]');
+    expect(text).toContain('a question when it ends with "?"');
+    expect(text).toMatch(/never answer an open \[\?\] question/);
+    expect(text).toMatch(/outcome \(string: REQUIRED for an open question/);
+    expect(text).toMatch(/never yours/);
+    expect(text).toMatch(/board open in Planning is searched first/);
+    expect(text).toContain('"Parent > Title"');
+    // Without the planning section none of it is offered.
+    expect(buildActionInstructions(["dashboard"])).not.toContain("complete_task");
   });
 });
 
