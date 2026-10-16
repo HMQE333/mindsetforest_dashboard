@@ -72,11 +72,27 @@ says - the XP and streaks hang off it.
 a path by name, replaces the whole step list, and snapshots first, so a rewrite argued out
 in chat is one click to undo.
 
+## Planning: two kinds of open loop (replaces goal / phase / task / action)
+
+- Every `planning_tasks` node is a **Step** (`ask = false`, waits to be done) or a **Question** (`ask = true`, waits
+  for a one-line answer in `outcome`). A Question may carry a `guess` written before the work; when it settles the
+  guess is graded once (`verdict` right / wrong / unknown), the node-sized twin of `paths.diagnosis`.
+- Target, Plan, Option, Test, Decision and Model are positions or states, not types: a root, a Step with children,
+  a child of a Question, a Step under a Question, a settled Question, the guess. No relationship table: "chosen over"
+  is the `dropped` children of a settled Question, "depends on" is `sort_order`.
+- The kind is read from the text (`lib/planning-model.ts` `parseLine`: `X?`, `X? ~ guess`, `X? = answer`,
+  `= rule`, `> note`), never picked. The frontier rule lives there too; a Step inside an unchosen option waits.
+- Doing leaves Planning through **Add to Home** (a Home mission). There is no Run-as-path door while the owner does
+  not use Paths. The AI may add questions but never writes guesses or answers; planner.ts and the assistant get
+  "open questions (do not invent answers)" and "settled (do not reopen)" from `_shared/planning-lines.ts`.
+- Migration `20261016120000_planning_open_loops.sql`. The old `level`, `leverage`, `energy`, `time_minutes`, `icon`,
+  `deadline`, `standalone` and `project_id` columns stay in the table but are no longer written.
+
 ## AI planning context
 
 - `supabase/functions/_shared/planner.ts` builds one context for every planning function
   (`ai-mission-suggest`, `ai-path-suggest`): the user's written `user_context.notes`, today's progress,
-  14 days of completions, tasks they keep skipping, active paths, open planning nodes, today's calendar,
+  14 days of completions, tasks they keep skipping, active paths, the plan's open and settled questions, today's calendar,
   latest watch numbers, and past accepted/rejected suggestions from `ai_suggestion_log`.
 - Personal context lives on three shelves ordered by half-life: `user_context.notes`
   (constants, decades), `.lenses` (how the user thinks, years), `.season` (what is true now,
