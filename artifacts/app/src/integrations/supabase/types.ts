@@ -407,6 +407,44 @@ export type Database = {
         }
         Relationships: []
       }
+      archive_tag_feedback: {
+        Row: {
+          accepted: boolean
+          block_id: string
+          created_at: string
+          id: string
+          source: "neighbours" | "ai" | "type-rule" | "manual"
+          tag: string
+          user_id: string
+        }
+        Insert: {
+          accepted: boolean
+          block_id: string
+          created_at?: string
+          id?: string
+          source: "neighbours" | "ai" | "type-rule" | "manual"
+          tag: string
+          user_id: string
+        }
+        Update: {
+          accepted?: boolean
+          block_id?: string
+          created_at?: string
+          id?: string
+          source?: "neighbours" | "ai" | "type-rule" | "manual"
+          tag?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "archive_tag_feedback_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "archive_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       block_reviews: {
         Row: {
           block_id: string
@@ -2647,6 +2685,15 @@ export type Database = {
         Returns: boolean
       }
       regenerate_friend_code: { Args: never; Returns: string }
+      /** Service role only (ai-suggest-tags). */
+      similar_archive_blocks: {
+        Args: { p_block: string; p_k?: number; p_user: string }
+        Returns: {
+          id: string
+          similarity: number
+          tags: string[]
+        }[]
+      }
       search_archive_blocks: {
         Args: {
           match_count?: number
