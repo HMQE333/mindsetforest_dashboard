@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useDeferredValue, useMemo, useRef, Suspense } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings, LogOut } from "lucide-react";
+import { Settings, LogOut, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,27 +9,17 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useQuickCapture } from "@/hooks/useQuickCapture";
 import { useUserSettings } from "@/hooks/useUserSettings";
-import DashboardView from "@/components/dashboard/DashboardView";
-import PathsView from "@/components/paths/PathsView";
-import OracleView from "@/components/oracle/OracleView";
-import OnboardingView from "@/components/onboarding/OnboardingView";
 import OfflineNotice from "@/components/OfflineNotice";
 import GuideSection from "@/components/landing/GuideSection";
-import ArchiveView from "@/components/archive/ArchiveView";
-import LibraryView from "@/components/library/LibraryView";
-import CookingView from "@/components/cooking/CookingView";
-import FinanceView from "@/components/finance/FinanceView";
-import BreathingView from "@/components/breathing/BreathingView";
-import CalendarView from "@/components/calendar/CalendarView";
-import PlanningView from "@/components/planning/PlanningView";
-import HealthView from "@/components/health/HealthView";
-import QuickCaptureModal from "@/components/archive/QuickCaptureModal";
-import SettingsModal from "@/components/settings/SettingsModal";
 import BackgroundPattern from "@/components/BackgroundPattern";
 import FriendsButton from "@/components/friends/FriendsButton";
-import InboxBell from "@/components/inbox/InboxBell";
 import { resolveInboxSettings } from "@/lib/inbox";
+// Kept in the entry chunk: its useFriends channel shares a topic with the one
+// above (Index's badge), and mounting it later would take the channel over.
 import FriendsPanel from "@/components/friends/FriendsPanel";
+import ModuleSkeleton, { HomeSkeleton, PageSkeleton } from "@/components/ModuleSkeleton";
+import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
+import { TrackerPage } from "./lazy-pages";
 import { useFriends } from "@/hooks/useFriends";
 import { useAssistant, useAssistantCurrentScope } from "@/hooks/useAssistant";
 import { useHotkeys } from "@/hooks/useHotkeys";
@@ -66,6 +56,95 @@ const ALL_TAB_LABELS: Record<Tab, string> = {
 
 const DEFAULT_TAB_ORDER: Tab[] = ["dashboard", "tracker", "paths", "oracle", "archive", "library", "cooking", "finance", "breathing", "calendar", "planning", "health"];
 
+// ── Code splitting ─────────────────────────────────────────────
+// Every module view is its own chunk, fetched when its tab is opened, when its
+// tab button is hovered/focused/pressed, or ahead of time on idle (see below).
+const DashboardView = lazyModule(() => import("@/components/dashboard/DashboardView"));
+const PathsView = lazyModule(() => import("@/components/paths/PathsView"));
+const OracleView = lazyModule(() => import("@/components/oracle/OracleView"));
+const ArchiveView = lazyModule(() => import("@/components/archive/ArchiveView"));
+const LibraryView = lazyModule(() => import("@/components/library/LibraryView"));
+const CookingView = lazyModule(() => import("@/components/cooking/CookingView"));
+const FinanceView = lazyModule(() => import("@/components/finance/FinanceView"));
+const BreathingView = lazyModule(() => import("@/components/breathing/BreathingView"));
+const CalendarView = lazyModule(() => import("@/components/calendar/CalendarView"));
+const PlanningView = lazyModule(() => import("@/components/planning/PlanningView"));
+const HealthView = lazyModule(() => import("@/components/health/HealthView"));
+const OnboardingView = lazyModule(() => import("@/components/onboarding/OnboardingView"));
+const QuickCaptureModal = lazyModule(() => import("@/components/archive/QuickCaptureModal"));
+const SettingsModal = lazyModule(() => import("@/components/settings/SettingsModal"));
+const InboxBell = lazyModule(() => import("@/components/inbox/InboxBell"));
+
+const TAB_PRELOAD: Record<Tab, () => Promise<void>> = {
+  dashboard: DashboardView.preload,
+  tracker: TrackerPage.preload,
+  paths: PathsView.preload,
+  oracle: OracleView.preload,
+  archive: ArchiveView.preload,
+  library: LibraryView.preload,
+  cooking: CookingView.preload,
+  finance: FinanceView.preload,
+  breathing: BreathingView.preload,
+  calendar: CalendarView.preload,
+  planning: PlanningView.preload,
+  health: HealthView.preload,
+};
+const preloadTab = (id: Tab) => { void TAB_PRELOAD[id](); };
+/** Props that fetch a tab's code as soon as the pointer or focus reaches its button. */
+const preloadProps = (id: Tab) => ({
+  onPointerEnter: () => preloadTab(id),
+  onPointerDown: () => preloadTab(id),
+  onFocus: () => preloadTab(id),
+});
+
+// A stored Supabase session means Home will render as soon as auth resolves:
+// start its chunks now, in parallel with React's start, instead of after it.
+function hasStoredSession(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      if (/^sb-.+-auth-token$/.test(localStorage.key(i) ?? "")) return true;
+    }
+  } catch { /* storage blocked */ }
+  return false;
+}
+if (typeof window !== "undefined" && hasStoredSession()) {
+  void DashboardView.preload();
+  void InboxBell.preload();
+}
+
+// Which modules this browser opens most (a per-viewer convenience): the top
+// ones are prefetched on idle after Home is on screen. Without history, Archive
+// first (where notes are saved), then Library.
+const VISITS_KEY = "mf-module-visits";
+const PREFETCH_FALLBACK: Tab[] = ["archive", "library", "paths", "planning", "calendar", "finance", "health", "oracle", "cooking", "breathing", "tracker"];
+function readVisits(): Partial<Record<Tab, number>> {
+  try {
+    const v = JSON.parse(localStorage.getItem(VISITS_KEY) || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch { return {}; }
+}
+function countVisit(tab: Tab) {
+  try {
+    const v = readVisits();
+    v[tab] = (v[tab] ?? 0) + 1;
+    localStorage.setItem(VISITS_KEY, JSON.stringify(v));
+  } catch { /* storage blocked */ }
+}
+
+/** True from the first time `flag` is true: a modal stays mounted after its first open (keeps its state and close animation). */
+function useLatch(flag: boolean) {
+  const [latched, setLatched] = useState(flag);
+  if (flag && !latched) setLatched(true);
+  return latched || flag;
+}
+
+/** The bell's button as it looks before its chunk arrives (same box, no badge). */
+const InboxBellPlaceholder = () => (
+  <span className="relative inline-flex p-2.5 rounded-xl glass-card text-muted-foreground" aria-hidden="true">
+    <Bell className="w-5 h-5" />
+  </span>
+);
+
 const Index = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -84,6 +163,50 @@ const Index = () => {
   useAssistantCurrentScope(TAB_TO_SCOPE[activeTab] ?? null);
   const assistant = useAssistant();
   const hotkeys = useHotkeys();
+  // The tab bar follows activeTab at once; the content follows a deferred copy,
+  // so a tab whose chunk is still downloading keeps the previous screen (dimmed)
+  // instead of blanking it, and a heavy view renders without blocking the click.
+  const contentTab = useDeferredValue(activeTab);
+  const switching = contentTab !== activeTab;
+  const quickCaptureMounted = useLatch(quickCapture.open);
+  const settingsMounted = useLatch(settingsOpen);
+
+  useEffect(() => {
+    if (activeTab !== "dashboard") countVisit(activeTab);
+  }, [activeTab]);
+
+  // Prefetch the likely next modules once the first screen's own chunk is in
+  // and the page is idle, one at a time, so they never compete with it.
+  const enabledKey = preferences.enabledModules.join(",");
+  const enabledKeyRef = useRef(enabledKey);
+  enabledKeyRef.current = enabledKey;
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId || !canPrefetch()) return;
+    let cancelled = false;
+    let cancel = () => {};
+    const run = (queue: (() => Promise<void>)[]) => {
+      const job = queue.shift();
+      if (!job || cancelled) return;
+      cancel = whenIdle(() => { if (!cancelled) void job().then(() => run(queue)); }, 5000);
+    };
+    void TAB_PRELOAD[activeTab]().then(() => {
+      if (cancelled) return;
+      cancel = whenIdle(() => {
+        // Read at the last moment: the saved module list has loaded by now.
+        const enabled = new Set(enabledKeyRef.current.split(","));
+        const visits = readVisits();
+        const likely = PREFETCH_FALLBACK
+          .filter((t) => enabled.has(t) && t !== activeTab)
+          .sort((a, b) => (visits[b] ?? 0) - (visits[a] ?? 0))
+          .slice(0, 2);
+        run([...likely.map((t) => TAB_PRELOAD[t]), QuickCaptureModal.preload]);
+      }, 4000);
+    });
+    return () => { cancelled = true; cancel(); };
+    // Once per signed-in user; activeTab is the screen it starts from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   // The user's own shortcuts that work anywhere in the app (Settings -> Keybinds).
   useEffect(() => {
@@ -132,10 +255,10 @@ const Index = () => {
       setMenuOpen(false);
       setMoreOpen(false);
       if (module === "paths" && detail.pathId) {
-        // Forward to PathsView once it mounts.
-        setTimeout(() => {
+        // Forward to PathsView once its chunk is in and it mounts.
+        void PathsView.preload().then(() => setTimeout(() => {
           window.dispatchEvent(new CustomEvent("lov:focus-path", { detail: { pathId: detail.pathId } }));
-        }, 50);
+        }, 50));
       }
     };
     window.addEventListener("lov:navigate-module", handler as EventListener);
@@ -181,6 +304,39 @@ const Index = () => {
     health: "Health",
   };
 
+  const renderAuthGate = (feature: string, tab: Tab) => (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
+      <p className="text-muted-foreground mb-6">Sign in to access your {feature}</p>
+      <Link to="/auth" className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl gradient-purple text-primary-foreground font-bold text-lg glow-md hover:opacity-90 transition-all hover:-translate-y-1">
+        🔐 Sign In
+      </Link>
+      {tab === "dashboard" && <GuideSection />}
+    </motion.div>
+  );
+
+  // The same element objects while contentTab is unchanged, so re-rendering
+  // Index (a tab highlight, a menu) does not re-render the open module.
+  const tabContent = useMemo(() => {
+    const on = (t: Tab) => contentTab === t && enabledModules.has(t);
+    return (
+      <>
+        {contentTab === "dashboard" && (user ? <DashboardView /> : renderAuthGate("mission dashboard", contentTab))}
+        {on("paths") && (user ? <PathsView /> : renderAuthGate("paths", contentTab))}
+        {on("oracle") && (user ? <OracleView /> : renderAuthGate("oracle", contentTab))}
+        {on("archive") && (user ? <ArchiveView /> : renderAuthGate("archive", contentTab))}
+        {on("library") && (user ? <LibraryView /> : renderAuthGate("library", contentTab))}
+        {on("cooking") && (user ? <CookingView /> : renderAuthGate("cooking studio", contentTab))}
+        {on("finance") && (user ? <FinanceView /> : renderAuthGate("finance tracker", contentTab))}
+        {on("breathing") && (user ? <BreathingView /> : renderAuthGate("breathing exercises", contentTab))}
+        {on("calendar") && (user ? <CalendarView /> : renderAuthGate("calendar", contentTab))}
+        {on("planning") && (user ? <PlanningView /> : renderAuthGate("planning board", contentTab))}
+        {on("health") && (user ? <HealthView /> : renderAuthGate("health tracker", contentTab))}
+      </>
+    );
+    // enabledModules is rebuilt each render; enabledKey is its stable identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentTab, user, enabledKey]);
+
   // No connection on the first read: say so, rather than run the app on
   // defaults or offer the first-run setup to an existing account.
   if (user && onboardingFailed) {
@@ -189,7 +345,11 @@ const Index = () => {
 
   // Show onboarding for new authenticated users
   if (user && !onboardingLoading && needsOnboarding) {
-    return <OnboardingView onComplete={(cats, missions) => completeOnboarding(cats, missions)} />;
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <OnboardingView onComplete={(cats, missions) => completeOnboarding(cats, missions)} />
+      </Suspense>
+    );
   }
 
   const handleTabClick = (id: Tab) => {
@@ -204,6 +364,7 @@ const Index = () => {
   const tabButton = (id: Tab, label: string, onClick?: () => void) => (
     <button
       key={id}
+      {...preloadProps(id)}
       onClick={onClick || (() => setActiveTab(id))}
       className={`px-5 py-2.5 rounded-xl text-sm whitespace-nowrap font-bold transition-all duration-300 ${
         activeTab === id
@@ -213,16 +374,6 @@ const Index = () => {
     >
       {label}
     </button>
-  );
-
-  const renderAuthGate = (feature: string) => (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
-      <p className="text-muted-foreground mb-6">Sign in to access your {feature}</p>
-      <Link to="/auth" className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl gradient-purple text-primary-foreground font-bold text-lg glow-md hover:opacity-90 transition-all hover:-translate-y-1">
-        🔐 Sign In
-      </Link>
-      {activeTab === "dashboard" && <GuideSection />}
-    </motion.div>
   );
 
   return (
@@ -243,16 +394,20 @@ const Index = () => {
             <div className="flex justify-between items-center mb-2">
               <div className="flex items-center gap-2">
                 <FriendsButton badgeCount={badgeCount} onClick={() => setFriendsOpen(true)} />
-                <InboxBell
-                  settings={resolveInboxSettings(preferences.inbox)}
-                  onSaveSettings={(inbox) => void savePreferences({ ...preferences, inbox })}
-                  focusEnabled={!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")}
-                  friendRequests={incomingRequests.length}
-                  onOpenFriends={() => setFriendsOpen(true)}
-                />
+                <Suspense fallback={<InboxBellPlaceholder />}>
+                  <InboxBell
+                    settings={resolveInboxSettings(preferences.inbox)}
+                    onSaveSettings={(inbox) => void savePreferences({ ...preferences, inbox })}
+                    focusEnabled={!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")}
+                    friendRequests={incomingRequests.length}
+                    onOpenFriends={() => setFriendsOpen(true)}
+                  />
+                </Suspense>
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onPointerEnter={() => void SettingsModal.preload()}
+                  onFocus={() => void SettingsModal.preload()}
                   onClick={() => { setSettingsTab(undefined); setSettingsOpen(true); }}
                   className="p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10"
                   title="Settings"
@@ -295,6 +450,7 @@ const Index = () => {
                     {visibleTabs.map(id => (
                       <button
                         key={id}
+                        {...preloadProps(id)}
                         onClick={() => handleTabClick(id)}
                         className={`w-full text-left px-5 py-3 text-sm font-semibold transition-colors ${
                           activeTab === id
@@ -341,6 +497,7 @@ const Index = () => {
                     {visibleTabs.filter(id => !inlineTabs.includes(id)).map(id => (
                       <button
                         key={id}
+                        {...preloadProps(id)}
                         onClick={() => {
                           handleTabClick(id);
                           setMoreOpen(false);
@@ -362,23 +519,28 @@ const Index = () => {
           )}
         </motion.div>
 
-        {/* Tab Content */}
-        {activeTab === "dashboard" && (user ? <DashboardView /> : renderAuthGate("mission dashboard"))}
-        {activeTab === "paths" && enabledModules.has("paths") && (user ? <PathsView /> : renderAuthGate("paths"))}
-        {activeTab === "oracle" && enabledModules.has("oracle") && (user ? <OracleView /> : renderAuthGate("oracle"))}
-        {activeTab === "archive" && enabledModules.has("archive") && (user ? <ArchiveView /> : renderAuthGate("archive"))}
-        {activeTab === "library" && enabledModules.has("library") && (user ? <LibraryView /> : renderAuthGate("library"))}
-        {activeTab === "cooking" && enabledModules.has("cooking") && (user ? <CookingView /> : renderAuthGate("cooking studio"))}
-        {activeTab === "finance" && enabledModules.has("finance") && (user ? <FinanceView /> : renderAuthGate("finance tracker"))}
-        {activeTab === "breathing" && enabledModules.has("breathing") && (user ? <BreathingView /> : renderAuthGate("breathing exercises"))}
-        {activeTab === "calendar" && enabledModules.has("calendar") && (user ? <CalendarView /> : renderAuthGate("calendar"))}
-        {activeTab === "planning" && enabledModules.has("planning") && (user ? <PlanningView /> : renderAuthGate("planning board"))}
-        {activeTab === "health" && enabledModules.has("health") && (user ? <HealthView /> : renderAuthGate("health tracker"))}
+        {/* Tab Content. Dimmed only if the next tab takes a moment (its chunk is still downloading). */}
+        <div
+          className={`transition-opacity ${switching ? "opacity-60 duration-200 delay-150" : "duration-0"}`}
+          aria-busy={switching || undefined}
+        >
+          <Suspense fallback={contentTab === "dashboard" ? <HomeSkeleton /> : <ModuleSkeleton label={TAB_SHORT_LABELS[contentTab]} />}>
+            {tabContent}
+          </Suspense>
+        </div>
       </div>
 
-      {/* Global Quick Capture. Ctrl/Cmd+N */}
-      {user && <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />}
-      {user && <SettingsModal open={settingsOpen} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />}
+      {/* Global Quick Capture. Ctrl/Cmd+N. Each modal mounts on its first open, then stays. */}
+      {user && quickCaptureMounted && (
+        <Suspense fallback={null}>
+          <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />
+        </Suspense>
+      )}
+      {user && settingsMounted && (
+        <Suspense fallback={null}>
+          <SettingsModal open={settingsOpen} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
       {user && <FriendsPanel open={friendsOpen} onOpenChange={setFriendsOpen} />}
     </div>
   );

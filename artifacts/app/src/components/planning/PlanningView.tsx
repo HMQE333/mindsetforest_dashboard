@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { List, Map as MapIcon, CircleDot } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,7 +12,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import PlanningBoards, { BoardSwitcher } from "./PlanningBoards";
 import PlanningStack from "./PlanningStack";
-import PlanningMap from "./PlanningMap";
+import { lazyModule, whenIdle } from "@/lib/lazy-module";
+
+// The map (React Flow and its stylesheet) is its own chunk: the list is the
+// default view, so the map's code is fetched on idle or when Map is pointed at.
+const PlanningMap = lazyModule(() => import("./PlanningMap"));
 
 type Mode = "list" | "map";
 
@@ -48,6 +52,7 @@ export default function PlanningView() {
   const [mode, setModeState] = useState<Mode>(readMode);
   const [openLoops, setOpenLoops] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => whenIdle(() => void PlanningMap.preload(), 4000), []);
 
   const setMode = (m: Mode) => { setModeState(m); saveMode(m); };
 
@@ -148,6 +153,7 @@ export default function PlanningView() {
               <button
                 key={m}
                 onClick={() => setMode(m)}
+                onPointerEnter={m === "map" ? () => void PlanningMap.preload() : undefined}
                 aria-pressed={mode === m}
                 aria-label={label}
                 title={label}
@@ -165,7 +171,11 @@ export default function PlanningView() {
 
       {mode === "list"
         ? <PlanningStack key={board.id} boardId={board.id} openLoopsOnly={openLoops} boardName={board.name} />
-        : <PlanningMap key={board.id} board={board} openLoops={openLoops} />}
+        : (
+          <Suspense fallback={<div className="h-[600px] rounded-2xl border border-white/10 bg-muted/20 animate-pulse" aria-busy="true" />}>
+            <PlanningMap key={board.id} board={board} openLoops={openLoops} />
+          </Suspense>
+        )}
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

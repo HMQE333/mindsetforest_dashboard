@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { Upload, FileText, X, Watch } from "lucide-react";
 import { toast } from "sonner";
-import { Decoder, Stream } from "@garmin/fitsdk";
 
 /** Running-performance fields a Garmin export can auto-fill. */
 export type RunFields = Partial<{
@@ -195,8 +194,12 @@ function parseCSV(text: string): RunFields {
   return out;
 }
 
-/** Decode Garmin's native binary .FIT export (Forerunner etc.) via the official FIT SDK. */
-function parseFIT(buf: ArrayBuffer): RunFields {
+/**
+ * Decode Garmin's native binary .FIT export (Forerunner etc.) via the official FIT SDK.
+ * The SDK (~375 KB, mostly its message profile) is fetched only when a .FIT file is dropped.
+ */
+async function parseFIT(buf: ArrayBuffer): Promise<RunFields> {
+  const { Decoder, Stream } = await import("@garmin/fitsdk");
   const stream = Stream.fromArrayBuffer(buf);
   if (!Decoder.isFIT(stream)) return {};
   const { messages } = new Decoder(stream).read();
@@ -268,7 +271,7 @@ export default function GarminDropzone({ onParsed }: Props) {
     let fields: RunFields = {};
     try {
       if (name.endsWith(".fit")) {
-        fields = parseFIT(await f.arrayBuffer());
+        fields = await parseFIT(await f.arrayBuffer());
       } else {
         const text = await f.text();
         if (name.endsWith(".tcx")) fields = parseTCX(text);

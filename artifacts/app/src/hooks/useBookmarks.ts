@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "./useAuth";
@@ -74,8 +74,11 @@ const rowToBookmark = (r: { id: string; title: string; url: string; block_id?: s
  * Per-user bookmark store backed by the `public.bookmarks` table. Reads/writes
  * are scoped to the authenticated user via RLS. A localStorage cache is used
  * only for instant paint before the server load completes.
+ *
+ * `enabled: false` loads nothing: the Archive holds the store but only Links
+ * and Bookmarks read it, so it waits until one of them opens.
  */
-export function useBookmarks() {
+export function useBookmarks({ enabled = true }: { enabled?: boolean } = {}) {
   const { user } = useAuth();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const bookmarksRef = useRef<Bookmark[]>([]);
@@ -90,6 +93,7 @@ export function useBookmarks() {
       setBoth([]);
       return;
     }
+    if (!enabled) return;
     const uid = user.id;
     let cancelled = false;
 
@@ -111,7 +115,7 @@ export function useBookmarks() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, setBoth]);
+  }, [user?.id, enabled, setBoth]);
 
   /** Adds a bookmark, newest first; a URL already bookmarked is left as it is. */
   const addBookmark = useCallback(
@@ -183,10 +187,8 @@ export function useBookmarks() {
     [user, setBoth]
   );
 
-  const isBookmarked = useCallback((url: string) => {
-    const nUrl = normalizedUrl(url);
-    return bookmarks.some((b) => b.url === nUrl);
-  }, [bookmarks]);
+  const urls = useMemo(() => new Set(bookmarks.map((b) => b.url)), [bookmarks]);
+  const isBookmarked = useCallback((url: string) => urls.has(normalizedUrl(url)), [urls]);
 
   /** Bookmark a link from a note, or take its bookmark away; says which happened (null: neither). */
   const toggleBookmark = useCallback(async (url: string, title: string, blockId: string | null): Promise<"added" | "removed" | null> => {
@@ -196,5 +198,8 @@ export function useBookmarks() {
     return (await addBookmark(title, nUrl, blockId)) ? "added" : null;
   }, [addBookmark, deleteBookmark]);
 
-  return { bookmarks, addBookmark, updateBookmark, deleteBookmark, isBookmarked, toggleBookmark };
+  return useMemo(
+    () => ({ bookmarks, addBookmark, updateBookmark, deleteBookmark, isBookmarked, toggleBookmark }),
+    [bookmarks, addBookmark, updateBookmark, deleteBookmark, isBookmarked, toggleBookmark],
+  );
 }

@@ -35,6 +35,23 @@ export function chunkForInsert<T>(items: T[], maxRows = 100, maxBytes = 1_000_00
   return out;
 }
 
+/**
+ * "count:newest updated_at" of a list of notes: the same shape the Archive's
+ * poll reads from the server, so a held list is current exactly when they match.
+ */
+export function archiveFingerprint(blocks: readonly Pick<ArchiveBlock, "updated_at">[]): string {
+  let newest = "";
+  let newestMs = -Infinity;
+  for (const b of blocks) {
+    const ms = Date.parse(b.updated_at);
+    if (ms > newestMs || (ms === newestMs && b.updated_at > newest)) {
+      newestMs = ms;
+      newest = b.updated_at;
+    }
+  }
+  return `${blocks.length}:${newest}`;
+}
+
 /** A save that stopped part way; `saved` blocks (the first ones, in order) made it. */
 export class ArchiveSaveError extends Error {
   constructor(message: string, readonly saved: number) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import type { ArchiveBlock } from "@/lib/archive-data";
@@ -76,22 +76,47 @@ export function useDigestState(blocks: ArchiveBlock[]) {
     })();
   }, [user]);
 
+  // Each note's reviews, newest first, grouped once rather than searched for every note.
+  const reviewsByBlock = useMemo(() => {
+    const map = new Map<string, BlockReview[]>();
+    for (const r of reviews) {
+      const list = map.get(r.block_id);
+      if (list) list.push(r);
+      else map.set(r.block_id, [r]);
+    }
+    for (const list of map.values()) list.sort((a, b) => new Date(b.reviewed_at).getTime() - new Date(a.reviewed_at).getTime());
+    return map;
+  }, [reviews]);
+
+  // A random place in the queue per note, drawn once: the list refreshes in
+  // the background (another device, a save), and reshuffling then swapped the
+  // card on screen for another one.
+  const ranks = useRef(new Map<string, number>());
+  const rank = (id: string) => {
+    let r = ranks.current.get(id);
+    if (r === undefined) {
+      r = Math.random();
+      ranks.current.set(id, r);
+    }
+    return r;
+  };
+
   // Compute due blocks
   const dueBlocks = useMemo((): DigestBlock[] => {
     const now = Date.now();
     const result: DigestBlock[] = [];
 
     for (const block of blocks) {
-      const blockReviews = reviews.filter((r) => r.block_id === block.id);
       // Skip blocks already rated this session
       if (sessionRatings[block.id]) continue;
+      const sorted = reviewsByBlock.get(block.id) ?? [];
 
       let isDue = false;
-      let reviewCount = blockReviews.length;
+      const reviewCount = sorted.length;
       let lastRating: number | null = null;
       let intervalLabel = "";
 
-      if (blockReviews.length === 0) {
+      if (sorted.length === 0) {
         // Never reviewed: use creation-date intervals
         const ageDays = (now - new Date(block.created_at).getTime()) / DAY_MS;
         const matchedInterval = DEFAULT_INTERVALS.find(
@@ -102,11 +127,8 @@ export function useDigestState(blocks: ArchiveBlock[]) {
           intervalLabel = `New · ${matchedInterval}d ago`;
         }
       } else {
-        const sorted = [...blockReviews].sort(
-          (a, b) => new Date(b.reviewed_at).getTime() - new Date(a.reviewed_at).getTime()
-        );
         lastRating = sorted[0].rating;
-        const nextReview = getNextReviewDate(blockReviews);
+        const nextReview = getNextReviewDate(sorted);
         if (nextReview && isDueToday(nextReview)) {
           isDue = true;
           const daysSinceLast = Math.round(
@@ -121,13 +143,9 @@ export function useDigestState(blocks: ArchiveBlock[]) {
       }
     }
 
-    // Shuffle
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
-  }, [blocks, reviews, sessionRatings]);
+    return result.sort((a, b) => rank(a.id) - rank(b.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, reviewsByBlock, sessionRatings]);
 
   const saveRating = useCallback(async (blockId: string, rating: number) => {
     if (!user) return;

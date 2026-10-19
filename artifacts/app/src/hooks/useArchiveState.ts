@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError, chunkForInsert, type ArchiveBlock } from "@/lib/archive-data";
+import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError, archiveFingerprint, chunkForInsert, type ArchiveBlock } from "@/lib/archive-data";
 import { toast } from "sonner";
 
 async function embedBlock(blockId: string) {
@@ -40,22 +40,18 @@ export interface VideoMatch {
   similarity: number;
 }
 
-const CACHE_MAX = 500;
-const cacheKey = (userId: string) => `archive_blocks_cache_${userId}`;
+const EMPTY_BLOCKS: ArchiveBlock[] = [];
+/** Poll period while the window has focus, and while it is visible without focus (another app in front). */
+const POLL_FOCUSED_MS = 5_000;
+const POLL_BLURRED_MS = 15_000;
 
-function readCache(userId: string): ArchiveBlock[] | undefined {
+/** Tells other tabs of this browser that the archive changed, so they check at once instead of at their next poll. */
+function announce(userId: string) {
   try {
-    const raw = localStorage.getItem(cacheKey(userId));
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : undefined;
-  } catch { return undefined; }
-}
-
-function writeCache(userId: string, blocks: ArchiveBlock[]) {
-  try {
-    localStorage.setItem(cacheKey(userId), JSON.stringify(blocks.slice(0, CACHE_MAX)));
-  } catch { /* quota exceeded. Ignore */ }
+    const bc = new BroadcastChannel(`archive-blocks:${userId}`);
+    bc.postMessage("changed");
+    bc.close();
+  } catch { /* no BroadcastChannel: the poll still catches it */ }
 }
 
 /**
@@ -65,21 +61,24 @@ function writeCache(userId: string, blocks: ArchiveBlock[]) {
  */
 export function useArchiveState({ live = true }: { live?: boolean } = {}) {
   const { user } = useAuth();
+  const userId = user?.id;
   const qc = useQueryClient();
-  const queryKey = ["archive_blocks", user?.id];
+  const queryKey = useMemo(() => ["archive_blocks", userId], [userId]);
 
+  // The list is fetched once and then kept: opening the Archive again checks
+  // the fingerprint below and downloads the list only when it moved, instead of
+  // re-downloading every note (one is 500k characters) on every visit and focus.
   const query = useQuery<ArchiveBlock[]>({
     queryKey,
-    enabled: !!user && live,
-    staleTime: 0,
+    enabled: !!userId && live,
+    staleTime: Infinity,
     gcTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("archive_blocks" as any)
         .select(BLOCK_COLUMNS)
-        .eq("user_id", user!.id)
+        .eq("user_id", userId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data as any as ArchiveBlock[]) || [];
@@ -93,61 +92,96 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     }
   }, [query.error]);
 
-  // Polling keeps the archive in sync across devices/windows (simpler than
-  // Realtime). Every 5 s it reads a fingerprint (row count + newest change) and
-  // refetches the list only when that moved: refetching every time re-downloaded
-  // the whole archive every 5 seconds, a pasted list of thousands of links included.
+  // Sync across devices by polling (simpler than Realtime): read the row
+  // count and the newest change, and refetch the list only when they differ
+  // from the list held here. Every 5 s while the window has focus, every 15 s
+  // while it is visible behind another app, never while hidden; coming back
+  // to the window checks at once, and so does a write in another tab.
   useEffect(() => {
-    if (!user || !live) return;
-    let last: string | null = null;
+    if (!userId || !live) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let busy = false;
+    let lastCheck = 0;
+    let stopped = false;
     const check = async () => {
-      if (document.hidden) return;
-      const { data, count, error } = await supabase
-        .from("archive_blocks" as any)
-        .select("updated_at", { count: "exact" })
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(1);
-      if (error) return;
-      const fingerprint = `${count ?? 0}:${(data as any)?.[0]?.updated_at ?? ""}`;
-      if (last !== null && fingerprint !== last) qc.invalidateQueries({ queryKey });
-      last = fingerprint;
+      if (busy || qc.isFetching({ queryKey }) > 0) return;
+      busy = true;
+      lastCheck = Date.now();
+      try {
+        const { data, count, error } = await supabase
+          .from("archive_blocks" as any)
+          .select("updated_at", { count: "exact" })
+          .eq("user_id", userId)
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        if (error || stopped) return;
+        const server = `${count ?? 0}:${(data as any)?.[0]?.updated_at ?? ""}`;
+        const held = qc.getQueryData<ArchiveBlock[]>(queryKey);
+        if (held && server !== archiveFingerprint(held)) void qc.invalidateQueries({ queryKey });
+      } finally {
+        busy = false;
+      }
     };
-    void check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, live]);
+    const schedule = () => {
+      clearTimeout(timer);
+      if (stopped || document.hidden) return;
+      timer = setTimeout(tick, document.hasFocus() ? POLL_FOCUSED_MS : POLL_BLURRED_MS);
+    };
+    const tick = async () => {
+      await check();
+      schedule();
+    };
+    const wake = () => {
+      if (document.hidden) { clearTimeout(timer); return; }
+      // Focus and visibility often fire together; one check covers both.
+      if (Date.now() - lastCheck < 1000) { schedule(); return; }
+      void tick();
+    };
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(`archive-blocks:${userId}`);
+      bc.onmessage = () => void tick();
+    } catch { /* polling alone */ }
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    void tick();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      bc?.close();
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    };
+  }, [userId, live, qc, queryKey]);
 
   // Refetch immediately when another part of the app (e.g. The AI assistant)
   // saves a note to the archive, so it shows up without waiting for the poll.
   useEffect(() => {
     const handler = () => {
-      qc.invalidateQueries({ queryKey });
+      void qc.invalidateQueries({ queryKey });
     };
     window.addEventListener(ARCHIVE_BLOCKS_CHANGED_EVENT, handler);
     return () => window.removeEventListener(ARCHIVE_BLOCKS_CHANGED_EVENT, handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [qc, queryKey]);
 
-  const blocks = query.data || [];
+  const blocks = query.data ?? EMPTY_BLOCKS;
   const loading = query.isLoading && !query.data;
 
   const setBlocks = useCallback((updater: (prev: ArchiveBlock[]) => ArchiveBlock[]) => {
-    qc.setQueryData<ArchiveBlock[]>(queryKey, (prev) => {
-      return updater(prev || []);
-    });
-  }, [qc, user?.id]);
+    qc.setQueryData<ArchiveBlock[]>(queryKey, (prev) => updater(prev || []));
+  }, [qc, queryKey]);
 
   const fetchBlocks = useCallback(async () => {
     await qc.invalidateQueries({ queryKey });
-  }, [qc, user?.id]);
+  }, [qc, queryKey]);
 
-  const addBlock = async (block: Partial<ArchiveBlock>) => {
-    if (!user) return null;
+  // The writes below keep one identity per user, so memoised cards that take
+  // them do not re-render when the list does.
+  const addBlock = useCallback(async (block: Partial<ArchiveBlock>) => {
+    if (!userId) return null;
     const { data, error } = await supabase
       .from("archive_blocks" as any)
-      .insert({ ...block, user_id: user.id } as any)
+      .insert({ ...block, user_id: userId } as any)
       .select(BLOCK_COLUMNS)
       .single();
     if (error) {
@@ -155,21 +189,22 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
       return null;
     }
     setBlocks((prev) => [(data as any), ...prev]);
+    announce(userId);
     embedBlock((data as any).id);
     return data as any as ArchiveBlock;
-  };
+  }, [userId, setBlocks]);
 
   /**
    * Insert in order, in requests of at most 100 blocks or ~1 MB. Throws
    * ArchiveSaveError on the first failure, saying how many made it, so the
    * caller can keep the rest instead of reporting a save that did not happen.
    */
-  const addBlocks = async (newBlocks: Partial<ArchiveBlock>[]): Promise<ArchiveBlock[]> => {
-    if (!user) throw new ArchiveSaveError("Not signed in", 0);
+  const addBlocks = useCallback(async (newBlocks: Partial<ArchiveBlock>[]): Promise<ArchiveBlock[]> => {
+    if (!userId) throw new ArchiveSaveError("Not signed in", 0);
     const saved: ArchiveBlock[] = [];
     let failure: ArchiveSaveError | null = null;
     for (const batch of chunkForInsert(newBlocks)) {
-      const rows = batch.map((b) => ({ ...b, user_id: user.id }));
+      const rows = batch.map((b) => ({ ...b, user_id: userId }));
       const { data, error } = await supabase
         .from("archive_blocks" as any)
         .insert(rows as any)
@@ -182,33 +217,39 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     }
     if (saved.length > 0) {
       setBlocks((prev) => [...saved, ...prev]);
+      announce(userId);
       void embedInBackground(saved.map((b) => b.id));
     }
     if (failure) throw failure;
     return saved;
-  };
+  }, [userId, setBlocks]);
 
   /** Resolves whether the change was saved (a failure is toasted here). */
-  const updateBlock = async (id: string, updates: Partial<ArchiveBlock>): Promise<boolean> => {
-    const { error } = await supabase
+  const updateBlock = useCallback(async (id: string, updates: Partial<ArchiveBlock>): Promise<boolean> => {
+    // The row's new updated_at comes back with the write, so the list held
+    // here matches the server's fingerprint and the poll does not refetch it.
+    const { data, error } = await supabase
       .from("archive_blocks" as any)
       .update(updates as any)
-      .eq("id", id);
+      .eq("id", id)
+      .select("updated_at");
     if (error) {
       toast.error("Failed to update block");
       return false;
     }
+    const updatedAt = (data as any)?.[0]?.updated_at as string | undefined;
     setBlocks((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
+      prev.map((b) => (b.id === id ? { ...b, ...updates, ...(updatedAt ? { updated_at: updatedAt } : {}) } : b))
     );
+    if (userId) announce(userId);
     if (updates.title !== undefined || updates.content !== undefined) {
       embedBlock(id);
     }
     return true;
-  };
+  }, [userId, setBlocks]);
 
   /** Resolves whether the block was deleted (a failure is toasted here). */
-  const deleteBlock = async (id: string): Promise<boolean> => {
+  const deleteBlock = useCallback(async (id: string): Promise<boolean> => {
     const { error } = await supabase
       .from("archive_blocks" as any)
       .delete()
@@ -218,8 +259,9 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
       return false;
     }
     setBlocks((prev) => prev.filter((b) => b.id !== id));
+    if (userId) announce(userId);
     return true;
-  };
+  }, [userId, setBlocks]);
 
   /** Meaning search over notes, and over video summaries (which live with their link). */
   const searchArchive = useCallback(async (query: string): Promise<{ blocks: ArchiveBlock[]; videos: VideoMatch[] }> => {

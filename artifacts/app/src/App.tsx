@@ -1,3 +1,4 @@
+import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -5,15 +6,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DashboardStateProvider } from "@/hooks/useDashboardState";
-import { AssistantProvider } from "@/hooks/useAssistant";
+import { AssistantProvider, useAssistant } from "@/hooks/useAssistant";
 import { useIntervalsAutoSync } from "@/hooks/useIntervalsAutoSync";
-import AssistantPanel from "@/components/assistant/AssistantPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PageSkeleton } from "@/components/ModuleSkeleton";
+import { lazyModule, whenIdle } from "@/lib/lazy-module";
+// Index (landing + Home shell) and Auth stay in the entry chunk: they are the
+// first screen. Everything they open is code-split (see Index.tsx).
 import Index from "./pages/Index";
-import Tracker from "./pages/Tracker";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
-import SharedLibrary from "./pages/SharedLibrary";
+import { TrackerPage, SharedLibraryPage } from "./pages/lazy-pages";
+
+const AssistantPanel = lazyModule(() => import("@/components/assistant/AssistantPanel"));
 
 const queryClient = new QueryClient();
 
@@ -25,6 +30,30 @@ const useHashRouter = import.meta.env.VITE_HASH_ROUTER === "1";
 function BackgroundSync() {
   useIntervalsAutoSync();
   return null;
+}
+
+/**
+ * The assistant (its launcher robot pulls in lottie and a large animation file)
+ * is only for signed-in users, and it is not needed for the first paint: it
+ * mounts once the page is idle, or at once when something asks for it (the
+ * hotkey, a prefill or voice request from another screen).
+ */
+function DeferredAssistantPanel() {
+  const { user } = useAuth();
+  const { open, prefillRequest, voiceRequested } = useAssistant();
+  const [ready, setReady] = useState(false);
+  const wanted = open || !!prefillRequest || voiceRequested;
+  useEffect(() => {
+    if (!user || ready) return;
+    if (wanted) { setReady(true); return; }
+    return whenIdle(() => setReady(true), 4000);
+  }, [user, ready, wanted]);
+  if (!user || !(ready || wanted)) return null;
+  return (
+    <Suspense fallback={null}>
+      <AssistantPanel />
+    </Suspense>
+  );
 }
 
 const AppRouter = ({ children }: { children: React.ReactNode }) =>
@@ -48,14 +77,16 @@ const App = () => (
             <DashboardStateProvider>
               <AssistantProvider>
                 <BackgroundSync />
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/auth" element={<Auth />} />
-                  <Route path="/tracker" element={<ProtectedRoute><Tracker /></ProtectedRoute>} />
-                  <Route path="/share/library/:shareId" element={<SharedLibrary />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-                <AssistantPanel />
+                <Suspense fallback={<PageSkeleton />}>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/auth" element={<Auth />} />
+                    <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
+                    <Route path="/share/library/:shareId" element={<SharedLibraryPage />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+                <DeferredAssistantPanel />
               </AssistantProvider>
             </DashboardStateProvider>
           </AuthProvider>
