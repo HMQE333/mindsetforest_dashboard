@@ -14,6 +14,7 @@ import BlockedAuthorsList from "./BlockedAuthorsList";
 import RecentAppreciationStrip from "./RecentAppreciationStrip";
 import { Sprout, Droplet, BookmarkPlus, Eye, Trophy, Leaf } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRemembered } from "./remembered";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
 type SubTab = "daily" | "discover" | "collections" | "mine";
@@ -22,15 +23,16 @@ const ArchiveForestView = () => {
   const forest = useForestState();
   const friends = useFriends();
   const pillars = usePillars();
-  const [tab, setTab] = useState<SubTab>("daily");
-  const [sort, setSort] = useState<DiscoverSort>("trending");
-  const [search, setSearch] = useState("");
+  // The Archive mounts only the open sub-tab: where the Forest was left (tab, sort, search, filters) survives a switch away and back.
+  const [tab, setTab] = useRemembered<SubTab>("forest.tab", "daily");
+  const [sort, setSort] = useRemembered<DiscoverSort>("forest.sort", "trending");
+  const [search, setSearch] = useRemembered("forest.search", "");
   const [smartSearch, setSmartSearch] = useState(false);
   const [semanticResults, setSemanticResults] = useState<SeedWithAuthor[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [filterPillar, setFilterPillar] = useState<string | null>(null);
-  const [filterTag, setFilterTag] = useState("");
-  const [hideSaved, setHideSaved] = useState(false);
+  const [filterPillar, setFilterPillar] = useRemembered<string | null>("forest.pillar", null);
+  const [filterTag, setFilterTag] = useRemembered("forest.tag", "");
+  const [hideSaved, setHideSaved] = useRemembered("forest.hideSaved", false);
   const [editSeed, setEditSeed] = useState<SeedWithAuthor | null>(null);
 
   const friendIds = useMemo(() => new Set(friends.accepted.map((f) => f.friend.user_id)), [friends.accepted]);

@@ -5,6 +5,8 @@ import { normalizedUrl, type Bookmark, type useBookmarks } from "@/hooks/useBook
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { safeUrl } from "@/lib/safe-url";
 import ArchiveEditModal from "./ArchiveEditModal";
+import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
+import { dialogOpen } from "./keyboard";
 
 function getFavicon(url: string) {
   try {
@@ -46,11 +48,13 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [openNote, setOpenNote] = useState<ArchiveBlock | null>(null);
+  const [reading, setReading] = useState<ReaderRequest | null>(null);
 
   useEffect(() => {
     if (!showForm) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeForm();
+      // Not the Esc that closes a reader or a dialog over the page (it would wipe the half-typed form too).
+      if (e.key === "Escape" && !e.defaultPrevented && !dialogOpen()) closeForm();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -197,7 +201,10 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
                 {notes.map((b) => (
                   <div key={b.id} className="group relative">
                     <button
-                      onClick={() => setOpenNote(b)}
+                      onClick={() => setReading(readerRequest(b, notes))}
+                      onPointerEnter={preloadNoteReader}
+                      onFocus={preloadNoteReader}
+                      data-note-id={b.id}
                       className="block w-full text-left glass-card p-4 h-full hover:border-primary/30 border border-transparent transition-all"
                     >
                       <p className="text-sm font-semibold text-foreground truncate pr-6 group-hover:text-primary transition-colors">{b.title || "Untitled"}</p>
@@ -262,7 +269,8 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
                       </a>
                       {note && (
                         <button
-                          onClick={() => setOpenNote(note)}
+                          onClick={() => setReading(readerRequest(note, [note]))}
+                          onPointerEnter={preloadNoteReader}
                           className="absolute left-[3.75rem] bottom-3 max-w-[60%] truncate text-[10px] text-muted-foreground hover:text-primary transition-colors"
                           title="Open the note this link is from"
                         >
@@ -302,6 +310,16 @@ const ArchiveBookmarksView = ({ bookmarks: store, blocks, updateBlock, deleteBlo
           )}
         </>
       )}
+
+      <NoteReader
+        request={reading}
+        blocks={blocks}
+        from="Bookmarks"
+        onClose={() => setReading(null)}
+        onEdit={setOpenNote}
+        onUpdate={updateBlock}
+        onDelete={deleteBlock}
+      />
 
       <ArchiveEditModal
         block={openNote}

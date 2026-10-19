@@ -6,6 +6,7 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 import { blockImages } from "./archive-index";
+import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
 
 
 interface ImageItem {
@@ -32,12 +33,19 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
+  const [reading, setReading] = useState<ReaderRequest | null>(null);
 
   const allImages = useMemo(() => extractImages(blocks), [blocks]);
 
   const filtered = filterPillar
     ? allImages.filter((img) => img.block.pillars.includes(filterPillar))
     : allImages;
+
+  /** A note opened from under one of its images: the reader steps through the notes in the gallery's order. */
+  const readNote = (block: ArchiveBlock) => {
+    const notes = [...new Map(filtered.map((img) => [img.block.id, img.block])).values()];
+    setReading(readerRequest(block, notes));
+  };
 
   const lightboxUrl = lightboxIndex !== null ? filtered[lightboxIndex]?.url : null;
 
@@ -138,7 +146,9 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
                   </button>
                   <div className="p-3 space-y-1.5">
                     <button
-                      onClick={() => setEditBlock(img.block)}
+                      onClick={() => readNote(img.block)}
+                      onPointerEnter={preloadNoteReader}
+                      data-note-id={img.block.id}
                       className="text-xs font-semibold text-foreground hover:text-primary transition-colors truncate block w-full text-left"
                     >
                       {displayTitle}
@@ -209,6 +219,16 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
           </motion.div>
         )}
       </AnimatePresence>
+
+      <NoteReader
+        request={reading}
+        blocks={blocks}
+        from="Images"
+        onClose={() => setReading(null)}
+        onEdit={setEditBlock}
+        onUpdate={updateBlock}
+        onDelete={deleteBlock}
+      />
 
       <ArchiveEditModal
         block={editBlock}

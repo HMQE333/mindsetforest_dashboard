@@ -880,3 +880,9 @@
     radial-gradient(ellipse 12px 8px at 30% 40%, hsla(25, 35%, 50%, 0.2), transparent),
     radial-gradient(ellipse 8px 10px at 72% 65%, hsla(30, 30%, 48%, 0.15), transparent);
 }
+
+/* The Archive's full-page note reader is modal: the assistant's robot (z-[9998], above it) would sit on
+   the text unusable, its taps falling through to the note. It steps aside until the reader closes. */
+body[data-archive-reader-open] [data-assistant-root] {
+  display: none;
+}

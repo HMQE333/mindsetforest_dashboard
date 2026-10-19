@@ -140,10 +140,13 @@ export function planShare(files: SharedFile[], now: number, isLinked: (f: Shared
 
 /**
  * Whether any of the texts holds the file's path (a pasted public URL does).
+ * The copied link comes from getPublicUrl, which runs the path through
+ * encodeURI ("My file.pdf" becomes "My%20file.pdf"), so both spellings count.
  * The texts are notes; this only runs for files already past their time.
  */
 export function linkedFrom(texts: readonly string[], f: SharedFile): boolean {
-  return texts.some((t) => t.includes(f.path));
+  const encoded = encodeURI(f.path);
+  return texts.some((t) => t.includes(f.path) || (encoded !== f.path && t.includes(encoded)));
 }
 
 /** "6:59", never negative. */

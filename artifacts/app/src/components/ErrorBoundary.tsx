@@ -1,4 +1,5 @@
 import React from "react";
+import { isChunkLoadError, reloadOnceForNewBuild } from "@/lib/lazy-module";
 
 interface Props {
   children: React.ReactNode;
@@ -7,6 +8,9 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  /** Code that failed to download: asking the server for a new build, and reloading to pick it up. */
+  checking?: boolean;
+  reloading?: boolean;
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
@@ -16,14 +20,17 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, checking: isChunkLoadError(error) };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info.componentStack);
+    // A tab left open across a deploy: reload once onto the new build rather than show this screen.
+    if (isChunkLoadError(error)) void reloadOnceForNewBuild().then((reloading) => this.setState({ checking: false, reloading }));
   }
 
   render() {
+    if (this.state.checking || this.state.reloading) return <div className="min-h-screen bg-background" aria-busy="true" />;
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 relative overflow-hidden">

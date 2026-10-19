@@ -24,6 +24,8 @@ import type { ArchiveBlock } from "@/lib/archive-data";
 import { todayKey } from "@/lib/today";
 import { filterLibrary, filterRanked, type SortMode } from "./archive-index";
 import { useRemembered } from "./remembered";
+import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
+import { canPrefetch, whenIdle } from "@/lib/lazy-module";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -41,13 +43,22 @@ interface Props {
   /**
    * Opening a note (a click on its card). Gets the note and the whole list in
    * the order shown, the current search, filters and sort applied, so a
-   * reader can step to the previous and next note. Without it the editor opens.
+   * reader can step to the previous and next note. Without it the Library's
+   * own reader opens.
    */
   onOpen?: (block: ArchiveBlock, list: ArchiveBlock[]) => void;
 }
 
 /** Cards rendered at first, and added each time the end of the list comes near. */
 const CARDS_PAGE = 40;
+
+/** One Smart search's answer, kept for a switch to another sub-tab and back. */
+interface SemanticHits {
+  query: string;
+  blocks: ArchiveBlock[];
+  videos: VideoMatch[];
+  scores: Record<string, number>;
+}
 
 const announceChanged = () => window.dispatchEvent(new CustomEvent(ARCHIVE_BLOCKS_CHANGED_EVENT));
 
@@ -88,12 +99,19 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   const [filterPillar, setFilterPillar] = useRemembered<string | null>("library.pillar", null);
   const [hideLinks, setHideLinks] = useRemembered("library.hideLinks", false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
+  const [reading, setReading] = useState<ReaderRequest | null>(null);
   const [sortMode, setSortMode] = useRemembered<SortMode>("library.sort", "newest");
   const [smartSearch, setSmartSearch] = useRemembered("library.smart", false);
-  const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
-  const [videoResults, setVideoResults] = useState<VideoMatch[]>([]);
+  // The last Smart search's answer: coming back to the Library with the same query shows it at
+  // once, without a second embedding call or keyword results reshuffling into the semantic order.
+  const [lastHits, setLastHits] = useRemembered<SemanticHits | null>("library.semantic", null);
+  const lastHitsRef = useRef(lastHits);
+  lastHitsRef.current = lastHits;
+  const [restored] = useState(() => (smartSearch && lastHits && lastHits.query === search.trim() ? lastHits : null));
+  const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(restored?.blocks ?? null);
+  const [videoResults, setVideoResults] = useState<VideoMatch[]>(restored?.videos ?? []);
   const [video, setVideo] = useState<VideoPanelTarget | null>(null);
-  const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
+  const [similarityScores, setSimilarityScores] = useState<Record<string, number>>(restored?.scores ?? {});
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [includeTags, setIncludeTags] = useRemembered("library.tags", false);
@@ -110,13 +128,22 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       setSimilarityScores({});
       return;
     }
+    const kept = lastHitsRef.current;
+    if (kept && kept.query === query.trim()) {
+      setSemanticResults(kept.blocks);
+      setVideoResults(kept.videos);
+      setSimilarityScores(kept.scores);
+      return;
+    }
     const timer = setTimeout(async () => {
       setSemanticLoading(true);
       let results: ArchiveBlock[];
+      let videos: VideoMatch[] = [];
       if (searchArchive) {
         const found = await searchArchive(query.trim());
         results = found.blocks;
-        setVideoResults(found.videos);
+        videos = found.videos;
+        setVideoResults(videos);
       } else {
         results = await semanticSearch(query.trim());
       }
@@ -127,9 +154,10 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       setSimilarityScores(scores);
       setSemanticResults(results);
       setSemanticLoading(false);
+      setLastHits({ query: query.trim(), blocks: results, videos, scores });
     }, 500);
     return () => clearTimeout(timer);
-  }, [query, smartSearch, semanticSearch, searchArchive]);
+  }, [query, smartSearch, semanticSearch, searchArchive, setLastHits]);
 
   // Which notes match, in order: the regex and lower-casing work behind it is
   // done once per note (archive-index), not per note per key.
@@ -164,9 +192,13 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
   filteredRef.current = filtered;
   const openBlock = useCallback((block: ArchiveBlock) => {
     if (onOpen) onOpen(block, filteredRef.current);
-    else setEditBlock(block);
+    else setReading(readerRequest(block, filteredRef.current));
   }, [onOpen]);
+  const closeReader = useCallback(() => setReading(null), []);
   const editOne = useCallback((block: ArchiveBlock) => setEditBlock(block), []);
+
+  // The reader's code is fetched once the page is quiet, so the first note opens at once.
+  useEffect(() => (canPrefetch() ? whenIdle(preloadNoteReader, 3000) : undefined), []);
   const resyncSeed = useCallback((seedId: string) => void resync(seedId), [resync]);
   const showScores = smartSearch && semanticResults !== null;
 
@@ -380,7 +412,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
           <p>{blocks.length === 0 ? "No blocks yet. Add some from the Inbox!" : "No blocks match your filters."}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3" onPointerEnter={preloadNoteReader} onFocus={preloadNoteReader}>
           {visible.map((block) => (
             <ArchiveBlockCard
               key={block.id}
@@ -389,7 +421,6 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
               selected={selectedIds.has(block.id)}
               onToggleSelect={toggleSelect}
               onOpen={openBlock}
-              onEdit={editOne}
               onUpdate={updateBlock}
               similarityScore={showScores ? similarityScores[block.id] : undefined}
               onPlant={onPlant}
@@ -445,6 +476,16 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         onClose={() => setObsidianOpen(false)}
         existingBlocks={blocks}
         addBlocks={addBlocks}
+      />
+
+      <NoteReader
+        request={reading}
+        blocks={blocks}
+        from="Library"
+        onClose={closeReader}
+        onEdit={editOne}
+        onUpdate={updateBlock}
+        onDelete={deleteBlock}
       />
 
       <ArchiveEditModal

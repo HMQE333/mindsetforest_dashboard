@@ -127,6 +127,20 @@ describe("linkedFrom", () => {
     expect(linkedFrom(["nothing", `see ${url}`], f)).toBe(true);
     expect(linkedFrom(["nothing"], f)).toBe(false);
   });
+
+  it("finds a file with spaces in its name from the link the app copies (getPublicUrl encodes it)", async () => {
+    const { createClient } = await import("@supabase/supabase-js");
+    const name = shareObjectName("Wykład 3 notatki.pdf", T0, "ab12cd");
+    const f = toSharedFile(shareFolder(UID), entry(name, T0))!;
+    expect(f.path).toContain(" ");
+    const client = createClient("https://proj.supabase.co", "anon-key", { auth: { persistSession: false, autoRefreshToken: false } });
+    const url = client.storage.from("archive-images").getPublicUrl(f.path).data.publicUrl;
+    expect(url).toContain("Wyklad%203%20notatki.pdf");
+    expect(linkedFrom([`notatki: ${url}`], f)).toBe(true);
+    // Pasted decoded (as some apps show a link) still counts.
+    expect(linkedFrom([`notatki: https://proj.supabase.co/storage/v1/object/public/archive-images/${f.path}`], f)).toBe(true);
+    expect(linkedFrom(["Wyklad%203"], f)).toBe(false);
+  });
 });
 
 describe("sameListing", () => {

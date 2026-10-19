@@ -94,9 +94,11 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
 
   // Sync across devices by polling (simpler than Realtime): read the row
   // count and the newest change, and refetch the list only when they differ
-  // from the list held here. Every 5 s while the window has focus, every 15 s
-  // while it is visible behind another app, never while hidden; coming back
-  // to the window checks at once, and so does a write in another tab.
+  // from the list held here, or when no list is held (the first load failed:
+  // nothing else retries it while the Archive is open). Every 5 s while the
+  // window has focus, every 15 s while it is visible behind another app, never
+  // while hidden; coming back to the window checks at once, and so does a
+  // write in another tab.
   useEffect(() => {
     if (!userId || !live) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -114,10 +116,11 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
           .eq("user_id", userId)
           .order("updated_at", { ascending: false })
           .limit(1);
-        if (error || stopped) return;
+        // A fetch that started meanwhile already brings the news (and must not be restarted).
+        if (error || stopped || qc.isFetching({ queryKey }) > 0) return;
         const server = `${count ?? 0}:${(data as any)?.[0]?.updated_at ?? ""}`;
         const held = qc.getQueryData<ArchiveBlock[]>(queryKey);
-        if (held && server !== archiveFingerprint(held)) void qc.invalidateQueries({ queryKey });
+        if (!held || server !== archiveFingerprint(held)) void qc.invalidateQueries({ queryKey });
       } finally {
         busy = false;
       }
@@ -227,7 +230,11 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
   /** Resolves whether the change was saved (a failure is toasted here). */
   const updateBlock = useCallback(async (id: string, updates: Partial<ArchiveBlock>): Promise<boolean> => {
     // The row's new updated_at comes back with the write, so the list held
-    // here matches the server's fingerprint and the poll does not refetch it.
+    // here matches the server's fingerprint and the poll does not refetch it
+    // for the edit itself. The embedding written after a title or content
+    // change bumps updated_at again (the table's trigger), so one refetch
+    // follows until supabase/migrations/20261019130000_archive_embedding_updated_at.sql
+    // is applied.
     const { data, error } = await supabase
       .from("archive_blocks" as any)
       .update(updates as any)

@@ -22,6 +22,11 @@ export function useRemembered<T>(key: string, initial: T): [T, Dispatch<SetState
   return [value, set];
 }
 
+/** Changes what the next mount of `key` starts with, without touching one mounted now. */
+export function setRemembered<T>(key: string, value: T) {
+  memory.set(key, value);
+}
+
 /** Test hook. */
 export function forgetRemembered() {
   memory.clear();

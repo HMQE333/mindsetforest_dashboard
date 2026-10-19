@@ -3,12 +3,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DashboardStateProvider } from "@/hooks/useDashboardState";
 import { AssistantProvider, useAssistant } from "@/hooks/useAssistant";
 import { useIntervalsAutoSync } from "@/hooks/useIntervalsAutoSync";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import ChunkErrorBoundary, { ChunkRetry } from "@/components/ChunkErrorBoundary";
 import { PageSkeleton } from "@/components/ModuleSkeleton";
 import { lazyModule, whenIdle } from "@/lib/lazy-module";
 // Index (landing + Home shell) and Auth stay in the entry chunk: they are the
@@ -49,10 +50,35 @@ function DeferredAssistantPanel() {
     return whenIdle(() => setReady(true), 4000);
   }, [user, ready, wanted]);
   if (!user || !(ready || wanted)) return null;
+  // Offline, its chunk may not arrive: then nothing is shown, and opening the
+  // assistant (hotkey, a request from another screen) tries again.
   return (
-    <Suspense fallback={null}>
-      <AssistantPanel />
-    </Suspense>
+    <ChunkErrorBoundary fallback={null} resetKey={wanted}>
+      <Suspense fallback={null}>
+        {/* No box of its own; index.css hides it while a full-page reader covers the app. */}
+        <div data-assistant-root="" className="contents">
+          <AssistantPanel />
+        </div>
+      </Suspense>
+    </ChunkErrorBoundary>
+  );
+}
+
+/** A route whose code could not be fetched (offline) says so, with a reload; going to another route clears it. */
+function RouteChunkBoundary({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return (
+    <ChunkErrorBoundary
+      resetKey={pathname}
+      pending={<PageSkeleton />}
+      fallback={
+        <div className="min-h-screen bg-background flex items-center justify-center px-4">
+          <ChunkRetry what="this page" />
+        </div>
+      }
+    >
+      {children}
+    </ChunkErrorBoundary>
   );
 }
 
@@ -77,15 +103,17 @@ const App = () => (
             <DashboardStateProvider>
               <AssistantProvider>
                 <BackgroundSync />
-                <Suspense fallback={<PageSkeleton />}>
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/auth" element={<Auth />} />
-                    <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
-                    <Route path="/share/library/:shareId" element={<SharedLibraryPage />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </Suspense>
+                <RouteChunkBoundary>
+                  <Suspense fallback={<PageSkeleton />}>
+                    <Routes>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/auth" element={<Auth />} />
+                      <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
+                      <Route path="/share/library/:shareId" element={<SharedLibraryPage />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </Suspense>
+                </RouteChunkBoundary>
                 <DeferredAssistantPanel />
               </AssistantProvider>
             </DashboardStateProvider>

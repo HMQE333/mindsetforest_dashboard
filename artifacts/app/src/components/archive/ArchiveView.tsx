@@ -17,8 +17,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
+import ChunkErrorBoundary, { ChunkRetry, reloadIfOnline } from "@/components/ChunkErrorBoundary";
 import { countImages, countLinks } from "./archive-index";
-import { useRemembered } from "./remembered";
+import { setRemembered, useRemembered } from "./remembered";
 
 // Only the open sub-tab is mounted (Wykłady always worked that way): the others
 // used to stay mounted behind CSS, re-rendering with every change to the notes,
@@ -36,6 +37,11 @@ const FileShareView = lazyModule(() => import("./FileShareView"));
 const PlantSeedModal = lazyModule(() => import("./PlantSeedModal"));
 
 type SubView = "inbox" | "library" | "lectures" | "recordings" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
+
+const NAMES: Record<SubView, string> = {
+  inbox: "Inbox", library: "Library", lectures: "Wykłady", recordings: "Recordings", links: "Links",
+  images: "Images", digest: "Digest", forest: "Forest", bookmarks: "Bookmarks", fileshare: "File Share",
+};
 
 const PRELOAD: Partial<Record<SubView, () => Promise<void>>> = {
   lectures: LecturesView.preload,
@@ -65,7 +71,7 @@ const ArchiveView = () => {
   // whose code is still downloading keeps the old one on screen until it is in.
   const [selected, setSelected] = useRemembered<SubView>("archive.subView", "inbox");
   const [subView, setShown] = useState<SubView>(selected);
-  const [, startTransition] = useTransition();
+  const [switching, startTransition] = useTransition();
   const setSubView = useCallback((v: SubView) => {
     setSelected(v);
     startTransition(() => setShown(v));
@@ -85,18 +91,19 @@ const ArchiveView = () => {
   }, [bookmarksWanted]);
   const bookmarks = useBookmarks({ enabled: bookmarksStuck || bookmarksWanted });
 
-  // The other sub-tabs' code, fetched while nothing else is going on.
+  // The other sub-tabs' code, fetched while nothing else is going on, and only while the Archive is open.
   useEffect(() => {
     if (!canPrefetch()) return;
+    let cancelled = false;
     let cancel = () => {};
     let i = 0;
     const next = () => {
       const view = IDLE_ORDER[i++];
-      if (!view) return;
-      cancel = whenIdle(() => void PRELOAD[view]?.().then(next), 4000);
+      if (!view || cancelled) return;
+      cancel = whenIdle(() => { if (!cancelled) void PRELOAD[view]?.().then(next); }, 4000);
     };
     cancel = whenIdle(next, 4000);
-    return () => cancel();
+    return () => { cancelled = true; cancel(); };
   }, []);
 
   // Knowledge OS (the vault's lecture summaries and notes, and the recordings) loads the first time either tab opens.
@@ -201,6 +208,17 @@ const ArchiveView = () => {
 
   const selectedBlocks = useMemo(() => archive.blocks.filter((b) => selectedIds.has(b.id)), [archive.blocks, selectedIds]);
   const plantOne = useCallback((b: ArchiveBlock) => setSinglePlantBlock(b), []);
+
+  // A tab whose code could not be fetched shows its error here, but the Archive opens on the Inbox
+  // next time instead of on that tab again (browsers do not fetch a failed module twice).
+  const forgetFailedTab = useCallback(() => setRemembered<SubView>("archive.subView", "inbox"), []);
+  const plantLoadFailed = useCallback(() => {
+    setPlantOpen(false);
+    setSinglePlantBlock(null);
+    toast.error("Couldn't open planting. Check your connection, then reload.", {
+      action: { label: "Reload", onClick: () => void reloadIfOnline() },
+    });
+  }, []);
 
   const handleAIResult = async (result: { title: string; content: string }) => {
     return await archive.addBlock({
@@ -335,7 +353,11 @@ const ArchiveView = () => {
         ))}
       </div>
 
-      <div className="relative">
+      {/* Dimmed only if the next tab takes a moment (its code is still downloading), as the app's tabs do. */}
+      <div
+        className={`relative transition-opacity ${switching ? "opacity-60 duration-200 delay-150" : "duration-0"}`}
+        aria-busy={switching || undefined}
+      >
         {subView === "inbox" && (
           <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} existingTags={existingTags} />
         )}
@@ -354,6 +376,8 @@ const ArchiveView = () => {
             onPlant={plantOne}
           />
         )}
+        {/* Offline, a tab whose code is not in yet says so; Inbox, Library and the other tabs keep working. */}
+        <ChunkErrorBoundary resetKey={subView} fallback={<ChunkRetry what={NAMES[subView]} />} pending={<TabFallback />} onChunkError={forgetFailedTab}>
         <Suspense fallback={<TabFallback />}>
           {subView === "lectures" && (
             <LecturesView
@@ -392,6 +416,7 @@ const ArchiveView = () => {
           )}
           {subView === "fileshare" && <FileShareView blocks={archive.blocks} />}
         </Suspense>
+        </ChunkErrorBoundary>
       </div>
 
       {/* Multi-select floating bar */}
@@ -442,6 +467,7 @@ const ArchiveView = () => {
       />
 
       {/* Mounted only while open: planting needs the Forest and the friends list, which the Archive does not load otherwise. */}
+      <ChunkErrorBoundary fallback={null} resetKey={plantOpen || singlePlantBlock !== null} onChunkError={plantLoadFailed}>
       <Suspense fallback={null}>
         {plantOpen && (
           <PlantSeedModal
@@ -459,6 +485,7 @@ const ArchiveView = () => {
           />
         )}
       </Suspense>
+      </ChunkErrorBoundary>
     </motion.div>
   );
 };

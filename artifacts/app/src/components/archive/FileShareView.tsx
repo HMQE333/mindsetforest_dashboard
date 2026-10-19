@@ -72,26 +72,37 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
+  /** Asked to read again while a read was out: that read started before the change, so it is dropped and the folder read again. */
+  const rerun = useRef(false);
   const filesRef = useRef(files);
   filesRef.current = files;
 
   const refresh = useCallback(async () => {
-    if (!uid || busy.current) return;
+    if (!uid) return;
+    if (busy.current) {
+      rerun.current = true;
+      return;
+    }
     busy.current = true;
     try {
-      const [current, legacy] = await Promise.all([listFolder(shareFolder(uid), false), listFolder(legacyShareFolder(uid), true)]);
-      if (current.error && legacy.error) {
-        setListError(current.error);
-        return;
-      }
-      const next = [...current.files, ...legacy.files];
-      if (!sameListing(filesRef.current, next)) {
-        setFiles(next);
-        // A stopped countdown restarts from the real time, not the last tick.
-        setNow(Date.now());
-      }
-      setListError(null);
-      setListed(true);
+      do {
+        rerun.current = false;
+        const [current, legacy] = await Promise.all([listFolder(shareFolder(uid), false), listFolder(legacyShareFolder(uid), true)]);
+        // An upload that finished meanwhile is not in this listing: read again rather than drop its row.
+        if (rerun.current) continue;
+        if (current.error && legacy.error) {
+          setListError(current.error);
+          continue;
+        }
+        const next = [...current.files, ...legacy.files];
+        if (!sameListing(filesRef.current, next)) {
+          setFiles(next);
+          // A stopped countdown restarts from the real time, not the last tick.
+          setNow(Date.now());
+        }
+        setListError(null);
+        setListed(true);
+      } while (rerun.current);
     } finally {
       busy.current = false;
     }
@@ -173,12 +184,16 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
         const path = `${shareFolder(uid)}/${shareObjectName(file.name, sentAt, Math.random().toString(36).slice(2, 8))}`;
         const { error } = await bucket().upload(path, file, { contentType: file.type || undefined });
         if (error) throw error;
-        // Shown at once; the next read replaces it with the server's own entry.
+        // Shown at once; the next read replaces it with the server's own entry. Its time starts when the
+        // upload finished (as the server's does), not when it began: a slow upload is not "old", let alone deleted.
+        const doneAt = Date.now();
         setFiles((prev) => [
           ...prev.filter((f) => f.path !== path),
-          { path, name: file.name, size: file.size, mimetype: file.type, uploadedAt: sentAt, expiresAt: sentAt + SHARE_TTL_MS, legacy: false },
+          { path, name: file.name, size: file.size, mimetype: file.type, uploadedAt: doneAt, expiresAt: doneAt + SHARE_TTL_MS, legacy: false },
         ]);
         setNow(Date.now());
+        // At once, so a read already out (started before the file existed) is dropped and the folder read again.
+        void refresh();
         announce(uid);
         let copiedNow = false;
         try {
@@ -187,7 +202,6 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
           setCopied(path);
         } catch { /* no clipboard permission without a click: the Copy button is there */ }
         toast.success(`"${file.name}" shared for 7 min${copiedNow ? ". Link copied" : ""}`);
-        void refresh();
       } catch (e: any) {
         console.error("Upload error:", e);
         toast.error(e?.message || "Upload failed");
@@ -260,23 +274,25 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
 
           {!kept && (
             <div className="flex items-center gap-2 shrink-0" title="Time left before it is deleted">
-              <Clock className={`w-4 h-4 ${urgent ? "text-red-400" : "text-muted-foreground"}`} />
-              <span className={`text-lg font-mono font-bold tracking-wider tabular-nums ${urgent ? "text-red-400" : "text-foreground/80"}`}>
+              <Clock className={`hidden sm:block w-4 h-4 ${urgent ? "text-red-400" : "text-muted-foreground"}`} />
+              <span className={`text-base sm:text-lg font-mono font-bold tracking-wider tabular-nums ${urgent ? "text-red-400" : "text-foreground/80"}`}>
                 {formatRemaining(remaining)}
               </span>
             </div>
           )}
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            {/* On a phone only the icon, so the file's name keeps the room to tell two files apart. */}
             <button
               onClick={() => void copyLink(f)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors active:scale-[0.97] ${
+              className={`inline-flex items-center gap-1.5 p-1.5 sm:px-2.5 rounded-lg text-xs font-semibold transition-colors active:scale-[0.97] ${
                 isCopied ? "bg-emerald-500/20 text-emerald-300" : "bg-primary/15 text-primary hover:bg-primary/25"
               }`}
               title="Copy link"
+              aria-label={isCopied ? `Link for ${f.name} copied` : `Copy the link to ${f.name}`}
             >
-              {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {isCopied ? "Copied" : "Copy link"}
+              {isCopied ? <Check className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> : <Copy className="w-4 h-4 sm:w-3.5 sm:h-3.5" />}
+              <span className="hidden sm:inline">{isCopied ? "Copied" : "Copy link"}</span>
             </button>
             <button
               onClick={() => download(f)}

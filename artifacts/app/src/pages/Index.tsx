@@ -18,7 +18,8 @@ import { resolveInboxSettings } from "@/lib/inbox";
 // above (Index's badge), and mounting it later would take the channel over.
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import ModuleSkeleton, { HomeSkeleton, PageSkeleton } from "@/components/ModuleSkeleton";
-import { lazyModule, whenIdle, canPrefetch, useOpenedOnce } from "@/lib/lazy-module";
+import ChunkErrorBoundary, { ChunkRetry, reloadIfOnline } from "@/components/ChunkErrorBoundary";
+import { lazyModule, whenIdle, canPrefetch, useOpenCount } from "@/lib/lazy-module";
 import { TrackerPage } from "./lazy-pages";
 import { useFriends } from "@/hooks/useFriends";
 import { useAssistant, useAssistantCurrentScope } from "@/hooks/useAssistant";
@@ -131,12 +132,32 @@ function countVisit(tab: Tab) {
   } catch { /* storage blocked */ }
 }
 
-/** The bell's button as it looks before its chunk arrives (same box, no badge). */
-const InboxBellPlaceholder = () => (
-  <span className="relative inline-flex p-2.5 rounded-xl glass-card text-muted-foreground" aria-hidden="true">
-    <Bell className="w-5 h-5" />
-  </span>
-);
+/** Says that some code could not be fetched (offline), with a reload: browsers do not fetch a failed module again. */
+const chunkFailedToast = (what: string) =>
+  toast.error(`Couldn't open ${what}. Check your connection, then reload.`, {
+    action: { label: "Reload", onClick: () => void reloadIfOnline() },
+  });
+
+/**
+ * The bell's button as it looks before its chunk arrives (same box, no badge).
+ * If the chunk could not be fetched (offline), pressing it says so.
+ */
+const InboxBellPlaceholder = ({ failed }: { failed?: boolean }) =>
+  failed ? (
+    <button onClick={() => chunkFailedToast("the inbox")} className="relative p-2.5 rounded-xl glass-card text-muted-foreground hover:text-foreground transition-all hover:bg-white/10" title="Inbox" aria-label="Inbox">
+      <Bell className="w-5 h-5" />
+    </button>
+  ) : (
+    <span className="relative inline-flex p-2.5 rounded-xl glass-card text-muted-foreground" aria-hidden="true">
+      <Bell className="w-5 h-5" />
+    </span>
+  );
+
+/** A modal whose chunk could not be fetched closes again and says why. */
+const modalLoadFailed = (what: string, close: () => void) => () => {
+  close();
+  chunkFailedToast(what);
+};
 
 const Index = () => {
   const { user, signOut } = useAuth();
@@ -161,8 +182,11 @@ const Index = () => {
   // instead of blanking it, and a heavy view renders without blocking the click.
   const contentTab = useDeferredValue(activeTab);
   const switching = contentTab !== activeTab;
-  const quickCaptureMounted = useOpenedOnce(quickCapture.open);
-  const settingsMounted = useOpenedOnce(settingsOpen);
+  // A path to show expanded once Paths is the screen (a Planning mention, the Home strip).
+  const [focusPathId, setFocusPathId] = useState<string | null>(null);
+  // Each modal mounts on its first open, then stays (keeps its state, plays its close animation).
+  const quickCaptureOpens = useOpenCount(quickCapture.open);
+  const settingsOpens = useOpenCount(settingsOpen);
 
   useEffect(() => {
     if (activeTab !== "dashboard") countVisit(activeTab);
@@ -247,16 +271,26 @@ const Index = () => {
       setActiveTab(module as Tab);
       setMenuOpen(false);
       setMoreOpen(false);
-      if (module === "paths" && detail.pathId) {
-        // Forward to PathsView once its chunk is in and it mounts.
-        void PathsView.preload().then(() => setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("lov:focus-path", { detail: { pathId: detail.pathId } }));
-        }, 50));
-      }
+      // Handed to PathsView by the effect below, once it is on screen.
+      setFocusPathId(module === "paths" && detail.pathId ? String(detail.pathId) : null);
     };
     window.addEventListener("lov:navigate-module", handler as EventListener);
     return () => window.removeEventListener("lov:navigate-module", handler as EventListener);
   }, [navigate, user, preferences.enabledModules]);
+
+  // Forward the path to focus once Paths is the content on screen: its chunk is in (the deferred
+  // content only switches then) and it has mounted. Effects run children first, so PathsView's
+  // listener is in place by the time this one runs, however long the download and render took.
+  useEffect(() => {
+    if (!focusPathId) return;
+    if (activeTab !== "paths") {
+      setFocusPathId(null);
+      return;
+    }
+    if (contentTab !== "paths") return;
+    window.dispatchEvent(new CustomEvent("lov:focus-path", { detail: { pathId: focusPathId } }));
+    setFocusPathId(null);
+  }, [focusPathId, activeTab, contentTab]);
 
   // Arriving from another route with a target module (assistant `navigate`
   // from /tracker): hand it to the listener above, then clear the state so a
@@ -369,6 +403,8 @@ const Index = () => {
     </button>
   );
 
+  const contentFallback = contentTab === "dashboard" ? <HomeSkeleton /> : <ModuleSkeleton label={TAB_SHORT_LABELS[contentTab]} />;
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Background pattern */}
@@ -387,15 +423,17 @@ const Index = () => {
             <div className="flex justify-between items-center mb-2">
               <div className="flex items-center gap-2">
                 <FriendsButton badgeCount={badgeCount} onClick={() => setFriendsOpen(true)} />
-                <Suspense fallback={<InboxBellPlaceholder />}>
-                  <InboxBell
-                    settings={resolveInboxSettings(preferences.inbox)}
-                    onSaveSettings={(inbox) => void savePreferences({ ...preferences, inbox })}
-                    focusEnabled={!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")}
-                    friendRequests={incomingRequests.length}
-                    onOpenFriends={() => setFriendsOpen(true)}
-                  />
-                </Suspense>
+                <ChunkErrorBoundary fallback={<InboxBellPlaceholder failed />}>
+                  <Suspense fallback={<InboxBellPlaceholder />}>
+                    <InboxBell
+                      settings={resolveInboxSettings(preferences.inbox)}
+                      onSaveSettings={(inbox) => void savePreferences({ ...preferences, inbox })}
+                      focusEnabled={!preferences.enabledModules.length || preferences.enabledModules.includes("monthly-focus")}
+                      friendRequests={incomingRequests.length}
+                      onOpenFriends={() => setFriendsOpen(true)}
+                    />
+                  </Suspense>
+                </ChunkErrorBoundary>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -517,22 +555,33 @@ const Index = () => {
           className={`transition-opacity ${switching ? "opacity-60 duration-200 delay-150" : "duration-0"}`}
           aria-busy={switching || undefined}
         >
-          <Suspense fallback={contentTab === "dashboard" ? <HomeSkeleton /> : <ModuleSkeleton label={TAB_SHORT_LABELS[contentTab]} />}>
-            {tabContent}
-          </Suspense>
+          {/* Offline, a module whose code is not in yet says so; the header and the other tabs keep working. */}
+          <ChunkErrorBoundary
+            resetKey={contentTab}
+            pending={contentFallback}
+            fallback={<ChunkRetry what={contentTab === "dashboard" ? "Home" : TAB_SHORT_LABELS[contentTab]} />}
+          >
+            <Suspense fallback={contentFallback}>
+              {tabContent}
+            </Suspense>
+          </ChunkErrorBoundary>
         </div>
       </div>
 
       {/* Global Quick Capture. Ctrl/Cmd+N. Each modal mounts on its first open, then stays. */}
-      {user && quickCaptureMounted && (
-        <Suspense fallback={null}>
-          <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />
-        </Suspense>
+      {user && quickCaptureOpens > 0 && (
+        <ChunkErrorBoundary fallback={null} resetKey={quickCaptureOpens} onChunkError={modalLoadFailed("Quick capture", quickCapture.close)}>
+          <Suspense fallback={null}>
+            <QuickCaptureModal open={quickCapture.open} onClose={quickCapture.close} />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
-      {user && settingsMounted && (
-        <Suspense fallback={null}>
-          <SettingsModal open={settingsOpen} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />
-        </Suspense>
+      {user && settingsOpens > 0 && (
+        <ChunkErrorBoundary fallback={null} resetKey={settingsOpens} onChunkError={modalLoadFailed("Settings", () => setSettingsOpen(false))}>
+          <Suspense fallback={null}>
+            <SettingsModal open={settingsOpen} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
       {user && <FriendsPanel open={friendsOpen} onOpenChange={setFriendsOpen} />}
     </div>

@@ -7,11 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveAIPreviewModal from "./ArchiveAIPreviewModal";
-import { EMPTY } from "@/lib/utils";
-import { safeUrl } from "@/lib/safe-url";
 import { cardView } from "./archive-index";
-
-const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
 interface Props {
   block: ArchiveBlock;
@@ -19,10 +15,8 @@ interface Props {
   pillars: ReadonlyMap<string, Pillar>;
   selected: boolean;
   onToggleSelect: (id: string) => void;
-  /** A click on the card: the list decides what opening a note means (the reader, or the editor). */
+  /** A click on the card (or Enter on it): the list decides what opening a note means (the reader, or the editor). */
   onOpen: (block: ArchiveBlock) => void;
-  /** The full editor (from the quick reader). */
-  onEdit: (block: ArchiveBlock) => void;
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
   similarityScore?: number;
   onPlant?: (block: ArchiveBlock) => void;
@@ -37,11 +31,10 @@ interface Props {
  * the cards that change. No layout animation: measuring every card on every
  * change forced a layout of the whole list inside each click.
  */
-const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, onEdit, onUpdate, similarityScore, onPlant, updateAvailable, onResync }: Props) => {
+const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, onUpdate, similarityScore, onPlant, updateAvailable, onResync }: Props) => {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [readerOpen, setReaderOpen] = useState(false);
-  // The quick reader and the lightbox mount the first time one opens, not with every card.
+  // The lightbox mounts the first time it opens, not with every card.
   const [overlays, setOverlays] = useState(false);
   const [previewData, setPreviewData] = useState<{
     action: string;
@@ -100,35 +93,41 @@ const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, on
     return undefined;
   }, [lightboxUrl, handleKeyDown]);
 
-  useEffect(() => {
-    if (!readerOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setReaderOpen(false); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [readerOpen]);
-
   const pillarColors = block.pillars.map((p) => pillars.get(p)).filter(Boolean);
   const displayTitle = view.title;
-  const openReader = () => { setOverlays(true); setReaderOpen(true); };
   const openLightbox = (url: string) => { setOverlays(true); setLightboxUrl(url); };
 
   return (
     <>
+      {/* A press anywhere on the card reads the note (its own buttons stop the press); the title
+          is the one button for the keyboard and a screen reader, inside its heading. */}
       <div
+        onClick={() => onOpen(block)}
         className={`glass-card p-4 space-y-3 cursor-pointer group transition-colors duration-150 ${selected ? "border-primary/60 glow-sm" : "hover:border-primary/30"} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
       >
         <div className="flex items-start gap-3">
           <button
             onClick={(e) => { e.stopPropagation(); onToggleSelect(block.id); }}
+            aria-label="Select for a bulk action"
+            aria-pressed={selected}
             className={`mt-1 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${
               selected ? "bg-primary border-primary text-primary-foreground" : "border-white/20 hover:border-white/40"
             }`}
           >
             {selected && <span className="text-xs">✓</span>}
           </button>
-          <div className="flex-1 min-w-0" onClick={() => onOpen(block)}>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <h4 className="font-semibold text-sm truncate">{displayTitle}</h4>
+              <h4 className="min-w-0 font-semibold text-sm">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onOpen(block); }}
+                  data-note-id={block.id}
+                  className="block max-w-full truncate text-left rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  {displayTitle}
+                </button>
+              </h4>
               {similarityScore !== undefined && (
                 <span className="ml-auto flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">
                   {Math.round(similarityScore * 100)}%
@@ -175,10 +174,13 @@ const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, on
               <RefreshCw className="w-3 h-3" /> Update
             </button>
           )}
+          {/* A hint for the mouse; the title is the keyboard's way in, so this is not a second tab stop. */}
           <button
-            onClick={(e) => { e.stopPropagation(); openReader(); }}
+            onClick={(e) => { e.stopPropagation(); onOpen(block); }}
             className="mt-1 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
-            title="Quick read"
+            title="Read"
+            tabIndex={-1}
+            aria-hidden="true"
           >
             <Eye className="w-4 h-4" />
           </button>
@@ -249,70 +251,6 @@ const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, on
       )}
 
       {overlays && (<>
-      {/* Quick Reader */}
-      <AnimatePresence>
-        {readerOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setReaderOpen(false)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.96, y: 10 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.96, y: 10 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-2xl max-h-[85vh] glass-card rounded-2xl flex flex-col overflow-hidden"
-            >
-              <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  {block.is_pinned && <span className="text-base shrink-0" title="Pinned">📌</span>}
-                  {block.is_starred && <span className="text-base shrink-0 text-amber-400" title="Bookmarked">★</span>}
-                  <h2 className="font-bold text-foreground text-lg truncate">{displayTitle}</h2>
-                </div>
-                <button
-                  onClick={() => setReaderOpen(false)}
-                  className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
-                  title="Close (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </header>
-
-              <div className="flex-1 overflow-y-auto px-6 py-5">
-                {pillarColors.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {pillarColors.map((p) => (
-                      <span key={p!.id} className="text-[11px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
-                        <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-[15px] leading-7 text-foreground/90 whitespace-pre-wrap font-serif">
-                  {block.content.replace(IMAGE_TAG_REGEX, "").trim() || EMPTY}
-                </p>
-                {block.source_url && (
-                  <a href={safeUrl(block.source_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-xs text-primary hover:underline break-all">
-                    🔗 {block.source_url}
-                  </a>
-                )}
-              </div>
-
-              <footer className="flex items-center justify-between px-6 py-3 border-t border-white/5 text-[11px] text-muted-foreground shrink-0">
-                <span>{view.date}</span>
-                <button onClick={() => { setReaderOpen(false); onEdit(block); }} className="text-primary hover:underline font-medium">
-                  Open full editor →
-                </button>
-              </footer>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <AnimatePresence>
         {lightboxUrl && (
           <motion.div
