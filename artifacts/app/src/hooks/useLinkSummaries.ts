@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { functionErrorMessage } from "@/lib/function-error";
 
 /**
  * Video summaries (link_summaries), made by the ai-video-summary function on
@@ -32,14 +33,7 @@ export const summaryBusy = (s?: Pick<LinkSummary, "status" | "workshop_status"> 
 /** Calls the function; a failure comes back as an Error with the function's own message. */
 export async function invokeVideo(body: { action: "summarize" | "workshop" | "ask"; url: string; question?: string }) {
   const { data, error } = await supabase.functions.invoke("ai-video-summary", { body });
-  if (error) {
-    let message = error.message;
-    try {
-      const json = await (error as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
-      if (json?.error) message = json.error;
-    } catch { /* not JSON */ }
-    throw new Error(message);
-  }
+  if (error) throw new Error(await functionErrorMessage(error));
   if (data?.error) throw new Error(data.error);
   return data as { row?: LinkSummary; answer?: { q: string; a: string; at: string } };
 }

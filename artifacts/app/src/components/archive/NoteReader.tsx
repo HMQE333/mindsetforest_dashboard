@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import ChunkErrorBoundary, { reloadIfOnline } from "@/components/ChunkErrorBoundary";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import type { TypeTag } from "@/lib/archive-tags";
 import { lazyModule, useOpenCount } from "@/lib/lazy-module";
 
 // The reader and the Markdown renderer it brings (the one Wykłady uses) load
@@ -31,10 +32,17 @@ interface Props {
   blocks: ArchiveBlock[];
   /** The list's name, for the way back ("Library"). */
   from: string;
-  onClose: () => void;
+  /** Closing; gets the note the reader ended on. */
+  onClose: (lastId?: string) => void;
   onEdit: (block: ArchiveBlock) => void;
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
+  /** Sent when a delete's Undo toast ends. */
   onDelete: (id: string) => Promise<unknown>;
+  /** A press on the note's tag or type chip: the list filters by it. */
+  onFilterTag?: (tag: string) => void;
+  onFilterType?: (type: TypeTag) => void;
+  /** The folder the list is showing (Folder… → Move takes the note out of it). */
+  viewedFolder?: string | null;
 }
 
 /** While the reader's code arrives (only without the prefetch): the page dims after a beat. */

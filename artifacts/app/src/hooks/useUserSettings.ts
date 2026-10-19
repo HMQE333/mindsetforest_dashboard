@@ -68,6 +68,8 @@ export interface UserPreferences {
   borderRadius?: number;
   moduleOrder?: string[];
   trackerXp?: TrackerXpConfig;
+  /** Archive → Library shows its tags as a folder tree. Off unless true. */
+  archiveFolders?: boolean;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "paths", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
@@ -447,6 +449,24 @@ export function useUserSettings() {
     }
   }, [user, customCategories, persistOnboarding]);
 
+  /**
+   * The Library's Folders switch: shows at once, saved through the same
+   * read-merge-write as every preference, without a "Preferences saved"
+   * toast (a failure puts it back and says so). Not before the settings have
+   * loaded: a save then would write the defaults over his preferences.
+   */
+  const saveArchiveFolders = useCallback(async (on: boolean) => {
+    if (!user || loading) return;
+    const prev = preferences;
+    const next = { ...preferences, archiveFolders: on };
+    setPreferences(next);
+    const { error } = await persistOnboarding(customCategories, next);
+    if (error) {
+      if (store.state.preferences === next) setPreferences(prev);
+      toast.error("Couldn't save the Folders setting");
+    }
+  }, [user, loading, preferences, customCategories, persistOnboarding, setPreferences]);
+
   const saveEnabledModules = useCallback(async (modules: string[], order?: string[]) => {
     const newPrefs = { ...preferences, enabledModules: modules };
     if (order) newPrefs.moduleOrder = order;
@@ -494,6 +514,7 @@ export function useUserSettings() {
     saveTheme,
     saveKeybinds,
     savePreferences,
+    saveArchiveFolders,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };

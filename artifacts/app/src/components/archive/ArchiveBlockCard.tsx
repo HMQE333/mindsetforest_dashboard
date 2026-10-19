@@ -1,85 +1,95 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, memo, type DragEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, Eye, Sprout, RefreshCw } from "lucide-react";
+import { X, Download, RefreshCw } from "lucide-react";
 import type { Pillar } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
-import ArchiveAIPreviewModal from "./ArchiveAIPreviewModal";
-import { cardView } from "./archive-index";
+import type { TypeTag } from "@/lib/archive-tags";
+import { cardView, noteTags } from "./archive-index";
+import { DeleteConfirmButton, type Armed } from "./DeleteConfirm";
+import { NoteTagChips } from "./TagChips";
+
+/** How a press on a card was meant: Ctrl/Cmd toggles it in the selection, Shift selects up to it. */
+export interface CardPress {
+  shift: boolean;
+  toggle: boolean;
+}
 
 interface Props {
   block: ArchiveBlock;
   /** Every pillar by id (from the list, so each card does not read the settings itself). */
   pillars: ReadonlyMap<string, Pillar>;
   selected: boolean;
+  /** Something is selected (or a phone is in Select mode): every checkbox shows. */
+  selecting: boolean;
+  /** Shown in the peek. */
+  peeked: boolean;
+  /** The card the list's arrow keys stand on: the list's one tab stop. */
+  focused: boolean;
+  /** The trash says "Delete?" (a second press, or Enter, deletes). */
+  armed: Armed | null;
+  /** Folders are on and the device has a mouse: the card can be dropped on a folder. */
+  draggable: boolean;
+  /** The folder the Library is showing: its chip is drawn as such. */
+  activeFolder?: string | null;
+  /** A press on the card: the list decides (peek, select, range). */
+  onPress: (block: ArchiveBlock, how: CardPress) => void;
+  /** A double press: the full reader. */
+  onOpenFull: (block: ArchiveBlock) => void;
   onToggleSelect: (id: string) => void;
-  /** A click on the card (or Enter on it): the list decides what opening a note means (the reader, or the editor). */
-  onOpen: (block: ArchiveBlock) => void;
-  onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
+  onArmDelete: (id: string) => void;
+  onDisarmDelete: () => void;
+  onConfirmDelete: (block: ArchiveBlock) => void;
+  onFilterTag: (tag: string) => void;
+  onFilterType: (type: TypeTag) => void;
+  onFocusCard: (id: string) => void;
+  onDragNote?: (block: ArchiveBlock, e: DragEvent) => void;
+  onDragEndNote?: () => void;
   similarityScore?: number;
-  onPlant?: (block: ArchiveBlock) => void;
   updateAvailable?: boolean;
   /** Re-sync a note saved from the Forest, by its seed id. */
   onResync?: (seedId: string) => void;
 }
 
 /**
- * One note in the Library. Memoised, and every callback it takes keeps its
- * identity, so typing in the search or ticking another card re-renders only
- * the cards that change. No layout animation: measuring every card on every
- * change forced a layout of the whole list inside each click.
+ * One note in the Library. A press peeks at it, a double press opens the
+ * full reader, Ctrl/Cmd and Shift select. The card itself only carries the
+ * checkbox and, on hover, the trash (two presses: "Delete?" then delete);
+ * the note's actions are in the peek and in the selection bar.
+ *
+ * Memoised, and every callback it takes keeps its identity, so typing in the
+ * search, peeking or moving the keyboard re-renders only the cards that change.
  */
-const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, onUpdate, similarityScore, onPlant, updateAvailable, onResync }: Props) => {
-  const [aiLoading, setAiLoading] = useState<string | null>(null);
+const ArchiveBlockCard = ({
+  block,
+  pillars,
+  selected,
+  selecting,
+  peeked,
+  focused,
+  armed,
+  draggable,
+  activeFolder,
+  onPress,
+  onOpenFull,
+  onToggleSelect,
+  onArmDelete,
+  onDisarmDelete,
+  onConfirmDelete,
+  onFilterTag,
+  onFilterType,
+  onFocusCard,
+  onDragNote,
+  onDragEndNote,
+  similarityScore,
+  updateAvailable,
+  onResync,
+}: Props) => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   // The lightbox mounts the first time it opens, not with every card.
   const [overlays, setOverlays] = useState(false);
-  const [previewData, setPreviewData] = useState<{
-    action: string;
-    original: { title: string; content: string; pillars?: string[]; tags?: string[] };
-    proposed: { title?: string; content?: string; pillars?: string[]; tags?: string[] };
-  } | null>(null);
   const view = cardView(block);
-
-  const handleAIAction = async (action: string) => {
-    setAiLoading(action);
-    try {
-      const { data, error } = await supabase.functions.invoke("ai-archive-expand", {
-        body: { content: block.content, title: block.title, action, pillars: block.pillars },
-      });
-      if (error) throw error;
-
-      if (action === "organize" && data?.pillars) {
-        setPreviewData({
-          action,
-          original: { title: block.title, content: block.content, pillars: block.pillars, tags: block.tags },
-          proposed: { pillars: data.pillars, tags: data.tags || [] },
-        });
-      } else if (data?.content) {
-        setPreviewData({
-          action,
-          original: { title: block.title, content: block.content },
-          proposed: { title: data.title, content: data.content },
-        });
-      }
-    } catch (e: any) {
-      toast.error(e?.message || "AI action failed");
-    }
-    setAiLoading(null);
-  };
-
-  const handlePreviewAccept = async (proposed: Record<string, any>) => {
-    const updates: Partial<ArchiveBlock> = {};
-    if (proposed.content) updates.content = proposed.content;
-    if (proposed.title) updates.title = proposed.title;
-    if (proposed.pillars) updates.pillars = proposed.pillars;
-    if (proposed.tags) updates.tags = proposed.tags;
-    await onUpdate(block.id, updates);
-    toast.success(`Block updated ✅`);
-    setPreviewData(null);
-  };
+  const tags = noteTags(block);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") setLightboxUrl(null);
@@ -93,97 +103,85 @@ const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, on
     return undefined;
   }, [lightboxUrl, handleKeyDown]);
 
-  const pillarColors = block.pillars.map((p) => pillars.get(p)).filter(Boolean);
-  const displayTitle = view.title;
+  const pillarChips = block.pillars.map((p) => pillars.get(p)).filter((p): p is Pillar => !!p);
   const openLightbox = (url: string) => { setOverlays(true); setLightboxUrl(url); };
+
+  const tone = peeked
+    ? "border-primary/70 ring-1 ring-primary/50 bg-primary/[0.04]"
+    : selected
+      ? "border-primary/60 glow-sm"
+      : "hover:border-primary/30";
 
   return (
     <>
-      {/* A press anywhere on the card reads the note (its own buttons stop the press); the title
-          is the one button for the keyboard and a screen reader, inside its heading. */}
-      <div
-        onClick={() => onOpen(block)}
-        className={`glass-card p-4 space-y-3 cursor-pointer group transition-colors duration-150 ${selected ? "border-primary/60 glow-sm" : "hover:border-primary/30"} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
+      <article
+        data-note-id={block.id}
+        tabIndex={focused ? 0 : -1}
+        aria-label={view.title}
+        aria-current={peeked ? "true" : undefined}
+        onClick={(e) => {
+          // The second press of a double press: the reader opens instead (onDoubleClick).
+          if (e.detail > 1) return;
+          onPress(block, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
+        }}
+        onMouseDown={(e) => {
+          // Shift-click selects a range: no text selection with it, nor a word selected by a double press.
+          if (e.shiftKey || e.detail > 1) e.preventDefault();
+        }}
+        onDoubleClick={() => onOpenFull(block)}
+        onFocus={(e) => {
+          if (e.target === e.currentTarget) onFocusCard(block.id);
+        }}
+        draggable={draggable || undefined}
+        onDragStart={draggable && onDragNote ? (e) => onDragNote(block, e) : undefined}
+        onDragEnd={draggable ? onDragEndNote : undefined}
+        className={`relative glass-card p-4 space-y-2.5 cursor-pointer group transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${tone} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
       >
         <div className="flex items-start gap-3">
           <button
+            type="button"
+            tabIndex={-1}
             onClick={(e) => { e.stopPropagation(); onToggleSelect(block.id); }}
-            aria-label="Select for a bulk action"
+            aria-label={selected ? "Remove from the selection" : "Select"}
             aria-pressed={selected}
-            className={`mt-1 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-              selected ? "bg-primary border-primary text-primary-foreground" : "border-white/20 hover:border-white/40"
+            className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-[opacity,background-color,border-color] ${
+              selected
+                ? "bg-primary border-primary text-primary-foreground opacity-100"
+                : `border-white/25 hover:border-white/50 ${selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-0"}`
             }`}
           >
             {selected && <span className="text-xs">✓</span>}
           </button>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 pr-7">
             <div className="flex items-center gap-1.5">
-              <h4 className="min-w-0 font-semibold text-sm">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onOpen(block); }}
-                  data-note-id={block.id}
-                  className="block max-w-full truncate text-left rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  {displayTitle}
-                </button>
-              </h4>
-              {similarityScore !== undefined && (
-                <span className="ml-auto flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">
-                  {Math.round(similarityScore * 100)}%
-                </span>
-              )}
+              <h4 className="min-w-0 truncate font-semibold text-sm">{view.title}</h4>
+              <span className="ml-auto flex flex-shrink-0 items-center gap-1">
+                {similarityScore !== undefined && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">{Math.round(similarityScore * 100)}%</span>
+                )}
+                {block.is_pinned && <span className="text-xs" title="Pinned to the top" aria-label="Pinned">📌</span>}
+                {block.is_starred && <span className="text-xs text-amber-400" title="Bookmarked" aria-label="Bookmarked">★</span>}
+              </span>
             </div>
             <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
               {/* Three lines show; the rest of a long block (a pasted list of links) stays out of the page. */}
               {view.preview}
             </p>
           </div>
-          {/* Two separate things: the pin keeps a note at the top here, the star lists it in Bookmarks. */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onUpdate(block.id, { is_pinned: !block.is_pinned }); }}
-            className={`mt-1 text-sm transition-opacity ${block.is_pinned ? "opacity-100" : "opacity-0 grayscale group-hover:opacity-60 [@media(hover:none)]:opacity-40 hover:!opacity-100"}`}
-            title={block.is_pinned ? "Unpin" : "Pin to the top"}
-            aria-label={block.is_pinned ? "Unpin" : "Pin this note"}
-          >
-            📌
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onUpdate(block.id, { is_starred: !block.is_starred }); }}
-            className={`mt-1 text-sm transition-opacity ${block.is_starred ? "opacity-100 text-amber-400" : "opacity-0 group-hover:opacity-60 [@media(hover:none)]:opacity-40 hover:!opacity-100 text-muted-foreground"}`}
-            title={block.is_starred ? "Remove bookmark" : "Bookmark"}
-            aria-label={block.is_starred ? "Remove bookmark" : "Bookmark this note"}
-          >
-            {block.is_starred ? "★" : "☆"}
-          </button>
-          {onPlant && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onPlant(block); }}
-              className="mt-1 p-1 rounded-md text-emerald-400/80 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all opacity-0 group-hover:opacity-100"
-              title="Plant in the Forest"
-            >
-              <Sprout className="w-4 h-4" />
-            </button>
-          )}
-          {updateAvailable && onResync && block.from_seed_id && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onResync(block.from_seed_id!); }}
-              className="mt-1 px-1.5 py-1 rounded-md bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition-all flex items-center gap-1 text-[10px] font-bold animate-pulse"
-              title="Author updated this seed. Re-sync to get the latest version"
-            >
-              <RefreshCw className="w-3 h-3" /> Update
-            </button>
-          )}
-          {/* A hint for the mouse; the title is the keyboard's way in, so this is not a second tab stop. */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onOpen(block); }}
-            className="mt-1 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
-            title="Read"
-            tabIndex={-1}
-            aria-hidden="true"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
+        </div>
+
+        {/* The trash, in the same corner as its "Delete?" (which grows to the left over the badges). */}
+        <div
+          className={`absolute right-2 top-2 z-[1] flex justify-end ${armed ? "" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:hidden"}`}
+        >
+          <DeleteConfirmButton
+            variant="card"
+            armed={armed}
+            onArm={() => onArmDelete(block.id)}
+            onDisarm={onDisarmDelete}
+            onConfirm={() => onConfirmDelete(block)}
+            className={armed ? "" : "bg-background/70"}
+          />
         </div>
 
         {/* Image thumbnails */}
@@ -192,6 +190,8 @@ const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, on
             {view.images.map((url, i) => (
               <button
                 key={i}
+                type="button"
+                tabIndex={-1}
                 onClick={(e) => { e.stopPropagation(); openLightbox(url); }}
                 className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted/50 border border-white/10 hover:border-primary/50 transition-colors"
               >
@@ -206,49 +206,33 @@ const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, on
           </div>
         )}
 
-        {/* Tags */}
-        {pillarColors.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {pillarColors.map((p) => (
-              <span key={p!.id} className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5" style={{ backgroundColor: p!.color + "22", color: p!.color }}>
-                <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={12} className="inline-block" /> {p!.name}
+        {/* Type, tags and pillars */}
+        {(tags.shown.length > 0 || pillarChips.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <NoteTagChips tags={tags.shown} onTag={onFilterTag} onType={onFilterType} max={5} active={activeFolder} />
+            {pillarChips.map((p) => (
+              <span key={p.id} className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5" style={{ backgroundColor: p.color + "22", color: p.color }}>
+                <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={12} className="inline-block" /> {p.name}
               </span>
             ))}
           </div>
         )}
 
-        {/* AI action buttons */}
-        <div className="flex gap-1.5 flex-wrap">
-          {[
-            { key: "expand", label: "💡 Expand" },
-            { key: "shorten", label: "✂️ Shorten" },
-            { key: "summarize", label: "📝 Summary" },
-            { key: "organize", label: "🏷️ Organize" },
-          ].map(({ key, label }) => (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+          <span>{view.date}</span>
+          {updateAvailable && onResync && block.from_seed_id && (
             <button
-              key={key}
-              onClick={(e) => { e.stopPropagation(); handleAIAction(key); }}
-              disabled={aiLoading !== null}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-all disabled:opacity-40"
+              type="button"
+              tabIndex={-1}
+              onClick={(e) => { e.stopPropagation(); onResync(block.from_seed_id!); }}
+              className="ml-auto px-1.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition-all flex items-center gap-1 text-[10px] font-bold animate-pulse"
+              title="Author updated this seed. Re-sync to get the latest version"
             >
-              {aiLoading === key ? "⏳" : label}
+              <RefreshCw className="w-3 h-3" /> Update
             </button>
-          ))}
+          )}
         </div>
-
-        <div className="text-[10px] text-muted-foreground/60">
-          {view.date}
-        </div>
-      </div>
-
-      {previewData && (
-        <ArchiveAIPreviewModal
-          open
-          data={previewData}
-          onAccept={handlePreviewAccept}
-          onReject={() => setPreviewData(null)}
-        />
-      )}
+      </article>
 
       {overlays && (<>
       <AnimatePresence>

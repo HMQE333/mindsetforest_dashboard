@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { chunkForInsert, HASHTAG_REGEX, removeUrl, removeUrls, splitInboxItems } from "../lib/archive-data";
+import { chunkForInsert, removeUrl, removeUrls, splitInboxItems } from "../lib/archive-data";
+import { parseInlineTags } from "../lib/archive-tags";
 
 describe("splitInboxItems", () => {
   it("splits on a line holding only ---", () => {
@@ -16,10 +17,9 @@ describe("splitInboxItems", () => {
   });
 });
 
-describe("HASHTAG_REGEX", () => {
-  const tags = (s: string) => Array.from(s.matchAll(new RegExp(HASHTAG_REGEX.source, "g")), (m) => m[2]);
-  it("finds standalone tags but not URL fragments", () => {
-    expect(tags("#idea read this https://x.com/page#section and #todo")).toEqual(["idea", "todo"]);
+describe("inline #tags in the Inbox", () => {
+  it("finds standalone tags but not URL fragments, Polish letters kept", () => {
+    expect(parseInlineTags("#idea read this https://x.com/page#section and #todo #Książki #2")).toEqual(["idea", "todo", "książki"]);
   });
 });
 

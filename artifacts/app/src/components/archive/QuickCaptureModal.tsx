@@ -7,6 +7,7 @@ import { useArchiveState } from "@/hooks/useArchiveState";
 import { toast } from "sonner";
 import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
 import { useHotkeys } from "@/hooks/useHotkeys";
+import { parseInlineTags } from "@/lib/archive-tags";
 
 interface Props {
   open: boolean;
@@ -28,7 +29,8 @@ const QuickCaptureModal = ({ open, onClose }: Props) => {
       content: content.trim(),
       pillars: [],
       directions: [],
-      tags: ["quick-capture"],
+      // #tags written in the text become the note's tags too (they stay in the text).
+      tags: ["quick-capture", ...parseInlineTags(`${title}\n${content}`).filter((t) => t !== "quick-capture")],
     });
     setSaving(false);
     if (result) {

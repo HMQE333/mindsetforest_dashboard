@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback, useEffect, useTransition, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, useTransition, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import { useBookmarks } from "@/hooks/useBookmarks";
 import ArchiveInbox from "./ArchiveInbox";
 import ArchiveLibrary from "./ArchiveLibrary";
-import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
+import { ArchiveAIProvider, useArchiveAI } from "./ArchiveAIProvider";
 import type { RecordingFocus } from "./RecordingsView";
 import { useKosRecordings, useKosVault } from "@/hooks/useKnowledgeOS";
 import { useAssistant } from "@/hooks/useAssistant";
@@ -13,9 +13,9 @@ import { useStudyPrompts } from "@/hooks/useStudyPrompts";
 import { groupSessions, type LectureSummary } from "@/lib/kos-vault";
 import { loadLectureRecordings } from "@/lib/lecture-tutor";
 import type { StudySource } from "./lectures/study-actions";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import type { NoteAIAction } from "@/lib/archive-ai";
 import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
 import ChunkErrorBoundary, { ChunkRetry, reloadIfOnline } from "@/components/ChunkErrorBoundary";
 import { countImages, countLinks } from "./archive-index";
@@ -35,6 +35,9 @@ const ArchiveForestView = lazyModule(() => import("./ArchiveForestView"));
 const ArchiveBookmarksView = lazyModule(() => import("./ArchiveBookmarksView"));
 const FileShareView = lazyModule(() => import("./FileShareView"));
 const PlantSeedModal = lazyModule(() => import("./PlantSeedModal"));
+// The selection bar (with its folder picker and the suggestion list) shows only once a note is
+// selected: fetched on idle while the Library is open, so the first selection still feels instant.
+const ArchiveSelectionBar = lazyModule(() => import("./ArchiveSelectionBar"));
 
 type SubView = "inbox" | "library" | "lectures" | "recordings" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
 
@@ -65,7 +68,14 @@ function TabFallback() {
   );
 }
 
-const ArchiveView = () => {
+/** Every AI action in the Archive ends in one preview; the runner lives around the whole view. */
+const ArchiveView = () => (
+  <ArchiveAIProvider>
+    <ArchiveViewBody />
+  </ArchiveAIProvider>
+);
+
+const ArchiveViewBody = () => {
   // `selected` lights the tab at once; `subView` (what renders) follows as a
   // transition, so a heavy tab never holds up the press feedback, and a tab
   // whose code is still downloading keeps the old one on screen until it is in.
@@ -77,11 +87,15 @@ const ArchiveView = () => {
     startTransition(() => setShown(v));
   }, [setSelected]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [aiPromptOpen, setAiPromptOpen] = useState(false);
-  const [bulkLoading, setBulkLoading] = useState<string | null>(null);
   const [plantOpen, setPlantOpen] = useState(false);
   const [singlePlantBlock, setSinglePlantBlock] = useState<ArchiveBlock | null>(null);
   const archive = useArchiveState();
+  // The peek's AI actions run through the Archive's preview (one runner for the peek, the reader and the bar).
+  // One identity for the view's life, so the Library does not re-render when a run opens or closes.
+  const ai = useArchiveAI();
+  const aiRef = useRef(ai);
+  aiRef.current = ai;
+  const runNoteAI = useCallback((b: ArchiveBlock, action: NoteAIAction) => aiRef.current?.run([b], action), []);
   // One store for both views, so a link bookmarked in Links is in Bookmarks at once;
   // it loads the first time either opens.
   const bookmarksWanted = subView === "links" || subView === "bookmarks";
@@ -196,18 +210,17 @@ const ArchiveView = () => {
     });
   }, []);
 
-  const removeFromSelection = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-
   const clearSelection = useCallback(() => setSelectedIds((prev) => (prev.size === 0 ? prev : new Set())), []);
 
   const selectedBlocks = useMemo(() => archive.blocks.filter((b) => selectedIds.has(b.id)), [archive.blocks, selectedIds]);
   const plantOne = useCallback((b: ArchiveBlock) => setSinglePlantBlock(b), []);
+  const openPlant = useCallback(() => setPlantOpen(true), []);
+
+  // The selection bar's code, on idle once the Library is open.
+  useEffect(() => {
+    if (subView !== "library" || !canPrefetch()) return;
+    return whenIdle(() => void ArchiveSelectionBar.preload(), 3000);
+  }, [subView]);
 
   // A tab whose code could not be fetched shows its error here, but the Archive opens on the Inbox
   // next time instead of on that tab again (browsers do not fetch a failed module twice).
@@ -219,115 +232,6 @@ const ArchiveView = () => {
       action: { label: "Reload", onClick: () => void reloadIfOnline() },
     });
   }, []);
-
-  const handleAIResult = async (result: { title: string; content: string }) => {
-    return await archive.addBlock({
-      title: result.title,
-      content: result.content,
-      pillars: [],
-      directions: [],
-      tags: ["ai-generated"],
-    });
-  };
-
-  const handleReplaceBlocks = async (blockIds: string[], result: { title: string; content: string }) => {
-    const [keepId, ...deleteIds] = blockIds;
-    for (const id of deleteIds) {
-      await archive.deleteBlock(id);
-    }
-    await archive.updateBlock(keepId, {
-      title: result.title,
-      content: result.content,
-      tags: ["ai-generated"],
-    });
-    clearSelection();
-  };
-
-  const handleBulkMerge = async () => {
-    if (selectedBlocks.length < 2) return;
-    setBulkLoading("merge");
-    try {
-      const notes = selectedBlocks.map((b) => ({ title: b.title, content: b.content }));
-      const { data, error } = await supabase.functions.invoke("ai-archive-multi", {
-        body: { notes, preset: "merge" },
-      });
-      if (error) throw error;
-      const merged = await archive.addBlock({
-        title: `Merged (${selectedBlocks.length} notes)`,
-        content: data?.content || "",
-        pillars: [...new Set(selectedBlocks.flatMap((b) => b.pillars))],
-        tags: ["ai-merged"],
-      });
-      if (merged) {
-        toast.success("Merged into new block ✅");
-        clearSelection();
-      }
-    } catch (e: any) {
-      toast.error(e?.message || "Merge failed");
-    }
-    setBulkLoading(null);
-  };
-
-  const handleBulkSummarize = async () => {
-    if (selectedBlocks.length < 2) return;
-    setBulkLoading("summarize");
-    try {
-      const notes = selectedBlocks.map((b) => ({ title: b.title, content: b.content }));
-      const { data, error } = await supabase.functions.invoke("ai-archive-multi", {
-        body: { notes, preset: "summarize" },
-      });
-      if (error) throw error;
-      await archive.addBlock({
-        title: `Summary (${selectedBlocks.length} notes)`,
-        content: data?.content || "",
-        pillars: [],
-        directions: [],
-        tags: ["ai-summary"],
-      });
-      toast.success("Summary block created ✅");
-      clearSelection();
-    } catch (e: any) {
-      toast.error(e?.message || "Summarize failed");
-    }
-    setBulkLoading(null);
-  };
-
-  const handleBulkOrganize = async () => {
-    if (selectedBlocks.length < 1) return;
-    setBulkLoading("organize");
-    let count = 0;
-    for (const block of selectedBlocks) {
-      try {
-        const { data, error } = await supabase.functions.invoke("ai-archive-expand", {
-          body: { content: block.content, title: block.title, action: "organize" },
-        });
-        if (error) throw error;
-        if (data?.pillars) {
-          await archive.updateBlock(block.id, {
-            pillars: data.pillars,
-            tags: data.tags || block.tags,
-          });
-          count++;
-        }
-      } catch {
-        // continue with others
-      }
-    }
-    toast.success(`Organized ${count}/${selectedBlocks.length} blocks ✅`);
-    clearSelection();
-    setBulkLoading(null);
-  };
-
-  const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selectedIds.size} blocks? This cannot be undone.`)) return;
-    setBulkLoading("delete");
-    for (const id of selectedIds) {
-      await archive.deleteBlock(id);
-    }
-    toast.success(`Deleted ${selectedIds.size} blocks`);
-    clearSelection();
-    setBulkLoading(null);
-  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -359,7 +263,7 @@ const ArchiveView = () => {
         aria-busy={switching || undefined}
       >
         {subView === "inbox" && (
-          <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} existingTags={existingTags} />
+          <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} existingTags={existingTags} recent={archive.blocks} />
         )}
         {subView === "library" && (
           <ArchiveLibrary
@@ -370,6 +274,8 @@ const ArchiveView = () => {
             addBlocks={archive.addBlocks}
             selectedIds={selectedIds}
             toggleSelect={toggleSelect}
+            setSelection={setSelectedIds}
+            onAIAction={runNoteAI}
             semanticSearch={archive.semanticSearch}
             searchArchive={archive.searchArchive}
             embedAll={archive.embedAll}
@@ -419,52 +325,24 @@ const ArchiveView = () => {
         </ChunkErrorBoundary>
       </div>
 
-      {/* Multi-select floating bar */}
-      <AnimatePresence>
-        {selectedIds.size >= 2 && (
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl glass-card border border-white/20 glow-md flex-wrap justify-center"
-          >
-            <span className="text-sm font-semibold">{selectedIds.size} selected</span>
-            <span className="w-px h-5 bg-white/15" />
-            <button onClick={handleBulkMerge} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40">
-              {bulkLoading === "merge" ? "⏳" : "🔗 Merge"}
-            </button>
-            <button onClick={handleBulkSummarize} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40">
-              {bulkLoading === "summarize" ? "⏳" : "📝 Summarize"}
-            </button>
-            <button onClick={handleBulkOrganize} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-muted/50 border border-white/10 text-[11px] font-bold hover:bg-muted transition-all disabled:opacity-40">
-              {bulkLoading === "organize" ? "⏳" : "🏷️ Organize All"}
-            </button>
-            <button onClick={() => setAiPromptOpen(true)} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl gradient-purple text-primary-foreground text-[11px] font-bold glow-sm hover:opacity-90 transition-all disabled:opacity-40">
-              🤖 AI Prompt
-            </button>
-            <span className="w-px h-5 bg-white/15" />
-            <button onClick={() => setPlantOpen(true)} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/30 transition-all disabled:opacity-40">
-              🌱 Plant {selectedIds.size}
-            </button>
-            <span className="w-px h-5 bg-white/15" />
-            <button onClick={handleBulkDelete} disabled={bulkLoading !== null} className="px-3 py-1.5 rounded-xl bg-destructive/20 border border-destructive/30 text-[11px] font-bold text-destructive hover:bg-destructive/30 transition-all disabled:opacity-40">
-              {bulkLoading === "delete" ? "⏳" : "🗑️ Delete"}
-            </button>
-            <button onClick={clearSelection} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors ml-1">
-              Clear
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <ArchiveAIPromptModal
-        open={aiPromptOpen}
-        onClose={() => setAiPromptOpen(false)}
-        selectedBlocks={selectedBlocks}
-        onResult={handleAIResult}
-        onReplaceBlocks={handleReplaceBlocks}
-        onRemoveFromSelection={removeFromSelection}
-      />
+      {/* One bar for one selected note or many. */}
+      <ChunkErrorBoundary fallback={null} resetKey={selectedIds.size > 0}>
+        <Suspense fallback={null}>
+          <AnimatePresence>
+            {selectedIds.size >= 1 && (
+              <ArchiveSelectionBar
+                key="selection-bar"
+                selected={selectedBlocks}
+                blocks={archive.blocks}
+                updateBlock={archive.updateBlock}
+                deleteBlock={archive.deleteBlock}
+                onClear={clearSelection}
+                onPlant={openPlant}
+              />
+            )}
+          </AnimatePresence>
+        </Suspense>
+      </ChunkErrorBoundary>
 
       {/* Mounted only while open: planting needs the Forest and the friends list, which the Archive does not load otherwise. */}
       <ChunkErrorBoundary fallback={null} resetKey={plantOpen || singlePlantBlock !== null} onChunkError={plantLoadFailed}>

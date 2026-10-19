@@ -1,4 +1,5 @@
 import { CATEGORIES } from "./dashboard-data";
+import { isTypeTag, normaliseTag } from "./archive-tags";
 
 /** Fired when archive blocks change from outside (e.g. AI saving a quick note). */
 export const ARCHIVE_BLOCKS_CHANGED_EVENT = "archive-blocks-changed";
@@ -109,8 +110,101 @@ export function splitInboxItems(text: string): string[] {
   return text.split(/^[ \t]*---[ \t]*\r?$/m).map((s) => s.trim()).filter(Boolean);
 }
 
-/** A #tag standing on its own; the # of a URL fragment (page#section) is not a tag. */
-export const HASHTAG_REGEX = /(^|\s)#([a-zA-Z0-9_-]+)/g;
+/**
+ * What one Save of the Inbox makes: one note by default (a paste is one
+ * thing), or one note per part between "---" lines when he chose that.
+ */
+export function inboxNotes(text: string, split: boolean): string[] {
+  if (split) return splitInboxItems(text);
+  const whole = text.trim();
+  return whole ? [whole] : [];
+}
+
+/** How long a just-saved note counts for "already saved". */
+export const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
+
+const sameText = (s: string) => s.replace(/\r\n?/g, "\n").trim();
+
+/**
+ * Which of `contents` (by index) are word for word a note saved in the last
+ * ten minutes. `recent` is the list newest first (as the Archive holds it), so
+ * the scan stops at the first older note; notes saved here this session can
+ * be added to it.
+ */
+export function findRecentDuplicates(
+  contents: readonly string[],
+  recent: readonly Pick<ArchiveBlock, "content" | "created_at">[],
+  now = Date.now(),
+  windowMs = DUPLICATE_WINDOW_MS,
+): { index: number; savedAt: string }[] {
+  const fresh = new Map<string, string>();
+  for (const b of recent) {
+    const at = Date.parse(b.created_at);
+    if (!(now - at <= windowMs)) {
+      if (at < now - windowMs) break;
+      continue;
+    }
+    const key = sameText(b.content ?? "");
+    if (key && !fresh.has(key)) fresh.set(key, b.created_at);
+  }
+  const out: { index: number; savedAt: string }[] = [];
+  contents.forEach((c, index) => {
+    const savedAt = fresh.get(sameText(c));
+    if (savedAt) out.push({ index, savedAt });
+  });
+  return out;
+}
+
+/** "3 min ago" for the duplicate notice. */
+export function agoText(iso: string, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  return `${m} min ago`;
+}
+
+/**
+ * A title short enough for a dialog, a toast or a chip: a link becomes its
+ * host and "…" ("youtube.com…"), white space is collapsed, and anything past
+ * `max` characters is cut with "…".
+ */
+export function shortTitle(title: string | null | undefined, max = 80): string {
+  const t = String(title ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return "Untitled";
+  const link = /^(?:\[image\]\s*)?(https?:\/\/|www\.)([^/\s?#]+)\S*/i.exec(t);
+  if (link) {
+    const host = link[2].replace(/^www\./i, "");
+    const rest = t.slice(link[0].length).trim();
+    const shown = rest ? `${host}… ${rest}` : `${host}…`;
+    return shown.length > max ? `${shown.slice(0, max - 1).trimEnd()}…` : shown;
+  }
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+
+
+/**
+ * The tags typed into the edit dialog ("Książki, projekty/RybiaPaka, insight"),
+ * read with the tag rules: normalised, each once, in the order typed, one type
+ * at most (the last one typed). A stored value that is not a tag by the rules
+ * (an old "2" read out of "#2") stays as it is when it is still in the field,
+ * so saving the dialog never drops anything he did not remove; a new one is
+ * left out.
+ */
+export function tagsFromInput(input: string, current: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const raw of input.split(",")) {
+    const typed = raw.trim();
+    if (!typed) continue;
+    const tag = normaliseTag(typed);
+    if (!tag) {
+      if (current.includes(typed) && !out.includes(typed)) out.push(typed);
+      continue;
+    }
+    if (isTypeTag(tag)) for (let i = out.length - 1; i >= 0; i--) if (isTypeTag(out[i])) out.splice(i, 1);
+    if (!out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
 
 export type ArchiveBlock = {
   id: string;

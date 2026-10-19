@@ -22,6 +22,11 @@ export function useRemembered<T>(key: string, initial: T): [T, Dispatch<SetState
   return [value, set];
 }
 
+/** What `key` holds now (the last value set by whichever component uses it), or `fallback`. */
+export function getRemembered<T>(key: string, fallback: T): T {
+  return memory.has(key) ? (memory.get(key) as T) : fallback;
+}
+
 /** Changes what the next mount of `key` starts with, without touching one mounted now. */
 export function setRemembered<T>(key: string, value: T) {
   memory.set(key, value);

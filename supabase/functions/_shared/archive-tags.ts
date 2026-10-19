@@ -484,10 +484,12 @@ export function looksLikeCredential(text: string): boolean {
   const withoutLinks = t.replace(/(?:https?:\/\/|\bwww\.)\S+/gi, " ");
   // A long run of letters and digits outside a link (an API key, a hash, a base64 secret).
   if (/(?<![\w/.-])(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{32,}(?![\w/.-])/.test(withoutLinks)) return true;
-  // A line that is one word of lowercase, digits and uppercase or symbols ("Kot!2024x"; not "COVID-19").
+  // A line that is one word of lowercase, digits and uppercase or symbols ("Kot!2024x"; not "COVID-19",
+  // nor a host or file name such as "sklep24.pl" or "IMG_2024.jpg").
   for (const line of withoutLinks.split("\n")) {
     const w = line.trim();
     if (w.length < 8 || w.length > 64 || /\s/.test(w) || w.startsWith("#") || /@/.test(w)) continue;
+    if (/^[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,5}$/u.test(w)) continue;
     if (/\p{Ll}/u.test(w) && /\d/.test(w) && (/\p{Lu}/u.test(w) || /[^\p{L}\p{N}]/u.test(w))) return true;
   }
   return false;

@@ -1,38 +1,23 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type TouchEvent as ReactTouchEvent } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type TouchEvent as ReactTouchEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Loader2, Pencil, Pin, Trash2, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, FolderInput, Pencil, Pin, Sparkles, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import PillarIcon from "@/components/shared/PillarIcon";
 import { usePillars, type Pillar } from "@/hooks/usePillars";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import type { TypeTag } from "@/lib/archive-tags";
 import { copyText } from "@/lib/hand-off";
-import { guessLanguage } from "@/lib/kos-vault";
-import { whenIdle } from "@/lib/lazy-module";
 import { safeUrl } from "@/lib/safe-url";
-import LectureMarkdown, { useLectureLayout, type Lang, type LinkHandlers } from "./lectures/LectureMarkdown";
 import { isShortcutKey } from "./keyboard";
-import {
-  READER_FIRST_CHARS,
-  READER_PIECE_CHARS,
-  compactCount,
-  firstPieceCount,
-  neighbourAfterRemoval,
-  noteHeading,
-  pieceChars,
-  readerPieces,
-  readingLabel,
-  swipeStep,
-} from "./reader-model";
+import { neighbourAfterRemoval, noteHeading, readingLabel, swipeStep } from "./reader-model";
+import { CARD, NoteText, useNoteText } from "./NoteText";
+import { DeleteConfirmButton, useArmedDelete } from "./DeleteConfirm";
+import FolderPicker from "./FolderPicker";
+import { ArchiveAIMenu, useArchiveAI } from "./ArchiveAIProvider";
+import { noteTags } from "./archive-index";
+import { useNoteSuggestions } from "./note-suggestions";
+import { deleteWithUndo, usePendingDeletes } from "./pending-deletes";
+import { usePillarToggle } from "./pillar-toggle";
+import { NoteTagChips, PillarRow, SuggestionChips, aiNote } from "./TagChips";
 
 export interface ArchiveReaderProps {
   /** The list the note was opened from, in the order shown (its search, filters and sort applied). */
@@ -42,20 +27,18 @@ export interface ArchiveReaderProps {
   blocks: ArchiveBlock[];
   /** The list's name, for the way back ("Library"). */
   from: string;
-  onClose: () => void;
+  /** Closing; gets the note the reader ended on (the list can show it). */
+  onClose: (lastId?: string) => void;
   onEdit: (block: ArchiveBlock) => void;
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
+  /** Sent when the delete's Undo toast ends (pending-deletes.ts). */
   onDelete: (id: string) => Promise<unknown>;
+  /** A press on one of the note's tags: the list filters by it (the reader closes). */
+  onFilterTag?: (tag: string) => void;
+  onFilterType?: (type: TypeTag) => void;
+  /** The folder the list is showing: Folder… → Move takes the note out of it. */
+  viewedFolder?: string | null;
 }
-
-/** A note's [[wiki links]] point at nothing in the Archive: they read as plain text. */
-const NOTE_LINKS: LinkHandlers = { resolve: () => ({ kind: "missing" }), onMoment: () => {}, onLecture: () => {} };
-
-/**
- * The reader's cards: the Wykłady look, without the backdrop blur (the page
- * behind is one flat colour, and blurring a very long note's box costs frames).
- */
-const CARD = "glass-card [backdrop-filter:none]";
 
 const titleOf = (b: ArchiveBlock) => noteHeading(b.title, b.content).title;
 
@@ -80,19 +63,22 @@ function inSideScroller(el: HTMLElement | null, stop: HTMLElement): boolean {
  * rendered as Wykłady renders a lecture; a very long note opens with its start
  * and renders the rest a part at a time.
  */
-export default function ArchiveReader({ snapshot, initialId, blocks, from, onClose, onEdit, onUpdate, onDelete }: ArchiveReaderProps) {
+export default function ArchiveReader({ snapshot, initialId, blocks, from, onClose, onEdit, onUpdate, onDelete, onFilterTag, onFilterType, viewedFolder = null }: ArchiveReaderProps) {
   const pillarList = usePillars();
   const pillars = useMemo(() => new Map(pillarList.map((p) => [p.id, p])), [pillarList]);
+  const ai = useArchiveAI();
 
   const order = useMemo(() => snapshot.map((b) => b.id), [snapshot]);
   const live = useMemo(() => new Map(blocks.map((b) => [b.id, b])), [blocks]);
+  // A note deleted with its Undo still showing is gone from the order (Undo brings it back).
+  const pending = usePendingDeletes();
   // A listed note the live list did not hold when the reader opened (a smart-search hit not loaded
   // yet) shows as listed. One the live list did hold and no longer does was deleted: it drops out.
   const [listedOnly] = useState(() => {
     const held = new Set(blocks.map((b) => b.id));
     return new Map(snapshot.filter((b) => !held.has(b.id)).map((b) => [b.id, b]));
   });
-  const resolve = useCallback((id: string) => live.get(id) ?? listedOnly.get(id), [live, listedOnly]);
+  const resolve = useCallback((id: string) => (pending.has(id) ? undefined : live.get(id) ?? listedOnly.get(id)), [live, listedOnly, pending]);
   const alive = useMemo(() => order.filter((id) => resolve(id) !== undefined), [order, resolve]);
 
   const [currentId, setCurrentId] = useState(initialId);
@@ -105,9 +91,9 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  const close = useCallback(() => closeRef.current(), []);
   const currentRef = useRef(currentId);
   currentRef.current = currentId;
+  const close = useCallback(() => closeRef.current(currentRef.current), []);
   const stepsRef = useRef({ prevId, nextId });
   stepsRef.current = { prevId, nextId };
 
@@ -160,18 +146,48 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
     };
   }, []);
 
-  // ← / →, unless the editor or a confirmation is open over the reader, or a field has the keys.
+  // The note's suggested chips (no tag or no type), and its pillars, one press each.
+  const sugg = useNoteSuggestions(block, onUpdate);
+  const pillarToggle = usePillarToggle(onUpdate);
+  // Delete: "Delete?" first (a second press, Enter or Delete again deletes), then the Undo toast.
+  const del = useArmedDelete();
+  useEffect(() => del.disarm(), [currentId, del.disarm]);
+  const remove = useCallback(() => {
+    const b = resolve(currentRef.current);
+    del.disarm();
+    if (!b) return;
+    // The note drops out of the order at once and its neighbour opens (or the reader closes).
+    deleteWithUndo([b.id], onDelete, { label: titleOf(b) });
+  }, [resolve, onDelete, del]);
+
+  // ← / →, Delete, and Enter for the suggestions, unless the editor or a menu is open over the
+  // reader, or a field has the keys.
+  const keys = useRef({ go, remove, del, sugg });
+  keys.current = { go, remove, del, sugg };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.shiftKey || !isShortcutKey(e)) return;
+      if (e.shiftKey || !isShortcutKey(e)) return;
       const open = document.querySelectorAll('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]');
       if (open[open.length - 1] !== scroller.current) return;
-      e.preventDefault();
-      go(e.key === "ArrowRight" ? 1 : -1);
+      const k = keys.current;
+      const onControl = !!(e.target as HTMLElement | null)?.closest?.("button, a, [role='button']");
+      if (k.del.armed && (e.key === "Enter" || e.key === "Delete")) {
+        e.preventDefault();
+        k.remove();
+      } else if (e.key === "Delete") {
+        e.preventDefault();
+        k.del.arm(true);
+      } else if (e.key === "Enter" && !onControl && k.sugg.visible && k.sugg.chips?.length) {
+        e.preventDefault();
+        void k.sugg.accept();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        k.go(e.key === "ArrowRight" ? 1 : -1);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go]);
+  }, []);
 
   // Phones: Back closes the reader instead of leaving the app. One history entry with the same
   // URL, added just after the reader opens and taken off again when it closes another way.
@@ -264,18 +280,6 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
     copyTimer.current = window.setTimeout(() => setCopied(null), 1600);
   };
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const remove = async () => {
-    if (!block || deleting) return;
-    setDeleting(true);
-    const ok = await onDelete(block.id);
-    setDeleting(false);
-    setConfirmDelete(false);
-    // The live list drops the note and its neighbour opens (or the reader closes).
-    if (ok !== false) toast.success("Note deleted");
-  };
-
   // Focus goes back to the open note's card in the list (it may be another one than the card
   // that opened the reader), else to whatever had it before.
   const [returnTo] = useState(() => (typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null));
@@ -308,6 +312,13 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
             scroller.current?.focus({ preventScroll: true });
           }}
           onCloseAutoFocus={onCloseAutoFocus}
+          // Esc first takes back a "Delete?", then closes (suggestions not accepted are dropped, recording nothing).
+          onEscapeKeyDown={(e) => {
+            if (del.armed) {
+              e.preventDefault();
+              del.disarm();
+            }
+          }}
           // The reader covers the page: anything "outside" floats over it (a toast), and a press there is not a close.
           onInteractOutside={(e) => e.preventDefault()}
           onTouchStart={onTouchStart}
@@ -329,7 +340,7 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
                 <span className="hidden sm:inline">{from}</span>
               </button>
               {stepping && (
-                <span className="text-xs tabular-nums text-muted-foreground" aria-hidden="true">
+                <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground" aria-hidden="true">
                   {at + 1} / {total}
                 </span>
               )}
@@ -343,10 +354,21 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
                 />
                 {/* One name; aria-pressed says whether it is on ("Unpin, pressed" left it unclear what a press does). */}
                 <ToolButton label="Pin to the top of the Library" icon={Pin} pressed={pinned} onClick={() => void togglePin()} />
-                <ToolButton label="Delete" icon={Trash2} danger onClick={() => setConfirmDelete(true)} />
+                {block && (
+                  <FolderPicker notes={[block]} blocks={blocks} viewed={viewedFolder} updateBlock={onUpdate}>
+                    <ToolTrigger label="Put in a folder" text="Folder…" icon={FolderInput} />
+                  </FolderPicker>
+                )}
+                {/* The Archive's AI actions (Shorten, Expand, Clean, own prompt), each through its preview. */}
+                {block && ai && (
+                  <ArchiveAIMenu notes={[block]}>
+                    <ToolTrigger label="AI actions: Shorten, Expand, Clean, own prompt" text="AI…" icon={Sparkles} onPointerEnter={ai.preload} />
+                  </ArchiveAIMenu>
+                )}
+                <DeleteConfirmButton variant="tool" armed={del.armed} onArm={() => del.arm()} onDisarm={del.disarm} onConfirm={remove} />
                 {stepping && (
                   <>
-                    <span className="mx-1.5 h-5 w-px bg-white/10 lg:hidden" aria-hidden="true" />
+                    <span className="mx-0.5 h-5 w-px bg-white/10 sm:mx-1.5 lg:hidden" aria-hidden="true" />
                     <span className="flex items-center gap-1 lg:hidden">
                       <ToolButton label="Previous note (←)" icon={ChevronLeft} disabled={!prevId} onClick={() => go(-1)} />
                       <ToolButton label="Next note (→)" icon={ChevronRight} disabled={!nextId} onClick={() => go(1)} />
@@ -360,7 +382,21 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
           {/* 44rem: about 80 characters a line in the note's box. */}
           <div className="mx-auto w-full max-w-[44rem] px-4 pb-16">
 
-            {block && <NoteView key={block.id} block={block} dir={dir} pinned={pinned} pillars={pillars} />}
+            {block && (
+              <NoteView
+                key={block.id}
+                block={block}
+                dir={dir}
+                pinned={pinned}
+                pillarList={pillarList}
+                pillars={pillars}
+                pillarsOn={pillarToggle.pillarsOf(block)}
+                onTogglePillar={(id) => void pillarToggle.toggle(block, id)}
+                sugg={sugg}
+                onFilterTag={onFilterTag}
+                onFilterType={onFilterType}
+              />
+            )}
 
             {stepping && (
               <nav aria-label="Previous and next note" className="mt-4 grid grid-cols-2 gap-3">
@@ -385,29 +421,6 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
             {announce}
           </p>
 
-          <AlertDialog open={confirmDelete} onOpenChange={(o) => !deleting && setConfirmDelete(o)}>
-            <AlertDialogContent className="glass-card border-white/10">
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this note?</AlertDialogTitle>
-                <AlertDialogDescription>"{blockTitle}" will be deleted. This cannot be undone.</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="border-white/10" disabled={deleting}>
-                  Cancel
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={(e) => {
-                    e.preventDefault(); // stays open until the delete is done
-                    void remove();
-                  }}
-                  disabled={deleting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Deleting" /> : "Delete"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -426,162 +439,95 @@ function hostOf(url: string): string {
   }
 }
 
-function NoteView({ block, dir, pinned, pillars }: { block: ArchiveBlock; dir: -1 | 0 | 1; pinned: boolean; pillars: ReadonlyMap<string, Pillar> }) {
+function NoteView({
+  block,
+  dir,
+  pinned,
+  pillarList,
+  pillars,
+  pillarsOn,
+  onTogglePillar,
+  sugg,
+  onFilterTag,
+  onFilterType,
+}: {
+  block: ArchiveBlock;
+  dir: -1 | 0 | 1;
+  pinned: boolean;
+  pillarList: readonly Pillar[];
+  pillars: ReadonlyMap<string, Pillar>;
+  pillarsOn: readonly string[];
+  onTogglePillar: (id: string) => void;
+  sugg: ReturnType<typeof useNoteSuggestions>;
+  onFilterTag?: (tag: string) => void;
+  onFilterType?: (type: TypeTag) => void;
+}) {
   const heading = useMemo(() => noteHeading(block.title, block.content), [block.title, block.content]);
   // A first-line heading that became the title is left out of the body.
   const content = useMemo(() => (heading.skip ? block.content.slice(heading.skip) : block.content), [block.content, heading.skip]);
-  const long = content.length > READER_FIRST_CHARS;
-  // Images split the text; a long note is also cut into parts, rendered one at a time.
-  const pieces = useMemo(() => readerPieces(content, long ? READER_PIECE_CHARS : Infinity), [content, long]);
-  const lang: Lang = useMemo(() => guessLanguage(content.slice(0, 3000)), [content]);
-  const whole = pieces.length === 1 && pieces[0].kind === "text" ? pieces[0].text : null;
-  const layout = useLectureLayout(whole ?? "");
-
-  const first = useMemo(() => firstPieceCount(pieces), [pieces]);
-  const [shown, setShown] = useState(first);
-  const [all, setAll] = useState(false);
-  const [, startTransition] = useTransition();
-  // "Show all": one more part each time the page is idle, so scrolling and the keys stay live.
-  useEffect(() => {
-    if (!all || shown >= pieces.length) return;
-    return whenIdle(() => startTransition(() => setShown((n) => n + 1)), 300);
-  }, [all, shown, pieces.length]);
-  const shownChars = useMemo(() => pieces.slice(0, shown).reduce((n, p) => n + pieceChars(p), 0), [pieces, shown]);
-
-  const chips = block.pillars.map((id) => pillars.get(id)).filter((p): p is Pillar => !!p);
-  const tags = block.tags ?? [];
+  const text = useNoteText(content);
+  const tags = noteTags(block).shown;
   const source = safeUrl(block.source_url);
   const label = readingLabel(block.content.length);
-  const toc = whole !== null ? layout.toc : [];
+  const toc = text.whole !== null ? text.layout.toc : [];
   const shortToc = (s: string) => (s.length > 34 ? `${s.slice(0, 33)}…` : s);
   const slide = dir === 1 ? "slide-in-from-right-3" : dir === -1 ? "slide-in-from-left-3" : "";
-  const meta = (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground" lang="en">
-      <time dateTime={block.created_at}>{new Date(block.created_at).toLocaleString("en-GB", DATE)}</time>
-      {label && <span>· {label}</span>}
-      {pinned && <span>· 📌 Pinned</span>}
-    </p>
-  );
 
   return (
-    <article className={`space-y-4 animate-in fade-in-0 duration-200 motion-reduce:animate-none ${slide}`} lang={lang}>
-      {heading.shown || chips.length > 0 || tags.length > 0 || source || toc.length >= 3 ? (
-        <header className={`${CARD} space-y-3 p-4 sm:p-5`}>
-          {meta}
-          <DialogPrimitive.Title className={heading.shown ? "break-words text-xl font-bold leading-tight text-foreground sm:text-2xl" : "sr-only"}>
-            {heading.title}
-          </DialogPrimitive.Title>
-          {(chips.length > 0 || tags.length > 0) && (
-            <div className="flex flex-wrap gap-1.5">
-              {chips.map((p) => (
-                <span key={p.id} className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: p.color + "22", color: p.color }}>
-                  <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={12} className="inline-block" /> {p.name}
-                </span>
-              ))}
-              {tags.map((t) => (
-                <span key={t} className="rounded-full bg-muted/50 px-2 py-0.5 text-[11px] text-muted-foreground">
-                  #{t}
-                </span>
-              ))}
-            </div>
-          )}
-          {source && (
-            <a href={source} target="_blank" rel="noopener noreferrer" className="inline-block max-w-full truncate text-xs text-primary hover:underline" title={source}>
-              🔗 {hostOf(source)}
-            </a>
-          )}
-          {toc.length >= 3 && (
-            <nav aria-label="Contents" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-              {toc.map((e) => (
-                <a
-                  key={e.id}
-                  href={`#${e.id}`}
-                  onClick={(ev) => {
-                    ev.preventDefault();
-                    document.getElementById(e.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
-                  className="shrink-0 whitespace-nowrap rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                  title={e.title}
-                >
-                  {shortToc(e.title)}
-                </a>
-              ))}
-            </nav>
-          )}
-        </header>
-      ) : (
-        // The text is its own title (the Inbox named the note after its start): only the date above it.
-        <header className="px-1">
-          {meta}
-          <DialogPrimitive.Title className="sr-only">{heading.title}</DialogPrimitive.Title>
-        </header>
-      )}
-
-      <div className={`${CARD} p-4 sm:p-6`}>
-        {whole !== null ? (
-          <LectureMarkdown layout={layout} lang={lang} links={NOTE_LINKS} />
-        ) : pieces.length === 0 ? (
-          <p className="text-sm text-muted-foreground" lang="en">
-            This note has no text.
-          </p>
-        ) : (
-          pieces.slice(0, shown).map((p, i) =>
-            p.kind === "text" ? <TextPiece key={i} text={p.text} lang={lang} offscreen={i >= first} /> : <ImagePiece key={i} url={p.url} />,
-          )
+    <article className={`space-y-4 animate-in fade-in-0 duration-200 motion-reduce:animate-none ${slide}`} lang={text.lang}>
+      <header className={`${CARD} space-y-3 p-4 sm:p-5`}>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground" lang="en">
+          <time dateTime={block.created_at}>{new Date(block.created_at).toLocaleString("en-GB", DATE)}</time>
+          {label && <span>· {label}</span>}
+          {pinned && <span>· 📌 Pinned</span>}
+        </p>
+        {/* An auto-title is the start of the text, which the body shows: then only a screen reader hears it. */}
+        <DialogPrimitive.Title className={heading.shown ? "break-words text-xl font-bold leading-tight text-foreground [overflow-wrap:anywhere] sm:text-2xl" : "sr-only"}>
+          {heading.title}
+        </DialogPrimitive.Title>
+        {tags.length > 0 && <NoteTagChips tags={tags} onTag={onFilterTag} onType={onFilterType} size="md" />}
+        {sugg.visible && (
+          <SuggestionChips
+            chips={sugg.chips}
+            chosen={sugg.chosen}
+            onToggle={sugg.toggle}
+            onAccept={() => void sugg.accept()}
+            onDismiss={sugg.dismiss}
+            pillars={pillars}
+            loading={sugg.loading}
+            error={sugg.error}
+            note={aiNote(sugg.status?.ai, sugg.status?.aiError)}
+            saving={sugg.saving}
+          />
         )}
-      </div>
+        <PillarRow pillars={pillarList} active={pillarsOn} onToggle={onTogglePillar} />
+        {source && (
+          <a href={source} target="_blank" rel="noopener noreferrer" className="inline-block max-w-full truncate text-xs text-primary hover:underline" title={source}>
+            🔗 {hostOf(source)}
+          </a>
+        )}
+        {toc.length >= 3 && (
+          <nav aria-label="Contents" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+            {toc.map((e) => (
+              <a
+                key={e.id}
+                href={`#${e.id}`}
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  document.getElementById(e.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="shrink-0 whitespace-nowrap rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                title={e.title}
+              >
+                {shortToc(e.title)}
+              </a>
+            ))}
+          </nav>
+        )}
+      </header>
 
-      {shown < pieces.length && (
-        <div className={`${CARD} flex flex-wrap items-center gap-3 p-4 text-sm`} lang="en">
-          <p className="min-w-0 flex-1 text-muted-foreground">
-            {all
-              ? `Rendering the rest: ${compactCount(shownChars)} of ${compactCount(content.length)} characters…`
-              : `Showing the first ${compactCount(shownChars)} of ${compactCount(content.length)} characters.`}
-          </p>
-          {!all && (
-            <button
-              type="button"
-              onClick={() => setAll(true)}
-              className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-primary/20 active:scale-[0.98]"
-            >
-              Show all
-            </button>
-          )}
-        </div>
-      )}
-      {/* Said twice to a screen reader, not once per part: when "Show all" starts, and when it is done. */}
-      <p className="sr-only" aria-live="polite" lang="en">
-        {all ? (shown < pieces.length ? "Rendering the rest of the note." : "The whole note is shown.") : ""}
-      </p>
+      <NoteText model={text} />
     </article>
-  );
-}
-
-/** One part of a long note. Parts past the first screenful skip layout and paint until they near the screen. */
-const TextPiece = memo(function TextPiece({ text, lang, offscreen }: { text: string; lang: Lang; offscreen: boolean }) {
-  const layout = useLectureLayout(text);
-  return (
-    <div className={offscreen ? "[contain-intrinsic-size:auto_3000px] [content-visibility:auto]" : undefined}>
-      <LectureMarkdown layout={layout} lang={lang} links={NOTE_LINKS} />
-    </div>
-  );
-});
-
-/** An "[image] url" line of the note, shown as the image; a press opens it in a new tab. */
-function ImagePiece({ url }: { url: string }) {
-  const href = safeUrl(url);
-  if (!href) return null;
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="my-3 block w-fit max-w-full" title="Open the image">
-      <img
-        src={href}
-        alt="Image in the note"
-        loading="lazy"
-        decoding="async"
-        className="max-h-[70vh] max-w-full rounded-xl border border-white/10"
-        onError={(e) => (e.currentTarget.style.display = "none")}
-      />
-    </a>
   );
 }
 
@@ -622,13 +568,33 @@ function ToolButton({
       title={label}
       aria-pressed={pressed}
       aria-disabled={disabled || undefined}
-      className={`inline-flex h-11 min-w-[2.25rem] items-center justify-center gap-1.5 rounded-lg px-2 text-sm transition-colors active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:h-9 ${tone} ${className}`}
+      className={`inline-flex h-11 min-w-[2rem] items-center justify-center gap-1.5 rounded-lg px-1.5 text-sm sm:min-w-[2.25rem] sm:px-2 transition-colors active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:h-9 ${tone} ${className}`}
     >
       <Icon className={`h-4 w-4 ${pressed ? "fill-current" : ""}`} aria-hidden />
       {text && <span className="hidden sm:inline">{text}</span>}
     </button>
   );
 }
+
+/** A toolbar button a Popover trigger can hand its props and ref to (Folder…). */
+const ToolTrigger = forwardRef<HTMLButtonElement, { label: string; text?: string; icon: LucideIcon } & ButtonHTMLAttributes<HTMLButtonElement>>(function ToolTrigger(
+  { label, text, icon: Icon, className, ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={label}
+      title={label}
+      className={`inline-flex h-11 min-w-[2rem] items-center justify-center gap-1.5 rounded-lg px-1.5 text-sm sm:min-w-[2.25rem] sm:px-2 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:h-9 ${className ?? ""}`}
+      {...rest}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+      {text && <span className="hidden sm:inline">{text}</span>}
+    </button>
+  );
+});
 
 /** Large arrows beside the text on wide screens. */
 function SideArrow({ side, disabled, onClick }: { side: "left" | "right"; disabled: boolean; onClick: () => void }) {

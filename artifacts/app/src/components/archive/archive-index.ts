@@ -1,4 +1,5 @@
 import { LINK_REGEX, type ArchiveBlock } from "@/lib/archive-data";
+import { inFolder, isTypeTag, tagPaths, type TypeTag } from "@/lib/archive-tags";
 
 /**
  * What the Archive views read out of a note, worked out once per note.
@@ -55,6 +56,7 @@ interface Entry {
   images?: string[];
   card?: CardView;
   hay?: { title: string; content: string; tags: string[] };
+  tags?: NoteTags;
 }
 
 const cache = new WeakMap<ArchiveBlock, Entry>();
@@ -167,12 +169,118 @@ export const hasLink = (b: ArchiveBlock) => !!b.source_url || blockUrls(b).lengt
 
 export type SortMode = "newest" | "oldest" | "az";
 
+// -- tags ----------------------------------------------------------------------------------
+
+export interface NoteTags {
+  /**
+   * The note's tags that are tags, each once, its type first. A stored tag
+   * with no letter in it ("2", once read out of "#2" in the text) is not a tag
+   * (lib/archive-tags.ts): it stays on the note but is not shown or counted.
+   */
+  shown: string[];
+  type: TypeTag | null;
+  /** The shown tags that are not a type: the note's folders. */
+  folders: string[];
+}
+
+const LETTER = /\p{L}/u;
+const NO_TAGS: NoteTags = { shown: [], type: null, folders: [] };
+
+/** A note's tags as the Library shows and filters them; read once per version of the note. */
+export function noteTags(b: ArchiveBlock): NoteTags {
+  const e = entry(b);
+  if (!e.tags) {
+    const raw = b.tags ?? [];
+    if (raw.length === 0) e.tags = NO_TAGS;
+    else {
+      let type: TypeTag | null = null;
+      const folders: string[] = [];
+      for (const t of raw) {
+        if (typeof t !== "string" || !LETTER.test(t)) continue;
+        if (isTypeTag(t)) type ??= t;
+        else if (!folders.includes(t)) folders.push(t);
+      }
+      e.tags = type || folders.length ? { shown: type ? [type, ...folders] : folders, type, folders } : NO_TAGS;
+    }
+  }
+  return e.tags;
+}
+
+/** "In no folder": no tag but (at most) a type. What "Untagged" and the tag queue mean. */
+export const isUntagged = (b: ArchiveBlock) => noteTags(b).folders.length === 0;
+
+/** The Library's folder filter value for "Untagged" (a tag can never hold this character). */
+export const UNTAGGED = "\u0000untagged";
+
+/** The type filter: one of his eight types, or "none" (notes without a type). */
+export type TypeFilter = TypeTag | "none";
+
+/** Whether the note sits in the folder (any tag of it there or below), or is untagged for UNTAGGED. */
+export function inFolderFilter(b: ArchiveBlock, folder: string): boolean {
+  const t = noteTags(b);
+  if (folder === UNTAGGED) return t.folders.length === 0;
+  return t.folders.some((tag) => inFolder(tag, folder));
+}
+
+export function matchesType(b: ArchiveBlock, type: TypeFilter): boolean {
+  const t = noteTags(b).type;
+  return type === "none" ? t === null : t === type;
+}
+
+export interface TagStats {
+  /** Notes per folder tag (types left out). */
+  counts: Map<string, number>;
+  /** Notes per folder path, sub-folders included, each note once. */
+  folderCounts: Map<string, number>;
+  /** Notes per type. */
+  types: Map<TypeTag, number>;
+  untyped: number;
+  untagged: number;
+}
+
+/** Every count the filter rows, the folder tree and "Tag untagged (N)" show, in one pass over the notes. */
+export function tagStats(blocks: readonly ArchiveBlock[]): TagStats {
+  const counts = new Map<string, number>();
+  const folderCounts = new Map<string, number>();
+  const types = new Map<TypeTag, number>();
+  let untyped = 0;
+  let untagged = 0;
+  for (const b of blocks) {
+    const t = noteTags(b);
+    if (t.type) types.set(t.type, (types.get(t.type) ?? 0) + 1);
+    else untyped++;
+    if (t.folders.length === 0) {
+      untagged++;
+      continue;
+    }
+    const paths = new Set<string>();
+    for (const tag of t.folders) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      for (const p of tagPaths(tag)) paths.add(p);
+    }
+    for (const p of paths) folderCounts.set(p, (folderCounts.get(p) ?? 0) + 1);
+  }
+  return { counts, folderCounts, types, untyped, untagged };
+}
+
 export interface LibraryFilter {
   search: string;
   includeTags: boolean;
   pillar: string | null;
   hideLinks: boolean;
   sort: SortMode;
+  /** A folder (the tag or anything below it), UNTAGGED, or null for every note. */
+  folder?: string | null;
+  type?: TypeFilter | null;
+}
+
+/** The filters every list shares: pillar, links, folder and type. */
+function passes(b: ArchiveBlock, f: Pick<LibraryFilter, "pillar" | "hideLinks" | "folder" | "type">): boolean {
+  if (f.pillar && !b.pillars.includes(f.pillar)) return false;
+  if (f.folder && !inFolderFilter(b, f.folder)) return false;
+  if (f.type && !matchesType(b, f.type)) return false;
+  if (f.hideLinks && hasLink(b)) return false;
+  return true;
 }
 
 const pinnedFirst = (list: ArchiveBlock[]) => [...list.filter((b) => b.is_pinned), ...list.filter((b) => !b.is_pinned)];
@@ -180,11 +288,7 @@ const pinnedFirst = (list: ArchiveBlock[]) => [...list.filter((b) => b.is_pinned
 /** The Library's list for a keyword search, filters and sort: pinned notes first. */
 export function filterLibrary(blocks: ArchiveBlock[], f: LibraryFilter): ArchiveBlock[] {
   const q = f.search.trim().toLowerCase();
-  const list = blocks.filter((b) => {
-    if (f.pillar && !b.pillars.includes(f.pillar)) return false;
-    if (f.hideLinks && hasLink(b)) return false;
-    return matchesQuery(b, q, f.includeTags);
-  });
+  const list = blocks.filter((b) => passes(b, f) && matchesQuery(b, q, f.includeTags));
   const time = (b: ArchiveBlock) => Date.parse(b.created_at) || 0;
   if (f.sort === "oldest") list.sort((a, b) => time(a) - time(b));
   else if (f.sort === "az") list.sort((a, b) => a.title.localeCompare(b.title));
@@ -193,11 +297,15 @@ export function filterLibrary(blocks: ArchiveBlock[], f: LibraryFilter): Archive
 }
 
 /** Smart-search results in their ranked order, as the live notes (current pin and star), filtered the same way. */
-export function filterRanked(results: ArchiveBlock[], live: ArchiveBlock[], f: Pick<LibraryFilter, "pillar" | "hideLinks">): ArchiveBlock[] {
+export function filterRanked(
+  results: ArchiveBlock[],
+  live: ArchiveBlock[],
+  f: Pick<LibraryFilter, "pillar" | "hideLinks" | "folder" | "type">,
+  /** Notes to leave out (deleted, the Undo still open). */
+  hidden?: ReadonlySet<string>,
+): ArchiveBlock[] {
   const byId = new Map(live.map((b) => [b.id, b]));
-  let list = results.map((r) => byId.get(r.id) ?? r);
-  if (f.pillar) list = list.filter((b) => b.pillars.includes(f.pillar!));
-  if (f.hideLinks) list = list.filter((b) => !hasLink(b));
+  const list = results.map((r) => byId.get(r.id) ?? r).filter((b) => !hidden?.has(b.id) && passes(b, f));
   return pinnedFirst(list);
 }
 

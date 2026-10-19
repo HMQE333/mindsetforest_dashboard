@@ -1,9 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getUserClient } from "../_shared/planner.ts";
+import { corsHeaders, getUserClient, jsonResponse } from "../_shared/planner.ts";
+import { EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErrorStatus } from "../_shared/ai-errors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+/**
+ * Several Archive notes at once: merge, summarize, the other presets, or his
+ * own prompt. The app saves the answer as a new note through the preview
+ * (Save as new); the notes it came from stay as they are.
+ *
+ * Borders (stated in the app, src/lib/archive-ai.ts): the notes' language,
+ * Markdown kept, nothing invented; Merge keeps every unique point, link,
+ * number and #tag. Notes are refused rather than cut when they are too long,
+ * so a merge never silently drops the end of a note.
+ *
+ * Request { notes: { title, content }[], preset?, prompt? } -> { content } or { error }.
+ */
+
+const MAX_NOTES = 40;
+const NOTE_LIMIT = 15_000;
+const TOTAL_LIMIT = 60_000;
+
+const SYSTEM = `You work on the user's own notes from his personal archive.
+- Write in the notes' language (if they are mixed, the language most of them use). Polish keeps its diacritics.
+- Markdown is fine: short headings, lists, bold, links.
+- Do not invent facts, numbers, names, quotes or sources that are not in the notes.
+- Links (URLs) you keep are copied exactly as written.`;
+
+const PRESETS: Record<string, string> = {
+  merge: "Merge these notes into one note. Keep every unique point, every link (URL) exactly as written, every number, name and date, and every #tag. Remove only what repeats. Add no new ideas or advice. Order the points so they read well; group related ones under short headings if that helps.",
+  summarize: "Write a short summary of these notes: the key points as a few bullets, then the links that matter (exactly as written). Add nothing that is not in the notes.",
+  themes: "Find the common themes in these notes: group the related ideas, name each group in a few words, and list under it which notes it comes from (by number).",
+  action_plan: "List the things to do that these notes contain, as a checklist, most important first. Only actions that are in the notes; say which note each comes from (by number).",
+  compare: "Compare these notes: where they agree, where they disagree, and what each adds that the others do not.",
 };
 
 serve(async (req) => {
@@ -11,39 +38,30 @@ serve(async (req) => {
 
   try {
     // A paid model sits behind this: signed-in users of the app only.
-    if (!(await getUserClient(req))) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!(await getUserClient(req))) return jsonResponse({ error: "Unauthorized" }, 401);
     const body = await req.json();
-    if (!Array.isArray(body.notes) || body.notes.length === 0) {
-      return new Response(JSON.stringify({ error: "Select at least one note" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    // Bounded: all of this goes to a paid model.
-    const notes = body.notes.slice(0, 40).map((n: { title?: unknown; content?: unknown }) => ({
+    if (!Array.isArray(body.notes) || body.notes.length === 0) return jsonResponse({ error: "Select at least one note" }, 400);
+    if (body.notes.length > MAX_NOTES) return jsonResponse({ error: `At most ${MAX_NOTES} notes at once (${body.notes.length} sent).` }, 413);
+    const notes = body.notes.map((n: { title?: unknown; content?: unknown }) => ({
       title: String(n?.title ?? "").slice(0, 300),
-      content: String(n?.content ?? "").slice(0, 8_000),
+      content: String(n?.content ?? ""),
     }));
-    const prompt = String(body.prompt ?? "").slice(0, 2_000);
-    const preset = typeof body.preset === "string" ? body.preset : undefined;
+    const long = notes.findIndex((n: { content: string }) => n.content.length > NOTE_LIMIT);
+    if (long !== -1) {
+      return jsonResponse({ error: `Note ${long + 1} ("${notes[long].title.slice(0, 40)}") is too long to combine (${notes[long].content.length} characters; the limit is ${NOTE_LIMIT}).` }, 413);
+    }
+    const total = notes.reduce((s: number, n: { content: string }) => s + n.content.length, 0);
+    if (total > TOTAL_LIMIT) return jsonResponse({ error: `Together the notes are too long (${total} characters; the limit is ${TOTAL_LIMIT}).` }, 413);
+
+    const prompt = String(body.prompt ?? "").trim().slice(0, 2_000);
+    const preset = typeof body.preset === "string" && PRESETS[body.preset] ? body.preset : undefined;
+    const instruction = preset ? PRESETS[preset] : prompt;
+    if (!instruction) return jsonResponse({ error: "Write what the AI should do with the notes" }, 400);
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");
+    if (!OPENROUTER_API_KEY) return jsonResponse({ error: NO_KEY_MESSAGE }, 503);
     const AI_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";
 
-    const notesText = notes.map((n: any, i: number) => `--- Note ${i + 1}: ${n.title} ---\n${n.content}`).join("\n\n");
-
-    // Preset action prompts for quick actions
-    const presetPrompts: Record<string, string> = {
-      merge: "Merge these notes into a single cohesive block. Combine overlapping ideas, remove redundancy, and create a unified narrative. Keep all unique insights and actionable items. Output a single merged note.",
-      summarize: "Create a concise summary that captures the key takeaways from all these notes. Focus on actionable wisdom and core insights. Structure it clearly.",
-      themes: "Analyze these notes and identify common themes, patterns, and connections. Group related ideas together and highlight how they connect to personal growth.",
-      action_plan: "Create a clear action plan from these notes. Extract all actionable items, prioritize them, and organize into next steps.",
-      compare: "Compare and contrast the ideas in these notes. Highlight agreements, contradictions, complementary perspectives, and synthesis opportunities.",
-    };
-
-    const finalPrompt = preset && presetPrompts[preset] ? presetPrompts[preset] : prompt;
+    const notesText = notes.map((n: { title: string; content: string }, i: number) => `--- Note ${i + 1}: ${n.title} ---\n${n.content}`).join("\n\n");
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -51,31 +69,25 @@ serve(async (req) => {
       body: JSON.stringify({
         model: AI_MODEL,
         messages: [
-          { role: "system", content: "You are a life-system knowledge synthesis AI. Process the provided notes with a focus on personal growth, actionable wisdom, and clear structure. Return well-organized output.\n\nFORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, `, >, or *. Use simple line breaks and dashes (-) for structure. Keep it clean and readable as raw text." },
-          { role: "user", content: `Here are ${notes.length} notes:\n\n${notesText}\n\nInstruction: ${finalPrompt}` },
+          { role: "system", content: SYSTEM },
+          { role: "user", content: `Here are ${notes.length} notes:\n\n${notesText}\n\nInstruction: ${instruction}` },
         ],
       }),
     });
 
     if (!response.ok) {
-      const status = response.status;
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Payment required" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const t = await response.text();
-      console.error("AI error:", status, t);
-      throw new Error("AI gateway error");
+      console.error("ai-archive-multi model error:", response.status, t.slice(0, 500));
+      return jsonResponse({ error: providerErrorMessage(response.status) }, providerErrorStatus(response.status));
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
+    const content = String(data.choices?.[0]?.message?.content ?? "");
+    if (!content.trim()) return jsonResponse({ error: EMPTY_ANSWER_MESSAGE }, 502);
 
-    return new Response(JSON.stringify({ content }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ content });
   } catch (e) {
     console.error("ai-archive-multi error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
 });

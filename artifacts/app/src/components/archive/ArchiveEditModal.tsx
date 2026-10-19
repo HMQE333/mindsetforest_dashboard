@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
-import type { ArchiveBlock } from "@/lib/archive-data";
+import { shortTitle, tagsFromInput, type ArchiveBlock } from "@/lib/archive-data";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
+import ArchiveConfirmDialog from "./ArchiveConfirmDialog";
+import { PILLAR_KEYS } from "./TagChips";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
@@ -32,6 +33,8 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
   const [relatedOpen, setRelatedOpen] = useState(false);
   const [relatedBlocks, setRelatedBlocks] = useState<ArchiveBlock[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (block) {
@@ -55,19 +58,24 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
   const togglePillar = useCallback((id: string) =>
     setPillars((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id])), []);
 
-  // Keyboard shortcuts for pillars (only when dialog is open and not typing)
+  // Digits 1-8 toggle the pillar with that number on its chip (as in the peek), when not typing.
+  // They replace the first-letter keys, which collided (M: Mind and Money, E: Expression and Exploration).
   const handlePillarKey = useCallback((e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-    const pillar = allPillars.find(p => p.name[0]?.toLowerCase() === e.key.toLowerCase());
-    if (pillar) setPillars((prev) => (prev.includes(pillar.id) ? prev.filter((p) => p !== pillar.id) : [...prev, pillar.id]));
+    if (e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
+    const i = Number(e.key) - 1;
+    const pillar = i < PILLAR_KEYS ? allPillars[i] : undefined;
+    if (!pillar) return;
+    e.preventDefault();
+    setPillars((prev) => (prev.includes(pillar.id) ? prev.filter((p) => p !== pillar.id) : [...prev, pillar.id]));
   }, [allPillars]);
 
   useEffect(() => {
-    if (!open || !block) return;
+    if (!open || !block || confirmDelete) return;
     window.addEventListener("keydown", handlePillarKey);
     return () => window.removeEventListener("keydown", handlePillarKey);
-  }, [open, block, handlePillarKey]);
+  }, [open, block, confirmDelete, handlePillarKey]);
 
   if (!block) return null;
 
@@ -77,22 +85,29 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
       title,
       content,
       pillars,
-      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      // Read with the tag rules: "Książki" is "książki", one type at most (the last one written wins).
+      tags: tagsFromInput(tags, block.tags ?? []),
     });
     setSaving(false);
     onClose();
   };
 
   const handleDelete = async () => {
-    await onDelete(block.id);
+    setDeleting(true);
+    try {
+      await onDelete(block.id);
+    } finally {
+      setDeleting(false);
+    }
+    setConfirmDelete(false);
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="glass-card border-white/10 max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="glass-card border-white/10 w-[calc(100vw-1rem)] max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-gradient-purple">Edit Block</DialogTitle>
+          <DialogTitle className="text-gradient-purple">Edit note</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="bg-background/50 border-white/10" onKeyDown={(e) => e.stopPropagation()} />
@@ -109,18 +124,20 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
           )}
 
           <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-2">Pillars</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">Pillars <span className="font-normal opacity-70">· keys 1-{Math.min(PILLAR_KEYS, allPillars.length)}</span></p>
             <div className="flex flex-wrap gap-1.5">
-              {allPillars.map((p) => (
+              {allPillars.map((p, i) => (
                 <button
                   key={p.id}
                   onClick={() => togglePillar(p.id)}
+                  title={i < PILLAR_KEYS ? `${p.name} (key ${i + 1})` : p.name}
+                  aria-pressed={pillars.includes(p.id)}
                   className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1.5 ${
                     pillars.includes(p.id) ? "text-white" : "opacity-40 hover:opacity-70"
                   }`}
                   style={{ backgroundColor: pillars.includes(p.id) ? p.color : p.color + "22", color: pillars.includes(p.id) ? "#fff" : p.color }}
                 >
-                  <span className="w-4 h-4 rounded-full bg-black/30 text-[9px] font-bold flex items-center justify-center shrink-0">{p.name[0]}</span>
+                  {i < PILLAR_KEYS && <span className="w-4 h-4 rounded-full bg-black/30 text-[9px] font-bold flex items-center justify-center shrink-0 tabular-nums" aria-hidden>{i + 1}</span>}
                   <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
                 </button>
               ))}
@@ -181,28 +198,18 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
             </Collapsible>
           )}
 
-          <div className="flex gap-3 pt-2">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="font-bold">
-                  🗑️ Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent className="glass-card border-white/10">
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete this block?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. The block "{block.title}" will be permanently removed.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+          <div className="flex flex-wrap gap-2 sm:gap-3 pt-2">
+            <Button variant="destructive" className="font-bold" onClick={() => setConfirmDelete(true)}>
+              🗑️ Delete
+            </Button>
+            <ArchiveConfirmDialog
+              open={confirmDelete}
+              onOpenChange={setConfirmDelete}
+              busy={deleting}
+              title="Delete this note?"
+              description={<>“{shortTitle(block.title)}” will be deleted.</>}
+              onConfirm={() => void handleDelete()}
+            />
             <div className="flex-1" />
             <Button onClick={onClose} variant="outline" className="border-white/10 font-bold">
               Cancel
