@@ -1,17 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, useTransition, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import { useBookmarks } from "@/hooks/useBookmarks";
 import ArchiveInbox from "./ArchiveInbox";
 import ArchiveLibrary from "./ArchiveLibrary";
-import ArchiveLinksView from "./ArchiveLinksView";
-import ArchiveImagesView from "./ArchiveImagesView";
 import ArchiveAIPromptModal from "./ArchiveAIPromptModal";
-import ArchiveDigestView from "./ArchiveDigestView";
-import ArchiveForestView from "./ArchiveForestView";
-import ArchiveBookmarksView from "./ArchiveBookmarksView";
-import FileShareView from "./FileShareView";
-import RecordingsView, { type RecordingFocus } from "./RecordingsView";
+import type { RecordingFocus } from "./RecordingsView";
 import { useKosRecordings, useKosVault } from "@/hooks/useKnowledgeOS";
 import { useAssistant } from "@/hooks/useAssistant";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,58 +13,100 @@ import { useStudyPrompts } from "@/hooks/useStudyPrompts";
 import { groupSessions, type LectureSummary } from "@/lib/kos-vault";
 import { loadLectureRecordings } from "@/lib/lecture-tutor";
 import type { StudySource } from "./lectures/study-actions";
-import PlantSeedModal from "./PlantSeedModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
+import { countImages, countLinks } from "./archive-index";
+import { useRemembered } from "./remembered";
 
-// The lecture reader (Markdown, callouts, plots) loads with the tab; KaTeX and mermaid only when a note needs them.
-const LecturesView = lazy(() => import("./lectures/LecturesView"));
+// Only the open sub-tab is mounted (Wykłady always worked that way): the others
+// used to stay mounted behind CSS, re-rendering with every change to the notes,
+// listening for keys (the Digest ate Spaces typed into the Library search) and
+// opening Forest connections nobody looked at. Inbox and Library ship with the
+// Archive; the rest load the first time they open, or on idle just before.
+const LecturesView = lazyModule(() => import("./lectures/LecturesView"));
+const RecordingsView = lazyModule(() => import("./RecordingsView"));
+const ArchiveLinksView = lazyModule(() => import("./ArchiveLinksView"));
+const ArchiveImagesView = lazyModule(() => import("./ArchiveImagesView"));
+const ArchiveDigestView = lazyModule(() => import("./ArchiveDigestView"));
+const ArchiveForestView = lazyModule(() => import("./ArchiveForestView"));
+const ArchiveBookmarksView = lazyModule(() => import("./ArchiveBookmarksView"));
+const FileShareView = lazyModule(() => import("./FileShareView"));
+const PlantSeedModal = lazyModule(() => import("./PlantSeedModal"));
 
 type SubView = "inbox" | "library" | "lectures" | "recordings" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
 
-const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
-const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
-const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
+const PRELOAD: Partial<Record<SubView, () => Promise<void>>> = {
+  lectures: LecturesView.preload,
+  recordings: RecordingsView.preload,
+  links: ArchiveLinksView.preload,
+  images: ArchiveImagesView.preload,
+  digest: ArchiveDigestView.preload,
+  forest: ArchiveForestView.preload,
+  bookmarks: ArchiveBookmarksView.preload,
+  fileshare: FileShareView.preload,
+};
+/** Fetched on idle once the Archive is up, most used first. */
+const IDLE_ORDER: SubView[] = ["links", "lectures", "recordings", "images", "bookmarks", "fileshare", "digest", "forest"];
 
-function countLinks(blocks: ArchiveBlock[]): number {
-  const urls = new Set<string>();
-  for (const b of blocks) {
-    const matches = b.content.match(URL_REGEX) || [];
-    matches.forEach((u) => urls.add(u));
-    if (b.source_url) urls.add(b.source_url);
-  }
-  return urls.size;
-}
-
-function countImages(blocks: ArchiveBlock[]): number {
-  const urls = new Set<string>();
-  for (const b of blocks) {
-    let m: RegExpExecArray | null;
-    const r1 = new RegExp(IMAGE_TAG_REGEX);
-    while ((m = r1.exec(b.content))) urls.add(m[1]);
-    const r2 = new RegExp(BARE_IMG_REGEX);
-    while ((m = r2.exec(b.content))) urls.add(m[0]);
-  }
-  return urls.size;
+/** While a sub-tab's code downloads: the same quiet line the views show while their data loads, after a beat. */
+function TabFallback() {
+  return (
+    <p className="text-center py-12 text-muted-foreground text-sm animate-in fade-in duration-300 delay-150 fill-mode-both" aria-busy="true">
+      Loading…
+    </p>
+  );
 }
 
 const ArchiveView = () => {
-  const [subView, setSubView] = useState<SubView>("inbox");
+  // `selected` lights the tab at once; `subView` (what renders) follows as a
+  // transition, so a heavy tab never holds up the press feedback, and a tab
+  // whose code is still downloading keeps the old one on screen until it is in.
+  const [selected, setSelected] = useRemembered<SubView>("archive.subView", "inbox");
+  const [subView, setShown] = useState<SubView>(selected);
+  const [, startTransition] = useTransition();
+  const setSubView = useCallback((v: SubView) => {
+    setSelected(v);
+    startTransition(() => setShown(v));
+  }, [setSelected]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
   const [plantOpen, setPlantOpen] = useState(false);
   const [singlePlantBlock, setSinglePlantBlock] = useState<ArchiveBlock | null>(null);
   const archive = useArchiveState();
-  // One store for both views, so a link bookmarked in Links is in Bookmarks at once.
-  const bookmarks = useBookmarks();
+  // One store for both views, so a link bookmarked in Links is in Bookmarks at once;
+  // it loads the first time either opens.
+  const bookmarksWanted = subView === "links" || subView === "bookmarks";
+  const [bookmarksStuck, setBookmarksStuck] = useState(false);
+  useEffect(() => {
+    if (bookmarksWanted) setBookmarksStuck(true);
+  }, [bookmarksWanted]);
+  const bookmarks = useBookmarks({ enabled: bookmarksStuck || bookmarksWanted });
+
+  // The other sub-tabs' code, fetched while nothing else is going on.
+  useEffect(() => {
+    if (!canPrefetch()) return;
+    let cancel = () => {};
+    let i = 0;
+    const next = () => {
+      const view = IDLE_ORDER[i++];
+      if (!view) return;
+      cancel = whenIdle(() => void PRELOAD[view]?.().then(next), 4000);
+    };
+    cancel = whenIdle(next, 4000);
+    return () => cancel();
+  }, []);
 
   // Knowledge OS (the vault's lecture summaries and notes, and the recordings) loads the first time either tab opens.
-  const [kosOn, setKosOn] = useState(false);
+  // Read during render, so the tab's first frame already shows it loading rather than empty.
+  const kosWanted = subView === "lectures" || subView === "recordings";
+  const [kosStuck, setKosStuck] = useState(false);
   useEffect(() => {
-    if (subView === "lectures" || subView === "recordings") setKosOn(true);
-  }, [subView]);
+    if (kosWanted) setKosStuck(true);
+  }, [kosWanted]);
+  const kosOn = kosStuck || kosWanted;
   const kosVault = useKosVault(kosOn);
   const kosRecordings = useKosRecordings(kosOn);
   const sessions = useMemo(() => groupSessions(kosRecordings.rows, kosVault.index), [kosRecordings.rows, kosVault.index]);
@@ -89,11 +125,11 @@ const ArchiveView = () => {
   const openRecording = useCallback((note: string, seconds: number | null, paragraph?: number) => {
     setRecordingFocus({ note, seconds, paragraph: paragraph ?? null, n: Date.now() });
     setSubView("recordings");
-  }, []);
+  }, [setSubView]);
   const openSummary = useCallback((path: string) => {
     setLecturePath(path);
     setSubView("lectures");
-  }, []);
+  }, [setSubView]);
 
   // Studying runs in ChatGPT / Claude Desktop on the user's subscriptions: the reader copies a
   // study pack built from the settings' learning mode and the lecture's transcript.
@@ -143,14 +179,15 @@ const ArchiveView = () => {
     { id: "fileshare", label: "File Share", icon: "📁" },
   ];
 
-  const toggleSelect = (id: string) => {
+  // One identity for the whole life of the view: the Library's memoised cards take it.
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
   const removeFromSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -160,9 +197,10 @@ const ArchiveView = () => {
     });
   }, []);
 
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = useCallback(() => setSelectedIds((prev) => (prev.size === 0 ? prev : new Set())), []);
 
-  const selectedBlocks = archive.blocks.filter((b) => selectedIds.has(b.id));
+  const selectedBlocks = useMemo(() => archive.blocks.filter((b) => selectedIds.has(b.id)), [archive.blocks, selectedIds]);
+  const plantOne = useCallback((b: ArchiveBlock) => setSinglePlantBlock(b), []);
 
   const handleAIResult = async (result: { title: string; content: string }) => {
     return await archive.addBlock({
@@ -281,8 +319,10 @@ const ArchiveView = () => {
           <button
             key={item.id}
             onClick={() => { setSubView(item.id); clearSelection(); }}
-            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
-              subView === item.id
+            onPointerEnter={() => void PRELOAD[item.id]?.()}
+            aria-pressed={selected === item.id}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-[color,background-color,box-shadow,transform] duration-150 active:scale-[0.97] ${
+              selected === item.id
                 ? "gradient-purple text-primary-foreground glow-sm"
                 : "text-muted-foreground hover:text-foreground glass-card"
             }`}
@@ -295,12 +335,11 @@ const ArchiveView = () => {
         ))}
       </div>
 
-
       <div className="relative">
-        <div className={subView === "inbox" ? "" : "hidden"}>
+        {subView === "inbox" && (
           <ArchiveInbox addBlock={archive.addBlock} addBlocks={archive.addBlocks} existingTags={existingTags} />
-        </div>
-        <div className={subView === "library" ? "" : "hidden"}>
+        )}
+        {subView === "library" && (
           <ArchiveLibrary
             blocks={archive.blocks}
             loading={archive.loading}
@@ -312,55 +351,47 @@ const ArchiveView = () => {
             semanticSearch={archive.semanticSearch}
             searchArchive={archive.searchArchive}
             embedAll={archive.embedAll}
-            onPlant={(b) => setSinglePlantBlock(b)}
+            onPlant={plantOne}
           />
-        </div>
-        <div className={subView === "lectures" ? "" : "hidden"}>
-          {kosOn && (
-            <Suspense fallback={<p className="text-center py-12 text-muted-foreground text-sm">Wczytuję wykłady…</p>}>
-              <LecturesView
-                index={kosVault.index}
-                loading={kosVault.loading}
-                failed={!!kosVault.error}
-                recordings={kosRecordings.rows}
-                openPath={lecturePath}
-                onOpen={setLecturePath}
-                onOpenRecording={openRecording}
-                study={study}
-                onRefresh={refreshKos}
-              />
-            </Suspense>
+        )}
+        <Suspense fallback={<TabFallback />}>
+          {subView === "lectures" && (
+            <LecturesView
+              index={kosVault.index}
+              loading={kosVault.loading}
+              failed={!!kosVault.error}
+              recordings={kosRecordings.rows}
+              openPath={lecturePath}
+              onOpen={setLecturePath}
+              onOpenRecording={openRecording}
+              study={study}
+              onRefresh={refreshKos}
+            />
           )}
-        </div>
-        <div className={subView === "recordings" ? "" : "hidden"}>
-          <RecordingsView
-            sessions={sessions}
-            loading={kosRecordings.loading}
-            failed={!!kosRecordings.error}
-            vault={vaultName}
-            focus={recordingFocus}
-            onShowSummary={openSummary}
-            onRefresh={refreshKos}
-          />
-        </div>
-        <div className={subView === "links" ? "" : "hidden"}>
-          <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} bookmarks={bookmarks} />
-        </div>
-        <div className={subView === "images" ? "" : "hidden"}>
-          <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-        </div>
-        <div className={subView === "digest" ? "" : "hidden"}>
-          <ArchiveDigestView blocks={archive.blocks} />
-        </div>
-        <div className={subView === "forest" ? "" : "hidden"}>
-          <ArchiveForestView />
-        </div>
-        <div className={subView === "bookmarks" ? "" : "hidden"}>
-          <ArchiveBookmarksView bookmarks={bookmarks} blocks={archive.blocks} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
-        </div>
-        <div className={subView === "fileshare" ? "" : "hidden"}>
-          <FileShareView />
-        </div>
+          {subView === "recordings" && (
+            <RecordingsView
+              sessions={sessions}
+              loading={kosRecordings.loading}
+              failed={!!kosRecordings.error}
+              vault={vaultName}
+              focus={recordingFocus}
+              onShowSummary={openSummary}
+              onRefresh={refreshKos}
+            />
+          )}
+          {subView === "links" && (
+            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} bookmarks={bookmarks} />
+          )}
+          {subView === "images" && (
+            <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          )}
+          {subView === "digest" && <ArchiveDigestView blocks={archive.blocks} />}
+          {subView === "forest" && <ArchiveForestView />}
+          {subView === "bookmarks" && (
+            <ArchiveBookmarksView bookmarks={bookmarks} blocks={archive.blocks} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+          )}
+          {subView === "fileshare" && <FileShareView blocks={archive.blocks} />}
+        </Suspense>
       </div>
 
       {/* Multi-select floating bar */}
@@ -410,18 +441,24 @@ const ArchiveView = () => {
         onRemoveFromSelection={removeFromSelection}
       />
 
-      <PlantSeedModal
-        open={plantOpen}
-        blocks={selectedBlocks}
-        onClose={() => setPlantOpen(false)}
-        onPlanted={() => clearSelection()}
-      />
-
-      <PlantSeedModal
-        open={singlePlantBlock !== null}
-        blocks={singlePlantBlock ? [singlePlantBlock] : []}
-        onClose={() => setSinglePlantBlock(null)}
-      />
+      {/* Mounted only while open: planting needs the Forest and the friends list, which the Archive does not load otherwise. */}
+      <Suspense fallback={null}>
+        {plantOpen && (
+          <PlantSeedModal
+            open
+            blocks={selectedBlocks}
+            onClose={() => setPlantOpen(false)}
+            onPlanted={() => clearSelection()}
+          />
+        )}
+        {singlePlantBlock !== null && (
+          <PlantSeedModal
+            open
+            blocks={[singlePlantBlock]}
+            onClose={() => setSinglePlantBlock(null)}
+          />
+        )}
+      </Suspense>
     </motion.div>
   );
 };

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, Eye, Sprout, RefreshCw } from "lucide-react";
-import { usePillars } from "@/hooks/usePillars";
+import type { Pillar } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -9,32 +9,46 @@ import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveAIPreviewModal from "./ArchiveAIPreviewModal";
 import { EMPTY } from "@/lib/utils";
 import { safeUrl } from "@/lib/safe-url";
+import { cardView } from "./archive-index";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
-const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
 
 interface Props {
   block: ArchiveBlock;
+  /** Every pillar by id (from the list, so each card does not read the settings itself). */
+  pillars: ReadonlyMap<string, Pillar>;
   selected: boolean;
-  onToggleSelect: () => void;
-  onEdit: () => void;
+  onToggleSelect: (id: string) => void;
+  /** A click on the card: the list decides what opening a note means (the reader, or the editor). */
+  onOpen: (block: ArchiveBlock) => void;
+  /** The full editor (from the quick reader). */
+  onEdit: (block: ArchiveBlock) => void;
   onUpdate: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
   similarityScore?: number;
   onPlant?: (block: ArchiveBlock) => void;
   updateAvailable?: boolean;
-  onResync?: () => void;
+  /** Re-sync a note saved from the Forest, by its seed id. */
+  onResync?: (seedId: string) => void;
 }
 
-const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, similarityScore, onPlant, updateAvailable, onResync }: Props) => {
-  const allPillars = usePillars();
+/**
+ * One note in the Library. Memoised, and every callback it takes keeps its
+ * identity, so typing in the search or ticking another card re-renders only
+ * the cards that change. No layout animation: measuring every card on every
+ * change forced a layout of the whole list inside each click.
+ */
+const ArchiveBlockCard = ({ block, pillars, selected, onToggleSelect, onOpen, onEdit, onUpdate, similarityScore, onPlant, updateAvailable, onResync }: Props) => {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [readerOpen, setReaderOpen] = useState(false);
+  // The quick reader and the lightbox mount the first time one opens, not with every card.
+  const [overlays, setOverlays] = useState(false);
   const [previewData, setPreviewData] = useState<{
     action: string;
     original: { title: string; content: string; pillars?: string[]; tags?: string[] };
     proposed: { title?: string; content?: string; pillars?: string[]; tags?: string[] };
   } | null>(null);
+  const view = cardView(block);
 
   const handleAIAction = async (action: string) => {
     setAiLoading(action);
@@ -93,30 +107,26 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
     return () => document.removeEventListener("keydown", onKey);
   }, [readerOpen]);
 
-  const pillarColors = block.pillars.map((p) => allPillars.find((pl) => pl.id === p)).filter(Boolean);
-
-  const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(block.title?.trim() || "")
-    ? "Image block"
-    : block.title || "Untitled";
+  const pillarColors = block.pillars.map((p) => pillars.get(p)).filter(Boolean);
+  const displayTitle = view.title;
+  const openReader = () => { setOverlays(true); setReaderOpen(true); };
+  const openLightbox = (url: string) => { setOverlays(true); setLightboxUrl(url); };
 
   return (
     <>
-      <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className={`glass-card-hover p-4 space-y-3 cursor-pointer group ${selected ? "border-primary/60 glow-sm" : ""} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
+      <div
+        className={`glass-card p-4 space-y-3 cursor-pointer group transition-colors duration-150 ${selected ? "border-primary/60 glow-sm" : "hover:border-primary/30"} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
       >
         <div className="flex items-start gap-3">
           <button
-            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(block.id); }}
             className={`mt-1 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${
               selected ? "bg-primary border-primary text-primary-foreground" : "border-white/20 hover:border-white/40"
             }`}
           >
             {selected && <span className="text-xs">✓</span>}
           </button>
-          <div className="flex-1 min-w-0" onClick={onEdit}>
+          <div className="flex-1 min-w-0" onClick={() => onOpen(block)}>
             <div className="flex items-center gap-1.5">
               <h4 className="font-semibold text-sm truncate">{displayTitle}</h4>
               {similarityScore !== undefined && (
@@ -127,7 +137,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             </div>
             <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
               {/* Three lines show; the rest of a long block (a pasted list of links) stays out of the page. */}
-              {block.content.replace(IMAGE_TAG_REGEX, "").trim().slice(0, 600) || "Image block"}
+              {view.preview}
             </p>
           </div>
           {/* Two separate things: the pin keeps a note at the top here, the star lists it in Bookmarks. */}
@@ -156,9 +166,9 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               <Sprout className="w-4 h-4" />
             </button>
           )}
-          {updateAvailable && onResync && (
+          {updateAvailable && onResync && block.from_seed_id && (
             <button
-              onClick={(e) => { e.stopPropagation(); onResync(); }}
+              onClick={(e) => { e.stopPropagation(); onResync(block.from_seed_id!); }}
               className="mt-1 px-1.5 py-1 rounded-md bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition-all flex items-center gap-1 text-[10px] font-bold animate-pulse"
               title="Author updated this seed. Re-sync to get the latest version"
             >
@@ -166,7 +176,7 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
             </button>
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); setReaderOpen(true); }}
+            onClick={(e) => { e.stopPropagation(); openReader(); }}
             className="mt-1 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100"
             title="Quick read"
           >
@@ -175,33 +185,24 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         </div>
 
         {/* Image thumbnails */}
-        {(() => {
-          const imgs: string[] = [];
-          let m: RegExpExecArray | null;
-          const r1 = new RegExp(IMAGE_TAG_REGEX);
-          while ((m = r1.exec(block.content))) imgs.push(m[1]);
-          const r2 = new RegExp(BARE_IMG_REGEX);
-          while ((m = r2.exec(block.content))) { if (!imgs.includes(m[0])) imgs.push(m[0]); }
-          if (imgs.length === 0) return null;
-          return (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {imgs.slice(0, 4).map((url, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => { e.stopPropagation(); setLightboxUrl(url); }}
-                  className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted/50 border border-white/10 hover:border-primary/50 transition-all hover:scale-105"
-                >
-                  <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
-                </button>
-              ))}
-              {imgs.length > 4 && (
-                <div className="shrink-0 w-16 h-16 rounded-lg bg-muted/50 border border-white/10 flex items-center justify-center text-xs text-muted-foreground">
-                  +{imgs.length - 4}
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {view.imageCount > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {view.images.map((url, i) => (
+              <button
+                key={i}
+                onClick={(e) => { e.stopPropagation(); openLightbox(url); }}
+                className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted/50 border border-white/10 hover:border-primary/50 transition-colors"
+              >
+                <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={(e) => (e.currentTarget.style.display = "none")} />
+              </button>
+            ))}
+            {view.imageCount > 4 && (
+              <div className="shrink-0 w-16 h-16 rounded-lg bg-muted/50 border border-white/10 flex items-center justify-center text-xs text-muted-foreground">
+                +{view.imageCount - 4}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tags */}
         {pillarColors.length > 0 && (
@@ -234,17 +235,20 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
         </div>
 
         <div className="text-[10px] text-muted-foreground/60">
-          {new Date(block.created_at).toLocaleDateString()}
+          {view.date}
         </div>
-      </motion.div>
+      </div>
 
-      <ArchiveAIPreviewModal
-        open={previewData !== null}
-        data={previewData}
-        onAccept={handlePreviewAccept}
-        onReject={() => setPreviewData(null)}
-      />
+      {previewData && (
+        <ArchiveAIPreviewModal
+          open
+          data={previewData}
+          onAccept={handlePreviewAccept}
+          onReject={() => setPreviewData(null)}
+        />
+      )}
 
+      {overlays && (<>
       {/* Quick Reader */}
       <AnimatePresence>
         {readerOpen && (
@@ -299,8 +303,8 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
               </div>
 
               <footer className="flex items-center justify-between px-6 py-3 border-t border-white/5 text-[11px] text-muted-foreground shrink-0">
-                <span>{new Date(block.created_at).toLocaleDateString()}</span>
-                <button onClick={() => { setReaderOpen(false); onEdit(); }} className="text-primary hover:underline font-medium">
+                <span>{view.date}</span>
+                <button onClick={() => { setReaderOpen(false); onEdit(block); }} className="text-primary hover:underline font-medium">
                   Open full editor →
                 </button>
               </footer>
@@ -328,8 +332,9 @@ const ArchiveBlockCard = ({ block, selected, onToggleSelect, onEdit, onUpdate, s
           </motion.div>
         )}
       </AnimatePresence>
+      </>)}
     </>
   );
 };
 
-export default ArchiveBlockCard;
+export default memo(ArchiveBlockCard);

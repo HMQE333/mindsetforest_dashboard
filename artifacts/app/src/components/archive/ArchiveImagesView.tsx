@@ -5,9 +5,8 @@ import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
+import { blockImages } from "./archive-index";
 
-const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
-const BARE_IMG_REGEX = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)/gi;
 
 interface ImageItem {
   url: string;
@@ -21,17 +20,10 @@ interface Props {
   deleteBlock: (id: string) => Promise<unknown>;
 }
 
+/** Every image in the notes; each note is read once per version (archive-index). */
 function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
   const items: ImageItem[] = [];
-  for (const block of blocks) {
-    const urls = new Set<string>();
-    let m: RegExpExecArray | null;
-    const r1 = new RegExp(IMAGE_TAG_REGEX);
-    while ((m = r1.exec(block.content))) urls.add(m[1]);
-    const r2 = new RegExp(BARE_IMG_REGEX);
-    while ((m = r2.exec(block.content))) urls.add(m[0]);
-    for (const url of urls) items.push({ url, block });
-  }
+  for (const block of blocks) for (const url of blockImages(block)) items.push({ url, block });
   return items;
 }
 

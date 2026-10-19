@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import PlanningBoards, { BoardSwitcher } from "./PlanningBoards";
 import PlanningStack from "./PlanningStack";
-import { lazyModule, whenIdle } from "@/lib/lazy-module";
+import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
 
 // The map (React Flow and its stylesheet) is its own chunk: the list is the
 // default view, so the map's code is fetched on idle or when Map is pointed at.
@@ -52,7 +52,12 @@ export default function PlanningView() {
   const [mode, setModeState] = useState<Mode>(readMode);
   const [openLoops, setOpenLoops] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => whenIdle(() => void PlanningMap.preload(), 4000), []);
+  useEffect(() => {
+    if (mode === "map" || !canPrefetch()) return;
+    return whenIdle(() => void PlanningMap.preload(), 4000);
+    // Once per visit: the map's own render fetches it when Map is chosen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setMode = (m: Mode) => { setModeState(m); saveMode(m); };
 

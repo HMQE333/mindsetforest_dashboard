@@ -18,7 +18,7 @@ import { resolveInboxSettings } from "@/lib/inbox";
 // above (Index's badge), and mounting it later would take the channel over.
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import ModuleSkeleton, { HomeSkeleton, PageSkeleton } from "@/components/ModuleSkeleton";
-import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
+import { lazyModule, whenIdle, canPrefetch, useOpenedOnce } from "@/lib/lazy-module";
 import { TrackerPage } from "./lazy-pages";
 import { useFriends } from "@/hooks/useFriends";
 import { useAssistant, useAssistantCurrentScope } from "@/hooks/useAssistant";
@@ -131,13 +131,6 @@ function countVisit(tab: Tab) {
   } catch { /* storage blocked */ }
 }
 
-/** True from the first time `flag` is true: a modal stays mounted after its first open (keeps its state and close animation). */
-function useLatch(flag: boolean) {
-  const [latched, setLatched] = useState(flag);
-  if (flag && !latched) setLatched(true);
-  return latched || flag;
-}
-
 /** The bell's button as it looks before its chunk arrives (same box, no badge). */
 const InboxBellPlaceholder = () => (
   <span className="relative inline-flex p-2.5 rounded-xl glass-card text-muted-foreground" aria-hidden="true">
@@ -168,8 +161,8 @@ const Index = () => {
   // instead of blanking it, and a heavy view renders without blocking the click.
   const contentTab = useDeferredValue(activeTab);
   const switching = contentTab !== activeTab;
-  const quickCaptureMounted = useLatch(quickCapture.open);
-  const settingsMounted = useLatch(settingsOpen);
+  const quickCaptureMounted = useOpenedOnce(quickCapture.open);
+  const settingsMounted = useOpenedOnce(settingsOpen);
 
   useEffect(() => {
     if (activeTab !== "dashboard") countVisit(activeTab);

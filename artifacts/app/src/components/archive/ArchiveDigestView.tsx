@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { useDigestState, type DigestBlock } from "@/hooks/useDigestState";
 import { safeUrl } from "@/lib/safe-url";
+import { dialogOpen, isShortcutKey } from "./keyboard";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -23,22 +24,6 @@ const ArchiveDigestView = ({ blocks }: Props) => {
   const isComplete = dueBlocks.length === 0 && sessionStats.total > 0;
   const card = dueBlocks[0]; // Always show first due card (they get removed after rating)
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (isComplete || !card) return;
-      if (e.key === " ") {
-        e.preventDefault();
-        setRevealed((r) => !r);
-      }
-      if (revealed && ["1", "2", "3"].includes(e.key)) {
-        handleRate(parseInt(e.key) as 1 | 2 | 3);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [card, revealed, isComplete]);
-
   const handleRate = useCallback(async (rating: 1 | 2 | 3) => {
     if (!card) return;
     const cfg = ratingConfig[rating];
@@ -47,6 +32,26 @@ const ArchiveDigestView = ({ blocks }: Props) => {
     await saveRating(card.id, rating);
     setRevealed(false);
   }, [card, saveRating]);
+
+  // Space reveals, 1/2/3 rate. The view is mounted only while its tab is open,
+  // and a key typed into a field, with a modifier, or under an open dialog is
+  // never taken: this listener used to swallow every Space typed into the
+  // Library search and rate a card on "1".
+  useEffect(() => {
+    if (isComplete || !card) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!isShortcutKey(e) || dialogOpen()) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        setRevealed((r) => !r);
+      } else if (revealed && (e.key === "1" || e.key === "2" || e.key === "3")) {
+        e.preventDefault();
+        void handleRate(Number(e.key) as 1 | 2 | 3);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [card, revealed, isComplete, handleRate]);
 
   if (loading) {
     return (

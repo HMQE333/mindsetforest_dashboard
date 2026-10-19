@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* Inter + JetBrains Mono are linked from index.html (preconnect + non-blocking stylesheet), not @imported here:
+   an @import is fetched only after this file arrives, and it blocks the first paint. */
 
 @tailwind base;
 @tailwind components;

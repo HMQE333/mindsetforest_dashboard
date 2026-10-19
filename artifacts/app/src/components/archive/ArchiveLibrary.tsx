@@ -1,16 +1,16 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue, memo } from "react";
 import { Input } from "@/components/ui/input";
 import { Link2Off, Download, Upload, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { ArchiveSaveError } from "@/lib/archive-data";
-import { usePillars } from "@/hooks/usePillars";
+import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError } from "@/lib/archive-data";
+import { usePillars, type Pillar } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import ArchiveBlockCard from "./ArchiveBlockCard";
 import ArchiveEditModal from "./ArchiveEditModal";
 import ObsidianImportModal from "./ObsidianImportModal";
 import VideoSummaryPanel, { type VideoPanelTarget } from "./VideoSummaryPanel";
 import type { VideoMatch } from "@/hooks/useArchiveState";
-import { useForestState } from "@/hooks/useForestState";
+import { useSavedSeedUpdates } from "@/hooks/useForestState";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import {
 import { Button } from "@/components/ui/button";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { todayKey } from "@/lib/today";
+import { filterLibrary, filterRanked, type SortMode } from "./archive-index";
+import { useRemembered } from "./remembered";
 
 interface Props {
   blocks: ArchiveBlock[];
@@ -36,33 +38,73 @@ interface Props {
   searchArchive?: (query: string) => Promise<{ blocks: ArchiveBlock[]; videos: VideoMatch[] }>;
   embedAll: () => Promise<any>;
   onPlant?: (block: ArchiveBlock) => void;
+  /**
+   * Opening a note (a click on its card). Gets the note and the whole list in
+   * the order shown, the current search, filters and sort applied, so a
+   * reader can step to the previous and next note. Without it the editor opens.
+   */
+  onOpen?: (block: ArchiveBlock, list: ArchiveBlock[]) => void;
 }
 
-type SortMode = "newest" | "oldest" | "az";
+/** Cards rendered at first, and added each time the end of the list comes near. */
+const CARDS_PAGE = 40;
 
-const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, searchArchive, embedAll, onPlant }: Props) => {
+const announceChanged = () => window.dispatchEvent(new CustomEvent(ARCHIVE_BLOCKS_CHANGED_EVENT));
+
+/** The pillar filter row; its own component so typing in the search does not re-render it. */
+const PillarFilter = memo(function PillarFilter({ pillars, value, onChange }: { pillars: Pillar[]; value: string | null; onChange: (id: string | null) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 items-center">
+      <button
+        onClick={() => onChange(null)}
+        className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-colors ${!value ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground"}`}
+      >
+        All
+      </button>
+      {pillars.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => onChange(value === p.id ? null : p.id)}
+          className="text-[11px] px-2.5 py-1 rounded-full font-semibold transition-colors flex items-center gap-1"
+          style={{
+            backgroundColor: value === p.id ? p.color : p.color + "18",
+            color: value === p.id ? "#fff" : p.color,
+          }}
+        >
+          <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
+        </button>
+      ))}
+    </div>
+  );
+});
+
+const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, semanticSearch, searchArchive, embedAll, onPlant, onOpen }: Props) => {
   const pillars = usePillars();
-  const forest = useForestState();
-  const [search, setSearch] = useState("");
-  const [filterPillar, setFilterPillar] = useState<string | null>(null);
-  const [hideLinks, setHideLinks] = useState(false);
+  const pillarById = useMemo(() => new Map(pillars.map((p) => [p.id, p])), [pillars]);
+  // "Update" on notes saved from the Forest, without loading the Forest.
+  const { availableUpdates, resync } = useSavedSeedUpdates(blocks, announceChanged);
+  // Search, filters and sort survive a switch to another sub-tab and back.
+  const [search, setSearch] = useRemembered("library.search", "");
+  const [filterPillar, setFilterPillar] = useRemembered<string | null>("library.pillar", null);
+  const [hideLinks, setHideLinks] = useRemembered("library.hideLinks", false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
-  const [sortMode, setSortMode] = useState<SortMode>("newest");
-  const [smartSearch, setSmartSearch] = useState(false);
+  const [sortMode, setSortMode] = useRemembered<SortMode>("library.sort", "newest");
+  const [smartSearch, setSmartSearch] = useRemembered("library.smart", false);
   const [semanticResults, setSemanticResults] = useState<ArchiveBlock[] | null>(null);
   const [videoResults, setVideoResults] = useState<VideoMatch[]>([]);
   const [video, setVideo] = useState<VideoPanelTarget | null>(null);
   const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [showExport, setShowExport] = useState(false);
-  const [includeTags, setIncludeTags] = useState(false);
+  const [includeTags, setIncludeTags] = useRemembered("library.tags", false);
   const sentinelRef = useRef<HTMLDivElement>(null);
-
-  const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
+  // The field shows every key at once; the list follows a moment later, when
+  // React has time, so typing never waits for the cards.
+  const query = useDeferredValue(search);
 
   // Semantic search debounce
   useEffect(() => {
-    if (!smartSearch || search.trim().length < 2) {
+    if (!smartSearch || query.trim().length < 2) {
       setSemanticResults(null);
       setVideoResults([]);
       setSimilarityScores({});
@@ -72,11 +114,11 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       setSemanticLoading(true);
       let results: ArchiveBlock[];
       if (searchArchive) {
-        const found = await searchArchive(search.trim());
+        const found = await searchArchive(query.trim());
         results = found.blocks;
         setVideoResults(found.videos);
       } else {
-        results = await semanticSearch(search.trim());
+        results = await semanticSearch(query.trim());
       }
       const scores: Record<string, number> = {};
       for (const r of results as any[]) {
@@ -87,48 +129,46 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
       setSemanticLoading(false);
     }, 500);
     return () => clearTimeout(timer);
-  }, [search, smartSearch, semanticSearch, searchArchive]);
+  }, [query, smartSearch, semanticSearch, searchArchive]);
 
+  // Which notes match, in order: the regex and lower-casing work behind it is
+  // done once per note (archive-index), not per note per key.
   const filtered = useMemo(() => {
-    if (smartSearch && semanticResults !== null) {
-      // Search rows are a snapshot; the live block carries the current pin and star.
-      const live = new Map(blocks.map((b) => [b.id, b]));
-      let list = semanticResults.map((r) => live.get(r.id) ?? r);
-      if (filterPillar) list = list.filter((b) => b.pillars.includes(filterPillar));
-      if (hideLinks) list = list.filter((b) => !URL_REGEX.test(b.content) && !b.source_url);
-      return [...list.filter((b) => b.is_pinned), ...list.filter((b) => !b.is_pinned)];
-    }
+    if (smartSearch && semanticResults !== null) return filterRanked(semanticResults, blocks, { pillar: filterPillar, hideLinks });
+    return filterLibrary(blocks, { search: query, includeTags, pillar: filterPillar, hideLinks, sort: sortMode });
+  }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults]);
 
-    const list = blocks.filter((b) => {
-      if (search) {
-        const q = search.toLowerCase();
-        const matchTitle = b.title.toLowerCase().includes(q);
-        const matchContent = b.content.toLowerCase().includes(q);
-        const matchTags = includeTags && b.tags.some((t: string) => t.toLowerCase().includes(q));
-        if (!matchTitle && !matchContent && !matchTags) return false;
-      }
-      if (filterPillar && !b.pillars.includes(filterPillar)) return false;
-      if (hideLinks && (URL_REGEX.test(b.content) || b.source_url)) return false;
-      return true;
-    });
-    const sorted = (() => {
-      if (sortMode === "oldest") return [...list].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-      if (sortMode === "az") return [...list].sort((a, b) => a.title.localeCompare(b.title));
-      return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    })();
-    return [...sorted.filter((b) => b.is_pinned), ...sorted.filter((b) => !b.is_pinned)];
-  }, [blocks, search, filterPillar, hideLinks, sortMode, smartSearch, semanticResults]);
+  // The first cards render at once and the rest as the end of the list comes
+  // near, so a new search shows its top matches without building every card.
+  const [limit, setLimit] = useState(CARDS_PAGE);
+  useEffect(() => setLimit(CARDS_PAGE), [query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults]);
+  const visible = useMemo(() => filtered.slice(0, limit), [filtered, limit]);
+  const complete = limit >= filtered.length;
 
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => setShowExport(entry.isIntersecting),
-      { threshold: 0.1 }
+      ([entry]) => {
+        if (entry.isIntersecting && !complete) setLimit((n) => n + CARDS_PAGE);
+        setShowExport(entry.isIntersecting && complete);
+      },
+      { rootMargin: "0px 0px 600px 0px", threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [filtered]);
+  }, [complete, visible]);
+
+  // Card callbacks with one identity, so a card re-renders only when its own note does.
+  const filteredRef = useRef(filtered);
+  filteredRef.current = filtered;
+  const openBlock = useCallback((block: ArchiveBlock) => {
+    if (onOpen) onOpen(block, filteredRef.current);
+    else setEditBlock(block);
+  }, [onOpen]);
+  const editOne = useCallback((block: ArchiveBlock) => setEditBlock(block), []);
+  const resyncSeed = useCallback((seedId: string) => void resync(seedId), [resync]);
+  const showScores = smartSearch && semanticResults !== null;
 
   const handleExport = useCallback(() => {
     const exportData = blocks.map(({ embedding, ...rest }: any) => rest);
@@ -279,27 +319,7 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-1.5 items-center">
-          <button
-            onClick={() => setFilterPillar(null)}
-            className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all ${!filterPillar ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground"}`}
-          >
-            All
-          </button>
-          {pillars.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setFilterPillar(filterPillar === p.id ? null : p.id)}
-              className="text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1"
-              style={{
-                backgroundColor: filterPillar === p.id ? p.color : p.color + "18",
-                color: filterPillar === p.id ? "#fff" : p.color,
-              }}
-            >
-              <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
-            </button>
-          ))}
-        </div>
+        <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setHideLinks(!hideLinks)}
@@ -361,18 +381,20 @@ const ArchiveLibrary = ({ blocks, loading, updateBlock, deleteBlock, addBlocks, 
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filtered.map((block) => (
+          {visible.map((block) => (
             <ArchiveBlockCard
               key={block.id}
               block={block}
+              pillars={pillarById}
               selected={selectedIds.has(block.id)}
-              onToggleSelect={() => toggleSelect(block.id)}
-              onEdit={() => setEditBlock(block)}
+              onToggleSelect={toggleSelect}
+              onOpen={openBlock}
+              onEdit={editOne}
               onUpdate={updateBlock}
-              similarityScore={smartSearch && semanticResults !== null ? similarityScores[block.id] : undefined}
+              similarityScore={showScores ? similarityScores[block.id] : undefined}
               onPlant={onPlant}
-              updateAvailable={!!block.from_seed_id && !!forest.availableUpdates[block.from_seed_id]}
-              onResync={block.from_seed_id ? () => forest.resyncSavedBlock(block.from_seed_id!) : undefined}
+              updateAvailable={!!block.from_seed_id && !!availableUpdates[block.from_seed_id]}
+              onResync={resyncSeed}
             />
           ))}
         </div>

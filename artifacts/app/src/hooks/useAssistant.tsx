@@ -13,48 +13,14 @@ import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { revisePathPlan, findPathByName } from "@/lib/path-writes";
-import { notifyPathsChanged } from "@/hooks/usePaths";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboardState } from "@/hooks/useDashboardState";
-import {
-  gatherContext,
-  SCOPE_MAP,
-  type ScopeId,
-  type ArchiveItemRef,
-  type Citation,
-} from "@/lib/assistant-context";
-import {
-  ACTION_SCOPE,
-  buildActionInstructions,
-  describeAction,
-  isAutoApply,
-  parseActions,
-  visibleReplyText,
-  type AssistantAction,
-} from "@/lib/assistant-actions";
-import { ASSISTANT_FN_URL, assistantAuthHeaders, routeScopes } from "@/lib/assistant-api";
+// Types only: the context builder, action protocol and writers are loaded with
+// loadAssistantEngine() when a message is sent or an action applied.
+import type { ScopeId, ArchiveItemRef, Citation } from "@/lib/assistant-context";
+import type { AssistantAction } from "@/lib/assistant-actions";
+import type { PlanningBoardLabel } from "@/lib/assistant-writes";
 import { playCheckSound } from "@/lib/ui-sounds";
-import { findMission, listTodayMissions } from "@/lib/mission-match";
-import { annotateHistory, keywordScopes } from "@/lib/scope-hints";
-import {
-  addCalendarEvent,
-  addBooks,
-  addFinanceTransaction,
-  addPlanningNodes,
-  completePlanningTask,
-  createPath,
-  createPresetFromMissions,
-  logMetricEntry,
-  logPathStepToday,
-  patchPreferences,
-  saveCurrentAsPreset,
-  nodesLabel,
-  resolveAttachTarget,
-  resolvePlanningCompletion,
-  setModuleEnabled,
-  type PlanningBoardLabel,
-} from "@/lib/assistant-writes";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { replaceDashes } from "@/lib/text-style";
 import { todayKey } from "@/lib/today";
@@ -94,6 +60,24 @@ const CONTEXT_CUT_NOTE = "\n\n(Data cut here to fit the request size.)";
 /** Cross-page navigation event handled by pages/Index.tsx. */
 export const NAVIGATE_EVENT = "lov:navigate-module";
 
+type AssistantEngine = typeof import("@/lib/assistant-engine");
+let enginePromise: Promise<AssistantEngine> | null = null;
+/**
+ * The assistant's context builder, action protocol and writers (~190 KB with
+ * the lecture, vault and app-catalog data they read) live in their own chunk,
+ * so the App shell does not carry them on every first load. Fetched when the
+ * panel opens, at the latest when a message is sent; a failed fetch (offline,
+ * or a tab left open across a deploy) is retried on the next call.
+ */
+function loadAssistantEngine(): Promise<AssistantEngine> {
+  if (!enginePromise) {
+    enginePromise = import("@/lib/assistant-engine").catch(() => {
+      enginePromise = null;
+      throw new Error("The assistant could not load. Check the connection, or reload the page if the app was just updated.");
+    });
+  }
+  return enginePromise;
+}
 
 function loadMessages(): AssistantMessage[] {
   try {
@@ -142,6 +126,7 @@ async function resolvePlanningActions(
 ): Promise<{ actions: AssistantAction[]; refused: string[] }> {
   const out: AssistantAction[] = [];
   const refused: string[] = [];
+  const { resolveAttachTarget, resolvePlanningCompletion } = await loadAssistantEngine();
   for (const a of actions) {
     if (a.type === "extend_mindmap") {
       try {
@@ -153,7 +138,7 @@ async function resolvePlanningActions(
       continue;
     }
     if (a.type !== "complete_task") { out.push(a); continue; }
-    let r: Awaited<ReturnType<typeof resolvePlanningCompletion>>;
+    let r: Awaited<ReturnType<AssistantEngine["resolvePlanningCompletion"]>>;
     try {
       r = await resolvePlanningCompletion(userId, { title: a.title, outcome: a.outcome });
     } catch {
@@ -229,6 +214,11 @@ function useAssistantValue() {
       /* ignore */
     }
   }, []);
+
+  // The engine is needed by the first send: fetch it while the user types.
+  useEffect(() => {
+    if (open && user) loadAssistantEngine().catch(() => { /* the send retries and reports */ });
+  }, [open, user]);
 
   // Persist conversation + scopes for the session.
   useEffect(() => {
@@ -327,13 +317,6 @@ function useAssistantValue() {
       if (!trimmed || isStreaming || !user) return null;
 
       const pinned = selectedScopes;
-      // Sections the message names outright always ride along, so a "save a
-      // note" or "tick the mission" is never left without its action.
-      const named = keywordScopes(trimmed).filter((sc) => !pinned.includes(sc));
-      let scopesForSend: ScopeId[] = [...pinned, ...named];
-      if (scopesForSend.length === 0) scopesForSend = [currentScope || "dashboard"];
-      // History carries what happened to earlier actions, not just the prose.
-      const historyForSend = annotateHistory(messages);
 
       const userMsg: AssistantMessage = {
         id: `u-${Date.now()}`,
@@ -356,6 +339,19 @@ function useAssistantValue() {
       abortRef.current = controller;
 
       try {
+        const {
+          keywordScopes, annotateHistory, routeScopes, gatherContext, buildActionInstructions,
+          ASSISTANT_FN_URL, assistantAuthHeaders, visibleReplyText, parseActions, isAutoApply,
+          ACTION_SCOPE, SCOPE_MAP, describeAction,
+        } = await loadAssistantEngine();
+        // Sections the message names outright always ride along, so a "save a
+        // note" or "tick the mission" is never left without its action.
+        const named = keywordScopes(trimmed).filter((sc) => !pinned.includes(sc));
+        let scopesForSend: ScopeId[] = [...pinned, ...named];
+        if (scopesForSend.length === 0) scopesForSend = [currentScope || "dashboard"];
+        // History carries what happened to earlier actions, not just the prose.
+        const historyForSend = annotateHistory(messages);
+
         // Let the router model pick the sections for this message. Pinned
         // sections always stay; a router failure just falls back to them.
         if (autoContext) {
@@ -532,6 +528,12 @@ function useAssistantValue() {
       let failed = 0;
       {
         try {
+          const {
+            listTodayMissions, findMission, patchPreferences, setModuleEnabled, createPresetFromMissions,
+            saveCurrentAsPreset, logMetricEntry, logPathStepToday, createPath, completePlanningTask,
+            addCalendarEvent, addBooks, addFinanceTransaction, addPlanningNodes, nodesLabel,
+            findPathByName, revisePathPlan, notifyPathsChanged,
+          } = await loadAssistantEngine();
           if (action.type === "navigate") {
             const module = action.module;
             const announce = () => window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: { module } }));

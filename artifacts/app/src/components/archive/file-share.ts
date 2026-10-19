@@ -108,6 +108,11 @@ export function toSharedFile(folder: string, e: StorageEntry, legacy = false, tt
   };
 }
 
+/** Whether two listings hold the same files (same paths, times and sizes, in order). */
+export function sameListing(a: readonly SharedFile[], b: readonly SharedFile[]): boolean {
+  return a.length === b.length && a.every((f, i) => f.path === b[i].path && f.uploadedAt === b[i].uploadedAt && f.size === b[i].size);
+}
+
 export interface SharePlan {
   /** Still within their time, soonest to expire first. */
   active: SharedFile[];

@@ -11,14 +11,15 @@ export interface Pillar {
 }
 
 export function usePillars(): Pillar[] {
+  // getCategories keeps one identity until the categories change; the array it
+  // returns is new on every call, so the memo keys on the function.
   const { getCategories } = useUserSettings();
-  const categories = getCategories();
 
   return useMemo(
     () => [
       // "Uncategorized". Always available, safe fallback
       { id: "uncategorized", name: "Uncategorized", icon: "📦", color: "#6B7280", colorVar: "cat-uncategorized" },
-      ...categories.map((c) => ({
+      ...getCategories().map((c) => ({
         id: c.id,
         name: c.name,
         icon: c.icon,
@@ -27,6 +28,6 @@ export function usePillars(): Pillar[] {
         colorVar: c.colorVar,
       })),
     ],
-    [categories]
+    [getCategories]
   );
 }

@@ -32,6 +32,8 @@ function isChunkLoadError(err: unknown): boolean {
  * the error screen; a second failure within a minute is a real error.
  */
 function reloadOnceForNewBuild(): boolean {
+  // Offline, a reload would only swap the app for the browser's error page.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
   try {
     const last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
     if (Date.now() - last < 60_000) return false;
@@ -60,16 +62,21 @@ export function lazyModule<P extends object>(factory: () => Promise<{ default: C
     return pending;
   };
 
-  const Lazy = lazy(() =>
-    load().then(
-      (Component) => ({ default: Component }),
-      (err) => {
-        // Rendering needs the chunk now: a stale build gets one reload, anything else goes to the ErrorBoundary.
-        if (isChunkLoadError(err) && reloadOnceForNewBuild()) return new Promise<never>(() => {});
-        throw err;
-      },
-    ),
-  );
+  // React.lazy remembers a failed load for good, so each failure swaps in a
+  // fresh one: the next mount (back to the tab, a retry) fetches again.
+  const makeLazy = () =>
+    lazy(() =>
+      load().then(
+        (Component) => ({ default: Component }),
+        (err) => {
+          Lazy = makeLazy();
+          // Rendering needs the chunk now: a stale build gets one reload, anything else goes to the ErrorBoundary.
+          if (isChunkLoadError(err) && reloadOnceForNewBuild()) return new Promise<never>(() => {});
+          throw err;
+        },
+      ),
+    );
+  let Lazy = makeLazy();
 
   function LazyModuleComponent(props: P) {
     // Chosen once per instance: switching from Lazy to the resolved component later would remount it.
@@ -82,6 +89,17 @@ export function lazyModule<P extends object>(factory: () => Promise<{ default: C
     preload: () => load().then(() => undefined, () => undefined),
     isLoaded: () => resolved !== null,
   });
+}
+
+/**
+ * True from the first render where `open` is true, and from then on. A
+ * code-split modal mounts (and downloads) on its first open, then stays
+ * mounted, so it keeps its state and plays its close animation.
+ */
+export function useOpenedOnce(open: boolean): boolean {
+  const [opened, setOpened] = useState(open);
+  if (open && !opened) setOpened(true);
+  return opened || open;
 }
 
 type IdleDeadlineLike = { didTimeout: boolean; timeRemaining: () => number };

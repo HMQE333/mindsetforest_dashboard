@@ -45,6 +45,27 @@ function trackerConfig(): Plugin {
   };
 }
 
+/**
+ * Libraries every screen needs go into a few vendor chunks of their own. They
+ * change far less often than the app's code, so after a deploy a returning
+ * browser re-downloads only the app chunks and keeps these from its cache.
+ * Everything else (module views, heavy libraries) is split at its dynamic
+ * import() and loads only where it is used; see src/lib/lazy-module.ts.
+ */
+const VENDOR_CHUNKS: [string, RegExp][] = [
+  ["react", /^(react|react-dom|scheduler|react-router|react-router-dom)$/],
+  ["supabase", /^(@supabase\/.+|iceberg-js)$/],
+  ["motion", /^(framer-motion|motion-dom|motion-utils)$/],
+];
+
+function vendorChunk(id: string): string | undefined {
+  // .../node_modules/.pnpm/<name@version>/node_modules/<package>/... -> <package>
+  const match = id.match(/[\\/]node_modules[\\/](?!\.pnpm[\\/])((?:@[^\\/]+[\\/])?[^\\/]+)/g);
+  const pkg = match?.at(-1)?.replace(/^[\\/]node_modules[\\/]/, "").replace(/\\/g, "/");
+  if (!pkg) return undefined;
+  return VENDOR_CHUNKS.find(([, test]) => test.test(pkg))?.[0];
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [react(), trackerConfig()],
@@ -58,6 +79,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: vendorChunk,
+      },
+    },
   },
   server: {
     port,

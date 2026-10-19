@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDashboardState } from "@/hooks/useDashboardState";
 import { usePaths } from "@/hooks/usePaths";
@@ -10,8 +10,8 @@ import { pathProgress, TodayStep } from "@/lib/path-data";
 import { completedMissionDetails, taggedMissions, withVariant } from "@/lib/mission-keys";
 import { todayKey } from "@/lib/today";
 import PathsTodayStrip from "./PathsTodayStrip";
-import ReviewModal from "@/components/review/ReviewModal";
 import { useReview } from "@/hooks/useReview";
+import { lazyModule, whenIdle, useOpenedOnce } from "@/lib/lazy-module";
 import MissionPresets from "./MissionPresets";
 import DashboardHero from "./DashboardHero";
 import CategoryGrid from "./CategoryGrid";
@@ -26,6 +26,10 @@ import DashboardStats from "./DashboardStats";
 import OfflineNotice from "@/components/OfflineNotice";
 import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
 
+// The review popup (with the screen-time palette it draws from) is its own
+// chunk: Home fetches it on idle when a review is due, and it mounts on first open.
+const ReviewModal = lazyModule(() => import("@/components/review/ReviewModal"));
+
 export default function DashboardView() {
   const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
@@ -36,6 +40,15 @@ export default function DashboardView() {
   const showProjects = !preferences.enabledModules.length || preferences.enabledModules.includes("projects");
 
   const review = useReview();
+  const reviewMounted = useOpenedOnce(review.open);
+  const reviewDue = review.due.length > 0;
+  useEffect(() => {
+    if (!reviewDue) return;
+    return whenIdle(() => {
+      void ReviewModal.preload();
+      void import("@/lib/review-load");
+    }, 3000);
+  }, [reviewDue]);
   // Hiding Paths in Settings -> Modules hides its steps on Home too.
   const showPaths = !preferences.enabledModules.length || preferences.enabledModules.includes("paths");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -231,7 +244,11 @@ export default function DashboardView() {
       {/* Weekly Progress - moved to bottom */}
 
       {/* Morning / monthly review */}
-      <ReviewModal review={review} />
+      {reviewMounted && (
+        <Suspense fallback={null}>
+          <ReviewModal review={review} />
+        </Suspense>
+      )}
 
       {/* Shortcuts Panel */}
       <AnimatePresence>

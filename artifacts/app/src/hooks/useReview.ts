@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { monthKey, todayKey } from "@/lib/today";
-import { loadReviewSnapshot } from "@/lib/review-load";
 import { LAUNCH_SETTLED_EVENT, launchHoldsPopups } from "@/lib/launch";
 import { REVIEWS_CHANGED_EVENT, emitAppEvent } from "@/lib/app-events";
 import {
+  emptySnapshot,
+  monthRange,
   monthlyDue,
   previousMonth,
   reviewDay,
@@ -38,6 +39,18 @@ export function requestReview(t: ReviewTarget): void {
   pendingReview = t;
   window.dispatchEvent(new CustomEvent(OPEN_REVIEW_EVENT));
 }
+/**
+ * The snapshot reader brings the screen-time classifier, its app catalog and
+ * the metric loader: fetched when a review opens (or on idle when one is due,
+ * see DashboardView), so Home's first load does not carry them. If its chunk
+ * cannot be fetched (offline, or a tab left open across a deploy), the review
+ * still opens, with an empty summary.
+ */
+const loadReviewSnapshot = (userId: string, kind: ReviewKind, period: string): Promise<ReviewSnapshot> =>
+  import("@/lib/review-load").then(
+    (m) => m.loadReviewSnapshot(userId, kind, period),
+    () => emptySnapshot(kind, period, kind === "monthly" ? monthRange(period).days : 1),
+  );
 const qKey = (t: ReviewTarget) => `mf-review-q-${t.kind}-${t.period}`;
 const laterKey = (t: ReviewTarget) => `mf-review-later-${t.kind}-${t.period}`;
 const AUTO_KEY = "mf-review-auto";

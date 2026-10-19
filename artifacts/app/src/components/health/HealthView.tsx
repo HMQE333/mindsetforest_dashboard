@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Pencil, Trash2, Printer, Watch, HeartPulse, Sparkles, AlertCircle, Upload } from "lucide-react";
 import { useHealthEntries } from "@/hooks/useHealthEntries";
@@ -23,15 +23,20 @@ import {
 } from "@/lib/watch-data";
 import HealthMetricCard from "./HealthMetricCard";
 import HealthTreeWidget from "./HealthTreeWidget";
-import LogHealthCheckModal from "./LogHealthCheckModal";
 import LabTestListModal from "./LabTestListModal";
 import WatchMetricCard from "./WatchMetricCard";
 import ReadinessSummary from "./ReadinessSummary";
-import LogWatchModal from "./LogWatchModal";
 import WeeklyImportModal from "./WeeklyImportModal";
 import IntervalsIntegration from "./IntervalsIntegration";
 import { addDays, todayKey } from "@/lib/today";
 import { EMPTY } from "@/lib/utils";
+import { lazyModule, useOpenedOnce, whenIdle } from "@/lib/lazy-module";
+
+// The two log forms carry the date picker (react-day-picker), and the watch one
+// the Garmin file reader: each is its own chunk, fetched once Health is idle
+// (or on first open), and mounted from its first open on.
+const LogHealthCheckModal = lazyModule(() => import("./LogHealthCheckModal"));
+const LogWatchModal = lazyModule(() => import("./LogWatchModal"));
 
 const CORE_METRIC_IDS = [
   "weight_kg",
@@ -117,6 +122,12 @@ export default function HealthView() {
   const [editingWatch, setEditingWatch] = useState<WatchEntry | null>(null);
   const [weeklyOpen, setWeeklyOpen] = useState(false);
   const [watchFilter, setWatchFilter] = useState<"1w" | "1m" | "3m" | "1y" | "all">("all");
+  const healthModalMounted = useOpenedOnce(modalOpen);
+  const watchModalMounted = useOpenedOnce(watchModalOpen);
+  useEffect(() => whenIdle(() => {
+    void LogWatchModal.preload();
+    void LogHealthCheckModal.preload();
+  }, 4000), []);
 
   const defaultHeight = useMemo(() => {
     for (const e of entries) {
@@ -643,32 +654,40 @@ export default function HealthView() {
 
       <LabTestListModal open={labListOpen} onClose={() => setLabListOpen(false)} />
 
-      <LogHealthCheckModal
-        open={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setEditing(null);
-        }}
-        onSave={async input => {
-          if (editing) await updateEntry(editing.id, input);
-          else await addEntry(input);
-        }}
-        initial={editing}
-        defaultHeight={defaultHeight}
-        uploadFile={uploadLabReport}
-      />
+      {healthModalMounted && (
+        <Suspense fallback={null}>
+          <LogHealthCheckModal
+            open={modalOpen}
+            onClose={() => {
+              setModalOpen(false);
+              setEditing(null);
+            }}
+            onSave={async input => {
+              if (editing) await updateEntry(editing.id, input);
+              else await addEntry(input);
+            }}
+            initial={editing}
+            defaultHeight={defaultHeight}
+            uploadFile={uploadLabReport}
+          />
+        </Suspense>
+      )}
 
-      <LogWatchModal
-        open={watchModalOpen}
-        onClose={() => {
-          setWatchModalOpen(false);
-          setEditingWatch(null);
-        }}
-        onSave={async input =>
-          editingWatch ? watch.updateEntry(editingWatch.id, input) : !!(await watch.addEntry(input))
-        }
-        initial={editingWatch}
-      />
+      {watchModalMounted && (
+        <Suspense fallback={null}>
+          <LogWatchModal
+            open={watchModalOpen}
+            onClose={() => {
+              setWatchModalOpen(false);
+              setEditingWatch(null);
+            }}
+            onSave={async input =>
+              editingWatch ? watch.updateEntry(editingWatch.id, input) : !!(await watch.addEntry(input))
+            }
+            initial={editingWatch}
+          />
+        </Suspense>
+      )}
 
       <WeeklyImportModal
         open={weeklyOpen}

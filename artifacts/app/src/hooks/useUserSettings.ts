@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { applyThemePreview } from "@/components/settings/ThemeTab";
+import { useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
+import { applyThemePreview } from "@/lib/theme-preview";
 import { KeybindMap } from "@/hooks/useKeyboardShortcuts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
@@ -94,82 +94,177 @@ function getCachedCategories(): CustomCategory[] {
   } catch { return []; }
 }
 
+interface SettingsState {
+  customCategories: CustomCategory[];
+  userMetrics: UserMetric[];
+  customRewards: Reward[] | null;
+  preferences: UserPreferences;
+  loading: boolean;
+}
+
+const freshState = (loading: boolean): SettingsState => ({
+  customCategories: getCachedCategories(),
+  userMetrics: [],
+  customRewards: null,
+  preferences: { enabledModules: DEFAULT_MODULES },
+  loading,
+});
+
+/** A copy mounted this long after the last load reads the settings again (once, for every copy). */
+const STALE_MS = 5 * 60_000;
+
+/**
+ * One copy of the settings for the whole page. Every caller of the hook used
+ * to load its own (user_onboarding, user_metrics and oracle_state on mount),
+ * and the Archive mounts one per note card: about a thousand requests to open
+ * it. Now the first caller loads, every caller reads the same state, and a
+ * save shows everywhere at once.
+ */
+const store = {
+  /** undefined until the first hook mounts. */
+  userId: undefined as string | null | undefined,
+  state: freshState(true),
+  listeners: new Set<() => void>(),
+  /** Bumped by every load and on a user change: only the newest load's answer is kept. */
+  seq: 0,
+  inFlight: null as Promise<void> | null,
+  loadedAt: 0,
+  /** The theme settings last applied from a load, so a background reload does not undo a preview. */
+  appliedTheme: "",
+  /** Set while this hook emits USER_SETTINGS_CHANGED_EVENT itself (its own save needs no reload). */
+  emitting: false,
+  eventHooked: false,
+};
+
+function setSettingsState(patch: Partial<SettingsState>) {
+  store.state = { ...store.state, ...patch };
+  store.listeners.forEach((l) => l());
+}
+
+const subscribeSettings = (listener: () => void) => {
+  store.listeners.add(listener);
+  return () => { store.listeners.delete(listener); };
+};
+const settingsSnapshot = () => store.state;
+
+/** Load the user's settings; `force` starts a new read even while one is running (the newest one wins). */
+function loadSettings(userId: string, force = false): Promise<void> {
+  if (store.inFlight && !force) return store.inFlight;
+  const seq = ++store.seq;
+  const run = (async () => {
+    // Three independent reads, side by side.
+    const [{ data: onb }, { data: metrics }, { data: oracle }] = await Promise.all([
+      supabase.from("user_onboarding").select("custom_categories, preferences").eq("user_id", userId).maybeSingle(),
+      supabase.from("user_metrics").select("*").eq("user_id", userId).order("sort_order", { ascending: true }),
+      supabase.from("oracle_state").select("custom_rewards").eq("user_id", userId).maybeSingle(),
+    ]);
+    if (seq !== store.seq || store.userId !== userId) return;
+
+    const patch: Partial<SettingsState> = { loading: false };
+    if (onb?.custom_categories) {
+      const cats = onb.custom_categories as unknown as CustomCategory[];
+      patch.customCategories = cats;
+      try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
+    }
+    if (onb?.preferences) {
+      const prefs = onb.preferences as unknown as UserPreferences;
+      if (prefs.enabledModules && prefs.enabledModules.length > 0) {
+        patch.preferences = {
+          ...prefs,
+          enabledModules: normalizeModuleIds(prefs.enabledModules)!,
+          moduleOrder: normalizeModuleIds(prefs.moduleOrder),
+        };
+      }
+      if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair || prefs.cardStyle) {
+        const args = [prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default", prefs.customAccentHue, prefs.borderRadius, prefs.cardOpacity] as const;
+        const key = JSON.stringify(args);
+        if (key !== store.appliedTheme) {
+          store.appliedTheme = key;
+          applyThemePreview(...args);
+        }
+      }
+    }
+    if (metrics) {
+      patch.userMetrics = metrics.map(m => ({
+        id: m.id,
+        label: m.label,
+        unit: m.unit,
+        icon: m.icon,
+        categoryId: m.category_id,
+        colorVar: m.color_var,
+        sortOrder: m.sort_order,
+      }));
+    }
+    if (oracle?.custom_rewards) {
+      const cr = oracle.custom_rewards as unknown as Reward[];
+      if (Array.isArray(cr) && cr.length > 0) patch.customRewards = cr;
+    }
+    store.loadedAt = Date.now();
+    setSettingsState(patch);
+  })()
+    .catch(() => {
+      // Offline or the like: show the defaults instead of loading forever; the next mount tries again.
+      if (seq === store.seq && store.state.loading) setSettingsState({ loading: false });
+    })
+    .finally(() => {
+      if (store.inFlight === run) store.inFlight = null;
+    });
+  store.inFlight = run;
+  return run;
+}
+
+/** Point the store at the signed-in user: a new user starts from defaults and loads; the same user reloads when stale. */
+function switchSettingsUser(userId: string | null) {
+  if (store.userId !== userId) {
+    store.userId = userId;
+    store.seq++;
+    store.inFlight = null;
+    store.loadedAt = 0;
+    store.appliedTheme = "";
+    setSettingsState(freshState(!!userId));
+    if (userId) void loadSettings(userId);
+  } else if (userId && !store.inFlight && Date.now() - store.loadedAt > STALE_MS) {
+    void loadSettings(userId);
+  }
+}
+
+/** Test hook: forget the shared settings (the next mount loads again). */
+export function resetUserSettingsStore() {
+  store.userId = undefined;
+  store.seq++;
+  store.inFlight = null;
+  store.loadedAt = 0;
+  store.appliedTheme = "";
+  store.state = freshState(true);
+}
+
 export function useUserSettings() {
   const { user } = useAuth();
-  const [customCategories, setCustomCategories] = useState<CustomCategory[]>(getCachedCategories);
-  const [userMetrics, setUserMetrics] = useState<UserMetric[]>([]);
-  const [customRewards, setCustomRewards] = useState<Reward[] | null>(null);
-  const [preferences, setPreferences] = useState<UserPreferences>({ enabledModules: DEFAULT_MODULES });
-  const [loading, setLoading] = useState(true);
-  // Preferences written elsewhere (the assistant's set_theme / toggle_module) reload here.
-  const [reloadNonce, setReloadNonce] = useState(0);
-  useEffect(() => onAppEvent(USER_SETTINGS_CHANGED_EVENT, () => setReloadNonce((n) => n + 1)), []);
+  const userId = user?.id ?? null;
+  const live = useSyncExternalStore(subscribeSettings, settingsSnapshot);
+  // Until the effect below switches the store, a different user's state must not show.
+  const fresh = useMemo(() => freshState(!!userId), [userId]);
+  const state = store.userId === userId ? live : fresh;
+  const { customCategories, userMetrics, customRewards, preferences, loading } = state;
 
-  // Load all settings
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
+    switchSettingsUser(userId);
+  }, [userId]);
 
-    const load = async () => {
-      const { data: onb } = await supabase
-        .from("user_onboarding")
-        .select("custom_categories, preferences")
-        .eq("user_id", user.id)
-        .maybeSingle();
+  // Preferences written elsewhere (the assistant's set_theme / toggle_module) reload here, once for every copy.
+  useEffect(() => {
+    if (store.eventHooked) return;
+    store.eventHooked = true;
+    onAppEvent(USER_SETTINGS_CHANGED_EVENT, () => {
+      if (store.emitting || !store.userId) return;
+      void loadSettings(store.userId, true);
+    });
+  }, []);
 
-      if (onb?.custom_categories) {
-        const cats = onb.custom_categories as unknown as CustomCategory[];
-        setCustomCategories(cats);
-        try { localStorage.setItem("cached_custom_categories", JSON.stringify(cats)); } catch {}
-      }
-      if (onb?.preferences) {
-        const prefs = onb.preferences as unknown as UserPreferences;
-        if (prefs.enabledModules && prefs.enabledModules.length > 0) {
-          setPreferences({
-            ...prefs,
-            enabledModules: normalizeModuleIds(prefs.enabledModules)!,
-            moduleOrder: normalizeModuleIds(prefs.moduleOrder),
-          });
-        }
-        if (prefs.theme || prefs.accentColor || prefs.frameStyle || prefs.fontPair || prefs.cardStyle) {
-          applyThemePreview(prefs.theme || "dark", prefs.accentColor || "purple", prefs.frameStyle || "default", prefs.fontPair || "default", prefs.cardStyle || "default", prefs.customAccentHue, prefs.borderRadius, prefs.cardOpacity);
-        }
-      }
-
-      const { data: metrics } = await supabase
-        .from("user_metrics")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("sort_order", { ascending: true });
-
-      if (metrics) {
-        setUserMetrics(metrics.map(m => ({
-          id: m.id,
-          label: m.label,
-          unit: m.unit,
-          icon: m.icon,
-          categoryId: m.category_id,
-          colorVar: m.color_var,
-          sortOrder: m.sort_order,
-        })));
-      }
-
-      const { data: oracle } = await supabase
-        .from("oracle_state")
-        .select("custom_rewards")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (oracle?.custom_rewards) {
-        const cr = oracle.custom_rewards as unknown as Reward[];
-        if (Array.isArray(cr) && cr.length > 0) {
-          setCustomRewards(cr);
-        }
-      }
-
-      setLoading(false);
-    };
-    load();
-  }, [user, reloadNonce]);
+  const setCustomCategories = useCallback((cats: CustomCategory[]) => setSettingsState({ customCategories: cats }), []);
+  const setUserMetrics = useCallback((metrics: UserMetric[]) => setSettingsState({ userMetrics: metrics }), []);
+  const setCustomRewards = useCallback((rewards: Reward[] | null) => setSettingsState({ customRewards: rewards }), []);
+  const setPreferences = useCallback((prefs: UserPreferences) => setSettingsState({ preferences: prefs }), []);
 
   const getCategories = useCallback((): Category[] => {
     return CATEGORIES.map(cat => {
@@ -346,8 +441,9 @@ export function useUserSettings() {
     if (error) toast.error("Failed to save preferences");
     else {
       toast.success("Preferences saved");
-      // Every other open copy of the settings (Home, the header) re-reads, so a change shows at once.
-      emitAppEvent(USER_SETTINGS_CHANGED_EVENT);
+      // The shared state already shows it everywhere; the event is for the other readers (hotkeys).
+      store.emitting = true;
+      try { emitAppEvent(USER_SETTINGS_CHANGED_EVENT); } finally { store.emitting = false; }
     }
   }, [user, customCategories, persistOnboarding]);
 
