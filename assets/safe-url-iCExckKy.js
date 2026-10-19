@@ -1,0 +1,1 @@
+function s(r){const t=(r??"").trim();return t?/^(https?:\/\/|mailto:)/i.test(t)?t:t.startsWith("//")?`https:${t}`:/^[a-z][a-z0-9+.-]*:/i.test(t)||/\s/.test(t)||!/^[^/]+\.[^/]+/.test(t)?null:`https://${t}`:null}export{s};

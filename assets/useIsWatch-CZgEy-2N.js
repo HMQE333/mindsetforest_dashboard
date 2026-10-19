@@ -1,0 +1,1 @@
+import{r as a}from"./react-DLLEciFI.js";const t=280;function o(){const[r,e]=a.useState(!1);return a.useEffect(()=>{const n=window.matchMedia(`(max-width: ${t-1}px)`),s=()=>e(window.innerWidth<t);return n.addEventListener("change",s),e(window.innerWidth<t),()=>n.removeEventListener("change",s)},[]),r}export{o as u};

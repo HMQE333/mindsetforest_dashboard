@@ -1,0 +1,1 @@
+import{j as o}from"./react-DLLEciFI.js";function a({icon:e,iconUrl:n,size:t=48,className:i="",style:r}){return n?o.jsx("img",{src:n,alt:"pillar icon",className:`object-contain rounded-lg ${i}`,style:{width:t,height:t,...r},loading:"lazy"}):o.jsx("span",{className:i,style:{fontSize:t*.8,lineHeight:1,...r},children:e})}export{a as P};

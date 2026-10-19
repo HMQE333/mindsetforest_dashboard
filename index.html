@@ -2,10 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="./favicon.png" type="image/png" />
-    <!-- Windows 11 (Fluent) emoji on every device; see scripts/fetch-emoji-font.mjs -->
-    <link rel="stylesheet" href="./fonts/fluent-emoji/fluent-emoji.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="./favicon.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" sizes="180x180" />
+    <!-- Inter + JetBrains Mono. Not render-blocking: text paints in the fallback
+         font and swaps (display=swap) when the files arrive. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" /></noscript>
+    <!-- Windows 11 (Fluent) emoji on every device: /fonts/fluent-emoji/fluent-emoji.css
+         (scripts/fetch-emoji-font.mjs) is added by src/main.tsx, not here, so its
+         woff2 subsets stay off the first screen; see src/lib/emoji-font.ts. -->
     <title>MindsetForest</title>
     <meta name="description" content="Gamified productivity tracker - Your Life. Your Quest.">
     <meta name="author" content="MindsetForest" />
@@ -20,8 +29,11 @@
     <meta name="twitter:title" content="MindsetForest">
     <meta property="og:description" content="Gamified productivity tracker - Your Life. Your Quest.">
     <meta name="twitter:description" content="Gamified productivity tracker - Your Life. Your Quest.">
-  <script type="module" crossorigin src="./assets/index-B3N31JsC.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CnZv-yHr.css">
+  <script type="module" crossorigin src="./assets/index-BZgsjM83.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/react-DLLEciFI.js">
+  <link rel="modulepreload" crossorigin href="./assets/supabase-Cv0iAapC.js">
+  <link rel="modulepreload" crossorigin href="./assets/motion-DqFQSfbI.js">
+  <link rel="stylesheet" crossorigin href="./assets/index-C-qCmUhV.css">
 </head>
 
   <body>
