@@ -14,7 +14,7 @@ import {
   splitInboxItems,
   type ArchiveBlock,
 } from "@/lib/archive-data";
-import { normaliseTag, parseInlineTags } from "@/lib/archive-tags";
+import { isTypeTag, mergeTags, normaliseTag, parseInlineTags } from "@/lib/archive-tags";
 import { AI_ACTIONS, aiTooLong } from "@/lib/archive-ai";
 import { invokeFunction } from "@/lib/function-error";
 import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
@@ -189,8 +189,8 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
       content,
       pillars: [],
       directions: [],
-      // The #tags he wrote, read with the tag rules; the text keeps them.
-      tags: parseInlineTags(content),
+      // The #tags he wrote, read with the tag rules (one type at most: the last one written); the text keeps them.
+      tags: mergeTags([], parseInlineTags(content)),
     }));
     try {
       const saved = ((await addBlocks(blocks)) as ArchiveBlock[] | undefined) ?? [];
@@ -266,7 +266,8 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
     if (!target.trim()) return;
     const tooLong = aiTooLong(action, target);
     if (tooLong) { toast.error(tooLong); return; }
-    if (looksLikeCredential(target.slice(0, 10_000))) { toast.error(CREDENTIAL_MESSAGE); return; }
+    // All of what would be sent is read (the length was checked above).
+    if (looksLikeCredential(target)) { toast.error(CREDENTIAL_MESSAGE); return; }
     ai.preview({
       action,
       subject: sel ? "the selected text" : "Inbox draft",
@@ -311,9 +312,10 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
       let added = 0;
       const tagged = targetItems.map((item, i) => {
         const already = new Set(parseInlineTags(item));
+        // Topic tags only: a type is one tag a note carries at most once, offered by the strip after Save.
         const fresh = (suggested[i] || [])
           .map(normaliseTag)
-          .filter((t, idx, arr) => t && !already.has(t) && arr.indexOf(t) === idx);
+          .filter((t, idx, arr) => t && !isTypeTag(t) && !already.has(t) && arr.indexOf(t) === idx);
         added += fresh.length;
         return fresh.length ? `${item} ${fresh.map((t) => `#${t}`).join(" ")}` : item;
       });

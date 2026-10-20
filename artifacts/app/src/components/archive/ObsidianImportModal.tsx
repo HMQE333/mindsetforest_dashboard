@@ -22,7 +22,11 @@ import {
   type ParsedObsidianNote,
 } from "@/lib/obsidian-import";
 import { ArchiveSaveError, type ArchiveBlock } from "@/lib/archive-data";
-import { normaliseTag } from "@/lib/archive-tags";
+import { isTypeTag, mergeTags, normaliseTag, typeOf } from "@/lib/archive-tags";
+import { looksLikeCredential } from "@/lib/credential-check";
+
+/** Text the credential rule reads (as everywhere in the Archive): a password sits near the top. */
+const holdsSecret = (n: { title: string; content: string }) => looksLikeCredential(`${n.title}\n\n${n.content}`.slice(0, 10_000));
 
 interface Props {
   open: boolean;
@@ -80,7 +84,9 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
 
   const runAIClassification = useCallback(async (review: ReviewNote[]) => {
     for (let i = 0; i < review.length; i += CLASSIFY_BATCH) {
-      const batch = review.slice(i, i + CLASSIFY_BATCH);
+      // A note that looks like it holds a password or a key is not sent: it keeps the heuristic's answer.
+      const batch = review.slice(i, i + CLASSIFY_BATCH).filter((n) => !holdsSecret(n));
+      if (batch.length === 0) continue;
       const rawText = batch
         .map((n, j) => `=====NOTE ${j + 1}=====\nTitle: ${n.title}\n${n.content.slice(0, 500)}`)
         .join("\n\n");
@@ -220,7 +226,12 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
 
     const finalBlocks: Partial<ArchiveBlock>[] = [];
     for (let i = 0; i < selected.length; i += TAG_BATCH) {
-      const batch = selected.slice(i, i + TAG_BATCH);
+      // A note that looks like it holds a password or a key is never sent: it keeps only its own tags.
+      for (const n of selected.slice(i, i + TAG_BATCH).filter(holdsSecret)) {
+        finalBlocks.push({ title: n.title, content: n.content, pillars: [], directions: [], tags: n.tags, source_url: null });
+      }
+      const batch = selected.slice(i, i + TAG_BATCH).filter((n) => !holdsSecret(n));
+      if (batch.length === 0) continue;
       try {
         const items = batch.map((n) => `Title: ${n.title}\n${n.content}`);
         const { data, error } = await supabase.functions.invoke("ai-archive-process", {
@@ -233,13 +244,14 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
           // Tags read with the Archive's tag rules (Polish letters kept, "#2" is not a tag). The
           // model's pillars are not written: pillars are only ever his own choice (the peek's
           // pillar row, or an accepted ✨ Suggest chip).
-          const aiTags = (Array.isArray(ai?.tags) ? ai.tags : []).map((t: unknown) => (typeof t === "string" ? normaliseTag(t) : "")).filter(Boolean);
+          const aiTags: string[] = (Array.isArray(ai?.tags) ? ai.tags : []).map((t: unknown) => (typeof t === "string" ? normaliseTag(t) : "")).filter(Boolean);
+          // One type at most: his own (parseMarkdown keeps one) wins; the model's only when he wrote none.
           finalBlocks.push({
             title: n.title,
             content: n.content,
             pillars: [],
             directions: [],
-            tags: Array.from(new Set([...n.tags, ...aiTags])),
+            tags: mergeTags(n.tags, typeOf(n.tags) ? aiTags.filter((t) => !isTypeTag(t)) : aiTags),
             source_url: null,
           });
         });

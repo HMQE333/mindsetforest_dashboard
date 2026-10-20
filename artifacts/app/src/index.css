@@ -886,3 +886,15 @@
 body[data-archive-reader-open] [data-assistant-root] {
   display: none;
 }
+
+/* The Archive's selection bar (fixed, centred at the bottom) stays left of the desktop peek panel
+   (440px on the right) instead of covering the bottom of the note in it. */
+body:has([data-archive-peek-panel]) [data-archive-selection-bar] {
+  right: calc(min(440px, 92vw) + 0.5rem);
+}
+
+/* Shift held over the Archive's draggable cards: the press lands on the card, not on its text, so a
+   Shift-drag (move to a folder) starts; see ArchiveLibrary. */
+body[data-archive-shift] article[data-note-id][draggable="true"] * {
+  pointer-events: none;
+}

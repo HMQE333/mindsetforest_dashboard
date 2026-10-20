@@ -23,10 +23,10 @@ import type { Pillar } from "@/hooks/usePillars";
 import { AI_ACTIONS, aiNoteTitle, aiTooLong, titleAfterReplace, type NoteAIAction } from "@/lib/archive-ai";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import type { TypeTag } from "@/lib/archive-tags";
-import { invokeFunction } from "@/lib/function-error";
 import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
 import { copyText } from "@/lib/hand-off";
 import { lazyModule } from "@/lib/lazy-module";
+import { fetchNoteAI, useArchiveAI } from "./ArchiveAIProvider";
 import type { AIPreviewView } from "./ArchiveAIPreviewModal";
 import { DeleteConfirmButton, type Armed } from "./DeleteConfirm";
 import FolderPicker from "./FolderPicker";
@@ -122,6 +122,7 @@ export default function ArchivePeek(props: ArchivePeekProps) {
     <aside
       aria-label={`Preview: ${heading.title}`}
       data-archive-peek=""
+      data-archive-peek-panel=""
       className="fixed bottom-0 right-0 top-0 z-40 flex w-[440px] max-w-[92vw] flex-col border-l border-white/10 bg-background shadow-2xl animate-in slide-in-from-right-4 duration-150 motion-reduce:animate-none"
     >
       {header}
@@ -206,7 +207,7 @@ function PeekBody({
 
       {(tags.shown.length > 0 || sugg.visible) && (
         <div className="space-y-2">
-          <NoteTagChips tags={tags.shown} onTag={onFilterTag} onType={onFilterType} size="md" />
+          <NoteTagChips tags={tags.shown} onTag={onFilterTag} onType={onFilterType} size="md" focusable />
           {sugg.visible && (
             <SuggestionChips
               chips={sugg.chips}
@@ -237,13 +238,13 @@ function PeekBody({
 /** The current note-AI preview, fetched the first time an action runs from the peek. */
 const AIPreviewModal = lazyModule(() => import("./ArchiveAIPreviewModal"));
 
-/** The actions the peek runs itself when the Archive's own AI handler is not passed in. */
+/** The actions the peek runs itself when neither the Archive's AI handler nor its provider is there. */
 const HERE: NoteAIAction[] = ["shorten", "expand", "clean"];
 
 /** The note's AI actions, one press away. Every result opens the preview first; nothing is saved before it. */
 function AIMenu({
   block,
-  onAIAction,
+  onAIAction: onAIActionProp,
   onSuggest,
   onUpdate,
   onSaveNew,
@@ -254,6 +255,9 @@ function AIMenu({
   onUpdate: UpdateBlock;
   onSaveNew?: ArchivePeekProps["onSaveNew"];
 }) {
+  // The Archive's runner (ArchiveAIProvider) when the Library sits inside it, even without the prop.
+  const archiveAI = useArchiveAI();
+  const onAIAction = onAIActionProp ?? (archiveAI ? (b: ArchiveBlock, a: NoteAIAction) => archiveAI.run([b], a) : undefined);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<AIPreviewView | null>(null);
   const runId = useRef(0);
@@ -271,7 +275,8 @@ function AIMenu({
       toast.error(tooLong);
       return;
     }
-    if (looksLikeCredential(`${block.title}\n\n${block.content}`.slice(0, 10_000))) {
+    // All of what would be sent is read (the length was checked above).
+    if (looksLikeCredential(`${block.title}\n\n${block.content}`)) {
       toast.error(CREDENTIAL_MESSAGE);
       return;
     }
@@ -279,17 +284,9 @@ function AIMenu({
     const base: AIPreviewView = { action, subject, status: "loading", original: block.content, canReplace: true, canSaveNew: !!onSaveNew };
     setView(base);
     try {
-      let proposed: string;
-      let note: string | undefined;
-      if (action === "clean") {
-        const data = await invokeFunction<{ cleanedText?: string }>("ai-archive-clean", { rawText: block.content });
-        proposed = data.cleanedText ?? "";
-      } else {
-        const data = await invokeFunction<{ content?: string; additions?: unknown[] }>("ai-archive-expand", { content: block.content, title: block.title, action });
-        proposed = data.content ?? "";
-        if (action === "expand" && Array.isArray(data.additions)) note = data.additions.length ? `AI added ${data.additions.length} block${data.additions.length === 1 ? "" : "s"}` : "AI found nothing worth adding";
-      }
-      if (runId.current === id) setView({ ...base, status: "ready", proposed, note });
+      // The same call the Archive's runner makes (one place that speaks to ai-archive-*).
+      const { text: proposed, note } = await fetchNoteAI(action, block.content, block.title);
+      if (runId.current === id) setView(proposed.trim() ? { ...base, status: "ready", proposed, note } : { ...base, status: "error", error: "The AI returned an empty text." });
     } catch (e) {
       if (runId.current === id) setView({ ...base, status: "error", error: e instanceof Error ? e.message : String(e) });
     }
@@ -373,6 +370,7 @@ function PhoneSheet({
 }) {
   const [drag, setDrag] = useState(0);
   const start = useRef<{ y: number; t: number } | null>(null);
+  const sheetRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
@@ -390,6 +388,21 @@ function PhoneSheet({
       if (!pushed || window.history.state?.mfPeek === token) return;
       // The full reader opened over the sheet has its own entry; this one is under it.
       if (document.querySelector("[data-archive-reader]")) return;
+      // Something open over the sheet (the editor, the AI preview, the folder picker): Back closes
+      // that, as Esc does, and the sheet keeps its own history entry for the next Back.
+      const open = [...document.querySelectorAll('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')].filter(
+        (el) => !sheetRef.current?.contains(el),
+      );
+      const top = open[open.length - 1];
+      if (top) {
+        try {
+          window.history.pushState({ ...(window.history.state ?? {}), mfPeek: token }, "");
+        } catch {
+          pushed = false;
+        }
+        top.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+        return;
+      }
       pushed = false;
       closeRef.current();
     };
@@ -430,6 +443,7 @@ function PhoneSheet({
     <>
       <div className="fixed inset-0 z-40 bg-black/40 animate-in fade-in-0 duration-150" onClick={onClose} aria-hidden />
       <section
+        ref={sheetRef}
         role="region"
         aria-label={`Preview: ${title}`}
         data-archive-peek=""

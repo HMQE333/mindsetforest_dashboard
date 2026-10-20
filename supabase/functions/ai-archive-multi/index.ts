@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, getUserClient, jsonResponse } from "../_shared/planner.ts";
-import { EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErrorStatus } from "../_shared/ai-errors.ts";
+import { CREDENTIAL_REFUSAL, EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErrorStatus } from "../_shared/ai-errors.ts";
+import { looksLikeCredential } from "../_shared/archive-tags.ts";
 
 /**
  * Several Archive notes at once: merge, summarize, the other presets, or his
@@ -10,7 +11,8 @@ import { EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErr
  * Borders (stated in the app, src/lib/archive-ai.ts): the notes' language,
  * Markdown kept, nothing invented; Merge keeps every unique point, link,
  * number and #tag. Notes are refused rather than cut when they are too long,
- * so a merge never silently drops the end of a note.
+ * so a merge never silently drops the end of a note. A note that looks like it
+ * holds a password or a key is refused (422), all of it read.
  *
  * Request { notes: { title, content }[], preset?, prompt? } -> { content } or { error }.
  */
@@ -52,6 +54,8 @@ serve(async (req) => {
     }
     const total = notes.reduce((s: number, n: { content: string }) => s + n.content.length, 0);
     if (total > TOTAL_LIMIT) return jsonResponse({ error: `Together the notes are too long (${total} characters; the limit is ${TOTAL_LIMIT}).` }, 413);
+    const secret = notes.findIndex((n: { title: string; content: string }) => looksLikeCredential(`${n.title}\n\n${n.content}`));
+    if (secret !== -1) return jsonResponse({ error: `Note ${secret + 1} ("${notes[secret].title.slice(0, 40)}"): ${CREDENTIAL_REFUSAL}` }, 422);
 
     const prompt = String(body.prompt ?? "").trim().slice(0, 2_000);
     const preset = typeof body.preset === "string" && PRESETS[body.preset] ? body.preset : undefined;

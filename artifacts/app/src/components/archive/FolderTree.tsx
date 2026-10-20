@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronRight, Folder, FolderOpen, FolderPlus, Inbox, Layers, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,6 +19,9 @@ import { UNTAGGED } from "./archive-index";
 import { NOTE_DRAG_TYPE, deleteFolder, folderLabel, folderNameProblem, folderReach, renameFolder } from "./folder-ops";
 import { applyWithUndo, useSavedFolders } from "./folder-store";
 import { useRemembered } from "./remembered";
+
+/** How long a dragged card waits over a closed folder before it opens. */
+const SPRING_OPEN_MS = 600;
 
 const isNoteDrag = (e: DragEvent) => Array.from(e.dataTransfer.types).includes(NOTE_DRAG_TYPE);
 
@@ -77,8 +80,21 @@ function FolderTree({ tree, total, untagged, value, onChange, onDropNotes, block
     return set;
   }, [tree]);
 
+  // One tab stop for the whole tree (the folder shown, else "All notes"); ↑ / ↓ move between rows,
+  // → / ← open and close, F2 renames, Delete deletes (on the row's own keys below).
+  const shownInTree = value === null || value === UNTAGGED || existing.has(value);
+  const onTreeKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+    const rows = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-folder-row]")];
+    const i = rows.indexOf(document.activeElement as HTMLElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const j = e.key === "Home" ? 0 : e.key === "End" ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)));
+    rows[j]?.focus();
+  };
+
   return (
-    <nav aria-label="Folders" className="glass-card space-y-0.5 p-2 text-sm" lang="en">
+    <nav aria-label="Folders" className="glass-card space-y-0.5 p-2 text-sm" lang="en" onKeyDown={onTreeKey}>
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Folders</span>
         <button
@@ -91,7 +107,7 @@ function FolderTree({ tree, total, untagged, value, onChange, onDropNotes, block
           <FolderPlus className="h-4 w-4" aria-hidden />
         </button>
       </div>
-      <Row icon={Layers} label="All notes" count={total} active={value === null} onClick={() => onChange(null)} depth={0} />
+      <Row icon={Layers} label="All notes" count={total} active={value === null} tabbable={value === null || !shownInTree} onClick={() => onChange(null)} depth={0} />
       <Row
         icon={Inbox}
         label="Untagged"
@@ -141,12 +157,20 @@ function FolderTree({ tree, total, untagged, value, onChange, onDropNotes, block
           onRename={async (to) => {
             const from = renaming;
             setRenaming(null);
+            const target = normaliseTag(to);
             const list = renameFolder(blocks, from, to);
-            await saved.rename(from, to);
-            if (value && value !== UNTAGGED && inFolder(value, from)) onChange(`${to}${value.slice(from.length)}`);
+            // The notes first; the saved folders and the view follow only once a note is renamed.
+            const follow = async () => {
+              const move = await saved.rename(from, target);
+              if (value && value !== UNTAGGED && inFolder(value, from)) onChange(`${target}${value.slice(from.length)}`);
+              return () => saved.restore(move);
+            };
             if (list.length) {
-              await applyWithUndo(list, updateBlock, (n) => `Renamed ${folderLabel(from, 30)} to ${folderLabel(to, 30)} on ${n} note${n === 1 ? "" : "s"}`, () => void saved.rename(to, from));
-            } else toast.success(`Renamed to ${folderLabel(to)}`);
+              await applyWithUndo(list, updateBlock, (n) => `Renamed ${folderLabel(from, 30)} to ${folderLabel(target, 30)} on ${n} note${n === 1 ? "" : "s"}`, follow);
+            } else if (await saved.rename(from, target)) {
+              if (value && value !== UNTAGGED && inFolder(value, from)) onChange(`${target}${value.slice(from.length)}`);
+              toast.success(`Renamed to ${folderLabel(target)}`);
+            }
           }}
         />
       )}
@@ -159,12 +183,18 @@ function FolderTree({ tree, total, untagged, value, onChange, onDropNotes, block
             const folder = deleting;
             setDeleting(null);
             const list = deleteFolder(blocks, folder);
-            const savedHere = saved.folders.filter((f) => inFolder(f, folder));
-            await saved.remove(folder);
-            if (value && value !== UNTAGGED && inFolder(value, folder)) onChange(null);
+            // The notes first; the saved (empty) sub-folders go only once a note is out.
+            const follow = async () => {
+              const removed = await saved.remove(folder);
+              if (value && value !== UNTAGGED && inFolder(value, folder)) onChange(null);
+              return () => saved.restore(removed);
+            };
             if (list.length) {
-              await applyWithUndo(list, updateBlock, (n) => `Took ${folderLabel(folder, 30)} off ${n} note${n === 1 ? "" : "s"}`, () => savedHere.forEach((f) => void saved.create(f)));
-            } else toast.success(`Deleted ${folderLabel(folder)}`);
+              await applyWithUndo(list, updateBlock, (n) => `Took ${folderLabel(folder, 30)} off ${n} note${n === 1 ? "" : "s"}`, follow);
+            } else if (await saved.remove(folder)) {
+              if (value && value !== UNTAGGED && inFolder(value, folder)) onChange(null);
+              toast.success(`Deleted ${folderLabel(folder)}`);
+            }
           }}
         />
       )}
@@ -222,6 +252,8 @@ function Branch({
         onToggle={() => onToggleOpen(node.path)}
         drop={(ids, move) => onDropNotes(ids, node.path, move)}
         dragging={dragging}
+        onRenameKey={() => onRename(node.path)}
+        onDeleteKey={() => onDelete(node.path)}
         actions={
           <>
             <IconAction label={`New folder inside #${node.path}`} icon={FolderPlus} onClick={() => setCreating({ parent: node.path })} />
@@ -274,6 +306,9 @@ function Row({
   drop,
   dragging,
   actions,
+  tabbable,
+  onRenameKey,
+  onDeleteKey,
 }: {
   icon: typeof Folder;
   label: string;
@@ -288,8 +323,19 @@ function Row({
   drop?: (ids: string[], move: boolean) => void;
   dragging?: boolean;
   actions?: ReactNode;
+  /** The tree's one tab stop (default: the row shown). */
+  tabbable?: boolean;
+  onRenameKey?: () => void;
+  onDeleteKey?: () => void;
 }) {
   const [over, setOver] = useState<false | "copy" | "move">(false);
+  // A closed folder held under a dragged card opens after a moment, as in a file manager.
+  const springTimer = useRef<number>();
+  const stopSpring = () => {
+    window.clearTimeout(springTimer.current);
+    springTimer.current = undefined;
+  };
+  useEffect(() => stopSpring, []);
   const dropProps = drop
     ? {
         onDragOver: (e: DragEvent) => {
@@ -298,11 +344,21 @@ function Row({
           const move = e.shiftKey;
           e.dataTransfer.dropEffect = move ? "move" : "copy";
           if (over !== (move ? "move" : "copy")) setOver(move ? "move" : "copy");
+          if (expandable && !expanded && onToggle && springTimer.current === undefined) {
+            springTimer.current = window.setTimeout(() => {
+              springTimer.current = undefined;
+              onToggle();
+            }, SPRING_OPEN_MS);
+          }
         },
         onDragLeave: (e: DragEvent) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setOver(false);
+            stopSpring();
+          }
         },
         onDrop: (e: DragEvent) => {
+          stopSpring();
           if (!isNoteDrag(e)) return;
           e.preventDefault();
           setOver(false);
@@ -311,6 +367,22 @@ function Row({
         },
       }
     : {};
+  const onRowKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowRight" && expandable && !expanded) {
+      e.preventDefault();
+      onToggle?.();
+    } else if (e.key === "ArrowLeft" && expandable && expanded) {
+      e.preventDefault();
+      onToggle?.();
+    } else if (e.key === "F2" && onRenameKey) {
+      e.preventDefault();
+      onRenameKey();
+    } else if (e.key === "Delete" && onDeleteKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      onDeleteKey();
+    }
+  };
   return (
     <div
       {...dropProps}
@@ -322,6 +394,7 @@ function Row({
       {expandable ? (
         <button
           type="button"
+          tabIndex={-1}
           onClick={onToggle}
           className="rounded p-0.5 text-muted-foreground hover:text-foreground"
           aria-label={expanded ? `Close ${label}` : `Open ${label}`}
@@ -334,8 +407,13 @@ function Row({
       )}
       <button
         type="button"
+        data-folder-row=""
+        tabIndex={(tabbable ?? active) ? 0 : -1}
         onClick={onClick}
+        onKeyDown={onRowKey}
         aria-current={active ? "true" : undefined}
+        aria-expanded={expandable ? !!expanded : undefined}
+        aria-keyshortcuts={onRenameKey ? "ArrowUp ArrowDown ArrowLeft ArrowRight F2 Delete" : "ArrowUp ArrowDown"}
         title={title}
         className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1.5 text-left ${actions ? "[@media(hover:none)]:pr-[4.75rem]" : ""} ${active ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
       >
@@ -355,10 +433,12 @@ function Row({
   );
 }
 
+/** A row's mouse action; from the keyboard the row's own keys do it (F2, Delete), so it is no tab stop. */
 function IconAction({ label, icon: Icon, onClick, danger }: { label: string; icon: typeof Folder; onClick: () => void; danger?: boolean }) {
   return (
     <button
       type="button"
+      tabIndex={-1}
       onClick={onClick}
       title={label}
       aria-label={label}

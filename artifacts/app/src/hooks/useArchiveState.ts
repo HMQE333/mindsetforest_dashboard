@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError, archiveFingerprint, chunkForInsert, type ArchiveBlock } from "@/lib/archive-data";
+import { trackEmbedding } from "@/lib/archive-embeddings";
 import { toast } from "sonner";
 
-async function embedBlock(blockId: string) {
+/** Embed one note now; a suggestion request for it waits for this (archive-embeddings.ts). */
+function embedBlock(blockId: string): Promise<void> {
+  const p = writeEmbedding(blockId);
+  trackEmbedding(blockId, p);
+  return p;
+}
+
+async function writeEmbedding(blockId: string) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -17,11 +25,20 @@ async function embedBlock(blockId: string) {
   }
 }
 
-/** Embed new blocks a few at a time: an import of hundreds must not fire hundreds of calls at once. */
+/**
+ * Embed new blocks a few at a time: an import of hundreds must not fire hundreds of calls at once.
+ * Each one counts as being embedded from the start (queued too), so a suggestion request waits for it.
+ */
 async function embedInBackground(ids: string[], concurrency = 3) {
+  const settle = new Map<string, () => void>();
+  for (const id of ids) trackEmbedding(id, new Promise<void>((resolve) => settle.set(id, resolve)));
   let next = 0;
   const worker = async () => {
-    while (next < ids.length) await embedBlock(ids[next++]);
+    while (next < ids.length) {
+      const id = ids[next++];
+      await writeEmbedding(id);
+      settle.get(id)?.();
+    }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
 }
@@ -52,6 +69,20 @@ function announce(userId: string) {
     bc.postMessage("changed");
     bc.close();
   } catch { /* no BroadcastChannel: the poll still catches it */ }
+}
+
+/** Pause after the last write before the list is fetched again (a batch of folder writes is one refetch). */
+export const REFETCH_AFTER_WRITES_MS = 1_200;
+const refetchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** One refetch of the list once the writes stop, in place of the ones cancelled under them. */
+function refetchAfterWrites(qc: QueryClient, queryKey: readonly unknown[]) {
+  const k = JSON.stringify(queryKey);
+  clearTimeout(refetchTimers.get(k));
+  refetchTimers.set(k, setTimeout(() => {
+    refetchTimers.delete(k);
+    void qc.invalidateQueries({ queryKey });
+  }, REFETCH_AFTER_WRITES_MS));
 }
 
 /**
@@ -170,7 +201,21 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
   const blocks = query.data ?? EMPTY_BLOCKS;
   const loading = query.isLoading && !query.data;
 
-  const setBlocks = useCallback((updater: (prev: ArchiveBlock[]) => ArchiveBlock[]) => {
+  /**
+   * Puts a write's result into the held list. A refetch already in flight (the
+   * poll's) may have read the table before the write, and when it lands it
+   * replaces the list whatever setQueryData did meanwhile: the change would
+   * vanish for a few seconds, and a folder action in that window would build
+   * its tags from the old list and write them back. So that refetch is
+   * cancelled and one fresh fetch follows once the writes pause. (No list held
+   * yet: the first load is left to land; the poll then sees the write's newer
+   * updated_at and fetches again.)
+   */
+  const setBlocks = useCallback(async (updater: (prev: ArchiveBlock[]) => ArchiveBlock[]) => {
+    if (qc.getQueryData(queryKey) && qc.isFetching({ queryKey }) > 0) {
+      await qc.cancelQueries({ queryKey });
+      refetchAfterWrites(qc, queryKey);
+    }
     qc.setQueryData<ArchiveBlock[]>(queryKey, (prev) => updater(prev || []));
   }, [qc, queryKey]);
 
@@ -191,7 +236,7 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
       toast.error("Failed to save block");
       return null;
     }
-    setBlocks((prev) => [(data as any), ...prev]);
+    await setBlocks((prev) => [(data as any), ...prev]);
     announce(userId);
     embedBlock((data as any).id);
     return data as any as ArchiveBlock;
@@ -219,7 +264,7 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
       saved.push(...(((data as any) || []) as ArchiveBlock[]));
     }
     if (saved.length > 0) {
-      setBlocks((prev) => [...saved, ...prev]);
+      await setBlocks((prev) => [...saved, ...prev]);
       announce(userId);
       void embedInBackground(saved.map((b) => b.id));
     }
@@ -227,8 +272,8 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     return saved;
   }, [userId, setBlocks]);
 
-  /** Resolves whether the change was saved (a failure is toasted here). */
-  const updateBlock = useCallback(async (id: string, updates: Partial<ArchiveBlock>): Promise<boolean> => {
+  /** Resolves whether the change was saved (a failure is toasted here, unless `quiet`: a batch says it once). */
+  const updateBlock = useCallback(async (id: string, updates: Partial<ArchiveBlock>, { quiet = false }: { quiet?: boolean } = {}): Promise<boolean> => {
     // The row's new updated_at comes back with the write, so the list held
     // here matches the server's fingerprint and the poll does not refetch it
     // for the edit itself. The embedding written after a title or content
@@ -241,11 +286,11 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
       .eq("id", id)
       .select("updated_at");
     if (error) {
-      toast.error("Failed to update block");
+      if (!quiet) toast.error("Failed to update block");
       return false;
     }
     const updatedAt = (data as any)?.[0]?.updated_at as string | undefined;
-    setBlocks((prev) =>
+    await setBlocks((prev) =>
       prev.map((b) => (b.id === id ? { ...b, ...updates, ...(updatedAt ? { updated_at: updatedAt } : {}) } : b))
     );
     if (userId) announce(userId);
@@ -265,7 +310,7 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
       toast.error("Failed to delete block");
       return false;
     }
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
+    await setBlocks((prev) => prev.filter((b) => b.id !== id));
     if (userId) announce(userId);
     return true;
   }, [userId, setBlocks]);

@@ -10,6 +10,8 @@ import { AI_ACTIONS } from "@/lib/archive-ai";
 import { ArchiveAIMenu, useArchiveAI } from "./ArchiveAIProvider";
 import ArchiveConfirmDialog from "./ArchiveConfirmDialog";
 import FolderPicker from "./FolderPicker";
+import { sameList, undoOnto } from "./folder-ops";
+import { readNoteLists } from "./folder-store";
 import { PillarRow } from "./TagChips";
 import { deleteWithUndo } from "./pending-deletes";
 import { getRemembered } from "./remembered";
@@ -58,11 +60,33 @@ async function applyWithUndo(list: readonly Change[], updateBlock: UpdateBlock, 
   if (!saved.length) return;
   toast.success(message(saved.length), {
     className: "[overflow-wrap:anywhere]",
-    action: {
-      label: "Undo",
-      onClick: () => void applyChanges(saved.map((c) => ({ id: c.id, before: c.after, after: c.before })), updateBlock).then((back) => back.length && toast("Undone")),
-    },
+    action: { label: "Undo", onClick: () => void undoChanges(saved, updateBlock) },
   });
+}
+
+/**
+ * Undo on the notes as they are now, not by writing the old pillars back: the
+ * toggled pillar comes off (or back), and a pillar toggled on one of them
+ * since (the peek's row, an accepted chip) stays (undoOnto). Pin goes back.
+ */
+async function undoChanges(saved: readonly Change[], updateBlock: UpdateBlock) {
+  const lists = saved.filter((c) => c.before.pillars && c.after.pillars);
+  const now = lists.length ? await readNoteLists(lists.map((c) => c.id), "pillars") : new Map<string, string[]>();
+  if (!now) {
+    toast.error("Couldn't undo: the notes could not be read");
+    return;
+  }
+  const back: Change[] = [];
+  for (const c of saved) {
+    if (c.before.pillars && c.after.pillars) {
+      const current = now.get(c.id);
+      if (!current) continue;
+      const next = undoOnto(current, { before: c.before.pillars, after: c.after.pillars });
+      if (!sameList(next, current)) back.push({ id: c.id, before: { pillars: current }, after: { pillars: next } });
+    } else back.push({ id: c.id, before: c.after, after: c.before });
+  }
+  const done = await applyChanges(back, updateBlock);
+  if (done.length === back.length) toast("Undone");
 }
 
 export default function ArchiveSelectionBar({
@@ -137,12 +161,18 @@ export default function ArchiveSelectionBar({
         role="toolbar"
         aria-label={`${n} selected`}
         lang="en"
-        className="fixed inset-x-2 bottom-[5.25rem] z-50 mx-auto flex max-w-max items-center gap-1.5 overflow-x-auto overscroll-x-contain rounded-2xl border border-white/20 px-3 py-2 glass-card glow-md sm:bottom-6 sm:px-4"
+        data-archive-selection-bar=""
+        // Phones: two rows, the count with Delete and Clear always in sight, the other actions
+        // scrolling under them. Wider: one row; the actions scroll if the window is narrow.
+        // Above the toasts on every width: an action's Undo toast (bottom right) would cover
+        // Delete and Clear on a laptop for as long as it shows.
+        className="fixed inset-x-2 bottom-[5.25rem] z-50 mx-auto flex max-w-max flex-wrap items-center gap-1.5 rounded-2xl border border-white/20 px-3 py-2 glass-card glow-md sm:bottom-28 sm:flex-nowrap sm:px-4"
         // Nearly opaque: the cards scrolling under it must not show through its labels.
         style={{ "--card-opacity": 0.96 } as CSSProperties}
       >
         <span className="shrink-0 text-sm font-semibold tabular-nums">{n} selected</span>
-        {sep}
+        <div className="order-last flex min-w-0 basis-full items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&>*]:shrink-0 sm:order-none sm:flex-1 sm:basis-auto">
+        <span className="hidden h-5 w-px bg-white/15 sm:block" aria-hidden />
         <ArchiveAIMenu notes={selected} side="top" align="start" className={btn} />
         <button
           type="button"
@@ -205,7 +235,8 @@ export default function ArchiveSelectionBar({
         <button type="button" onClick={onPlant} className={`${btn} border-emerald-500/30 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30`}>
           🌱 Plant {n}
         </button>
-        <button type="button" onClick={() => setConfirmDelete(true)} className={`${btn} border-destructive/30 bg-destructive/20 text-destructive hover:bg-destructive/30`}>
+        </div>
+        <button type="button" onClick={() => setConfirmDelete(true)} className={`${btn} ml-auto border-destructive/30 bg-destructive/20 text-destructive hover:bg-destructive/30 sm:ml-0`}>
           <Trash2 className="h-3.5 w-3.5" aria-hidden /> Delete
         </button>
         <button type="button" onClick={onClear} className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground" title="Clear the selection (Esc)">

@@ -37,7 +37,8 @@ export function isTypeTag(tag: string): tag is TypeTag {
  * The tag a raw label stands for, or "" when it is not a tag: no "#", NFC,
  * lowercase, spaces become "-", anything but letters, digits, "-", "_" and "/"
  * dropped, empty folder segments and a trailing "/" dropped. Polish letters
- * stay ("Książki" -> "książki"); "#2" -> "" (no letter).
+ * stay ("Książki" -> "książki"); "#2" -> "" (no letter). A language's "#" and
+ * "++" are spelled out, so "C#" and "C++" stay apart: "csharp", "cpp".
  */
 export function normaliseTag(raw: string): string {
   const t = String(raw ?? "")
@@ -46,6 +47,8 @@ export function normaliseTag(raw: string): string {
     .replace(/^#+/, "")
     .toLowerCase()
     .replace(/\s+/g, "-")
+    .replace(/(?<=[\p{L}\p{N}])#(?!\p{L})/gu, "sharp")
+    .replace(/(?<=[\p{L}\p{N}])\+\+(?!\p{L})/gu, "pp")
     .replace(/[^\p{L}\p{M}\p{N}_/-]+/gu, "")
     .replace(/-{2,}/g, "-")
     .split("/")
@@ -177,17 +180,51 @@ export const TYPE_INFO: Record<TypeTag, { label: string; hint: string }> = {
   fragment: { label: "Fragment", hint: "A raw note that doesn't fit yet" },
 };
 
-/** An inline #tag: at the start or after a space or an opening bracket, so "page#section" is not one. */
-export const INLINE_TAG_REGEX = /(^|[\s([{])#([\p{L}\p{M}\p{N}_/-]+)/gu;
+/**
+ * An inline #tag: at the start or after a space, "(" or "[", so "page#section"
+ * is not one, nor a link's anchor ("[Intro](#intro)") or an Obsidian heading
+ * link ("[[#Heading]]"). A language's "#" or "++" at its end belongs to it
+ * ("#C#", "#C++").
+ */
+export const INLINE_TAG_REGEX = /(^|[\s([])(?<!\]\(|\[\[)#([\p{L}\p{M}\p{N}_/-]+(?:(?:\+\+|#)(?![\p{L}\p{M}\p{N}_/-]))?)/gu;
+
+/** A colour, not a label: "#FF5733", "#1e1e1e80" (six or eight hex digits, at least one a digit). */
+const HEX_COLOUR = /^(?=[a-f]*\d)(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+/**
+ * The text without its code: fenced blocks (``` or ~~~) and inline `code`
+ * spans, where "#include", "#define" and "#fff" are code, not tags.
+ */
+function withoutCode(text: string): string {
+  let fence: string | null = null;
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const open = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (open && open[1][0] === fence[0] && open[1].length >= fence.length) fence = null;
+      out.push("");
+      continue;
+    }
+    if (open) {
+      fence = open[1];
+      out.push("");
+      continue;
+    }
+    out.push(line.replace(/(`+)(?:(?!\1)[^\n])*?\1/g, " "));
+  }
+  return out.join("\n");
+}
 
 /**
  * The #tags written in a note, normalised, each once, in the order written.
  * The text itself is not changed. "#2" is not a tag; "#projekty/RybiaPaka/" is
- * "projekty/rybiapaka".
+ * "projekty/rybiapaka". Code (fenced or inline) and colours ("#FF5733") are
+ * not read as tags.
  */
 export function parseInlineTags(text: string): string[] {
   const out: string[] = [];
-  for (const m of String(text ?? "").normalize("NFC").matchAll(INLINE_TAG_REGEX)) {
+  for (const m of withoutCode(String(text ?? "").normalize("NFC").replace(/\r\n?/g, "\n")).matchAll(INLINE_TAG_REGEX)) {
+    if (HEX_COLOUR.test(m[2])) continue;
     const tag = normaliseTag(m[2]);
     if (tag && !out.includes(tag)) out.push(tag);
   }

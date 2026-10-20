@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, getUserClient, jsonResponse } from "../_shared/planner.ts";
-import { EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErrorStatus } from "../_shared/ai-errors.ts";
+import { CREDENTIAL_REFUSAL, EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErrorStatus } from "../_shared/ai-errors.ts";
+import { looksLikeCredential } from "../_shared/archive-tags.ts";
 
 /**
  * Clean (the Inbox draft or a saved note), or the user's own prompt over a text.
@@ -14,7 +15,8 @@ import { EMPTY_ANSWER_MESSAGE, NO_KEY_MESSAGE, providerErrorMessage, providerErr
  * note's "Own prompt", the Obsidian import's classifier, which asks for JSON).
  *
  * Request { rawText, customPrompt? } -> { cleanedText } or { error }. A text
- * longer than the limit is refused rather than cut.
+ * longer than the limit is refused rather than cut; one that looks like it
+ * holds a password or a key is refused (422), all of it read.
  */
 
 const LIMIT = 60_000;
@@ -47,6 +49,7 @@ serve(async (req) => {
     if (rawText.length > LIMIT) {
       return jsonResponse({ error: `The text is too long (${rawText.length} characters; the limit is ${LIMIT}).` }, 413);
     }
+    if (looksLikeCredential(rawText)) return jsonResponse({ error: CREDENTIAL_REFUSAL }, 422);
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!OPENROUTER_API_KEY) return jsonResponse({ error: NO_KEY_MESSAGE }, 503);
     const AI_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";

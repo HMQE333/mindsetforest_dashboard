@@ -6,6 +6,7 @@ import { useArchiveState } from "@/hooks/useArchiveState";
 import { useTagSuggestions, type TagSuggestion } from "@/hooks/useTagSuggestions";
 import { shortTitle, type ArchiveBlock } from "@/lib/archive-data";
 import { SuggestionChips, aiNote } from "./TagChips";
+import { keepFocus } from "./keyboard";
 import { acceptChips, freshChips, undoAccepted, type Accepted } from "./note-suggestions";
 
 /**
@@ -69,6 +70,14 @@ export default function TagSuggestionList({ notes, onClose, variant = "inline", 
     const t = window.setTimeout(() => root.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, [autoFocus]);
+  // The Inbox strip sits under a tall box: on a laptop or a phone it would show below the fold,
+  // while Enter accepts it. Scroll it into sight when it opens and when its chips land (the focus stays).
+  const landed = answers !== null;
+  useEffect(() => {
+    if (variant !== "inline") return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    root.current?.scrollIntoView?.({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [variant, landed]);
 
   useEffect(() => {
     closed.current = false;
@@ -185,7 +194,9 @@ export default function TagSuggestionList({ notes, onClose, variant = "inline", 
 
   const status = aiNote(api.status?.ai, api.status?.aiError);
   const more = notes.length - shown.length;
-  const frame = variant === "inline" ? "glass-card border border-primary/20 p-3 sm:p-4" : "";
+  // On phones the "Saved" toast sits at the bottom: scrolled into sight, the strip stops above it
+  // (the margin gives the page room to scroll that far when the strip is the last thing on it).
+  const frame = variant === "inline" ? "glass-card border border-primary/20 p-3 sm:p-4 scroll-mb-4 max-sm:!mb-24 max-sm:scroll-mb-24" : "";
 
   return (
     <div ref={root} tabIndex={-1} className={`space-y-2 outline-none ${frame}`} onKeyDown={onKeyDown} role="region" aria-label="Suggested tags" lang="en">
@@ -203,6 +214,7 @@ export default function TagSuggestionList({ notes, onClose, variant = "inline", 
         {withChips.length > 1 && (
           <button
             type="button"
+            onMouseDown={keepFocus}
             onClick={() => void accept(rows)}
             disabled={!!saving}
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/20 px-2.5 py-0.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/30 disabled:opacity-40"
@@ -214,6 +226,7 @@ export default function TagSuggestionList({ notes, onClose, variant = "inline", 
         {variant === "inline" && (
           <button
             type="button"
+            onMouseDown={keepFocus}
             onClick={dismiss}
             className="shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
             aria-label="Dismiss the suggestions (Esc)"

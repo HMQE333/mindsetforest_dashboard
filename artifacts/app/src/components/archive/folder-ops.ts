@@ -33,6 +33,23 @@ function changes(notes: readonly NoteTagsRef[], next: (tags: string[]) => string
   return out;
 }
 
+/**
+ * Undo one change on the list as it is now, not by writing the old list back:
+ * what the action added comes off, what it took off goes back, and anything
+ * changed since (a suggestion accepted, another drop) stays. Unchanged since:
+ * exactly the old list. Works for tags and for pillars.
+ */
+export function undoOnto(current: readonly string[], change: { before: readonly string[]; after: readonly string[] }): string[] {
+  if (same(current, change.after)) return [...change.before];
+  const added = new Set(change.after.filter((t) => !change.before.includes(t)));
+  const out = current.filter((t) => !added.has(t));
+  for (const t of change.before) if (!change.after.includes(t) && !out.includes(t)) out.push(t);
+  return out;
+}
+
+/** The same list, in the same order. */
+export const sameList = same;
+
 /** Tags without the folder and everything below it (types stay). */
 export function withoutFolder(tags: readonly string[], folder: string): string[] {
   return tags.filter((t) => isTypeTag(t) || !inFolder(t, folder));

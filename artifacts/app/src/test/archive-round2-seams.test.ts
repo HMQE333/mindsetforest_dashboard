@@ -93,15 +93,19 @@ describe("no old path left (round 2)", () => {
       expect(src, f).not.toMatch(/action:\s*["']organize["']/);
       expect(src, f).not.toMatch(/pillars:\s*Array\.isArray\(ai\?\.pillars\)/);
     }
-    expect(read("components/archive/ObsidianImportModal.tsx")).toMatch(/pillars: \[\],\s*directions: \[\],\s*tags: Array\.from\(new Set\(\[\.\.\.n\.tags, \.\.\.aiTags\]\)\)/);
+    // His tags (one type at most), then the model's: its type only when he wrote none.
+    expect(read("components/archive/ObsidianImportModal.tsx")).toMatch(/pillars: \[\],\s*directions: \[\],\s*tags: mergeTags\(n\.tags, typeOf\(n\.tags\) \? aiTags\.filter\(\(t\) => !isTypeTag\(t\)\) : aiTags\)/);
   });
 
-  it("the note AI functions are called only from the preview's runner (and the peek's fallback, also through the preview)", () => {
+  it("the note AI functions are called only from the preview's runner (the peek's fallback goes through fetchNoteAI and the preview too)", () => {
     const callers = app.filter((f) => /["']ai-archive-(expand|multi)["']/.test(read(f))).sort();
-    expect(callers).toEqual(["components/archive/ArchiveAIProvider.tsx", "components/archive/ArchivePeek.tsx"]);
+    expect(callers).toEqual(["components/archive/ArchiveAIProvider.tsx"]);
     // ai-archive-clean also serves the Obsidian import's keep/skip classifier (it saves no text from it).
     const clean = app.filter((f) => /["']ai-archive-clean["']/.test(read(f))).sort();
-    expect(clean).toEqual(["components/archive/ArchiveAIProvider.tsx", "components/archive/ArchivePeek.tsx", "components/archive/ObsidianImportModal.tsx"]);
+    expect(clean).toEqual(["components/archive/ArchiveAIProvider.tsx", "components/archive/ObsidianImportModal.tsx"]);
+    const peek = read("components/archive/ArchivePeek.tsx");
+    expect(peek).toContain("await fetchNoteAI(action, block.content, block.title)");
+    expect(peek).toContain("onAIActionProp ?? (archiveAI ?");
   });
 });
 
@@ -122,7 +126,17 @@ describe("one credential rule for the app and the edge function", () => {
     const provider = read("components/archive/ArchiveAIProvider.tsx");
     expect(provider).toMatch(/holdsSecret\(b\) \? CREDENTIAL_MESSAGE/);
     expect(provider).toMatch(/const secret = notes\.find\(holdsSecret\)/);
-    expect(read("components/archive/ArchiveInbox.tsx")).toContain("if (looksLikeCredential(target.slice(0, 10_000))) { toast.error(CREDENTIAL_MESSAGE); return; }");
+    // All of what would be sent is read (review 2: a password 11k characters in was missed).
+    expect(read("components/archive/ArchiveInbox.tsx")).toContain("if (looksLikeCredential(target)) { toast.error(CREDENTIAL_MESSAGE); return; }");
+    expect(read("components/archive/ArchivePeek.tsx")).toContain("if (looksLikeCredential(`${block.title}\\n\\n${block.content}`)) {");
+    expect(provider).toContain("const holdsSecret = (b: { title?: string | null; content: string }) => looksLikeCredential(`${b.title ?? \"\"}\\n\\n${b.content}`);");
+    for (const f of ["components/archive/ArchiveAIProvider.tsx", "components/archive/ArchivePeek.tsx", "components/archive/ArchiveInbox.tsx"]) {
+      expect(read(f), f).not.toMatch(/looksLikeCredential\([^)]*\.slice\(0, (?:10_000|SECRET_SCAN_CHARS)\)/);
+    }
+    // The Obsidian import's keep/skip review and its tagging leave such notes out of what they send.
+    const obsidian = read("components/archive/ObsidianImportModal.tsx");
+    expect(obsidian).toContain("review.slice(i, i + CLASSIFY_BATCH).filter((n) => !holdsSecret(n))");
+    expect(obsidian).toContain("selected.slice(i, i + TAG_BATCH).filter((n) => !holdsSecret(n))");
   });
 });
 

@@ -20,3 +20,10 @@ export function providerErrorStatus(status: number): number {
 
 export const NO_KEY_MESSAGE = "AI is not set up: OPENROUTER_API_KEY is missing for this function.";
 export const EMPTY_ANSWER_MESSAGE = "The AI returned no answer. Try again.";
+
+/**
+ * A text that looks like it holds a password or a key (looksLikeCredential in
+ * ./archive-tags.ts) is refused with this (422) before anything reaches the
+ * model: the app checks first, this is for a client that did not.
+ */
+export const CREDENTIAL_REFUSAL = "This looks like it holds a password or a key, so it is not sent to the AI.";

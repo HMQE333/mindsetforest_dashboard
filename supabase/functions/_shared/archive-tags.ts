@@ -29,7 +29,8 @@ export function isTypeTag(tag: string): tag is TypeTag {
  * The tag a raw label stands for, or "" when it is not a tag: no "#", NFC,
  * lowercase, spaces become "-", anything but letters, digits, "-", "_" and "/"
  * dropped, empty folder segments and a trailing "/" dropped. Polish letters
- * stay ("Książki" -> "książki"); "#2" -> "" (no letter).
+ * stay ("Książki" -> "książki"); "#2" -> "" (no letter). A language's "#" and
+ * "++" are spelled out, so "C#" and "C++" stay apart: "csharp", "cpp".
  */
 export function normaliseTag(raw: string): string {
   const t = String(raw ?? "")
@@ -38,6 +39,8 @@ export function normaliseTag(raw: string): string {
     .replace(/^#+/, "")
     .toLowerCase()
     .replace(/\s+/g, "-")
+    .replace(/(?<=[\p{L}\p{N}])#(?!\p{L})/gu, "sharp")
+    .replace(/(?<=[\p{L}\p{N}])\+\+(?!\p{L})/gu, "pp")
     .replace(/[^\p{L}\p{M}\p{N}_/-]+/gu, "")
     .replace(/-{2,}/g, "-")
     .split("/")
@@ -335,6 +338,10 @@ export interface Evidence {
  * similarity; a tag he accepted on one of them gains, one he turned down there
  * loses (even when no similar note carries it, so the model's pick of it is
  * held back too). Pillar answers are the "pillar:<id>" rows.
+ *
+ * An answer counts only while the note still agrees with it: a "no" to a tag
+ * the note carries now (he filed it there by hand later, which logs nothing),
+ * or a "yes" to one it no longer carries, is older than the note itself.
  */
 export function scoreNeighbours(neighbours: readonly Neighbour[], feedback: ReadonlyMap<string, ReadonlyMap<string, boolean>>): Evidence {
   const tags = new Map<string, Candidate>();
@@ -354,12 +361,14 @@ export function scoreNeighbours(neighbours: readonly Neighbour[], feedback: Read
   for (const n of neighbours) {
     const s = Number(n.similarity);
     if (!Number.isFinite(s) || s < MIN_SIMILARITY) continue;
-    for (const t of new Set((n.tags ?? []).map(normaliseTag).filter(Boolean))) {
+    const carried = new Set((n.tags ?? []).map(normaliseTag).filter(Boolean));
+    for (const t of carried) {
       const c = get(t);
       c.score += s;
       c.notes += 1;
     }
-    for (const id of new Set((n.pillars ?? []).map(normalisePillarId).filter((p) => p && p !== NO_PILLAR))) {
+    const inPillars = new Set((n.pillars ?? []).map(normalisePillarId).filter((p) => p && p !== NO_PILLAR));
+    for (const id of inPillars) {
       const c = getPillar(id);
       c.score += s;
       c.notes += 1;
@@ -368,8 +377,8 @@ export function scoreNeighbours(neighbours: readonly Neighbour[], feedback: Read
       const delta = accepted ? ACCEPT_BOOST * s : -REJECT_PENALTY * s;
       if (isPillarTag(t)) {
         const id = t.slice(PILLAR_PREFIX.length);
-        if (id !== NO_PILLAR) getPillar(id).score += delta;
-      } else get(t).score += delta;
+        if (id !== NO_PILLAR && accepted === inPillars.has(id)) getPillar(id).score += delta;
+      } else if (accepted === carried.has(t)) get(t).score += delta;
     }
   }
   return { tags, types, pillars };
@@ -590,9 +599,39 @@ export function parseAiPicks(args: unknown, count: number, pillarIds?: readonly 
 }
 
 /**
+ * A long run of letters and digits outside a link (an API key, a hash, a base64
+ * secret): what the regex
+ * /(?<![\w/.-])(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{32,}(?![\w/.-])/
+ * finds, read once per run instead of once per position: that regex takes
+ * seconds on a 60k-character run of "a+a+…", this takes milliseconds. Within
+ * one run a later start only sees less, so the first allowed start decides.
+ */
+export function hasLongRun(t: string): boolean {
+  for (const m of t.matchAll(/[A-Za-z0-9_+/=-]{32,}/g)) {
+    const s = m.index ?? 0;
+    const e = s + m[0].length;
+    // A start may not follow [\w/.-]: before the run that is only ".", inside it "+" or "=" opens one.
+    let p = s;
+    if (s > 0 && t[s - 1] === ".") {
+      const k = m[0].search(/[+=]/);
+      if (k < 0) continue;
+      p = s + k + 1;
+    }
+    const rest = t.slice(p, e);
+    if (rest.length < 32 || !/\d/.test(rest) || !/[A-Za-z]/.test(rest)) continue;
+    // It may end at the run's end unless a "." follows, or before any "+" or "=" at least 32 in.
+    if (t[e] !== "." || /[+=]/.test(rest.slice(32))) return true;
+  }
+  return false;
+}
+
+/**
  * Content that looks like a secret never goes to the model: a password, PIN,
  * token or key written as "name: value", a login and password pair, a
  * credential in a link, a private key, or a token-shaped string.
+ *
+ * Linear in the length of the text, so a whole note (up to the 60k an AI
+ * action takes) is read, not just its start.
  */
 export function looksLikeCredential(text: string): boolean {
   const t = String(text ?? "");
@@ -610,17 +649,19 @@ export function looksLikeCredential(text: string): boolean {
     /\bAIza[0-9A-Za-z_-]{30,}/,
     /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
     /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-    /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i,
+    // A credential in a link ("ftp://user:pass@"): "://" first, so the scheme is looked for only there.
+    /:\/\/(?<=\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/i,
   ];
   if (KEY_VALUE.test(t) || SAID.test(t) || SHAPES.some((re) => re.test(t))) return true;
 
   // An address with something password-like after it: "jan@x.pl / Haslo123!".
-  const EMAIL_PAIR = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+\s*(?:[:|/;,]|\s)\s*(?=\S*\d)(?=\S*\p{L})\S{6,}/u;
+  // The address is read from the start of its run only (the same matches, without a rescan per letter).
+  const EMAIL_PAIR = /(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+\s*(?:[:|/;,]|\s)\s*(?=\S*\d)(?=\S*\p{L})\S{6,}/u;
   if (EMAIL_PAIR.test(t)) return true;
 
   const withoutLinks = t.replace(/(?:https?:\/\/|\bwww\.)\S+/gi, " ");
   // A long run of letters and digits outside a link (an API key, a hash, a base64 secret).
-  if (/(?<![\w/.-])(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{32,}(?![\w/.-])/.test(withoutLinks)) return true;
+  if (hasLongRun(withoutLinks)) return true;
   // A line that is one word of lowercase, digits and uppercase or symbols ("Kot!2024x"; not "COVID-19",
   // nor a host or file name such as "sklep24.pl" or "IMG_2024.jpg").
   for (const line of withoutLinks.split("\n")) {

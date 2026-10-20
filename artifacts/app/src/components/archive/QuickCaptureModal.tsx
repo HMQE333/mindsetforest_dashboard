@@ -7,7 +7,7 @@ import { useArchiveState } from "@/hooks/useArchiveState";
 import { toast } from "sonner";
 import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
 import { useHotkeys } from "@/hooks/useHotkeys";
-import { parseInlineTags } from "@/lib/archive-tags";
+import { mergeTags, parseInlineTags } from "@/lib/archive-tags";
 
 interface Props {
   open: boolean;
@@ -29,8 +29,8 @@ const QuickCaptureModal = ({ open, onClose }: Props) => {
       content: content.trim(),
       pillars: [],
       directions: [],
-      // #tags written in the text become the note's tags too (they stay in the text).
-      tags: ["quick-capture", ...parseInlineTags(`${title}\n${content}`).filter((t) => t !== "quick-capture")],
+      // #tags written in the text become the note's tags too (they stay in the text); one type at most.
+      tags: mergeTags(["quick-capture"], parseInlineTags(`${title}\n${content}`)),
     });
     setSaving(false);
     if (result) {

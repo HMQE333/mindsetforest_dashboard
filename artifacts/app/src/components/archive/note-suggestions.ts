@@ -59,35 +59,50 @@ const madeFrom = new Map<string, string>();
 const fingerprint = (c: string) => `${c.length}:${c.slice(0, 160)}:${c.slice(-160)}`;
 
 /**
+ * Notes whose chips he accepted or hid (✕ / Esc) in this session, with the
+ * text they were for: not offered again when he steps away and back (the peek
+ * mounts afresh per note), until the note is edited or he presses ✨ Suggest.
+ */
+const settled = new Map<string, string>();
+
+/**
  * The suggestion chips of one note shown in the peek or the reader: asked for
  * after the note has been on screen a moment (stepping through notes does not
  * ask for each), only for a note with no tag or no type, and kept for the
- * session. Esc or ✕ hides them without recording anything.
+ * session. Esc or ✕ hides them without recording anything, for the session.
  */
 export function useNoteSuggestions(block: ArchiveBlock | undefined, updateBlock: UpdateBlock, { dwellMs = 450 }: { dwellMs?: number } = {}) {
   const api = useTagSuggestions();
   const id = block?.id;
-  // "✨ Suggest" asks for a note that has its tags and type too.
-  const [forced, setForced] = useState<string | null>(null);
-  const wants = !!block && (forced === block.id || wantsSuggestions(block));
+  // "✨ Suggest" asks for a note that has its tags and type too; each press asks again
+  // (after a dismiss or a failed answer as well), hence the count.
+  const [forced, setForced] = useState<{ id: string; n: number } | null>(null);
+  const forcedHere = !!block && forced?.id === block.id;
+  const forcedN = forcedHere ? forced!.n : 0;
+  const wants = !!block && (forcedHere || wantsSuggestions(block));
   const print = block ? fingerprint(block.content) : "";
   const [state, setState] = useState<{ id: string; chips?: TagSuggestion[]; error?: string; loading?: boolean } | null>(null);
   const [chosenOff, setChosenOff] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
-  // Accepted or dismissed here: not asked again while this view lives.
-  const done = useRef(new Set<string>());
   const apiRef = useRef(api);
   apiRef.current = api;
+  const blockRef = useRef(block);
+  blockRef.current = block;
+  const nothingNew = (list: readonly TagSuggestion[]) => {
+    const b = blockRef.current;
+    return !b || (freshChips(b, list)?.length ?? 0) === 0;
+  };
 
   useEffect(() => {
     setChosenOff(new Set());
-    if (!id || !wants || done.current.has(id)) {
+    if (!id || !wants || (forcedN === 0 && settled.get(id) === print)) {
       setState(null);
       return;
     }
     const held = apiRef.current.peek(id);
     const from = madeFrom.get(id);
-    if (held && (from === undefined || from === print)) {
+    // A press on ✨ Suggest asks again when what is held has nothing left to offer.
+    if (held && (from === undefined || from === print) && !(forcedN > 0 && nothingNew(held))) {
       madeFrom.set(id, print);
       setState({ id, chips: held });
       return;
@@ -100,16 +115,22 @@ export function useNoteSuggestions(block: ArchiveBlock | undefined, updateBlock:
       apiRef.current.suggest([id]).then(
         (map) => {
           madeFrom.set(id, print);
-          if (live) setState({ id, chips: map.get(id) ?? [] });
+          const list = map.get(id) ?? [];
+          if (!live) return;
+          setState({ id, chips: list });
+          // Asked for by a press: say so when the answer has nothing the note does not have.
+          if (forcedN > 0 && nothingNew(list)) toast.info("Nothing new to suggest for this note");
         },
         (e: unknown) => live && setState({ id, error: e instanceof Error ? e.message : String(e) }),
       );
-    }, forced === id ? 0 : dwellMs);
+    }, forcedN > 0 ? 0 : dwellMs);
     return () => {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [id, wants, dwellMs, forced, print]);
+    // nothingNew reads the note through a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, wants, dwellMs, forcedN, print]);
 
   const chips = useMemo(() => (block && state?.id === block.id ? freshChips(block, state.chips) : undefined), [block, state]);
   const chosen = useMemo(() => new Set((chips ?? []).map((c) => c.tag).filter((t) => !chosenOff.has(t))), [chips, chosenOff]);
@@ -127,16 +148,16 @@ export function useNoteSuggestions(block: ArchiveBlock | undefined, updateBlock:
   /** Ask now, whatever tags the note has. */
   const ask = useCallback(() => {
     if (!id) return;
-    done.current.delete(id);
-    setForced(id);
+    settled.delete(id);
+    setForced((f) => ({ id, n: f?.id === id ? f.n + 1 : 1 }));
   }, [id]);
 
+  // Hidden for the session; the chips stay held, so a press on ✨ Suggest shows them without asking again.
   const dismiss = useCallback(() => {
     if (!id) return;
-    done.current.add(id);
-    apiRef.current.forget(id);
+    settled.set(id, print);
     setState(null);
-  }, [id]);
+  }, [id, print]);
 
   const accept = useCallback(async () => {
     if (!block || !chips || saving) return;
@@ -146,7 +167,7 @@ export function useNoteSuggestions(block: ArchiveBlock | undefined, updateBlock:
     try {
       const res = await acceptChips(apiRef.current, block, picked, updateBlock);
       if (!res) return;
-      done.current.add(block.id);
+      settled.set(block.id, fingerprint(block.content));
       setState(null);
       const n = picked.length;
       toast.success(n === 1 ? "Suggestion accepted" : `${n} suggestions accepted`, {

@@ -27,3 +27,13 @@ export function isShortcutKey(e: KeyboardEvent): boolean {
 export function dialogOpen(): boolean {
   return typeof document !== "undefined" && !!document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]');
 }
+
+/**
+ * onMouseDown for a chip or a step button whose view takes Enter itself (the
+ * tag queue, the reader, the Inbox strip): a click leaves the focus where it
+ * was, so the next Enter still means "accept" instead of pressing the clicked
+ * button again. Tab still reaches the button, and Enter then presses it.
+ */
+export function keepFocus(e: { preventDefault: () => void; button?: number }) {
+  if (!e.button) e.preventDefault();
+}

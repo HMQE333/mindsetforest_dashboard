@@ -77,6 +77,9 @@ function PickerBody({
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  // The search box takes the focus only with a mouse: on a phone that would raise the keyboard over
+  // the folders he came to tap (a tap on the box still brings it up).
+  const [typeFirst] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(pointer: fine)").matches);
 
   // Read once per open: every folder, with how many notes it holds.
   const all = useMemo(() => {
@@ -132,7 +135,7 @@ function PickerBody({
       </p>
       <div className="p-2">
         <input
-          autoFocus
+          autoFocus={typeFirst}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

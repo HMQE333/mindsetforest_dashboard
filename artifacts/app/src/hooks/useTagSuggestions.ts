@@ -5,6 +5,8 @@ import { useArchiveState } from "@/hooks/useArchiveState";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { isPillarTag, mergeTags, normaliseTag, pillarIdOfTag, pillarTag, type TagSuggestion } from "@/lib/archive-tags";
+import { embeddingsWritten } from "@/lib/archive-embeddings";
+import { functionErrorMessage } from "@/lib/function-error";
 import { toast } from "sonner";
 
 /**
@@ -78,19 +80,12 @@ function remember(key: string, list: TagSuggestion[]) {
   while (held.size > MAX_HELD) held.delete(held.keys().next().value as string);
 }
 
-/** The function's own message instead of "Edge Function returned a non-2xx status code". */
-async function functionError(error: { message: string }): Promise<string> {
-  let message = error.message;
-  try {
-    const json = await (error as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
-    if (json?.error) message = json.error;
-  } catch { /* not JSON */ }
-  return message;
-}
-
 async function askBatch(ids: string[], pillars: PillarBrief[]): Promise<{ suggestions: Record<string, TagSuggestion[]>; status: TagSuggestStatus }> {
+  // A just-saved note is being embedded by the page: the function would embed it a second time.
+  await embeddingsWritten(ids);
   const { data, error } = await supabase.functions.invoke("ai-suggest-tags", { body: { mode: "learn", blockIds: ids, pillars } });
-  if (error) throw new Error(await functionError(error));
+  // The function's own message instead of "Edge Function returned a non-2xx status code" (the Archive's one reader).
+  if (error) throw new Error(await functionErrorMessage(error));
   if (data?.error) throw new Error(String(data.error));
   return {
     suggestions: (data?.suggestions ?? {}) as Record<string, TagSuggestion[]>,

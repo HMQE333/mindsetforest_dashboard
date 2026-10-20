@@ -94,10 +94,16 @@ interface SemanticHits {
 
 const announceChanged = () => window.dispatchEvent(new CustomEvent(ARCHIVE_BLOCKS_CHANGED_EVENT));
 
+/**
+ * A row of filter chips: on a phone one line that scrolls sideways (the four
+ * rows wrapped took more than a screen above the first note), wrapped from sm.
+ */
+const FILTER_ROW = "flex items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible";
+
 /** The pillar filter row; its own component so typing in the search does not re-render it. */
 const PillarFilter = memo(function PillarFilter({ pillars, value, onChange }: { pillars: Pillar[]; value: string | null; onChange: (id: string | null) => void }) {
   return (
-    <div className="flex flex-wrap gap-1.5 items-center">
+    <div className={FILTER_ROW}>
       <button
         onClick={() => onChange(null)}
         className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-colors ${!value ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground"}`}
@@ -124,7 +130,7 @@ const PillarFilter = memo(function PillarFilter({ pillars, value, onChange }: { 
 /** His eight types as a filter row, with how many notes each holds. */
 const TypeFilterRow = memo(function TypeFilterRow({ stats, value, onChange }: { stats: TagStats; value: TypeFilter | null; onChange: (t: TypeFilter | null) => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by type">
+    <div className={FILTER_ROW} role="group" aria-label="Filter by type">
       <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</span>
       {TYPE_TAGS.map((t) => {
         const Icon = TYPE_ICONS[t];
@@ -168,7 +174,7 @@ const TagFilterRow = memo(function TagFilterRow({ stats, value, onChange }: { st
   const activeHidden = value && value !== UNTAGGED && !head.some(([t]) => t === value);
   const chip = (on: boolean) => `max-w-[14rem] truncate rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${on ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:text-foreground"}`;
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by tag">
+    <div className={FILTER_ROW} role="group" aria-label="Filter by tag">
       <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tags</span>
       <button type="button" onClick={() => onChange(value === UNTAGGED ? null : UNTAGGED)} aria-pressed={value === UNTAGGED} className={chip(value === UNTAGGED)} title="Notes in no folder">
         Untagged <span className="tabular-nums opacity-70">{stats.untagged}</span>
@@ -241,6 +247,13 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   const [showExport, setShowExport] = useState(false);
   const [includeTags, setIncludeTags] = useRemembered("library.tags", false);
   const [selectMode, setSelectMode] = useState(false);
+  // Phones: a selection that empties (the bar's Clear, a confirmed bulk Delete, the last note tapped
+  // off) ends Select mode too, so the next tap opens the peek again.
+  const hadSelection = useRef(false);
+  useEffect(() => {
+    if (hadSelection.current && selectedIds.size === 0) setSelectMode(false);
+    hadSelection.current = selectedIds.size > 0;
+  }, [selectedIds]);
   const [foldersPanel, setFoldersPanel] = useRemembered("library.foldersPanel", false);
   const [peekId, setPeekId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -556,6 +569,27 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     [updateBlock],
   );
   const canDrag = foldersOn && !phone && typeof window !== "undefined" && window.matchMedia?.("(hover: hover) and (pointer: fine)").matches;
+  // "Hold Shift to move it" with Shift pressed first: Chrome starts no drag from a Shift press on
+  // text (it extends a selection instead), so while Shift is down a card's text does not take the
+  // press and the card itself does (index.css, body[data-archive-shift]).
+  useEffect(() => {
+    if (!canDrag) return;
+    const set = (on: boolean) => {
+      if (on) document.body.dataset.archiveShift = "";
+      else delete document.body.dataset.archiveShift;
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Shift" && set(e.type === "keydown");
+    const off = () => set(false);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+      window.removeEventListener("blur", off);
+      off();
+    };
+  }, [canDrag]);
 
   // -- the keys ------------------------------------------------------------------------------
   useEffect(() => {
@@ -840,7 +874,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
         <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
         <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />
         {!foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className={FILTER_ROW}>
           <button onClick={() => setHideLinks(!hideLinks)} className={toggleBtn(hideLinks)}>
             <Link2Off size={12} /> Hide Links
           </button>

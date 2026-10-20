@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from "fflate";
-import { normaliseTag, parseInlineTags } from "./archive-tags";
+import { mergeTags, normaliseTag, parseInlineTags } from "./archive-tags";
 
 export interface ParsedObsidianNote {
   fileName: string;
@@ -84,7 +84,8 @@ export function parseMarkdown(fileName: string, raw: string): ParsedObsidianNote
   const fmTitle = typeof fm.title === "string" ? (fm.title as string).trim() : "";
   const title = (fmTitle || (h1 ? h1[1].trim() : "") || baseName(fileName) || "Untitled").slice(0, 200);
 
-  const tags = Array.from(new Set([...tagsFromFrontmatter(fm), ...inlineTags(body)]));
+  // Each once, and one type at most (the last one written, as a new type replaces the old one).
+  const tags = mergeTags([], [...tagsFromFrontmatter(fm), ...inlineTags(body)]);
   const content = body.trim();
 
   return { fileName, title, content, tags };

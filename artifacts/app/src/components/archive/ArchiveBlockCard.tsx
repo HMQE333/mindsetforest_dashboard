@@ -122,11 +122,15 @@ const ArchiveBlockCard = ({
         onClick={(e) => {
           // The second press of a double press: the reader opens instead (onDoubleClick).
           if (e.detail > 1) return;
+          // Shift-click selects a range of notes, not the text between two clicks.
+          if (e.shiftKey) window.getSelection()?.removeAllRanges();
           onPress(block, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
         }}
         onMouseDown={(e) => {
-          // Shift-click selects a range: no text selection with it, nor a word selected by a double press.
-          if (e.shiftKey || e.detail > 1) e.preventDefault();
+          // No word selected by a double press. With Shift a card that can be dragged must keep its
+          // mousedown, or Shift held first ("hold Shift to move it") would cancel the drag; its text
+          // is not selectable (select-none) and the click clears any selection.
+          if (e.detail > 1 || (e.shiftKey && !draggable)) e.preventDefault();
         }}
         onDoubleClick={() => onOpenFull(block)}
         onFocus={(e) => {
@@ -135,7 +139,7 @@ const ArchiveBlockCard = ({
         draggable={draggable || undefined}
         onDragStart={draggable && onDragNote ? (e) => onDragNote(block, e) : undefined}
         onDragEnd={draggable ? onDragEndNote : undefined}
-        className={`relative glass-card p-4 space-y-2.5 cursor-pointer group transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${tone} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
+        className={`relative glass-card p-4 space-y-2.5 cursor-pointer group transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${draggable ? "select-none" : ""} ${tone} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
       >
         <div className="flex items-start gap-3">
           <button
@@ -147,7 +151,9 @@ const ArchiveBlockCard = ({
             className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-[opacity,background-color,border-color] ${
               selected
                 ? "bg-primary border-primary text-primary-foreground opacity-100"
-                : `border-white/25 hover:border-white/50 ${selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-0"}`
+                : // Touch screens: hidden until Select mode or a selection, and not tappable while hidden
+                  // (a tap near the corner would select the note unseen instead of opening the peek).
+                  `border-white/25 hover:border-white/50 ${selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-none [@media(hover:none)]:opacity-0"}`
             }`}
           >
             {selected && <span className="text-xs">✓</span>}

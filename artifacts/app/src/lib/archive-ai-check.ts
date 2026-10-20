@@ -211,8 +211,16 @@ export interface AIWarning {
 /** Numbers as written ("19.10.2026", "14:30", "3,5", "2"), outside links. */
 const NUMBER = /\d+(?:[.,:/-]\d+)*/g;
 
+/**
+ * The links in a text, each once, as compared: without a sentence's trailing
+ * punctuation or closing bracket ("…/cennik)." is "…/cennik"). Compared as
+ * whole links, so a link dropped while a longer one starting with it stays
+ * ("https://x.pl" next to "https://x.pl/cennik") is still missed.
+ */
 function linksOf(text: string): string[] {
-  return [...new Set(text.match(new RegExp(LINK_REGEX.source, "g")) ?? [])];
+  const all = text.match(new RegExp(LINK_REGEX.source, "g")) ?? [];
+  // Markdown's emphasis around a link ("**https://x.pl**") is not part of it either.
+  return [...new Set(all.map((u) => u.replace(/[)\].,;:!?'"’”»*_~]+$/u, "")))];
 }
 
 function numbersOf(text: string): string[] {
@@ -254,7 +262,8 @@ export function checkAIResult(action: AIAction, original: string, proposed: stri
     return out;
   }
   // A summary keeps what matters, not everything; its links are still checked.
-  const missingLinks = linksOf(original).filter((u) => !proposed.includes(u));
+  const kept = new Set(linksOf(proposed));
+  const missingLinks = linksOf(original).filter((u) => !kept.has(u));
   if (missingLinks.length) {
     out.push({ kind: "links", message: `${missingLinks.length} link${missingLinks.length === 1 ? " is" : "s are"} missing: ${quoteList(missingLinks, 3)}`, items: missingLinks });
   }

@@ -113,9 +113,11 @@ interface Run {
 
 /** Results asked for ahead of the one on screen. */
 const AHEAD = 2;
-/** The text checked for secrets (as ai-suggest-tags does): a password sits near the top of a note. */
-const SECRET_SCAN_CHARS = 10_000;
-const holdsSecret = (b: { title?: string | null; content: string }) => looksLikeCredential(`${b.title ?? ""}\n\n${b.content}`.slice(0, SECRET_SCAN_CHARS));
+/**
+ * Whether a note looks like it holds a password or a key. All of it is read, as all of it would be
+ * sent: the length limits (aiTooLong, multiTooLong) are checked first, so that is at most 60k.
+ */
+const holdsSecret = (b: { title?: string | null; content: string }) => looksLikeCredential(`${b.title ?? ""}\n\n${b.content}`);
 
 const tagsOfAll = (notes: readonly ArchiveBlock[]) => {
   const out: string[] = [];
@@ -221,7 +223,7 @@ export function ArchiveAIProvider({ children }: { children: ReactNode }) {
         subject: shortTitle(b.title, 60),
         original: b.content,
         // A note that looks like it holds a password or a key never leaves for the model.
-        error: !b.content.trim() ? "The note is empty." : holdsSecret(b) ? CREDENTIAL_MESSAGE : aiTooLong(action, b.content) ?? undefined,
+        error: !b.content.trim() ? "The note is empty." : aiTooLong(action, b.content) ?? (holdsSecret(b) ? CREDENTIAL_MESSAGE : undefined),
         fetch: () => fetchNoteAI(action, b.content, b.title, prompt),
         replace: (text) => replaceNote(b, action, text),
         saveNew: (text) => saveNew({ title: aiNoteTitle(action, b.title), content: text, pillars: [...(b.pillars ?? [])], tags: [...(b.tags ?? [])] }),

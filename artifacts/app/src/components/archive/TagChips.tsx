@@ -17,6 +17,7 @@ import {
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { Pillar } from "@/hooks/usePillars";
 import { TYPE_INFO, isTypeTag, type TagSuggestion, type TypeTag } from "@/lib/archive-tags";
+import { keepFocus } from "./keyboard";
 
 /**
  * The chips the Library, the peek, the reader and the tag queue show: a
@@ -60,11 +61,17 @@ interface TagChipsProps {
   size?: "sm" | "md";
   /** The tag (folder) being viewed is drawn as such. */
   active?: string | null;
+  /**
+   * The chips are tab stops (the peek, the reader). Off inside a card, whose
+   * one tab stop is the card itself (roving focus over the list).
+   */
+  focusable?: boolean;
 }
 
 /** A note's type and tags. Buttons only when a press does something. */
-export const NoteTagChips = memo(function NoteTagChips({ tags, onTag, onType, max = Infinity, size = "sm", active }: TagChipsProps) {
+export const NoteTagChips = memo(function NoteTagChips({ tags, onTag, onType, max = Infinity, size = "sm", active, focusable = false }: TagChipsProps) {
   if (tags.length === 0) return null;
+  const tabIndex = focusable ? 0 : -1;
   const shown = tags.slice(0, max);
   const more = tags.length - shown.length;
   const text = size === "sm" ? "text-[10px]" : "text-[11px]";
@@ -83,7 +90,7 @@ export const NoteTagChips = memo(function NoteTagChips({ tags, onTag, onType, ma
             <button
               key={t}
               type="button"
-              tabIndex={-1}
+              tabIndex={tabIndex}
               onClick={(e) => {
                 e.stopPropagation();
                 onType(t);
@@ -105,7 +112,7 @@ export const NoteTagChips = memo(function NoteTagChips({ tags, onTag, onType, ma
           <button
             key={t}
             type="button"
-            tabIndex={-1}
+            tabIndex={tabIndex}
             onClick={(e) => {
               e.stopPropagation();
               onTag(t);
@@ -173,6 +180,7 @@ export function PillarRow({
           <button
             key={p.id}
             type="button"
+            onMouseDown={keepFocus}
             onClick={() => onToggle(p.id)}
             aria-pressed={on}
             title={`${on ? "Remove" : "Add"} ${p.name}${digit ? ` (${digit})` : ""}`}
@@ -283,6 +291,7 @@ export function SuggestionChips({
             <button
               key={c.tag}
               type="button"
+              onMouseDown={keepFocus}
               onClick={() => onToggle(c.tag)}
               aria-pressed={on}
               title={c.reason}
@@ -298,6 +307,7 @@ export function SuggestionChips({
         })}
         <button
           type="button"
+          onMouseDown={keepFocus}
           onClick={onAccept}
           disabled={saving || picked === 0}
           className="inline-flex items-center gap-1 rounded-full bg-primary/20 px-2.5 py-0.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/30 disabled:opacity-40"
@@ -310,6 +320,7 @@ export function SuggestionChips({
         {onDismiss && (
           <button
             type="button"
+            onMouseDown={keepFocus}
             onClick={onDismiss}
             className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
             aria-label="Hide the suggestions"

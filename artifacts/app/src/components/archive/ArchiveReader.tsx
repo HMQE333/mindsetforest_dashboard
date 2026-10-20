@@ -485,7 +485,7 @@ function NoteView({
         <DialogPrimitive.Title className={heading.shown ? "break-words text-xl font-bold leading-tight text-foreground [overflow-wrap:anywhere] sm:text-2xl" : "sr-only"}>
           {heading.title}
         </DialogPrimitive.Title>
-        {tags.length > 0 && <NoteTagChips tags={tags} onTag={onFilterTag} onType={onFilterType} size="md" />}
+        {tags.length > 0 && <NoteTagChips tags={tags} onTag={onFilterTag} onType={onFilterType} size="md" focusable />}
         {sugg.visible && (
           <SuggestionChips
             chips={sugg.chips}

@@ -62,7 +62,7 @@ describe("normaliseTag", () => {
   });
 
   it("drops what a tag cannot hold, keeps - and _", () => {
-    expect(normaliseTag("c++")).toBe("c");
+    expect(normaliseTag("c+")).toBe("c");
     expect(normaliseTag("AI: prompty!")).toBe("ai-prompty");
     expect(normaliseTag("do_przeczytania")).toBe("do_przeczytania");
     expect(normaliseTag("emoji 🔥 tag")).toBe("emoji-tag");

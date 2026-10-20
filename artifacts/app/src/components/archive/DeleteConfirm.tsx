@@ -17,6 +17,35 @@ export interface Armed {
   keys: boolean;
 }
 
+/**
+ * One live region for the Archive, made once and kept on the page. A region
+ * put in already filled (inside the "Delete?" button as it appears) is mostly
+ * not read; a change to one that exists is.
+ */
+let liveRegion: HTMLElement | null = null;
+function ensureLiveRegion(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  if (!liveRegion || !liveRegion.isConnected) {
+    liveRegion = document.createElement("div");
+    liveRegion.setAttribute("aria-live", "assertive");
+    liveRegion.setAttribute("aria-atomic", "true");
+    liveRegion.className = "sr-only";
+    liveRegion.dataset.archiveLive = "";
+    document.body.appendChild(liveRegion);
+  }
+  return liveRegion;
+}
+
+/** Say this to a screen reader (cleared first, so the same words twice are read twice). */
+export function announce(text: string) {
+  const region = ensureLiveRegion();
+  if (!region) return;
+  region.textContent = "";
+  window.setTimeout(() => {
+    region.textContent = text;
+  }, 30);
+}
+
 /** A "Delete?" state that falls back to the trash after ARM_MS. */
 export function useArmedDelete(timeoutMs = ARM_MS) {
   const [armed, setArmed] = useState<Armed | null>(null);
@@ -54,6 +83,13 @@ export function DeleteConfirmButton({
   className?: string;
 }) {
   const size = variant === "card" ? "h-7 min-w-[1.75rem] text-[11px]" : "h-11 min-w-[2.25rem] text-sm sm:h-9";
+  // The region exists before anything is said into it.
+  useEffect(() => void ensureLiveRegion(), []);
+  const isArmed = !!armed;
+  const byKeys = !!armed?.keys;
+  useEffect(() => {
+    if (isArmed) announce(byKeys ? "Delete this note? Enter deletes it, Escape keeps it." : "Delete this note? Press again to delete it, Escape keeps it.");
+  }, [isArmed, byKeys]);
   if (armed) {
     return (
       <button
@@ -76,9 +112,6 @@ export function DeleteConfirmButton({
         <Trash2 className="h-3.5 w-3.5" aria-hidden />
         Delete?
         {armed.keys && <span className="text-[10px] font-normal opacity-80">Enter / Esc</span>}
-        <span className="sr-only" aria-live="assertive">
-          Press again to delete, Escape to keep it.
-        </span>
       </button>
     );
   }

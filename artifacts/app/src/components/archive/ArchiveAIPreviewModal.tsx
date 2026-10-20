@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -105,9 +105,13 @@ const ArchiveAIPreviewModal = ({ view, onReplace, onSaveNew, onSkip, onStop, onR
 
   const text = edited ?? view.proposed ?? "";
   const ready = view.status === "ready";
-  const parts = useMemo(() => (ready ? wordDiff(view.original, text) : []), [ready, view.original, text]);
-  const warnings = useMemo(() => (ready ? checkAIResult(view.action, view.original, text, parts) : []), [ready, view.action, view.original, text, parts]);
-  const counts = useMemo(() => diffCounts(parts), [parts]);
+  // The checks read the text a moment behind his typing (a word diff of a long note costs tens of
+  // milliseconds), and the diff is made only while the Changes tab shows it, not while he edits.
+  const checked = useDeferredValue(text);
+  const showDiff = ready && !editing && tab === "changes";
+  const parts = useMemo(() => (showDiff ? wordDiff(view.original, checked) : null), [showDiff, view.original, checked]);
+  const warnings = useMemo(() => (ready ? checkAIResult(view.action, view.original, checked, parts ?? undefined) : []), [ready, view.action, view.original, checked, parts]);
+  const counts = useMemo(() => diffCounts(parts ?? []), [parts]);
   const lossy = warnsOfLoss(warnings);
   const primary: "replace" | "new" =
     !view.canSaveNew ? "replace" : !view.canReplace ? "new" : lossy ? "new" : info.defaultSave;
@@ -230,7 +234,7 @@ const ArchiveAIPreviewModal = ({ view, onReplace, onSaveNew, onSkip, onStop, onR
                 />
               ) : (
                 <div className="whitespace-pre-wrap p-3 text-sm leading-relaxed [overflow-wrap:anywhere]">
-                  {tab === "changes" ? <DiffView parts={parts} folded={folded} onUnfold={() => setFolded(false)} /> : text}
+                  {tab === "changes" ? <DiffView parts={parts ?? []} folded={folded} onUnfold={() => setFolded(false)} /> : text}
                 </div>
               )}
             </div>
