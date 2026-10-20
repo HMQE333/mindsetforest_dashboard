@@ -1,1 +1,0 @@
-import{r as e}from"./react-DLLEciFI.js";import{F as a}from"./index-BZgsjM83.js";function t(){const{getCategories:r}=a();return e.useMemo(()=>[{id:"uncategorized",name:"Uncategorized",icon:"📦",color:"#6B7280",colorVar:"cat-uncategorized"},...r().map(o=>({id:o.id,name:o.name,icon:o.icon,iconUrl:o.iconUrl,color:o.color,colorVar:o.colorVar}))],[r])}export{t as u};
