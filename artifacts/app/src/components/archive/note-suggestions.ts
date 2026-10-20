@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTagSuggestions, type TagSuggestion } from "@/hooks/useTagSuggestions";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import { pillarTag } from "@/lib/archive-tags";
 import { noteTags } from "./archive-index";
 import { isPillarChip, pillarIdOf } from "./TagChips";
 
@@ -31,26 +32,18 @@ export interface Accepted {
 }
 
 /**
- * Accept the chosen chips: tags and the type through useTagSuggestions (which
- * records the answer, the chips left out as turned down), suggested pillars
- * added to the note's pillars (never removing one). Resolves the note's tags
- * and pillars before and after, or null when nothing was saved.
+ * Accept the chosen chips through useTagSuggestions, in one write: the type
+ * replaces the note's type, tags are added, suggested pillars ("pillar:<id>")
+ * are added to the note's pillars (never removing one). It records the answer:
+ * the chosen chips as accepted, pillars included, and the chips left out as
+ * turned down. Resolves the note's tags and pillars before and after, or null
+ * when nothing was saved. (`_updateBlock` is kept for the callers' shape: the
+ * write goes through the hook.)
  */
-export async function acceptChips(api: SuggestApi, block: ArchiveBlock, chosen: readonly TagSuggestion[], updateBlock: UpdateBlock): Promise<Accepted | null> {
-  const pillarIds = chosen.filter(isPillarChip).map(pillarIdOf);
-  const tags = chosen.filter((c) => !isPillarChip(c)).map((c) => c.tag);
-  const res = await api.accept(block.id, tags);
-  if (!res && tags.length) return null;
-  const beforePillars = [...block.pillars];
-  let afterPillars = beforePillars;
-  const add = pillarIds.filter((id) => !beforePillars.includes(id));
-  if (add.length) {
-    afterPillars = [...beforePillars, ...add];
-    if ((await updateBlock(block.id, { pillars: afterPillars })) === false) afterPillars = beforePillars;
-  }
-  const before = res?.before ?? [...(block.tags ?? [])];
-  const after = res?.after ?? before;
-  return { before: { tags: before, pillars: beforePillars }, after: { tags: after, pillars: afterPillars } };
+export async function acceptChips(api: SuggestApi, block: ArchiveBlock, chosen: readonly TagSuggestion[], _updateBlock?: UpdateBlock): Promise<Accepted | null> {
+  const res = await api.accept(block.id, chosen.map((c) => (isPillarChip(c) ? pillarTag(pillarIdOf(c)) : c.tag)));
+  if (!res) return null;
+  return { before: { tags: res.before, pillars: res.pillarsBefore }, after: { tags: res.after, pillars: res.pillarsAfter } };
 }
 
 /** Put a note's tags and pillars back as they were before an accept. */

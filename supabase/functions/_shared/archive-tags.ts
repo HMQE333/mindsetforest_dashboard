@@ -161,10 +161,14 @@ export function detectType(content: string): TypeTag | null {
 
 export type SuggestionSource = "neighbours" | "ai" | "type-rule";
 
-/** One chip; the app's TagSuggestion (lib/archive-tags.ts) is this shape. */
+/**
+ * One chip; the app's TagSuggestion (lib/archive-tags.ts) is this shape. A
+ * suggested pillar is kind "pillar" with the tag "pillar:<id>", the form its
+ * feedback rows take.
+ */
 export interface Suggestion {
   tag: string;
-  kind: "type" | "tag";
+  kind: "type" | "tag" | "pillar";
   source: SuggestionSource;
   /** Short, Polish. */
   reason: string;
@@ -176,6 +180,8 @@ export interface Suggestion {
 export interface Neighbour {
   id: string;
   tags: string[];
+  /** His pillars (life areas) on that note. */
+  pillars?: string[] | null;
   similarity: number;
 }
 
@@ -205,6 +211,57 @@ export const MAX_TAGS = 4;
 export const NOTE_CHARS = 2000;
 /** Tags of his vocabulary sent to the model. */
 export const VOCAB_SIZE = 150;
+
+// ---- pillars: his life areas (Mind, Body, ...), several per note, suggested like tags ----
+
+/** A pillar chip's tag and its feedback rows' tag: "pillar:<id>". */
+export const PILLAR_PREFIX = "pillar:";
+/** The catch-all pillar: never suggested. */
+export const NO_PILLAR = "uncategorized";
+/** Pillar chips per note, next to the type and the tags. */
+export const MAX_PILLARS = 2;
+const PILLAR_ID = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+
+/** A pillar id in its normal form, or "" when it is not one. */
+export function normalisePillarId(raw: unknown): string {
+  const id = String(raw ?? "").trim().toLowerCase();
+  return PILLAR_ID.test(id) ? id : "";
+}
+export const isPillarTag = (tag: string): boolean => typeof tag === "string" && tag.startsWith(PILLAR_PREFIX);
+export const pillarTag = (id: string): string => `${PILLAR_PREFIX}${id}`;
+
+/** One of his pillars as the app sends it (ids, names and taglines are his own settings). */
+export interface PillarInfo {
+  id: string;
+  name: string;
+  tagline?: string;
+}
+
+const oneLine = (x: unknown, max: number) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+
+/** The request's pillar list, bounded and cleaned; the catch-all and anything malformed left out. */
+export function parsePillars(raw: unknown): PillarInfo[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PillarInfo[] = [];
+  for (const p of raw.slice(0, 32) as { id?: unknown; name?: unknown; tagline?: unknown }[]) {
+    const id = normalisePillarId(p?.id);
+    if (!id || id === NO_PILLAR || out.some((o) => o.id === id)) continue;
+    const name = oneLine(p?.name, 40) || id;
+    const tagline = oneLine(p?.tagline, 80);
+    out.push(tagline ? { id, name, tagline } : { id, name });
+    if (out.length >= 16) break;
+  }
+  return out;
+}
+
+/** The key a feedback row is read under: the normal tag, or "pillar:<id>" for a pillar. */
+export function feedbackKey(tag: string): string {
+  if (isPillarTag(tag)) {
+    const id = normalisePillarId(tag.slice(PILLAR_PREFIX.length));
+    return id ? pillarTag(id) : "";
+  }
+  return normaliseTag(tag);
+}
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -249,7 +306,7 @@ export function latestFeedback(rows: readonly Feedback[]): Map<string, Map<strin
   const sorted = [...rows].sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
   const out = new Map<string, Map<string, boolean>>();
   for (const r of sorted) {
-    const tag = normaliseTag(r.tag);
+    const tag = feedbackKey(r.tag);
     if (!tag || typeof r.block_id !== "string") continue;
     let byTag = out.get(r.block_id);
     if (!byTag) out.set(r.block_id, (byTag = new Map()));
@@ -269,20 +326,29 @@ export interface Candidate {
 export interface Evidence {
   tags: Map<string, Candidate>;
   types: Map<string, Candidate>;
+  /** By pillar id (the candidate's `tag` is the id). */
+  pillars?: Map<string, Candidate>;
 }
 
 /**
- * Steps 1 and 2: every tag of the similar notes scores their similarity; a tag
- * he accepted on one of them gains, one he turned down there loses (even when
- * no similar note carries it, so the model's pick of it is held back too).
+ * Steps 1 and 2: every tag (and pillar) of the similar notes scores their
+ * similarity; a tag he accepted on one of them gains, one he turned down there
+ * loses (even when no similar note carries it, so the model's pick of it is
+ * held back too). Pillar answers are the "pillar:<id>" rows.
  */
 export function scoreNeighbours(neighbours: readonly Neighbour[], feedback: ReadonlyMap<string, ReadonlyMap<string, boolean>>): Evidence {
   const tags = new Map<string, Candidate>();
   const types = new Map<string, Candidate>();
+  const pillars = new Map<string, Candidate>();
   const get = (tag: string) => {
     const into = isTypeTag(tag) ? types : tags;
     let c = into.get(tag);
     if (!c) into.set(tag, (c = { tag, score: 0, notes: 0 }));
+    return c;
+  };
+  const getPillar = (id: string) => {
+    let c = pillars.get(id);
+    if (!c) pillars.set(id, (c = { tag: id, score: 0, notes: 0 }));
     return c;
   };
   for (const n of neighbours) {
@@ -293,11 +359,20 @@ export function scoreNeighbours(neighbours: readonly Neighbour[], feedback: Read
       c.score += s;
       c.notes += 1;
     }
+    for (const id of new Set((n.pillars ?? []).map(normalisePillarId).filter((p) => p && p !== NO_PILLAR))) {
+      const c = getPillar(id);
+      c.score += s;
+      c.notes += 1;
+    }
     for (const [t, accepted] of feedback.get(n.id) ?? []) {
-      get(t).score += accepted ? ACCEPT_BOOST * s : -REJECT_PENALTY * s;
+      const delta = accepted ? ACCEPT_BOOST * s : -REJECT_PENALTY * s;
+      if (isPillarTag(t)) {
+        const id = t.slice(PILLAR_PREFIX.length);
+        if (id !== NO_PILLAR) getPillar(id).score += delta;
+      } else get(t).score += delta;
     }
   }
-  return { tags, types };
+  return { tags, types, pillars };
 }
 
 /** "1 podobna notatka ma #x", "3 podobne notatki mają #x", "5 podobnych notatek ma #x". */
@@ -305,6 +380,13 @@ export function similarNotesReason(n: number, tag: string): string {
   if (n === 1) return `1 podobna notatka ma #${tag}`;
   const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
   return few ? `${n} podobne notatki mają #${tag}` : `${n} podobnych notatek ma #${tag}`;
+}
+
+/** "1 podobna notatka jest w Mind", "3 podobne notatki są w Mind", "5 podobnych notatek jest w Mind". */
+export function similarNotesPillarReason(n: number, name: string): string {
+  if (n === 1) return `1 podobna notatka jest w ${name}`;
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return few ? `${n} podobne notatki są w ${name}` : `${n} podobnych notatek jest w ${name}`;
 }
 
 /** "1 notatka", "3 notatki", "5 notatek". */
@@ -341,6 +423,8 @@ export const TYPE_GLOSS: Record<TypeTag, string> = {
 export interface AiPick {
   type: TypeTag | null;
   tags: string[];
+  /** Pillar ids, best first (only when his pillars were sent). */
+  pillars?: string[];
 }
 
 export interface CombineInput {
@@ -354,6 +438,11 @@ export interface CombineInput {
   /** The model's answer, or null when it was not asked or failed. */
   ai: AiPick | null;
   vocabulary: ReadonlyMap<string, number>;
+  /**
+   * His pillars (as the app sent them) and the note's own: with them, up to
+   * MAX_PILLARS pillar chips follow the type and the tags. Without, none.
+   */
+  pillars?: { known: ReadonlyMap<string, PillarInfo>; current: readonly string[] };
 }
 
 /**
@@ -426,11 +515,49 @@ export function combineSuggestions(input: CombineInput): Suggestion[] {
       ...(isNew ? { isNew: true } : {}),
     });
   }
+  out.push(...pillarSuggestions(input));
   return out;
 }
 
-/** The model's answer for each of `count` notes (1-based "i"), or null for a note it skipped. */
-export function parseAiPicks(args: unknown, count: number): (AiPick | null)[] {
+/**
+ * The pillar chips: the similar notes' pillars by summed similarity (moved by
+ * his answers on them) plus the model's picks, ranked like tags; never one the
+ * note has, the catch-all, one he does not have, or one he turned down for
+ * this note.
+ */
+function pillarSuggestions({ pillars, evidence, rejectedHere, ai }: CombineInput): Suggestion[] {
+  if (!pillars || pillars.known.size === 0) return [];
+  const have = new Set(pillars.current.map(normalisePillarId));
+  const aiPillars = (ai?.pillars ?? []).map(normalisePillarId).filter((id) => pillars.known.has(id));
+  const pool = new Set<string>([...(evidence.pillars?.keys() ?? []), ...aiPillars]);
+  const ranked: { id: string; total: number; n: number; fromNeighbours: boolean; notes: number }[] = [];
+  for (const id of pool) {
+    if (!pillars.known.has(id) || id === NO_PILLAR || have.has(id) || rejectedHere.has(pillarTag(id))) continue;
+    const c = evidence.pillars?.get(id);
+    const n = c?.score ?? 0;
+    const aiRank = aiPillars.indexOf(id);
+    const fromNeighbours = !!c && c.notes > 0 && n >= MIN_NEIGHBOUR_SCORE;
+    if (aiRank < 0 && !fromNeighbours) continue;
+    const total = n + (aiRank >= 0 ? AI_WEIGHT * (1 - 0.1 * aiRank) : 0);
+    if (total <= 0) continue;
+    ranked.push({ id, total, n, fromNeighbours, notes: c?.notes ?? 0 });
+  }
+  ranked.sort((a, b) => b.total - a.total || b.n - a.n || Number(b.fromNeighbours) - Number(a.fromNeighbours) || a.id.localeCompare(b.id));
+  return ranked.slice(0, MAX_PILLARS).map((r) => {
+    const info = pillars.known.get(r.id)!;
+    const reason = r.fromNeighbours
+      ? similarNotesPillarReason(r.notes, info.name)
+      : `AI: pasuje do ${info.name}${info.tagline ? ` (${info.tagline})` : ""}`;
+    return { tag: pillarTag(r.id), kind: "pillar" as const, source: r.fromNeighbours ? "neighbours" as const : "ai" as const, reason, score: round2(r.total) };
+  });
+}
+
+/**
+ * The model's answer for each of `count` notes (1-based "i"), or null for a
+ * note it skipped. With `pillarIds` (his pillars were sent) each answer also
+ * carries the pillars it picked from those, at most MAX_PILLARS.
+ */
+export function parseAiPicks(args: unknown, count: number, pillarIds?: readonly string[]): (AiPick | null)[] {
   let parsed: unknown = args;
   if (typeof args === "string") {
     try { parsed = JSON.parse(args); } catch { parsed = null; }
@@ -438,7 +565,8 @@ export function parseAiPicks(args: unknown, count: number): (AiPick | null)[] {
   const items = (parsed as { items?: unknown } | null)?.items;
   const out: (AiPick | null)[] = Array.from({ length: count }, () => null);
   if (!Array.isArray(items)) return out;
-  for (const it of items as { i?: unknown; type?: unknown; tags?: unknown }[]) {
+  const allowed = pillarIds ? new Set(pillarIds) : null;
+  for (const it of items as { i?: unknown; type?: unknown; tags?: unknown; pillars?: unknown }[]) {
     const k = Number(it?.i) - 1;
     if (!Number.isInteger(k) || k < 0 || k >= count || out[k]) continue;
     const type = typeof it.type === "string" && isTypeTag(it.type.trim().toLowerCase()) ? (it.type.trim().toLowerCase() as TypeTag) : null;
@@ -447,7 +575,16 @@ export function parseAiPicks(args: unknown, count: number): (AiPick | null)[] {
       const t = typeof raw === "string" ? normaliseTag(raw) : "";
       if (t && !isTypeTag(t) && !tags.includes(t)) tags.push(t);
     }
-    out[k] = { type, tags: tags.slice(0, 6) };
+    const pick: AiPick = { type, tags: tags.slice(0, 6) };
+    if (allowed) {
+      const ids: string[] = [];
+      for (const raw of Array.isArray(it.pillars) ? it.pillars : []) {
+        const id = normalisePillarId(raw);
+        if (id && allowed.has(id) && !ids.includes(id)) ids.push(id);
+      }
+      pick.pillars = ids.slice(0, MAX_PILLARS);
+    }
+    out[k] = pick;
   }
   return out;
 }
@@ -511,17 +648,32 @@ export const TYPE_DEFINITIONS = `- insight: his own thought, principle or realis
 - capture: a file, image, screenshot or video
 - fragment: a raw note that does not fit anything yet (only when nothing else fits)`;
 
-export function systemPrompt(vocabulary: ReadonlyMap<string, number>): string {
+/**
+ * The model's instructions: his vocabulary, the eight types and, when his
+ * pillars are given, the life areas to pick 1-2 from (by id).
+ */
+export function systemPrompt(vocabulary: ReadonlyMap<string, number>, pillars: readonly PillarInfo[] = []): string {
   const top = [...vocabulary].slice(0, VOCAB_SIZE);
   const vocab = top.length
     ? top.map(([t, n]) => (n > 0 ? `${t} (${n})` : `${t} (empty folder)`)).join(", ")
     : "(no tags yet)";
+  const pillarAsk = pillars.length
+    ? `
+- pillars: 1 or 2 of HIS PILLARS below (his life areas), by id, the best fit first. Only areas the note clearly serves; an empty list when none fits. Never one in the note's "pillars now".`
+    : "";
+  const pillarList = pillars.length
+    ? `
+
+HIS PILLARS (id: name - what it covers):
+${pillars.map((p) => `${p.id}: ${p.name}${p.tagline ? ` - ${p.tagline}` : ""}`).join("\n")}
+"Similar notes' pillars" lists the pillars his most similar notes are in, with a weight: strong evidence.`
+    : "";
   return `You tag notes in one person's private archive. He is Polish; his notes mix Polish and English. He saves things quickly and rarely tags them, so you pick what he would pick.
 
 For every numbered note return:
 - type: exactly one of his eight note types:
 ${TYPE_DEFINITIONS}
-- tags: 2 to 4 topic tags.
+- tags: 2 to 4 topic tags.${pillarAsk}
 
 Rules for tags:
 1. Strongly prefer tags from HIS VOCABULARY below, spelled exactly as listed. Consistency with his existing tags matters more than a perfect word.
@@ -532,7 +684,7 @@ Rules for tags:
 6. Do not repeat tags the note already has.
 
 HIS VOCABULARY (tag (notes)):
-${vocab}
+${vocab}${pillarList}
 
 Answer every note, in order, with the suggest tool.`;
 }
@@ -541,10 +693,16 @@ export interface PromptNote {
   title: string;
   content: string;
   tags: readonly string[];
+  /** The note's pillar ids (only read when his pillars are sent). */
+  pillars?: readonly string[];
 }
 
-/** One numbered note as the model reads it: its tags, the similar notes' tags, then its (capped, redacted) text. */
-export function noteForPrompt(n: number, note: PromptNote, evidence: Evidence): string {
+/**
+ * One numbered note as the model reads it: its tags, the similar notes' tags,
+ * (with `known`, his pillars: the note's own and the similar notes'), then its
+ * (capped, redacted) text.
+ */
+export function noteForPrompt(n: number, note: PromptNote, evidence: Evidence, known?: ReadonlyMap<string, PillarInfo>): string {
   const title = String(note.title ?? "").trim();
   const content = String(note.content ?? "");
   // The Inbox titles a note with its first 60 characters on one line: no need to send them twice.
@@ -558,39 +716,65 @@ export function noteForPrompt(n: number, note: PromptNote, evidence: Evidence): 
     .slice(0, 8)
     .map((c) => `${c.tag} ${c.score.toFixed(2)}`);
   const has = note.tags.map((t) => normaliseTag(t)).filter(Boolean);
+  const pillarLines: string[] = [];
+  if (known && known.size) {
+    const now = (note.pillars ?? []).map(normalisePillarId).filter((id) => known.has(id));
+    const near = [...(evidence.pillars?.values() ?? [])]
+      .filter((c) => c.notes > 0 && c.score > 0 && known.has(c.tag))
+      .sort((a, b) => b.score - a.score || a.tag.localeCompare(b.tag))
+      .slice(0, 4)
+      .map((c) => `${c.tag} ${c.score.toFixed(2)}`);
+    pillarLines.push(`pillars now: ${now.length ? now.join(", ") : "(none)"}`, `similar notes' pillars: ${near.length ? near.join(", ") : "(none)"}`);
+  }
   return [
     `[${n}]`,
     `already tagged: ${has.length ? has.join(", ") : "(none)"}`,
     `similar notes: ${similar.length ? similar.join(", ") : "(none)"}`,
+    ...pillarLines,
     `text${cut ? ` (first ${NOTE_CHARS} of ${full.length} characters)` : ""}:`,
     text || "(empty)",
   ].join("\n");
 }
 
-export const SUGGEST_TOOL = {
-  type: "function",
-  function: {
-    name: "suggest",
-    description: "One answer per note, in input order",
-    parameters: {
-      type: "object",
-      properties: {
-        items: {
-          type: "array",
+/**
+ * The forced tool call: per note a type, tags and, when his pillar ids are
+ * given, pillars picked from them.
+ */
+export function suggestTool(pillarIds: readonly string[] = []) {
+  const item: Record<string, unknown> = {
+    i: { type: "integer", description: "The note's number" },
+    type: { type: "string", enum: [...TYPE_TAGS] },
+    tags: { type: "array", items: { type: "string" }, description: "2 to 4 tags" },
+  };
+  const required = ["i", "type", "tags"];
+  if (pillarIds.length) {
+    item.pillars = { type: "array", items: { type: "string", enum: [...pillarIds] }, description: "1 or 2 pillar ids, best first; empty when none fits" };
+    required.push("pillars");
+  }
+  return {
+    type: "function",
+    function: {
+      name: "suggest",
+      description: "One answer per note, in input order",
+      parameters: {
+        type: "object",
+        properties: {
           items: {
-            type: "object",
-            properties: {
-              i: { type: "integer", description: "The note's number" },
-              type: { type: "string", enum: [...TYPE_TAGS] },
-              tags: { type: "array", items: { type: "string" }, description: "2 to 4 tags" },
+            type: "array",
+            items: {
+              type: "object",
+              properties: item,
+              required,
+              additionalProperties: false,
             },
-            required: ["i", "type", "tags"],
-            additionalProperties: false,
           },
         },
+        required: ["items"],
+        additionalProperties: false,
       },
-      required: ["items"],
-      additionalProperties: false,
     },
-  },
-};
+  };
+}
+
+/** The tool without pillars. */
+export const SUGGEST_TOOL = suggestTool();

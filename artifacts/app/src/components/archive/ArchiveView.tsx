@@ -19,6 +19,7 @@ import type { NoteAIAction } from "@/lib/archive-ai";
 import { lazyModule, whenIdle, canPrefetch } from "@/lib/lazy-module";
 import ChunkErrorBoundary, { ChunkRetry, reloadIfOnline } from "@/components/ChunkErrorBoundary";
 import { countImages, countLinks } from "./archive-index";
+import { usePendingDeletes } from "./pending-deletes";
 import { setRemembered, useRemembered } from "./remembered";
 
 // Only the open sub-tab is mounted (Wykłady always worked that way): the others
@@ -90,6 +91,13 @@ const ArchiveViewBody = () => {
   const [plantOpen, setPlantOpen] = useState(false);
   const [singlePlantBlock, setSinglePlantBlock] = useState<ArchiveBlock | null>(null);
   const archive = useArchiveState();
+  // Notes deleted with their Undo still showing (pending-deletes.ts) are out of the lists and counts;
+  // the Library leaves them out itself. Same identity as archive.blocks while nothing waits.
+  const pending = usePendingDeletes();
+  const liveBlocks = useMemo(
+    () => (pending.size ? archive.blocks.filter((b) => !pending.has(b.id)) : archive.blocks),
+    [archive.blocks, pending],
+  );
   // The peek's AI actions run through the Archive's preview (one runner for the peek, the reader and the bar).
   // One identity for the view's life, so the Library does not re-render when a run opens or closes.
   const ai = useArchiveAI();
@@ -177,8 +185,8 @@ const ArchiveViewBody = () => {
     return () => setCurrentScope(null);
   }, [subView, setCurrentScope]);
 
-  const linkCount = useMemo(() => countLinks(archive.blocks), [archive.blocks]);
-  const imageCount = useMemo(() => countImages(archive.blocks), [archive.blocks]);
+  const linkCount = useMemo(() => countLinks(liveBlocks), [liveBlocks]);
+  const imageCount = useMemo(() => countImages(liveBlocks), [liveBlocks]);
   const existingTags = useMemo(() => {
     const s = new Set<string>();
     for (const b of archive.blocks) (b.tags || []).forEach((t) => s.add(t));
@@ -189,7 +197,7 @@ const ArchiveViewBody = () => {
 
   const NAV_ITEMS: { id: SubView; label: string; icon: string; count?: number }[] = [
     { id: "inbox", label: "Inbox", icon: "📥" },
-    { id: "library", label: "Library", icon: "📚", count: archive.blocks.length },
+    { id: "library", label: "Library", icon: "📚", count: liveBlocks.length },
     { id: "lectures", label: "Wykłady", icon: "🎓", count: kosVault.index?.lectures.length || undefined },
     { id: "recordings", label: "Recordings", icon: "🎙️", count: kosRecordings.rows.length || undefined },
     { id: "links", label: "Links", icon: "🔗", count: linkCount },
@@ -212,7 +220,7 @@ const ArchiveViewBody = () => {
 
   const clearSelection = useCallback(() => setSelectedIds((prev) => (prev.size === 0 ? prev : new Set())), []);
 
-  const selectedBlocks = useMemo(() => archive.blocks.filter((b) => selectedIds.has(b.id)), [archive.blocks, selectedIds]);
+  const selectedBlocks = useMemo(() => liveBlocks.filter((b) => selectedIds.has(b.id)), [liveBlocks, selectedIds]);
   const plantOne = useCallback((b: ArchiveBlock) => setSinglePlantBlock(b), []);
   const openPlant = useCallback(() => setPlantOpen(true), []);
 
@@ -310,15 +318,15 @@ const ArchiveViewBody = () => {
             />
           )}
           {subView === "links" && (
-            <ArchiveLinksView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} bookmarks={bookmarks} />
+            <ArchiveLinksView blocks={liveBlocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} bookmarks={bookmarks} />
           )}
           {subView === "images" && (
-            <ArchiveImagesView blocks={archive.blocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+            <ArchiveImagesView blocks={liveBlocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
           )}
           {subView === "digest" && <ArchiveDigestView blocks={archive.blocks} />}
           {subView === "forest" && <ArchiveForestView />}
           {subView === "bookmarks" && (
-            <ArchiveBookmarksView bookmarks={bookmarks} blocks={archive.blocks} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
+            <ArchiveBookmarksView bookmarks={bookmarks} blocks={liveBlocks} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
           )}
           {subView === "fileshare" && <FileShareView blocks={archive.blocks} />}
         </Suspense>
@@ -329,7 +337,8 @@ const ArchiveViewBody = () => {
       <ChunkErrorBoundary fallback={null} resetKey={selectedIds.size > 0}>
         <Suspense fallback={null}>
           <AnimatePresence>
-            {selectedIds.size >= 1 && (
+            {/* Counted from the notes still listed: one deleted meanwhile (its Undo open) is not "selected". */}
+            {selectedBlocks.length >= 1 && (
               <ArchiveSelectionBar
                 key="selection-bar"
                 selected={selectedBlocks}

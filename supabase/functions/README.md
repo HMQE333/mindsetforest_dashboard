@@ -55,9 +55,11 @@ remembered.
 
 ### Archive tag suggestions
 
-`ai-suggest-tags` with `{ mode: "learn", blockIds }` (at most 20 of the caller's
-notes) answers at most five chips per note, the type chip first, each with a short
-Polish reason. Migration `20261019180000_archive_tag_learning.sql`; the pure half
+`ai-suggest-tags` with `{ mode: "learn", blockIds, pillars }` (at most 20 of the
+caller's notes; `pillars` is his list of life areas from his settings, `{ id, name,
+tagline }`) answers at most five chips per note, the type chip first, each with a
+short Polish reason, then up to two pillar chips (`kind: "pillar"`, tag
+`pillar:<id>`). Migration `20261019180000_archive_tag_learning.sql`; the pure half
 (tag rules, scoring, prompt, credential check) is `_shared/archive-tags.ts`, whose
 rules block is a word-for-word copy of `artifacts/app/src/lib/archive-tags.ts`
 (`src/test/archive-tags.test.ts` fails when they drift). The client is
@@ -65,8 +67,14 @@ rules block is a word-for-word copy of `artifacts/app/src/lib/archive-tags.ts`
 
 - Neighbours: `similar_archive_blocks` (service role only, like
   `search_archive_blocks`) returns up to 12 of his most similar notes that carry a
-  real tag; each of their tags scores the summed similarity (notes below 0.3 are
-  ignored). Only their ids and tags are read, never their text.
+  real tag or a pillar; each of their tags and pillars scores the summed similarity
+  (notes below 0.3 are ignored). Only their ids, tags and pillars are read, never
+  their text.
+- Pillars: the neighbours' pillars plus the model's pick from the list the app
+  sent (1-2, by id), ranked like tags. Never `uncategorized`, a pillar the note
+  has, or one he turned down for this note; without the list, no pillar chips.
+  Accepting adds the pillar and never removes one; feedback rows use the tag
+  `pillar:<id>` (a turned-down pillar on a neighbour counts against it).
 - Feedback: `archive_tag_feedback` holds his answers (accepted chips, the ones he
   left out, the ones he turned down). On those neighbours a turned-down tag loses
   1.5x the similarity, an accepted one gains 0.5x; a tag he turned down for the note
@@ -84,7 +92,12 @@ rules block is a word-for-word copy of `artifacts/app/src/lib/archive-tags.ts`
   neighbours' and the rule's chips still come back (`ai` says which happened).
 - A note with no embedding yet is embedded first through `ai-embed-block` with the
   caller's token. A note whose first 10,000 characters look like a password, PIN,
-  token or key is never embedded from here and never sent to the model.
+  token or key is never embedded from here and never sent to the model. The items
+  mode skips such items too (they get no tags), `ai-embed-block` does not embed
+  such a note (`embed` answers `skipped: "credential"`, `embed-all` counts them in
+  `skipped`), and the app runs the same check
+  (`artifacts/app/src/lib/credential-check.ts`) before any AI action sends a note.
+  `ai-embed-block` now imports `_shared/archive-tags.ts`, so deploy it with that file.
 
 Without the migration the function still answers from the rule and the model; the
 neighbours need `similar_archive_blocks` and the service role key.

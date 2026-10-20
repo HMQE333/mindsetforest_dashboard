@@ -17,6 +17,7 @@ import {
 import { normaliseTag, parseInlineTags } from "@/lib/archive-tags";
 import { AI_ACTIONS, aiTooLong } from "@/lib/archive-ai";
 import { invokeFunction } from "@/lib/function-error";
+import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
 import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { lazyModule } from "@/lib/lazy-module";
@@ -265,6 +266,7 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
     if (!target.trim()) return;
     const tooLong = aiTooLong(action, target);
     if (tooLong) { toast.error(tooLong); return; }
+    if (looksLikeCredential(target.slice(0, 10_000))) { toast.error(CREDENTIAL_MESSAGE); return; }
     ai.preview({
       action,
       subject: sel ? "the selected text" : "Inbox draft",
@@ -344,8 +346,9 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
       if (pending) { e.preventDefault(); setPending(null); return; }
       if (justSaved) { e.preventDefault(); stripRef.current?.dismiss(); return; }
     }
-    // The box is empty right after a save: Enter takes the suggested tags; typing goes on as usual.
-    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && justSaved && !textRef.current.trim()) {
+    // The box is empty right after a save: Enter takes the suggested tags (once there are some to
+    // take; while they load, or when there are none, Enter is a newline as usual).
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && justSaved && !textRef.current.trim() && stripRef.current?.hasChips()) {
       e.preventDefault();
       stripRef.current?.acceptAll();
     }

@@ -1,4 +1,5 @@
 import { unzipSync, strFromU8 } from "fflate";
+import { normaliseTag, parseInlineTags } from "./archive-tags";
 
 export interface ParsedObsidianNote {
   fileName: string;
@@ -38,8 +39,9 @@ function parseFrontmatter(raw: string): { body: string; fm: Record<string, unkno
   return { body, fm };
 }
 
+/** A tag by the Archive's tag rules ("Książki" is "książki"; "#2" is not a tag, ""). */
 function normalizeTag(s: string): string {
-  return s.replace(/^#/, "").trim().toLowerCase();
+  return normaliseTag(s);
 }
 
 function tagsFromFrontmatter(fm: Record<string, unknown>): string[] {
@@ -60,15 +62,13 @@ function tagsFromFrontmatter(fm: Record<string, unknown>): string[] {
   return out;
 }
 
-/** Inline Obsidian tags like `#idea` or `#area/work`. Headings (`# Title`) are excluded (space after #). */
+/**
+ * Inline Obsidian tags like `#idea`, `#area/work` or `#książki`, read with the
+ * Archive's tag rules (they stay in the text). Headings (`# Title`) are
+ * excluded (space after #).
+ */
 function inlineTags(body: string): string[] {
-  const out: string[] = [];
-  const re = /(?:^|[\s(])#([A-Za-z0-9_][\w/-]*)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    out.push(normalizeTag(m[1]));
-  }
-  return out;
+  return parseInlineTags(body);
 }
 
 function baseName(path: string): string {

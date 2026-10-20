@@ -2690,6 +2690,7 @@ export type Database = {
         Args: { p_block: string; p_k?: number; p_user: string }
         Returns: {
           id: string
+          pillars: string[]
           similarity: number
           tags: string[]
         }[]

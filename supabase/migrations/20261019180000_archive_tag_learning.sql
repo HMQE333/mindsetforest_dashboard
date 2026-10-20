@@ -44,15 +44,19 @@ CREATE POLICY "Users can insert own tag feedback"
   );
 
 -- The k notes of p_user most similar to p_block (by embedding), excluding p_block, that carry at
--- least one tag with something other than digits in it (a '2' from '#2' text says nothing).
--- Only ids, tags and similarity come back, never text. Empty when p_block is not p_user's or has
--- no embedding yet.
+-- least one tag with something other than digits in it (a '2' from '#2' text says nothing) or a
+-- pillar other than 'uncategorized'. Only ids, tags, pillars and similarity come back, never text.
+-- Empty when p_block is not p_user's or has no embedding yet.
 --
 -- SECURITY DEFINER and it trusts p_user, so like search_archive_blocks
 -- (20260929210000_lock_search_archive_blocks.sql) only the service role may run it: its one
 -- caller is ai-suggest-tags, which passes the signed-in user's own id.
-CREATE OR REPLACE FUNCTION public.similar_archive_blocks(p_user uuid, p_block uuid, p_k integer DEFAULT 12)
-RETURNS TABLE (id uuid, tags text[], similarity double precision)
+--
+-- Dropped first: a function's result columns cannot change in place, and a draft of this file
+-- returned no pillars. Nothing else depends on it.
+DROP FUNCTION IF EXISTS public.similar_archive_blocks(uuid, uuid, integer);
+CREATE FUNCTION public.similar_archive_blocks(p_user uuid, p_block uuid, p_k integer DEFAULT 12)
+RETURNS TABLE (id uuid, tags text[], pillars text[], similarity double precision)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
@@ -65,13 +69,16 @@ AS $$
       AND b.user_id = p_user
       AND b.embedding IS NOT NULL
   )
-  SELECT ab.id, ab.tags, (1 - (ab.embedding <=> src.embedding))::double precision AS similarity
+  SELECT ab.id, ab.tags, ab.pillars, (1 - (ab.embedding <=> src.embedding))::double precision AS similarity
   FROM public.archive_blocks ab
   CROSS JOIN src
   WHERE ab.user_id = p_user
     AND ab.id <> p_block
     AND ab.embedding IS NOT NULL
-    AND EXISTS (SELECT 1 FROM unnest(ab.tags) AS t(tag) WHERE t.tag !~ '^[0-9_/-]*$')
+    AND (
+      EXISTS (SELECT 1 FROM unnest(ab.tags) AS t(tag) WHERE t.tag !~ '^[0-9_/-]*$')
+      OR EXISTS (SELECT 1 FROM unnest(ab.pillars) AS p(pillar) WHERE p.pillar <> 'uncategorized')
+    )
   ORDER BY ab.embedding <=> src.embedding
   LIMIT LEAST(GREATEST(COALESCE(p_k, 12), 1), 50);
 $$;

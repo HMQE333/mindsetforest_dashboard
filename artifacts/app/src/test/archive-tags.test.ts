@@ -491,6 +491,103 @@ describe("learning: the model's side", () => {
   });
 });
 
+describe("learning: pillars (round 2, section 10)", () => {
+  const known = new Map(server.parsePillars([
+    { id: "mind", name: "Mind", tagline: "Learning & Programming" },
+    { id: "money", name: "Money", tagline: "Wealth & Income" },
+    { id: "order", name: "Order" },
+  ]).map((p) => [p.id, p]));
+  const ev = (pillars: [string, number, number][] = []) => ({
+    tags: new Map(),
+    types: new Map(),
+    pillars: new Map(pillars.map(([tag, score, notes]) => [tag, { tag, score, notes }])),
+  });
+  const base = { current: [] as string[], ruleType: null, rejectedHere: new Set<string>(), ai: null, vocabulary: new Map<string, number>() };
+
+  it("parsePillars keeps his pillars bounded and drops the catch-all and malformed ids", () => {
+    const out = server.parsePillars([
+      { id: "uncategorized", name: "Uncategorized" },
+      { id: "Mind", name: "  Mind \n", tagline: "x".repeat(200) },
+      { id: "mind", name: "dup" },
+      { id: "bad id", name: "x" },
+      { id: "body" },
+      "nonsense",
+    ]);
+    expect(out).toEqual([{ id: "mind", name: "Mind", tagline: "x".repeat(80) }, { id: "body", name: "body" }]);
+    expect(server.parsePillars(undefined)).toEqual([]);
+  });
+
+  it("feedback keeps pillar rows as pillar:<id> (not squashed into a tag)", () => {
+    const fb = server.latestFeedback([
+      { block_id: "a", tag: "pillar:Money", accepted: false, created_at: "2026-10-01" },
+      { block_id: "a", tag: "pillar:", accepted: true, created_at: "2026-10-01" },
+    ]);
+    expect(fb.get("a")).toEqual(new Map([["pillar:money", false]]));
+  });
+
+  it("similar notes' pillars score by similarity, moved by his answers; the catch-all never", () => {
+    const feedback = server.latestFeedback([{ block_id: "b", tag: "pillar:mind", accepted: false, created_at: "2026-10-01" }]);
+    const e = server.scoreNeighbours([
+      { id: "a", tags: [], pillars: ["money", "uncategorized"], similarity: 0.8 },
+      { id: "b", tags: ["x"], pillars: ["money"], similarity: 0.6 },
+      { id: "c", tags: [], pillars: ["mind"], similarity: 0.1 },
+    ], feedback);
+    expect(e.pillars!.get("money")).toMatchObject({ notes: 2 });
+    expect(e.pillars!.get("money")!.score).toBeCloseTo(1.4);
+    expect(e.pillars!.get("mind")!.score).toBeCloseTo(-server.REJECT_PENALTY * 0.6);
+    expect(e.pillars!.has("uncategorized")).toBe(false);
+    expect(e.tags.has("pillar:mind")).toBe(false);
+  });
+
+  it("up to two pillar chips after the type and tags, with Polish reasons", () => {
+    const out = server.combineSuggestions({
+      ...base,
+      ruleType: "source",
+      evidence: ev([["money", 1.4, 2], ["order", 0.3, 1]]),
+      ai: { type: null, tags: [], pillars: ["mind", "order"] },
+      pillars: { known, current: [] },
+    });
+    expect(out[0].kind).toBe("type");
+    expect(out.filter((s) => s.kind === "pillar")).toEqual([
+      { tag: "pillar:money", kind: "pillar", source: "neighbours", reason: "2 podobne notatki są w Money", score: 1.4 },
+      { tag: "pillar:order", kind: "pillar", source: "ai", reason: "AI: pasuje do Order", score: 0.84 },
+    ]);
+  });
+
+  it("never a pillar the note has, one he turned down here, one he does not have, or without his list", () => {
+    const input = {
+      ...base,
+      evidence: ev([["money", 2, 3], ["body", 2, 3]]),
+      ai: { type: null, tags: [], pillars: ["mind"] },
+    };
+    expect(server.combineSuggestions({ ...input, rejectedHere: new Set(["pillar:mind"]), pillars: { known, current: ["money"] } }).filter((s) => s.kind === "pillar")).toEqual([]);
+    expect(server.combineSuggestions(input).some((s) => s.kind === "pillar")).toBe(false);
+    expect(server.combineSuggestions({ ...input, pillars: { known, current: [] } }).filter((s) => s.kind === "pillar").map((s) => s.tag)).toEqual(["pillar:money", "pillar:mind"]);
+    expect(server.similarNotesPillarReason(1, "Mind")).toBe("1 podobna notatka jest w Mind");
+    expect(server.similarNotesPillarReason(5, "Mind")).toBe("5 podobnych notatek jest w Mind");
+  });
+
+  it("the model is asked for pillars only when his list is sent", () => {
+    const tool = server.suggestTool(["mind", "money"]);
+    const item = (tool.function.parameters.properties.items as { items: { properties: Record<string, { items?: { enum?: string[] } }>; required: string[] } }).items;
+    expect(item.properties.pillars.items!.enum).toEqual(["mind", "money"]);
+    expect(item.required).toContain("pillars");
+    expect("pillars" in (server.SUGGEST_TOOL.function.parameters.properties.items as { items: { properties: object } }).items.properties).toBe(false);
+    const p = server.systemPrompt(new Map(), [...known.values()]);
+    expect(p).toContain("HIS PILLARS");
+    expect(p).toContain("mind: Mind - Learning & Programming");
+    expect(server.systemPrompt(new Map())).not.toContain("HIS PILLARS");
+    const s = server.noteForPrompt(1, { title: "", content: "x", tags: [], pillars: ["money", "nope"] }, ev([["mind", 0.9, 1]]), known);
+    expect(s).toContain("pillars now: money\nsimilar notes' pillars: mind 0.90\n");
+  });
+
+  it("parseAiPicks keeps only his pillar ids, at most two", () => {
+    const picks = server.parseAiPicks({ items: [{ i: 1, type: "task", tags: [], pillars: ["Money", "nonsense", "mind", "order"] }] }, 1, ["mind", "money", "order"]);
+    expect(picks[0]).toEqual({ type: "task", tags: [], pillars: ["money", "mind"] });
+    expect(server.parseAiPicks({ items: [{ i: 1, type: "task", tags: [], pillars: ["money"] }] }, 1)[0]).toEqual({ type: "task", tags: [] });
+  });
+});
+
 describe("learning: content that looks like a credential never goes to a model", () => {
   const secret = [
     "login: jan.kowalski\nhasło: Kot!2024x",
@@ -565,6 +662,18 @@ describe("ai-suggest-tags wiring", () => {
     expect(src).toMatch(/const askable = blocks\.filter\(\(b\) => !secret\.has\(b\.id\)\)/);
   });
 
+  it("takes his pillars from the request and offers only those", () => {
+    expect(src).toContain("const pillars = parsePillars(body?.pillars);");
+    expect(src).toContain("tools: [suggestTool(pillarIds)]");
+    expect(src).toMatch(/pillars: knownPillars\.size \? \{ known: knownPillars, current: b\.pillars \?\? \[\] \} : undefined/);
+    expect(src).toContain('select("id,title,content,tags,pillars")');
+  });
+
+  it("the items mode never sends an item that looks like a credential", () => {
+    expect(src).toMatch(/const sent = items\.map\(\(_, i\) => i\)\.filter\(\(i\) => !looksLikeCredential\(/);
+    expect(src).toContain("sent.map((i, k) => `[${k + 1}]\\n${items[i]}`)");
+  });
+
   it("embeds a just-saved note through ai-embed-block", () => {
     expect(src).toContain("/functions/v1/ai-embed-block");
     expect(src).toContain('action: "embed"');
@@ -587,7 +696,11 @@ describe("migrations", () => {
     expect(sql).toContain("SET search_path = public");
     expect(sql).toContain("REVOKE EXECUTE ON FUNCTION public.similar_archive_blocks(uuid, uuid, integer) FROM PUBLIC, anon, authenticated;");
     expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.similar_archive_blocks(uuid, uuid, integer) TO service_role;");
-    expect(sql).toMatch(/RETURNS TABLE \(id uuid, tags text\[\], similarity double precision\)/);
+    expect(sql).toMatch(/RETURNS TABLE \(id uuid, tags text\[\], pillars text\[\], similarity double precision\)/);
+    // A note with only a pillar is a neighbour for pillars; the catch-all is not.
+    expect(sql).toMatch(/OR EXISTS \(SELECT 1 FROM unnest\(ab\.pillars\) AS p\(pillar\) WHERE p\.pillar <> 'uncategorized'\)/);
+    // The result type changed from a draft: dropped before it is created.
+    expect(sql.indexOf("DROP FUNCTION IF EXISTS public.similar_archive_blocks(uuid, uuid, integer);")).toBeLessThan(sql.indexOf("CREATE FUNCTION public.similar_archive_blocks"));
   });
 
   it("archive-images: the public read policy goes, the owner's (and old file-share) stays readable", () => {

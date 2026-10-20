@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useArchiveState } from "@/hooks/useArchiveState";
 import { invokeFunction } from "@/lib/function-error";
+import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
 import { lazyModule } from "@/lib/lazy-module";
 import { shortTitle, type ArchiveBlock } from "@/lib/archive-data";
 import { isTypeTag } from "@/lib/archive-tags";
@@ -112,6 +113,9 @@ interface Run {
 
 /** Results asked for ahead of the one on screen. */
 const AHEAD = 2;
+/** The text checked for secrets (as ai-suggest-tags does): a password sits near the top of a note. */
+const SECRET_SCAN_CHARS = 10_000;
+const holdsSecret = (b: { title?: string | null; content: string }) => looksLikeCredential(`${b.title ?? ""}\n\n${b.content}`.slice(0, SECRET_SCAN_CHARS));
 
 const tagsOfAll = (notes: readonly ArchiveBlock[]) => {
   const out: string[] = [];
@@ -216,7 +220,8 @@ export function ArchiveAIProvider({ children }: { children: ReactNode }) {
         action,
         subject: shortTitle(b.title, 60),
         original: b.content,
-        error: !b.content.trim() ? "The note is empty." : aiTooLong(action, b.content) ?? undefined,
+        // A note that looks like it holds a password or a key never leaves for the model.
+        error: !b.content.trim() ? "The note is empty." : holdsSecret(b) ? CREDENTIAL_MESSAGE : aiTooLong(action, b.content) ?? undefined,
         fetch: () => fetchNoteAI(action, b.content, b.title, prompt),
         replace: (text) => replaceNote(b, action, text),
         saveNew: (text) => saveNew({ title: aiNoteTitle(action, b.title), content: text, pillars: [...(b.pillars ?? [])], tags: [...(b.tags ?? [])] }),
@@ -243,6 +248,11 @@ export function ArchiveAIProvider({ children }: { children: ReactNode }) {
       const tooLong = multiTooLong(list);
       if (tooLong) {
         toast.error(tooLong);
+        return;
+      }
+      const secret = notes.find(holdsSecret);
+      if (secret) {
+        toast.error(`“${shortTitle(secret.title, 48)}”: ${CREDENTIAL_MESSAGE} Leave it out of the selection.`, { className: "[overflow-wrap:anywhere]" });
         return;
       }
       const together = action !== "merge";

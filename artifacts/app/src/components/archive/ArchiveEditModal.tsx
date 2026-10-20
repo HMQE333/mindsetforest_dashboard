@@ -9,7 +9,8 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import { shortTitle, tagsFromInput, type ArchiveBlock } from "@/lib/archive-data";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
 import ArchiveConfirmDialog from "./ArchiveConfirmDialog";
-import { PILLAR_KEYS } from "./TagChips";
+import { deleteWithUndo } from "./pending-deletes";
+import { keyedPillars } from "./TagChips";
 
 const IMAGE_TAG_REGEX = /\[image\]\s*(https?:\/\/[^\s]+)/g;
 
@@ -34,7 +35,8 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
   const [relatedBlocks, setRelatedBlocks] = useState<ArchiveBlock[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // Numbered as in the peek: 1-8 are his life areas (Uncategorized has no key).
+  const keyed = useMemo(() => keyedPillars(allPillars), [allPillars]);
 
   useEffect(() => {
     if (block) {
@@ -64,12 +66,11 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
     const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
     if (e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
-    const i = Number(e.key) - 1;
-    const pillar = i < PILLAR_KEYS ? allPillars[i] : undefined;
+    const pillar = keyed[Number(e.key) - 1];
     if (!pillar) return;
     e.preventDefault();
     setPillars((prev) => (prev.includes(pillar.id) ? prev.filter((p) => p !== pillar.id) : [...prev, pillar.id]));
-  }, [allPillars]);
+  }, [keyed]);
 
   useEffect(() => {
     if (!open || !block || confirmDelete) return;
@@ -92,14 +93,10 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
     onClose();
   };
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await onDelete(block.id);
-    } finally {
-      setDeleting(false);
-    }
+  // Confirmed: the note hides at once and the Undo toast shows; the delete is sent when it ends.
+  const handleDelete = () => {
     setConfirmDelete(false);
+    deleteWithUndo([block.id], onDelete, { label: shortTitle(block.title, 48) });
     onClose();
   };
 
@@ -124,23 +121,26 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
           )}
 
           <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-2">Pillars <span className="font-normal opacity-70">· keys 1-{Math.min(PILLAR_KEYS, allPillars.length)}</span></p>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">Pillars {keyed.length > 0 && <span className="font-normal opacity-70">· keys 1-{keyed.length}</span>}</p>
             <div className="flex flex-wrap gap-1.5">
-              {allPillars.map((p, i) => (
+              {allPillars.map((p) => {
+                const digit = keyed.indexOf(p) + 1;
+                return (
                 <button
                   key={p.id}
                   onClick={() => togglePillar(p.id)}
-                  title={i < PILLAR_KEYS ? `${p.name} (key ${i + 1})` : p.name}
+                  title={digit ? `${p.name} (key ${digit})` : p.name}
                   aria-pressed={pillars.includes(p.id)}
                   className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all flex items-center gap-1.5 ${
                     pillars.includes(p.id) ? "text-white" : "opacity-40 hover:opacity-70"
                   }`}
                   style={{ backgroundColor: pillars.includes(p.id) ? p.color : p.color + "22", color: pillars.includes(p.id) ? "#fff" : p.color }}
                 >
-                  {i < PILLAR_KEYS && <span className="w-4 h-4 rounded-full bg-black/30 text-[9px] font-bold flex items-center justify-center shrink-0 tabular-nums" aria-hidden>{i + 1}</span>}
+                  {digit > 0 && <span className="w-4 h-4 rounded-full bg-black/30 text-[9px] font-bold flex items-center justify-center shrink-0 tabular-nums" aria-hidden>{digit}</span>}
                   <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={14} className="inline-block" /> {p.name}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -205,10 +205,9 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
             <ArchiveConfirmDialog
               open={confirmDelete}
               onOpenChange={setConfirmDelete}
-              busy={deleting}
               title="Delete this note?"
-              description={<>“{shortTitle(block.title)}” will be deleted.</>}
-              onConfirm={() => void handleDelete()}
+              description={<>“{shortTitle(block.title)}” will be deleted. You can undo it for a few seconds.</>}
+              onConfirm={handleDelete}
             />
             <div className="flex-1" />
             <Button onClick={onClose} variant="outline" className="border-white/10 font-bold">

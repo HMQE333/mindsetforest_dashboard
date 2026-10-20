@@ -316,10 +316,14 @@ export function tagTree(
 /** Where a suggestion came from (the values archive_tag_feedback.source takes, but "manual"). */
 export type TagSuggestionSource = "neighbours" | "ai" | "type-rule";
 
-/** One chip offered for a note by ai-suggest-tags (mode "learn"). */
+/**
+ * One chip offered for a note by ai-suggest-tags (mode "learn"). A suggested
+ * pillar is kind "pillar" with the tag "pillar:<id>" (the form its feedback
+ * rows take); accepting one adds the pillar to the note, never a tag.
+ */
 export interface TagSuggestion {
   tag: string;
-  kind: "type" | "tag";
+  kind: "type" | "tag" | "pillar";
   source: TagSuggestionSource;
   /** Short, Polish: "3 podobne notatki mają #rybiapaka", "AI: nowy tag". */
   reason: string;
@@ -328,3 +332,10 @@ export interface TagSuggestion {
   /** Not in his vocabulary yet. */
   isNew?: boolean;
 }
+
+/** A pillar chip's tag, and its archive_tag_feedback rows' tag: "pillar:<id>". */
+export const PILLAR_TAG_PREFIX = "pillar:";
+export const isPillarTag = (tag: string): boolean => typeof tag === "string" && tag.startsWith(PILLAR_TAG_PREFIX);
+export const pillarTag = (id: string): string => `${PILLAR_TAG_PREFIX}${id}`;
+/** The pillar id of a "pillar:<id>" tag ("" when it has none). */
+export const pillarIdOfTag = (tag: string): string => (isPillarTag(tag) ? tag.slice(PILLAR_TAG_PREFIX.length).trim().toLowerCase() : "");

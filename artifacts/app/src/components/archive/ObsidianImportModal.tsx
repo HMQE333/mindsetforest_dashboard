@@ -22,6 +22,7 @@ import {
   type ParsedObsidianNote,
 } from "@/lib/obsidian-import";
 import { ArchiveSaveError, type ArchiveBlock } from "@/lib/archive-data";
+import { normaliseTag } from "@/lib/archive-tags";
 
 interface Props {
   open: boolean;
@@ -229,12 +230,16 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
         const aiBlocks: any[] = data?.blocks || [];
         batch.forEach((n, j) => {
           const ai = aiBlocks[j];
+          // Tags read with the Archive's tag rules (Polish letters kept, "#2" is not a tag). The
+          // model's pillars are not written: pillars are only ever his own choice (the peek's
+          // pillar row, or an accepted ✨ Suggest chip).
+          const aiTags = (Array.isArray(ai?.tags) ? ai.tags : []).map((t: unknown) => (typeof t === "string" ? normaliseTag(t) : "")).filter(Boolean);
           finalBlocks.push({
             title: n.title,
             content: n.content,
-            pillars: Array.isArray(ai?.pillars) ? ai.pillars : [],
+            pillars: [],
             directions: [],
-            tags: Array.from(new Set([...n.tags, ...(Array.isArray(ai?.tags) ? ai.tags : [])])),
+            tags: Array.from(new Set([...n.tags, ...aiTags])),
             source_url: null,
           });
         });
@@ -287,7 +292,7 @@ const ObsidianImportModal = ({ open, onClose, existingBlocks, addBlocks }: Props
           </DialogTitle>
           <DialogDescription>
             Bring markdown notes from your vault into the Archive. AI suggests which to keep,
-            then auto-tags them with pillars & hashtags.
+            then tags them. Pillars stay yours to choose.
           </DialogDescription>
         </DialogHeader>
 

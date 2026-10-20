@@ -37,7 +37,7 @@ import { ARM_MS, type Armed } from "./DeleteConfirm";
 import { neighbourAfterRemoval } from "./reader-model";
 import { NOTE_DRAG_TYPE, addToFolder, folderLabel, moveToFolder, removeFromFolder } from "./folder-ops";
 import { applyWithUndo, useSavedFolders } from "./folder-store";
-import { PILLAR_KEYS, TYPE_CHIP, TYPE_ICONS, tagText } from "./TagChips";
+import { TYPE_CHIP, TYPE_ICONS, keyedPillars, tagText } from "./TagChips";
 import { usePillarToggle } from "./pillar-toggle";
 
 // The peek and the tag queue render notes with the reader's Markdown renderer: code-split, fetched on idle.
@@ -644,9 +644,8 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
         e.preventDefault();
         togglePin(block);
       } else if (s.peekId && /^[1-9]$/.test(e.key)) {
-        // Digits toggle the peeked note's pillars, as numbered on its chips.
-        const n = Number(e.key);
-        const p = n <= PILLAR_KEYS ? s.pillars[n - 1] : undefined;
+        // Digits toggle the peeked note's pillars, as numbered on its chips (1-8: his life areas).
+        const p = keyedPillars(s.pillars)[Number(e.key) - 1];
         if (p) {
           e.preventDefault();
           void togglePillar(block, p.id);

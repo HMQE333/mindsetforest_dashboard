@@ -23,6 +23,8 @@ export interface TagSuggestionListHandle {
   acceptAll: () => void;
   /** Close without recording anything. */
   dismiss: () => void;
+  /** Chips are showing (Enter has something to accept). */
+  hasChips: () => boolean;
 }
 
 interface Props {
@@ -143,7 +145,7 @@ export default function TagSuggestionList({ notes, onClose, variant = "inline", 
     [saving, updateBlock, done, shown, answers, close],
   );
 
-  useImperativeHandle(handle, () => ({ acceptAll: () => void accept(rows), dismiss }), [accept, rows, dismiss]);
+  useImperativeHandle(handle, () => ({ acceptAll: () => void accept(rows), dismiss, hasChips: () => withChips.length > 0 }), [accept, rows, dismiss, withChips.length]);
 
   // Nothing to offer: say so a moment, then go.
   useEffect(() => {
@@ -247,6 +249,7 @@ export default function TagSuggestionList({ notes, onClose, variant = "inline", 
               numbered={variant === "dialog" && withChips.length === 1}
               keys={withChips.length === 1 ? "Enter" : null}
               saving={saving === r.block.id || saving === "all"}
+              acceptLabel={withChips.length > 1 ? "Accept" : undefined}
             />
           </div>
         ))}

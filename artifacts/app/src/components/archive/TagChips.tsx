@@ -131,6 +131,22 @@ export const NoteTagChips = memo(function NoteTagChips({ tags, onTag, onType, ma
 /** Pillars the digit keys reach (1-8). */
 export const PILLAR_KEYS = 8;
 
+/**
+ * The pillars the digit keys reach, in order: his life areas, numbered 1-8.
+ * Uncategorized (the catch-all, first in usePillars) has no key, so all eight
+ * of his areas have one. The peek, the pillar row and the edit dialog all
+ * number by this.
+ */
+export function keyedPillars<T extends { id: string }>(pillars: readonly T[]): T[] {
+  return pillars.filter((p) => p.id !== "uncategorized").slice(0, PILLAR_KEYS);
+}
+
+/** The digit that toggles a pillar (1-8), or null when it has none. */
+export function pillarDigit(pillars: readonly { id: string }[], id: string): number | null {
+  const i = keyedPillars(pillars).findIndex((p) => p.id === id);
+  return i < 0 ? null : i + 1;
+}
+
 /** His pillars as one row of chips; a press toggles one on the note (saved at once by the caller). */
 export function PillarRow({
   pillars,
@@ -147,21 +163,23 @@ export function PillarRow({
   /** A pillar whose save is on its way. */
   busy?: string | null;
 }) {
+  const keyed = numbered ? keyedPillars(pillars) : [];
   return (
     <div className="flex flex-wrap gap-1.5" role="group" aria-label="Pillars">
-      {pillars.map((p, i) => {
+      {pillars.map((p) => {
         const on = active.includes(p.id);
+        const digit = numbered ? keyed.indexOf(p) + 1 : 0;
         return (
           <button
             key={p.id}
             type="button"
             onClick={() => onToggle(p.id)}
             aria-pressed={on}
-            title={`${on ? "Remove" : "Add"} ${p.name}${numbered && i < PILLAR_KEYS ? ` (${i + 1})` : ""}`}
+            title={`${on ? "Remove" : "Add"} ${p.name}${digit ? ` (${digit})` : ""}`}
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-[background-color,color,opacity] active:scale-95 ${busy === p.id ? "opacity-60" : ""}`}
             style={{ backgroundColor: on ? p.color : `${p.color}18`, color: on ? "#fff" : p.color }}
           >
-            {numbered && i < PILLAR_KEYS && <span className="text-[9px] font-bold opacity-70 tabular-nums">{i + 1}</span>}
+            {digit > 0 && <span className="text-[9px] font-bold opacity-70 tabular-nums">{digit}</span>}
             <PillarIcon icon={p.icon} iconUrl={p.iconUrl} size={12} className="inline-block" /> {p.name}
           </button>
         );
@@ -176,7 +194,7 @@ export function PillarRow({
  * A suggested pillar (the learn mode may offer one or two): `kind` "pillar"
  * and the tag "pillar:<id>", the form its feedback rows take.
  */
-export const isPillarChip = (s: Pick<TagSuggestion, "kind" | "tag">) => (s.kind as string) === "pillar" || s.tag.startsWith("pillar:");
+export const isPillarChip = (s: Pick<TagSuggestion, "kind" | "tag">) => s.kind === "pillar" || s.tag.startsWith("pillar:");
 export const pillarIdOf = (s: Pick<TagSuggestion, "tag">) => s.tag.replace(/^pillar:/, "");
 
 /** What the AI's part of an answer means for him, when it is not a full answer. */
@@ -200,6 +218,7 @@ export function SuggestionChips({
   numbered = false,
   keys = "Enter",
   saving = false,
+  acceptLabel,
 }: {
   chips: readonly TagSuggestion[] | undefined;
   /** The chips that "Accept" takes (all, until one is pressed off). */
@@ -217,6 +236,12 @@ export function SuggestionChips({
   /** The key that accepts, shown on the button; null for none. */
   keys?: string | null;
   saving?: boolean;
+  /**
+   * The accept button's words when every chip is chosen ("Accept all" by
+   * default). A list of several notes says "Accept" per row, so it does not
+   * read like the list's own "Accept all".
+   */
+  acceptLabel?: string;
 }) {
   if (error) {
     return (
@@ -279,7 +304,7 @@ export function SuggestionChips({
           title={picked === chips.length ? "Accept every suggestion" : `Accept the ${picked} chosen`}
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : null}
-          {picked === chips.length ? "Accept all" : `Accept ${picked}`}
+          {picked === chips.length ? acceptLabel ?? "Accept all" : `Accept ${picked}`}
           {keys && <kbd className="ml-0.5 text-[9px] font-normal opacity-70 [@media(hover:none)]:hidden">{keys}</kbd>}
         </button>
         {onDismiss && (

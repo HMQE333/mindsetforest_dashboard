@@ -8,10 +8,16 @@ vi.mock("react", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
+const CATEGORIES = [
+  { id: "mind", name: "Mind", tagline: "Learning & Programming" },
+  { id: "money", name: "Money", tagline: "Wealth & Income" },
+];
+vi.mock("@/hooks/useUserSettings", () => ({ useUserSettings: () => ({ getCategories: () => CATEGORIES }) }));
 
 const h = vi.hoisted(() => ({
   invoke: vi.fn(),
   tags: new Map<string, string[]>(),
+  pillars: new Map<string, string[]>(),
   inserts: [] as unknown[][],
   insertError: null as null | { message: string },
   updateBlock: vi.fn(),
@@ -29,7 +35,8 @@ vi.mock("@/integrations/supabase/client", () => ({
         return {
           select: () => ({
             eq: (_col: string, id: string) => ({
-              maybeSingle: async () => (h.tags.has(id) ? { data: { tags: h.tags.get(id) }, error: null } : { data: null, error: null }),
+              maybeSingle: async () =>
+                h.tags.has(id) ? { data: { tags: h.tags.get(id), pillars: h.pillars.get(id) ?? [] }, error: null } : { data: null, error: null },
             }),
           }),
         };
@@ -42,7 +49,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 import { SUGGEST_BATCH, useTagSuggestions } from "../hooks/useTagSuggestions";
 import type { TagSuggestion } from "../lib/archive-tags";
 
-const chip = (tag: string, kind: "type" | "tag", source: TagSuggestion["source"] = "neighbours"): TagSuggestion => ({ tag, kind, source, reason: "r", score: 1 });
+const chip = (tag: string, kind: TagSuggestion["kind"], source: TagSuggestion["source"] = "neighbours"): TagSuggestion => ({ tag, kind, source, reason: "r", score: 1 });
 let seq = 0;
 const freshId = () => `00000000-0000-0000-0000-${String(++seq).padStart(12, "0")}`;
 
@@ -59,6 +66,7 @@ beforeEach(() => {
   h.updateBlock.mockReset();
   h.updateBlock.mockResolvedValue(true);
   h.tags.clear();
+  h.pillars.clear();
   h.inserts.length = 0;
   h.insertError = null;
 });
@@ -82,6 +90,16 @@ describe("useTagSuggestions.suggest", () => {
     expect(most).toBe(1);
     expect(out.size).toBe(45);
     expect(out.get(ids[44])).toEqual([chip("x", "tag")]);
+  });
+
+  it("sends his pillars (id, name, tagline) so the model picks from them", async () => {
+    const a = freshId();
+    answerWith(() => []);
+    await useTagSuggestions().suggest([a]);
+    expect(h.invoke.mock.calls[0][1].body.pillars).toEqual([
+      { id: "mind", name: "Mind", tagline: "Learning & Programming" },
+      { id: "money", name: "Money", tagline: "Wealth & Income" },
+    ]);
   });
 
   it("keeps answers for the session and shares a question already in flight", async () => {
@@ -130,7 +148,7 @@ describe("useTagSuggestions.accept / reject / forget", () => {
     const hook = useTagSuggestions();
     await hook.suggest([a]);
     const res = await hook.accept(a, ["framework", "rybiapaka", "#Ręcznie"]);
-    expect(res).toEqual({ before: ["insight", "stary"], after: ["stary", "framework", "rybiapaka", "ręcznie"] });
+    expect(res).toEqual({ before: ["insight", "stary"], after: ["stary", "framework", "rybiapaka", "ręcznie"], pillarsBefore: [], pillarsAfter: [] });
     expect(h.updateBlock).toHaveBeenCalledWith(a, { tags: ["stary", "framework", "rybiapaka", "ręcznie"] });
     const rows = h.inserts.flat() as { tag: string; accepted: boolean; source: string; user_id: string; block_id: string }[];
     expect(rows.map((r) => [r.tag, r.accepted, r.source])).toEqual([
@@ -147,7 +165,7 @@ describe("useTagSuggestions.accept / reject / forget", () => {
     const a = freshId();
     h.tags.set(a, ["rybiapaka"]);
     const res = await useTagSuggestions().accept(a, ["rybiapaka"]);
-    expect(res).toEqual({ before: ["rybiapaka"], after: ["rybiapaka"] });
+    expect(res).toEqual({ before: ["rybiapaka"], after: ["rybiapaka"], pillarsBefore: [], pillarsAfter: [] });
     expect(h.updateBlock).not.toHaveBeenCalled();
     expect(h.inserts.flat()).toEqual([]);
   });
@@ -164,7 +182,60 @@ describe("useTagSuggestions.accept / reject / forget", () => {
     const a = freshId();
     h.tags.set(a, []);
     h.insertError = { message: 'relation "archive_tag_feedback" does not exist' };
-    expect(await useTagSuggestions().accept(a, ["x"])).toEqual({ before: [], after: ["x"] });
+    expect(await useTagSuggestions().accept(a, ["x"])).toEqual({ before: [], after: ["x"], pillarsBefore: [], pillarsAfter: [] });
+  });
+
+  it("accepts pillar chips with the tags in one write, adds pillars without removing any, and records them as pillar:<id>", async () => {
+    const a = freshId();
+    h.tags.set(a, ["stary"]);
+    h.pillars.set(a, ["body"]);
+    answerWith(() => [chip("insight", "type", "ai"), chip("biznes", "tag"), chip("pillar:money", "pillar"), chip("pillar:mind", "pillar", "ai")]);
+    const hook = useTagSuggestions();
+    await hook.suggest([a]);
+    const res = await hook.accept(a, ["insight", "pillar:money", "pillar:body"]);
+    expect(res).toEqual({ before: ["stary"], after: ["stary", "insight"], pillarsBefore: ["body"], pillarsAfter: ["body", "money"] });
+    expect(h.updateBlock).toHaveBeenCalledTimes(1);
+    expect(h.updateBlock).toHaveBeenCalledWith(a, { tags: ["stary", "insight"], pillars: ["body", "money"] });
+    const rows = h.inserts.flat() as { tag: string; accepted: boolean; source: string }[];
+    expect(rows.map((r) => [r.tag, r.accepted, r.source])).toEqual([
+      ["insight", true, "ai"],
+      ["pillar:money", true, "neighbours"],
+      ["biznes", false, "neighbours"],
+      ["pillar:mind", false, "ai"],
+    ]);
+  });
+
+  it("a pillar chip alone writes only the pillars", async () => {
+    const a = freshId();
+    h.tags.set(a, ["x"]);
+    answerWith(() => [chip("pillar:money", "pillar")]);
+    const hook = useTagSuggestions();
+    await hook.suggest([a]);
+    expect(await hook.accept(a, ["pillar:money"])).toEqual({ before: ["x"], after: ["x"], pillarsBefore: [], pillarsAfter: ["money"] });
+    expect(h.updateBlock).toHaveBeenCalledWith(a, { pillars: ["money"] });
+    expect((h.inserts.flat() as { tag: string; accepted: boolean }[]).map((r) => [r.tag, r.accepted])).toEqual([["pillar:money", true]]);
+  });
+
+  it("a held chip the note got meanwhile is not recorded as turned down", async () => {
+    const a = freshId();
+    answerWith(() => [chip("biznes", "tag"), chip("nauka", "tag"), chip("pillar:mind", "pillar")]);
+    const hook = useTagSuggestions();
+    await hook.suggest([a]);
+    // Tagged from the peek (and put in Mind) after the chips were fetched.
+    h.tags.set(a, ["biznes"]);
+    h.pillars.set(a, ["mind"]);
+    await hook.accept(a, ["nauka"]);
+    expect((h.inserts.flat() as { tag: string; accepted: boolean }[]).map((r) => [r.tag, r.accepted])).toEqual([["nauka", true]]);
+  });
+
+  it("reject keeps a pillar chip's tag as pillar:<id>", async () => {
+    const a = freshId();
+    answerWith(() => [chip("pillar:money", "pillar")]);
+    const hook = useTagSuggestions();
+    await hook.suggest([a]);
+    await hook.reject(a, "pillar:money");
+    expect(h.inserts.flat()).toEqual([{ user_id: "u1", block_id: a, tag: "pillar:money", accepted: false, source: "neighbours" }]);
+    expect(hook.peek(a)).toEqual([]);
   });
 
   it("reject records one chip with its source and stops offering it", async () => {

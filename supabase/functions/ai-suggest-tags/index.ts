@@ -4,7 +4,6 @@ import { corsHeaders, getUserClient, jsonResponse } from "../_shared/planner.ts"
 import {
   MIN_SIMILARITY,
   NEIGHBOURS_K,
-  SUGGEST_TOOL,
   buildVocabulary,
   combineSuggestions,
   detectType,
@@ -13,7 +12,9 @@ import {
   normaliseTag,
   noteForPrompt,
   parseAiPicks,
+  parsePillars,
   scoreNeighbours,
+  suggestTool,
   systemPrompt,
   type AiPick,
   type Evidence,
@@ -28,7 +29,8 @@ import {
  * items (the original; the Inbox's AI Tag button): { items: string[], existingTags?: string[] }
  *   -> { tags: string[][] }, one list per item, from the model alone.
  *
- * learn: { mode: "learn", blockIds: string[] } (at most 20 of the caller's notes)
+ * learn: { mode: "learn", blockIds: string[], pillars?: { id, name, tagline? }[] } (at most 20 of the caller's notes;
+ *   pillars: his life areas from his settings, so the model can pick from them)
  *   -> { suggestions: { [blockId]: Suggestion[] }, notes: { [blockId]: NoteInfo }, ai, aiError?, costUsd, model }
  *   Chips that learn from his own data, per note:
  *   1. neighbours: up to 12 of his most similar tagged notes (similar_archive_blocks, which only the
@@ -38,7 +40,9 @@ import {
  *   3. type: detectType when the text leaves no doubt, else the model's pick, else fragment;
  *   4. the model (one call for every note): text (capped, redacted), his vocabulary with counts
  *      (top 150), the eight types, the neighbours' candidates; 1 type + 2-4 tags back;
- *   5. combine: at most five chips, the type first, each with a short Polish reason.
+ *   5. combine: at most five chips, the type first, each with a short Polish reason; then, when his
+ *      pillars were sent, up to two pillar chips ("pillar:<id>"): the similar notes' pillars by
+ *      summed similarity (moved by his answers on them) plus the model's pick from his list.
  *   Over the monthly cap (TAGS_BUDGET_USD, default 1, ai_usage_log feature "archive-tags"), without
  *   a key, or when the model fails, the neighbours' and the rule's chips still come back. A note
  *   with no embedding yet is embedded first through ai-embed-block. A note that looks like it holds
@@ -66,7 +70,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type AiStatus = "used" | "capped" | "off" | "failed" | "not-asked";
 interface Usage { prompt_tokens?: number; completion_tokens?: number; cost?: number }
-interface Block { id: string; title: string; content: string; tags: string[] | null }
+interface Block { id: string; title: string; content: string; tags: string[] | null; pillars: string[] | null }
 interface NoteInfo { neighbours: number; ai: boolean; embedded?: boolean; skipped?: "credential" }
 
 class ModelError extends Error {
@@ -156,6 +160,9 @@ async function itemsMode(userId: string, body: any): Promise<Response> {
   if (!Array.isArray(items) || items.length === 0) throw new Error("No items provided");
   if (!Deno.env.get("OPENROUTER_API_KEY")) throw new Error("OPENROUTER_API_KEY not configured");
   if ((await monthSpend(userId)) >= BUDGET_USD) return jsonResponse({ error: BUDGET_MESSAGE }, 429);
+  // An item that looks like it holds a password or a key never goes to the model: it gets no tags.
+  const sent = items.map((_, i) => i).filter((i) => !looksLikeCredential(items[i].slice(0, SECRET_SCAN_CHARS)));
+  if (sent.length === 0) return jsonResponse({ tags: items.map(() => []) });
 
   const vocab = existingTags.length > 0
     ? `\n\nThe user's existing tag vocabulary (STRONGLY prefer reusing these when they fit, to keep the knowledge base consistent):\n${existingTags.slice(0, 200).join(", ")}`
@@ -180,7 +187,7 @@ You MUST respond using the suggest_tags tool.`;
       usage: { include: true },
       messages: [
         { role: "system", content: system },
-        { role: "user", content: items.map((it: string, i: number) => `[${i + 1}]\n${it}`).join("\n\n") },
+        { role: "user", content: sent.map((i, k) => `[${k + 1}]\n${items[i]}`).join("\n\n") },
       ],
       tools: [{
         type: "function",
@@ -214,7 +221,8 @@ You MUST respond using the suggest_tags tool.`;
     const parsed = (typeof result.args === "string" ? JSON.parse(result.args) : result.args as { tags?: unknown })?.tags;
     if (Array.isArray(parsed)) {
       tags = items.map((_: string, i: number) => {
-        const list = Array.isArray(parsed[i]) ? parsed[i] : [];
+        const k = sent.indexOf(i);
+        const list = k >= 0 && Array.isArray(parsed[k]) ? parsed[k] : [];
         const out: string[] = [];
         for (const t of list) {
           const n = typeof t === "string" ? normaliseTag(t) : "";
@@ -307,9 +315,13 @@ async function learnMode(req: Request, client: SupabaseClient, userId: string, b
   const suggestions: Record<string, Suggestion[]> = {};
   const notes: Record<string, NoteInfo> = {};
   if (ids.length === 0) return jsonResponse({ suggestions, notes, ai: "not-asked", costUsd: 0, model: MODEL });
+  // His pillars (life areas), from his settings: the model picks from these, and only these are offered.
+  const pillars = parsePillars(body?.pillars);
+  const knownPillars = new Map(pillars.map((p) => [p.id, p]));
+  const pillarIds = pillars.map((p) => p.id);
 
   const [blocksRes, embeddedRes] = await Promise.all([
-    client.from("archive_blocks").select("id,title,content,tags").eq("user_id", userId).in("id", ids),
+    client.from("archive_blocks").select("id,title,content,tags,pillars").eq("user_id", userId).in("id", ids),
     client.from("archive_blocks").select("id").eq("user_id", userId).in("id", ids).not("embedding", "is", null),
   ]);
   if (blocksRes.error) throw new Error(blocksRes.error.message);
@@ -364,15 +376,20 @@ async function learnMode(req: Request, client: SupabaseClient, userId: string, b
           reasoning: { enabled: false },
           usage: { include: true },
           messages: [
-            { role: "system", content: systemPrompt(vocabulary) },
-            { role: "user", content: askable.map((b, k) => noteForPrompt(k + 1, { title: b.title ?? "", content: b.content ?? "", tags: b.tags ?? [] }, evidence.get(b.id)!)).join("\n\n") },
+            { role: "system", content: systemPrompt(vocabulary, pillars) },
+            {
+              role: "user",
+              content: askable
+                .map((b, k) => noteForPrompt(k + 1, { title: b.title ?? "", content: b.content ?? "", tags: b.tags ?? [], pillars: b.pillars ?? [] }, evidence.get(b.id)!, knownPillars))
+                .join("\n\n"),
+            },
           ],
-          tools: [SUGGEST_TOOL],
+          tools: [suggestTool(pillarIds)],
           tool_choice: { type: "function", function: { name: "suggest" } },
         });
         await logUsage(userId, usage);
         costUsd = Number(usage?.cost ?? 0) || 0;
-        parseAiPicks(args, askable.length).forEach((p, k) => { if (p) picks.set(askable[k].id, p); });
+        parseAiPicks(args, askable.length, pillars.length ? pillarIds : undefined).forEach((p, k) => { if (p) picks.set(askable[k].id, p); });
         ai = "used";
       } catch (e) {
         ai = "failed";
@@ -390,6 +407,7 @@ async function learnMode(req: Request, client: SupabaseClient, userId: string, b
       rejectedHere,
       ai: picks.get(b.id) ?? null,
       vocabulary,
+      pillars: knownPillars.size ? { known: knownPillars, current: b.pillars ?? [] } : undefined,
     });
     notes[b.id] = {
       neighbours: (neighbours.get(b.id) ?? []).filter((n) => Number(n.similarity) >= MIN_SIMILARITY).length,

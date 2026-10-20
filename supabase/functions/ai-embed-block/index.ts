@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { looksLikeCredential } from "../_shared/archive-tags.ts";
+
+/** What of a note is checked for secrets (as ai-suggest-tags checks it): a password sits near the top. */
+const SECRET_SCAN_CHARS = 10_000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +78,13 @@ serve(async (req) => {
         return new Response(JSON.stringify({ error: "Block not found" }), { status: 404, headers: corsHeaders });
       }
       const text = `${block.title}\n\n${block.content}`;
+      // A note that looks like it holds a password, a PIN, a token or a key is not sent to the
+      // embedding model: it simply has no embedding (semantic search and similar notes skip it).
+      if (looksLikeCredential(text.slice(0, SECRET_SCAN_CHARS))) {
+        return new Response(JSON.stringify({ success: true, skipped: "credential" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const embedding = await getEmbedding(text);
 
       const { error: updateError } = await serviceClient
@@ -97,9 +108,14 @@ serve(async (req) => {
       if (error) throw error;
 
       let embedded = 0;
+      let skipped = 0;
       for (const block of (blocks || [])) {
         try {
           const text = `${block.title}\n\n${block.content}`;
+          if (looksLikeCredential(text.slice(0, SECRET_SCAN_CHARS))) {
+            skipped++;
+            continue;
+          }
           const embedding = await getEmbedding(text);
           await serviceClient
             .from("archive_blocks")
@@ -111,7 +127,7 @@ serve(async (req) => {
         }
       }
 
-      return new Response(JSON.stringify({ success: true, embedded, total: (blocks || []).length }), {
+      return new Response(JSON.stringify({ success: true, embedded, skipped, total: (blocks || []).length }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

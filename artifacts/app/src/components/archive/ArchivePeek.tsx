@@ -24,6 +24,7 @@ import { AI_ACTIONS, aiNoteTitle, aiTooLong, titleAfterReplace, type NoteAIActio
 import type { ArchiveBlock } from "@/lib/archive-data";
 import type { TypeTag } from "@/lib/archive-tags";
 import { invokeFunction } from "@/lib/function-error";
+import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
 import { copyText } from "@/lib/hand-off";
 import { lazyModule } from "@/lib/lazy-module";
 import type { AIPreviewView } from "./ArchiveAIPreviewModal";
@@ -268,6 +269,10 @@ function AIMenu({
     const tooLong = aiTooLong(action, block.content);
     if (tooLong) {
       toast.error(tooLong);
+      return;
+    }
+    if (looksLikeCredential(`${block.title}\n\n${block.content}`.slice(0, 10_000))) {
+      toast.error(CREDENTIAL_MESSAGE);
       return;
     }
     const id = ++runId.current;
