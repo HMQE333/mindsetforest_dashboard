@@ -43,7 +43,7 @@ const ArchiveSelectionBar = lazyModule(() => import("./ArchiveSelectionBar"));
 type SubView = "inbox" | "library" | "lectures" | "recordings" | "links" | "images" | "digest" | "forest" | "bookmarks" | "fileshare";
 
 const NAMES: Record<SubView, string> = {
-  inbox: "Inbox", library: "Library", lectures: "Wykłady", recordings: "Recordings", links: "Links",
+  inbox: "Inbox", library: "Library", lectures: "Lectures", recordings: "Recordings", links: "Links",
   images: "Images", digest: "Digest", forest: "Forest", bookmarks: "Bookmarks", fileshare: "File Share",
 };
 
@@ -198,7 +198,7 @@ const ArchiveViewBody = () => {
   const NAV_ITEMS: { id: SubView; label: string; icon: string; count?: number }[] = [
     { id: "inbox", label: "Inbox", icon: "📥" },
     { id: "library", label: "Library", icon: "📚", count: liveBlocks.length },
-    { id: "lectures", label: "Wykłady", icon: "🎓", count: kosVault.index?.lectures.length || undefined },
+    { id: "lectures", label: "Lectures", icon: "🎓", count: kosVault.index?.lectures.length || undefined },
     { id: "recordings", label: "Recordings", icon: "🎙️", count: kosRecordings.rows.length || undefined },
     { id: "links", label: "Links", icon: "🔗", count: linkCount },
     { id: "images", label: "Images", icon: "🖼️", count: imageCount },

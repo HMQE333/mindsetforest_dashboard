@@ -115,7 +115,7 @@ function LecturesView({ index, loading, failed, recordings, openPath, onOpen, on
     <div role="tablist" aria-label="Widok" className="glass-card inline-flex gap-1 p-1 text-sm">
       {(
         [
-          ["lectures", "🎓 Wykłady"],
+          ["lectures", "🎓 Lectures"],
           ["concepts", `💡 Pojęcia${index ? ` ${index.notes.length}` : ""}`],
         ] as const
       ).map(([m, label]) => (

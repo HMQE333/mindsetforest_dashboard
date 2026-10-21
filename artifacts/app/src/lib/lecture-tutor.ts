@@ -1,5 +1,5 @@
 /**
- * Studying a lecture on the user's own subscriptions (Archive > Wykłady):
+ * Studying a lecture on the user's own subscriptions (Archive > Lectures):
  * long study sessions run in ChatGPT or Claude Desktop, never through the
  * dashboard's paid assistant. The dashboard shows the summary and hands it off.
  *
@@ -957,7 +957,7 @@ export function knowledgeContext(files: VaultFile[], question?: string): string 
   push(`Lecture summaries: ${lectures.length}${courses.size ? ` (${[...courses].map(([c, n]) => `${c} ${n}`).join(", ")})` : ""}. Knowledge notes: ${notes.length}.`);
   push(matched ? "Ranked by word overlap with the message, best first." : "Nothing shares words with the message, so the newest are listed.");
   push(
-    'This is for short questions. To study a lecture, the user opens it in Archive > Wykłady and presses "Ucz się w ChatGPT" or "Test w ChatGPT" (a study pack for ChatGPT) or "Przegadaj w Claude" (Claude Desktop reads the vault). Suggest that for a long session.',
+    'This is for short questions. To study a lecture, the user opens it in Archive > Lectures and presses "Ucz się w ChatGPT" or "Test w ChatGPT" (a study pack for ChatGPT) or "Przegadaj w Claude" (Claude Desktop reads the vault). Suggest that for a long session.',
   );
   if (textbooks.length > 0) {
     push(`Course textbooks (built from the summaries): ${textbooks.map((d) => `${courseOf(d)} (${d.path}${d.date ? `, ${d.date}` : ""})`).join("; ")}.`);

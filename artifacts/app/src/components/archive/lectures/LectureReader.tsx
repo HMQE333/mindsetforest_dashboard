@@ -157,7 +157,7 @@ export default function LectureReader({ lecture, index, recordings, onBack, onOp
   return (
     <article ref={top} className="scroll-mt-24 space-y-4" aria-labelledby="lecture-title">
       <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Wykłady
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Lectures
       </button>
 
       <header className="glass-card space-y-3 p-4 sm:p-5">

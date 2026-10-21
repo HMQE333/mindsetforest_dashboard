@@ -94,7 +94,7 @@ export default function StudySettings() {
       <div>
         <h3 id="study-settings-title" className="text-sm font-bold text-foreground mb-1">🎓 Nauka</h3>
         <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Długa nauka idzie przez Twoje subskrypcje (ChatGPT, Claude Desktop), nie przez asystenta. Przyciski w Archiwum → Wykłady dołączają te teksty.
+          Długa nauka idzie przez Twoje subskrypcje (ChatGPT, Claude Desktop), nie przez asystenta. Przyciski w Archiwum → Lectures dołączają te teksty.
         </p>
         {!available && (
           <p className="mt-2 text-[11px] text-amber-300/90">
