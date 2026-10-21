@@ -158,7 +158,28 @@ const FIRST_LINE = /^\s*([^\n]*)/;
  * text, cut mid-word: then a first-line heading becomes the title (and leaves
  * the body), and otherwise there is no separate title, the text starts the page.
  */
+/** A bare URL as a short title: "example.com/articles/2026/10/how-to…" (host without www, path start, no query). */
+export function shortUrlTitle(text: string): string | null {
+  const t = text.trim();
+  if (!/^https?:\/\/\S+$/i.test(t)) return null;
+  try {
+    const u = new URL(t);
+    const host = u.hostname.replace(/^www\./, "");
+    const path = decodeURIComponent(u.pathname).replace(/\/+$/, "");
+    const full = `${host}${path}`;
+    return full.length > 60 ? `${full.slice(0, 59)}…` : full;
+  } catch {
+    return null;
+  }
+}
+
 export function noteHeading(title: string, content: string): NoteHeading {
+  const h = noteHeadingRaw(title, content);
+  const short = shortUrlTitle(h.title.replace(/…$/, ""));
+  return short ? { ...h, title: short } : h;
+}
+
+function noteHeadingRaw(title: string, content: string): NoteHeading {
   const heading = FIRST_HEADING.exec(content);
   if (title.trim() && title !== autoTitle(content)) {
     // A first heading that says the same as the title is not repeated under it.

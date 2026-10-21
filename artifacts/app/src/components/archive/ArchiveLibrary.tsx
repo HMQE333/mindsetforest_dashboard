@@ -228,6 +228,8 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   const [filterPillar, setFilterPillar] = useRemembered<string | null>("library.pillar", null);
   const [folder, setFolder] = useRemembered<string | null>("library.folder", null);
   const [typeFilter, setTypeFilter] = useRemembered<TypeFilter | null>("library.type", null);
+  // Phones: the type and tag rows sit behind a "Filters" toggle so the first note is not pushed below the fold.
+  const [moreFilters, setMoreFilters] = useRemembered<boolean>("library.moreFilters", false);
   const [hideLinks, setHideLinks] = useRemembered("library.hideLinks", false);
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
   const [reading, setReading] = useState<ReaderRequest | null>(null);
@@ -861,19 +863,31 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           </div>
           {selectedIds.size > 0 || filtered.length > 0 ? (
             <div className="flex items-center gap-1 ml-auto">
+              {phone && (
+                <button
+                  onClick={() => setMoreFilters(!moreFilters)}
+                  aria-expanded={moreFilters}
+                  className={`text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-all ${
+                    moreFilters || typeFilter || (folder && !foldersOn) ? "bg-primary/20 text-primary" : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Show type and tag filters"
+                >
+                  Filters{(typeFilter ? 1 : 0) + (folder && !foldersOn ? 1 : 0) ? ` (${(typeFilter ? 1 : 0) + (folder && !foldersOn ? 1 : 0)})` : ""} {moreFilters ? "▴" : "▾"}
+                </button>
+              )}
               <button
                 onClick={() => setSelection(allSelected ? new Set([...selectedIds].filter((id) => !filtered.some((b) => b.id === id))) : new Set([...selectedIds, ...order]))}
                 className="text-[11px] px-2.5 py-1.5 rounded-lg font-semibold bg-muted/40 text-muted-foreground hover:text-foreground transition-all"
                 title="Ctrl+A selects every note shown, Esc clears"
               >
-                {allSelected ? "☐ Deselect All" : "☑ Select All"}
+                {allSelected ? (phone ? "☐ None" : "☐ Deselect All") : (phone ? "☑ All" : "☑ Select All")}
               </button>
             </div>
           ) : null}
         </div>
         <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
-        <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />
-        {!foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
+        {(!phone || moreFilters) && <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />}
+        {(!phone || moreFilters) && !foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
         <div className={FILTER_ROW}>
           <button onClick={() => setHideLinks(!hideLinks)} className={toggleBtn(hideLinks)}>
             <Link2Off size={12} /> Hide Links

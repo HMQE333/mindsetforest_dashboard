@@ -182,7 +182,7 @@ function PeekBody({
   return (
     <article className="space-y-3" lang={text.lang}>
       <div className="space-y-1">
-        <h2 className={`break-words text-lg font-bold leading-snug text-foreground [overflow-wrap:anywhere] ${heading.shown ? "" : "sr-only"}`}>{heading.title}</h2>
+        <h2 className={`line-clamp-3 break-words text-lg font-bold leading-snug text-foreground [overflow-wrap:anywhere] ${heading.shown ? "" : "sr-only"}`}>{heading.title}</h2>
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground" lang="en">
           <time dateTime={block.created_at}>{new Date(block.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</time>
           {label && <span>· {label}</span>}
