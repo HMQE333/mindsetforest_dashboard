@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Download, RefreshCw, Search } from "lucide-react";
 import {
   fold,
@@ -16,6 +16,11 @@ import { InlineMarkdown } from "./LectureMarkdown";
 import { slug } from "./markdown";
 import { LanguageFlag, longDate } from "./lecture-meta";
 import { downloadCoursePack, type StudySource } from "./study-actions";
+import { readMode, saveMode, type LecturesMode } from "./concepts";
+
+// The Pojęcia view is its own chunk, fetched when the list is first shown so the switch feels instant.
+const loadConcepts = () => import("./ConceptsView");
+const ConceptsView = lazy(loadConcepts);
 
 export interface LecturesViewProps {
   index: VaultIndex | null;
@@ -43,6 +48,16 @@ const NOTE_CHIPS = 12;
  */
 function LecturesView({ index, loading, failed, recordings, openPath, onOpen, onOpenRecording, study, onRefresh }: LecturesViewProps) {
   const [query, setQuery] = useState("");
+  const [mode, setModeState] = useState<LecturesMode>(readMode);
+  const [conceptQuery, setConceptQuery] = useState("");
+  const [noteName, setNoteName] = useState<string | null>(null);
+  const setMode = useCallback((m: LecturesMode) => {
+    setModeState(m);
+    saveMode(m);
+  }, []);
+  useEffect(() => {
+    void loadConcepts();
+  }, []);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
@@ -96,11 +111,54 @@ function LecturesView({ index, loading, failed, recordings, openPath, onOpen, on
     );
   }
 
+  const toggle = (
+    <div role="tablist" aria-label="Widok" className="glass-card inline-flex gap-1 p-1 text-sm">
+      {(
+        [
+          ["lectures", "🎓 Wykłady"],
+          ["concepts", `💡 Pojęcia${index ? ` ${index.notes.length}` : ""}`],
+        ] as const
+      ).map(([m, label]) => (
+        <button
+          key={m}
+          type="button"
+          role="tab"
+          aria-selected={mode === m}
+          onClick={() => setMode(m)}
+          data-mode={m}
+          className={`rounded-lg px-3 py-1 transition-colors ${mode === m ? "bg-primary/20 font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (mode === "concepts" && index) {
+    return (
+      <div className="space-y-4">
+        {!noteName && toggle}
+        <Suspense fallback={<p className="py-12 text-center text-sm text-muted-foreground">Wczytuję pojęcia…</p>}>
+          <ConceptsView
+            index={index}
+            query={conceptQuery}
+            onQuery={setConceptQuery}
+            openName={noteName}
+            onOpenNote={setNoteName}
+            onOpenLecture={openLecture}
+            onOpenRecording={onOpenRecording}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
   const health = <HealthLine log={index?.routineLog ?? null} waiting={waiting} stale={stale} now={now} />;
 
   if (!lectures.length && !textbooks.length) {
     return (
       <div className="space-y-4">
+        {toggle}
         {health}
         <div className="space-y-2 py-10 text-center text-muted-foreground">
           <span className="block text-3xl">🎓</span>
@@ -117,6 +175,7 @@ function LecturesView({ index, loading, failed, recordings, openPath, onOpen, on
   const count = groups.reduce((n, g) => n + g.lectures.length, 0);
   return (
     <div className="space-y-4">
+      {toggle}
       {health}
       <div className="flex flex-wrap items-center gap-2">
         <label className="glass-card flex min-w-0 flex-[1_1_14rem] items-center gap-2 px-3 py-2">

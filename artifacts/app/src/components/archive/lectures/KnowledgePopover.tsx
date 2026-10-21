@@ -5,7 +5,7 @@ import { obsidianUri, sourceLabel, typeInfo, type KnowledgeNote } from "@/lib/ko
 import { inlineText, parseInline } from "./markdown";
 import MathTex from "./MathTex";
 
-const TYPE_PL: Record<string, string> = {
+export const TYPE_PL: Record<string, string> = {
   concept: "Pojęcie",
   claim: "Teza",
   principle: "Zasada",

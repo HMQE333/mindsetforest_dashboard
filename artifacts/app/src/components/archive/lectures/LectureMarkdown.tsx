@@ -17,6 +17,8 @@ export interface LinkHandlers {
   /** A moment in the transcript was asked for; `block` is the top-level block it sits in. */
   onMoment: (ref: SourceRef, block: string) => void;
   onLecture: (path: string) => void;
+  /** When set, a link to a knowledge note opens it (the Pojęcia reader) instead of a popover. */
+  onNote?: (name: string) => void;
 }
 
 const Links = createContext<LinkHandlers | null>(null);
@@ -186,6 +188,19 @@ function WikiLinkView({ link }: { link: WikiLink }) {
       >
         <Play className="h-2.5 w-2.5 fill-current" aria-hidden="true" />
         {link.alias && at && link.alias !== at ? link.alias : at ?? label}
+      </button>
+    );
+  }
+  if (target.kind === "note" && handlers?.onNote) {
+    const open = handlers.onNote;
+    return (
+      <button
+        type="button"
+        onClick={() => open(target.note.name)}
+        className="text-primary underline decoration-primary/40 decoration-dotted underline-offset-2 hover:decoration-primary"
+        data-note-link={target.note.name}
+      >
+        {label}
       </button>
     );
   }
