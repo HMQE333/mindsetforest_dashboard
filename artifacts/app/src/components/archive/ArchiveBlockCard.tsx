@@ -148,12 +148,11 @@ const ArchiveBlockCard = ({
             onClick={(e) => { e.stopPropagation(); onToggleSelect(block.id); }}
             aria-label={selected ? "Remove from the selection" : "Select"}
             aria-pressed={selected}
-            className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-[opacity,background-color,border-color] ${
+            className={`mt-0.5 w-5 h-5 [@media(hover:none)]:w-7 [@media(hover:none)]:h-7 rounded border-2 flex-shrink-0 flex items-center justify-center transition-[opacity,background-color,border-color] ${
               selected
                 ? "bg-primary border-primary text-primary-foreground opacity-100"
-                : // Touch screens: hidden until Select mode or a selection, and not tappable while hidden
-                  // (a tap near the corner would select the note unseen instead of opening the peek).
-                  `border-white/25 hover:border-white/50 ${selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-none [@media(hover:none)]:opacity-0"}`
+                : // Touch screens have no hover: the box is always shown, a bit larger, so it can be tapped.
+                  `border-white/25 hover:border-white/50 ${selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"}`
             }`}
           >
             {selected && <span className="text-xs">✓</span>}
