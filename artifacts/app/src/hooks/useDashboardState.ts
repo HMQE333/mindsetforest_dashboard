@@ -15,6 +15,7 @@ import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
 import { todayKey, keyToDate, computeStreak } from "@/lib/today";
 import { categoryMissions, missionSources, remapCategoryKeys, stripOriginalIndex } from "@/lib/mission-keys";
 import { activeDayKeys } from "./useDailyCompletions";
+import { deferred, doneClearsDeferrals, isSnoozed, keptAndDeferred, unsnoozed } from "@/lib/mission-defer";
 
 export interface DashboardState {
   currentXP: number;
@@ -283,11 +284,46 @@ function useDashboardStateValue() {
         categoriesEngaged: newCategories,
         completedMissions: newCompleted,
       };
+      // A mission done after being pushed starts its push count again.
+      const list = base.customMissions[categoryId];
+      const done = list?.[missionIndex];
+      if (done && (done.deferrals || done.snoozedUntil)) {
+        next.customMissions = { ...base.customMissions, [categoryId]: list.map((m, i) => (i === missionIndex ? doneClearsDeferrals(m) : m)) };
+      }
 
       persist(next);
       return next;
     });
   }, [persist]);
+
+  /**
+   * Change one mission in place (the list becomes custom if it was the
+   * defaults; positions, ticks and variants are untouched).
+   */
+  const updateMissionAt = useCallback((categoryId: string, missionIndex: number, change: (m: Mission, today: string) => Mission) => {
+    setState(prev => {
+      const list = categoryMissions(prev.customMissions, categoryId);
+      if (missionIndex < 0 || missionIndex >= list.length) return prev;
+      const today = todayKey();
+      const next: DashboardState = {
+        ...prev,
+        customMissions: { ...prev.customMissions, [categoryId]: list.map((m, i) => (i === missionIndex ? change(m, today) : m)) },
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  /** "Tomorrow": off today's list until the next app day. `keep` = kept after the "pushed 3 times" question. */
+  const deferMission = useCallback(
+    (categoryId: string, missionIndex: number, keep = false) => updateMissionAt(categoryId, missionIndex, keep ? keptAndDeferred : deferred),
+    [updateMissionAt],
+  );
+  /** Undo a push: back on today's list. */
+  const undeferMission = useCallback(
+    (categoryId: string, missionIndex: number) => updateMissionAt(categoryId, missionIndex, (m) => unsnoozed(m)),
+    [updateMissionAt],
+  );
 
   /** Undo a tick (the assistant's "odznacz"): the XP it gave is taken back. */
   const uncompleteMission = useCallback((categoryId: string, missionIndex: number, xp: number) => {
@@ -466,7 +502,15 @@ function useDashboardStateValue() {
     // Tag with original index so callers can preserve completion IDs across filtered views
     return categoryMissions(state.customMissions, categoryId)
       .map((m, i) => ({ ...m, __originalIndex: i } as Mission & { __originalIndex: number }))
-      .filter(m => isVisibleToday(m));
+      .filter(m => isVisibleToday(m) && !isSnoozed(m, todayKey()));
+  }, [state.customMissions]);
+
+  /** Today's missions pushed to a later day (for "bring back"). */
+  const getSnoozed = useCallback((categoryId: string): (Mission & { __originalIndex: number })[] => {
+    const today = todayKey();
+    return categoryMissions(state.customMissions, categoryId)
+      .map((m, i) => ({ ...m, __originalIndex: i }))
+      .filter(m => isVisibleToday(m) && isSnoozed(m, today));
   }, [state.customMissions]);
 
   const getCompletedCount = useCallback((categoryId: string): number => {
@@ -630,6 +674,9 @@ function useDashboardStateValue() {
     undoExternal,
     rerollMission,
     getMissions,
+    getSnoozed,
+    deferMission,
+    undeferMission,
     getCompletedCount,
   };
 }

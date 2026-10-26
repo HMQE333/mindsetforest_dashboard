@@ -2,7 +2,9 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Paperclip, Dice5 } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
-import { DashboardState } from "@/hooks/useDashboardState";
+import { DashboardState, useDashboardState } from "@/hooks/useDashboardState";
+import { toast } from "sonner";
+import { DEFER_LIMIT, needsDecision } from "@/lib/mission-defer";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,6 +37,19 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
   const displayTagline = projectInfo ? "Project" : category?.tagline || "";
   const missions = getMissions(categoryId);
   const [splittingIndex, setSplittingIndex] = useState<number | null>(null);
+  const { getSnoozed, deferMission, undeferMission, removeMission } = useDashboardState();
+  const snoozed = getSnoozed(categoryId);
+  // The card whose "Tomorrow" asked what to do (pushed DEFER_LIMIT times already).
+  const [deciding, setDeciding] = useState<number | null>(null);
+
+  const defer = (index: number, title: string, keep = false) => {
+    setDeciding(null);
+    deferMission(categoryId, index, keep);
+    toast(`Moved to tomorrow: ${title}`, {
+      className: "[overflow-wrap:anywhere]",
+      action: { label: "Undo", onClick: () => undeferMission(categoryId, index) },
+    });
+  };
 
   const handleSplit = async (index: number, mission: Mission) => {
     setSplittingIndex(index);
@@ -142,7 +157,17 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
               )}
               <div className="flex justify-between items-start gap-4">
                 <div className={`flex-1 ${hasVariants || hasSchedule ? "pt-5" : ""}`}>
-                  <h4 className="text-lg font-semibold text-foreground mb-2">{mission.title}</h4>
+                  <h4 className="text-lg font-semibold text-foreground mb-2">
+                    {mission.title}
+                    {!!baseMission.deferrals && !isCompleted && (
+                      <span
+                        className={`ml-2 align-middle text-[11px] font-semibold px-1.5 py-0.5 rounded-full border ${baseMission.deferrals >= DEFER_LIMIT ? "border-amber-400/50 bg-amber-400/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-foreground/60"}`}
+                        title={`Moved to the next day ${baseMission.deferrals}×`}
+                      >
+                        ↷{baseMission.deferrals}
+                      </span>
+                    )}
+                  </h4>
                   <p className="text-sm text-foreground/70 mb-3 leading-relaxed">{mission.description}</p>
                   <div className="flex gap-4 text-sm">
                     {mission.duration && mission.duration !== "." && (
@@ -171,6 +196,16 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                       title="Open linked URL"
                     >
                       <Paperclip className="h-4 w-4 text-foreground/50 group-hover:text-foreground/80 transition-colors" />
+                    </button>
+                  )}
+                  {!isCompleted && (
+                    <button
+                      onClick={() => (needsDecision(baseMission) ? setDeciding(deciding === index ? null : index) : defer(index, mission.title))}
+                      className="w-8 h-8 rounded-lg border-2 border-white/15 bg-white/5 flex items-center justify-center hover:bg-primary/15 hover:border-primary/30 transition-all text-sm text-foreground/70"
+                      title="Move to tomorrow"
+                      aria-label="Move to tomorrow"
+                    >
+                      ↷
                     </button>
                   )}
                   {!isCompleted && (
@@ -204,10 +239,49 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   </button>
                 </div>
               </div>
+              {deciding === index && !isCompleted && (
+                <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-foreground/70 mr-1">Moved {baseMission.deferrals ?? 0}× already. Too big, unclear, or not needed?</span>
+                  <button
+                    onClick={() => { setDeciding(null); void handleSplit(index, mission); }}
+                    className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 hover:bg-primary/15 hover:border-primary/30 transition-all"
+                  >
+                    ✂️ Make it smaller
+                  </button>
+                  <button
+                    onClick={() => { setDeciding(null); removeMission(categoryId, index); toast(`Removed: ${mission.title}`, { className: "[overflow-wrap:anywhere]" }); }}
+                    className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 hover:bg-red-500/15 hover:border-red-400/40 transition-all"
+                  >
+                    🗑️ Drop it
+                  </button>
+                  <button
+                    onClick={() => defer(index, mission.title, true)}
+                    className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 transition-all"
+                  >
+                    Keep · tomorrow
+                  </button>
+                </div>
+              )}
             </motion.div>
           );
         })}
       </div>
+
+      {snoozed.length > 0 && (
+        <div className="mt-5 text-sm text-foreground/60 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span>↷ For tomorrow:</span>
+          {snoozed.map((m) => (
+            <button
+              key={m.__originalIndex}
+              onClick={() => undeferMission(categoryId, m.__originalIndex)}
+              className="px-2.5 py-1 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/10 hover:text-foreground transition-all max-w-full truncate"
+              title="Bring back to today"
+            >
+              {m.title} ↩
+            </button>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }

@@ -16,6 +16,10 @@ export interface Mission {
   url?: string;
   variants?: MissionVariant[];
   daysOfWeek?: number[]; // [0..6] Sun..Sat; undefined or full week = every day
+  /** Pushed with "Tomorrow": hidden until this app day (YYYY-MM-DD). See lib/mission-defer.ts. */
+  snoozedUntil?: string;
+  /** Times pushed since it was last done. */
+  deferrals?: number;
   /** Internal: index into the original (unfiltered) mission list. Set by getMissions when filtering. */
   __originalIndex?: number;
 }
