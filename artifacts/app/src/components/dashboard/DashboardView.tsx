@@ -6,7 +6,7 @@ import { useUserProjects } from "@/hooks/useUserProjects";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDailyCompletions } from "@/hooks/useDailyCompletions";
 import { useUserSettings } from "@/hooks/useUserSettings";
-import { pathProgress, TodayStep } from "@/lib/path-data";
+import type { TodayStep } from "@/lib/path-data";
 import { completedMissionDetails, taggedMissions, withVariant } from "@/lib/mission-keys";
 import { todayKey } from "@/lib/today";
 import PathsTodayStrip from "./PathsTodayStrip";
@@ -18,7 +18,6 @@ import CategoryGrid from "./CategoryGrid";
 import MissionView from "./MissionView";
 import ProjectsListView from "./ProjectsListView";
 import EditMissionsModal from "./EditMissionsModal";
-import AISuggestionsModal from "./AISuggestionsModal";
 import LevelUpModal from "./LevelUpModal";
 import CategoryCompleteEffect from "./CategoryCompleteEffect";
 import ShortcutsPanel from "./ShortcutsPanel";
@@ -32,7 +31,7 @@ const ReviewModal = lazyModule(() => import("@/components/review/ReviewModal"));
 
 export default function DashboardView() {
   const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
-  const { todaySteps, todayLog, stepsByPath, logStep, undoToday } = usePaths();
+  const { todaySteps, todayLog, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
   const { getCategories, preferences } = useUserSettings();
@@ -53,7 +52,6 @@ export default function DashboardView() {
   const showPaths = !preferences.enabledModules.length || preferences.enabledModules.includes("paths");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
-  const [aiCategory, setAICategory] = useState<string | null>(null);
   const [levelUpTrigger, setLevelUpTrigger] = useState<{ level: number; key: number } | null>(null);
   const [floatingXP, setFloatingXP] = useState<{ id: number; xp: number } | null>(null);
   const [categoryComplete, setCategoryComplete] = useState<{ categoryId: string; color: string; key: number } | null>(null);
@@ -151,10 +149,6 @@ export default function DashboardView() {
     () => (editingCategory ? taggedMissions(state.customMissions, editingCategory) : []),
     [editingCategory, state.customMissions],
   );
-  const aiMissions = useMemo(
-    () => (aiCategory ? taggedMissions(state.customMissions, aiCategory) : []),
-    [aiCategory, state.customMissions],
-  );
 
   useKeyboardShortcuts({
     context: shortcutContext,
@@ -171,7 +165,6 @@ export default function DashboardView() {
       }
     } : undefined,
     editTasks: selectedCategory && selectedCategory !== "__projects__" ? () => setEditingCategory(selectedCategory) : undefined,
-    aiSuggestions: selectedCategory && selectedCategory !== "__projects__" ? () => setAICategory(selectedCategory) : undefined,
     // Only when there is a custom list to drop (the "d" shortcut; there is no button for it).
     resetDefaults: selectedCategory && selectedCategory !== "__projects__" && state.customMissions[selectedCategory]?.length
       ? () => resetCategory(selectedCategory)
@@ -188,22 +181,6 @@ export default function DashboardView() {
     projectCount: projects.length,
     customKeybinds: preferences.customKeybinds,
   });
-
-  // What the AI mission planner is told about the user's paths.
-  const pathContext = useMemo(() => {
-    if (!showPaths || todaySteps.length === 0) return null;
-    return {
-      paths: todaySteps.map(({ path, step }) => {
-        const progress = pathProgress(stepsByPath(path.id));
-        return {
-          name: path.name,
-          categoryId: path.category_id,
-          activeStep: step.title,
-          progress: `${progress.done}/${progress.total}`,
-        };
-      }),
-    };
-  }, [showPaths, todaySteps, stepsByPath]);
 
   const handleLogPathStep = useCallback(async ({ path, step }: TodayStep) => {
     const xp = await logStep(step.id);
@@ -277,7 +254,6 @@ export default function DashboardView() {
             onReroll={rerollMission}
             onBack={() => setSelectedCategory(selectedCategory.startsWith("project-") ? "__projects__" : null)}
             onEdit={() => setEditingCategory(selectedCategory)}
-            onAI={() => setAICategory(selectedCategory)}
             projectInfo={selectedCategory.startsWith("project-") ? (() => {
               const p = getProjectFromKey(selectedCategory);
               return p ? { name: p.name, emoji: p.emoji } : null;
@@ -335,20 +311,6 @@ export default function DashboardView() {
             missions={editingMissions}
             onSave={saveCustomMissions}
             onClose={() => setEditingCategory(null)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* AI Modal */}
-      <AnimatePresence>
-        {aiCategory && (
-          <AISuggestionsModal
-            categoryId={aiCategory}
-            currentMissions={aiMissions}
-            onApply={saveCustomMissions}
-            onClose={() => setAICategory(null)}
-            pathContext={pathContext}
-            projectName={aiCategory.startsWith("project-") ? getProjectFromKey(aiCategory)?.name : undefined}
           />
         )}
       </AnimatePresence>

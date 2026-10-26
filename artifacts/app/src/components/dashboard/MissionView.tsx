@@ -21,11 +21,10 @@ interface MissionViewProps {
   onReroll: (categoryId: string, index: number) => void;
   onBack: () => void;
   onEdit: () => void;
-  onAI: () => void;
   projectInfo?: ProjectInfo | null;
 }
 
-export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onReroll, onBack, onEdit, onAI, projectInfo }: MissionViewProps) {
+export default function MissionView({ categoryId, state, getMissions, onComplete, onSplit, onReroll, onBack, onEdit, projectInfo }: MissionViewProps) {
   const { getCategories } = useUserSettings();
   const categories = getCategories();
   const category = categories.find(c => c.id === categoryId);
@@ -102,16 +101,6 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
             aria-label="Edit tasks"
           >
             <span className="text-lg">✏️</span>
-          </button>
-          <button
-            onClick={onAI}
-            className="relative px-3 py-2 rounded-xl border border-primary/30 bg-primary/10 text-foreground hover:bg-primary/20 hover:border-primary/45 transition-all hover:-translate-y-0.5 backdrop-blur-lg"
-            title="AI suggestions"
-          >
-            <span className="text-lg" style={{ filter: "drop-shadow(0 0 12px hsl(var(--primary) / 0.55))" }}>✨</span>
-            <span className="absolute -top-1.5 -right-1.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-white/15 border border-white/25 text-white/90 backdrop-blur-md">
-              AI
-            </span>
           </button>
         </div>
       </div>
