@@ -541,36 +541,6 @@ function useDashboardStateValue() {
     });
   }, [persist]);
 
-  const resetCategory = useCallback((categoryId: string) => {
-    setState(prev => {
-      const newCustom = { ...prev.customMissions };
-      delete newCustom[categoryId];
-      // Also clear completed missions for this category since indices changed
-      const newCompleted = new Set(
-        Array.from(prev.completedMissions).filter(id => !id.startsWith(categoryId + "-"))
-      );
-      const newRolled = { ...prev.rolledVariants };
-      Object.keys(newRolled).forEach(k => {
-        if (k.startsWith(categoryId + "-")) delete newRolled[k];
-      });
-      // re-roll defaults for this category
-      const defaults = CATEGORIES.find(c => c.id === categoryId)?.missions || [];
-      defaults.forEach((m, idx) => {
-        if (m.variants && m.variants.length > 0) {
-          newRolled[`${categoryId}-${idx}`] = rollVariant(m.variants);
-        }
-      });
-      const next: DashboardState = {
-        ...prev,
-        customMissions: newCustom,
-        completedMissions: newCompleted,
-        rolledVariants: newRolled,
-      };
-      persist(next);
-      return next;
-    });
-  }, [persist]);
-
   const spendXP = useCallback((amount: number) => {
     setState(prev => {
       if (prev.currentXP < amount) return prev;
@@ -667,7 +637,6 @@ function useDashboardStateValue() {
     applyMissionPreset,
     addMission,
     splitMission,
-    resetCategory,
     spendXP,
     addXP,
     completeExternal,

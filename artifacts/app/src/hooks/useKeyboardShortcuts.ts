@@ -14,8 +14,6 @@ export interface KeybindMap {
   projects: string;
   resetDay: string;
   editTasks: string;
-  aiSuggestions: string;
-  resetDefaults: string;
   toggleShortcuts: string;
 }
 
@@ -31,8 +29,6 @@ export const DEFAULT_KEYBINDS: KeybindMap = {
   projects: "p",
   resetDay: "r",
   editTasks: "e",
-  aiSuggestions: "a",
-  resetDefaults: "d",
   toggleShortcuts: "?",
 };
 
@@ -48,8 +44,6 @@ export const KEYBIND_LABELS: Record<keyof KeybindMap, string> = {
   projects: "Projects",
   resetDay: "Reset Day",
   editTasks: "Edit Tasks",
-  aiSuggestions: "AI Suggestions",
-  resetDefaults: "Reset Defaults",
   toggleShortcuts: "Toggle Shortcuts",
 };
 
@@ -58,8 +52,6 @@ interface ShortcutActions {
   selectCategory: (id: string) => void;
   completeMission?: (index: number) => void;
   editTasks?: () => void;
-  aiSuggestions?: () => void;
-  resetDefaults?: () => void;
   resetDay: () => void;
   goBack?: () => void;
   selectProject?: (index: number) => void;
@@ -163,17 +155,6 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
         if (key === binds.editTasks.toLowerCase() && actions.editTasks) {
           e.preventDefault();
           actions.editTasks();
-        }
-        if (key === binds.aiSuggestions.toLowerCase() && actions.aiSuggestions) {
-          e.preventDefault();
-          actions.aiSuggestions();
-        }
-        if (key === binds.resetDefaults.toLowerCase() && actions.resetDefaults) {
-          e.preventDefault();
-          // One key drops the whole custom list, so it asks first, like Reset Day.
-          if (window.confirm("Restore the default missions in this category? Your list and today's ticks in it will be removed.")) {
-            actions.resetDefaults();
-          }
         }
       }
     };

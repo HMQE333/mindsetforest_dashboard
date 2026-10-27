@@ -36,7 +36,6 @@ function buildShortcuts(binds: KeybindMap, context: "grid" | "projects" | "missi
   return [
     { key: "1-9", label: "Complete mission" },
     { key: binds.editTasks.toUpperCase(), label: "Edit tasks" },
-    { key: binds.resetDefaults.toUpperCase(), label: "Reset defaults" },
     { key: "Esc", label: "Back" },
   ];
 }

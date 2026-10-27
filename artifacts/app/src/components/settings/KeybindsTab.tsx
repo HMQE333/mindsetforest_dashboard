@@ -186,7 +186,7 @@ export default function KeybindsTab({ customKeybinds, customHotkeys, onSave }: K
     ["mind", "body", "expression", "exploration", "people", "money", "spirit", "order", "projects", "resetDay"].includes(k)
   );
   const missionKeys = Object.entries(KEYBIND_LABELS).filter(([k]) => 
-    ["editTasks", "resetDefaults"].includes(k)
+    ["editTasks"].includes(k)
   );
   const globalKeys = Object.entries(KEYBIND_LABELS).filter(([k]) => 
     ["toggleShortcuts"].includes(k)

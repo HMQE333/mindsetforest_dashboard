@@ -30,7 +30,7 @@ import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
 const ReviewModal = lazyModule(() => import("@/components/review/ReviewModal"));
 
 export default function DashboardView() {
-  const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, resetCategory, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, logStep, undoToday } = usePaths();
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
@@ -165,10 +165,6 @@ export default function DashboardView() {
       }
     } : undefined,
     editTasks: selectedCategory && selectedCategory !== "__projects__" ? () => setEditingCategory(selectedCategory) : undefined,
-    // Only when there is a custom list to drop (the "d" shortcut; there is no button for it).
-    resetDefaults: selectedCategory && selectedCategory !== "__projects__" && state.customMissions[selectedCategory]?.length
-      ? () => resetCategory(selectedCategory)
-      : undefined,
     resetDay: resetDay,
     goBack: selectedCategory ? () => setSelectedCategory(selectedCategory === "__projects__" ? null : selectedCategory.startsWith("project-") ? "__projects__" : null) : undefined,
     selectProject: shortcutContext === "projects" ? (index: number) => {
