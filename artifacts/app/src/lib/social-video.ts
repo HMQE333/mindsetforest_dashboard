@@ -14,6 +14,8 @@ export interface SocialNote {
   transcript: string;
   caption: string;
   cover: string | null;
+  /** Which service read the video: apify (+ our transcript) or supadata. */
+  via?: string;
 }
 
 /** The note's text: his comment, the link, the cover, the points, the transcript, the caption. */

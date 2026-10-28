@@ -16,6 +16,55 @@ import { corsHeaders, getUserClient, jsonResponse } from "../_shared/planner.ts"
  * The caller saves the note; nothing is stored here but the cover.
  */
 const SUPADATA = "https://api.supadata.ai/v1";
+const APIFY = "https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items";
+const TRANSCRIBE_MODEL = Deno.env.get("TRANSCRIBE_MODEL") || "openai/gpt-4o-transcribe";
+const MAX_VIDEO_BYTES = 24_000_000;
+
+interface Found { transcript: string; caption: string; author: string | null; title: string; coverUrl?: string; platform: string; via: string }
+
+/**
+ * Instagram the cheap way: Apify's Instagram scraper (about $0.002 a post,
+ * inside Apify's free monthly credit) gives the video file, caption, author
+ * and cover; our own speech model writes the transcript (about $0.003 a
+ * minute). Null when anything fails, so Supadata can take over.
+ */
+async function viaApify(url: string): Promise<Found | null> {
+  const token = Deno.env.get("APIFY_TOKEN");
+  const orKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (!token || !orKey || !/instagram\.com\//i.test(url)) return null;
+  try {
+    const res = await fetch(`${APIFY}?timeout=90`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ directUrls: [url], resultsType: "posts", resultsLimit: 1, addParentData: false }),
+      signal: AbortSignal.timeout(110_000),
+    });
+    const items = await res.json().catch(() => null);
+    const it = Array.isArray(items) ? items[0] : null;
+    if (!res.ok || !it) { console.error("apify", res.status, JSON.stringify(items).slice(0, 300)); return null; }
+    const caption = String(it.caption ?? "").trim();
+    let transcript = "";
+    if (it.videoUrl) {
+      const v = await fetch(it.videoUrl, { signal: AbortSignal.timeout(30_000) });
+      const buf = new Uint8Array(await v.arrayBuffer());
+      if (!v.ok || buf.length > MAX_VIDEO_BYTES) return null;
+      let bin = "";
+      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      const stt = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${orKey}`, "Content-Type": "application/json" },
+        // An mp4 reel is an m4a container to the speech API.
+        body: JSON.stringify({ model: TRANSCRIBE_MODEL, input_audio: { data: btoa(bin), format: "m4a" }, temperature: 0 }),
+      });
+      if (!stt.ok) { console.error("stt", stt.status, (await stt.text()).slice(0, 300)); return null; }
+      transcript = String((await stt.json())?.text ?? "").trim();
+    }
+    return { transcript, caption, author: it.ownerUsername ?? it.ownerFullName ?? null, title: "", coverUrl: it.displayUrl, platform: "instagram", via: "apify" };
+  } catch (e) {
+    console.error("apify path", e);
+    return null;
+  }
+}
 const MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemini-2.5-flash";
 const SOCIAL = /^(?:https?:\/\/)?(?:www\.|m\.)?(?:instagram\.com|tiktok\.com|vm\.tiktok\.com|x\.com|twitter\.com|facebook\.com|fb\.watch|youtube\.com|youtu\.be)\//i;
 
@@ -82,13 +131,24 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const caller = await getUserClient(req);
   if (!caller) return jsonResponse({ error: "Unauthorized" }, 401);
-  const key = Deno.env.get("SUPADATA_API_KEY");
-  if (!key) return jsonResponse({ error: "Transcripts are not set up (SUPADATA_API_KEY missing)" }, 500);
-
   const body = await req.json().catch(() => ({}));
   const url = typeof body?.url === "string" ? body.url.trim() : "";
   const jobId = typeof body?.jobId === "string" && /^[\w-]{4,80}$/.test(body.jobId) ? body.jobId : null;
   if (!SOCIAL.test(url)) return jsonResponse({ error: "Paste a link to an Instagram, TikTok, X, Facebook or YouTube video" }, 400);
+
+  // 1. Instagram through Apify and our own speech model (cheapest); 2. Supadata for the rest, or when that fails.
+  if (!jobId) {
+    const found = await viaApify(url);
+    if (found) {
+      const [summary, cover] = await Promise.all([summarize(found.transcript, found.caption), copyCover(found.coverUrl, caller.userId)]);
+      return jsonResponse({
+        status: "done",
+        note: { url, platform: found.platform, author: found.author, title: summary?.title || found.caption.split("\n")[0].slice(0, 100) || "Saved video", points: summary?.points ?? [], transcript: found.transcript, caption: found.caption, cover, lang: "", duration: null, via: found.via },
+      });
+    }
+  }
+  const key = Deno.env.get("SUPADATA_API_KEY");
+  if (!key) return jsonResponse({ error: "The video could not be read (no fallback service set up)" }, 502);
 
   let transcript = "";
   let lang = "";
@@ -129,6 +189,7 @@ serve(async (req) => {
       cover,
       lang,
       duration: meta.media?.duration ?? null,
+      via: "supadata",
     },
   });
 });
