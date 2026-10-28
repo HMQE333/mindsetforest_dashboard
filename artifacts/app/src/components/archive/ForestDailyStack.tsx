@@ -7,6 +7,7 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import { usePillars } from "@/hooks/usePillars";
 import { todayKey } from "@/lib/today";
 import { EMPTY } from "@/lib/utils";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 const DAILY_LIMIT = 5;
 const STORAGE_KEY = "forest_daily_seen_v1";
@@ -330,7 +331,7 @@ const SeedSwipeCard = ({
       className="absolute inset-0 glass-card p-5 flex flex-col cursor-grab active:cursor-grabbing"
     >
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-2xl">{seed.author?.avatar_emoji || "🦊"}</span>
+        <UserAvatar value={seed.author?.avatar_emoji} size={30} />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-foreground truncate">
             {seed.author?.display_name || `@${seed.author?.username || "unknown"}`}

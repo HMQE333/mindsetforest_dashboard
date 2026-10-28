@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Droplet, BookmarkPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 type Activity = {
   id: string;
@@ -89,7 +90,7 @@ const RecentAppreciationStrip = ({ mySeedIds }: { mySeedIds: string[] }) => {
             <button key={it.id} onClick={focus}
               title={`${it.actor?.display_name || "@" + (it.actor?.username || "someone")} ${it.kind === "water" ? "watered" : "saved"} "${it.seed_title}"`}
               className="shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-              <span className="text-base">{it.actor?.avatar_emoji || "🦊"}</span>
+              <UserAvatar value={it.actor?.avatar_emoji} size={18} />
               {it.kind === "water"
                 ? <Droplet className="w-3 h-3 text-cyan-400" />
                 : <BookmarkPlus className="w-3 h-3 text-emerald-400" />}

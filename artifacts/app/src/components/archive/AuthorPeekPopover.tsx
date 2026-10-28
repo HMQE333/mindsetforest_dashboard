@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Droplet, BookmarkPlus, Sprout, ShieldOff } from "lucide-react";
 import { useForestState, type ForestAuthor } from "@/hooks/useForestState";
 import { useAuth } from "@/hooks/useAuth";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 interface Props {
   author?: ForestAuthor;
@@ -55,7 +56,7 @@ const AuthorPeekPopover = ({ author, authorId, children }: Props) => {
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent className="glass-card border-white/10 w-64 p-3" align="start">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">{author?.avatar_emoji || "🦊"}</span>
+          <UserAvatar value={author?.avatar_emoji} size={30} />
           <div className="min-w-0">
             <p className="text-sm font-bold text-foreground truncate">
               {author?.display_name || `@${author?.username || "unknown"}`}

@@ -9,6 +9,7 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import { useForestState, type PlantInput } from "@/hooks/useForestState";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { Globe, Users, Target, X } from "lucide-react";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 interface Props {
   open: boolean;
@@ -223,7 +224,7 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
                         picked ? "bg-primary/20 border border-primary/40" : "hover:bg-white/5 border border-transparent"
                       }`}
                     >
-                      <span className="text-base">{friend.avatar_emoji || "🦊"}</span>
+                      <UserAvatar value={friend.avatar_emoji} size={18} />
                       <div className="flex-1 min-w-0 text-left">
                         <p className="text-xs font-bold text-foreground truncate">{friend.display_name || `@${friend.username}`}</p>
                         <p className="text-[10px] text-muted-foreground truncate">@{friend.username}</p>

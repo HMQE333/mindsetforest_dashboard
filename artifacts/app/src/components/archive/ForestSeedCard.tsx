@@ -9,6 +9,7 @@ import { useForestCollections } from "@/hooks/useForestCollections";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EMPTY } from "@/lib/utils";
 import { safeUrl } from "@/lib/safe-url";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 interface Props {
   seed: SeedWithAuthor;
@@ -76,10 +77,10 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
           <AuthorPeekPopover author={seed.author} authorId={seed.author_id}>
             <button className="flex items-center gap-2 min-w-0 flex-1 text-left rounded-lg hover:bg-white/5 -m-1 p-1 transition-colors">
               <span
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-muted/40 text-lg ring-1 shrink-0"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-full overflow-hidden bg-muted/40 text-lg ring-1 shrink-0"
                 style={{ borderColor: leadColor || undefined, boxShadow: leadColor ? `inset 0 0 0 1px ${leadColor}55` : undefined }}
               >
-                {seed.author?.avatar_emoji || "🦊"}
+                <UserAvatar value={seed.author?.avatar_emoji} size={32} />
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-foreground truncate">
@@ -265,7 +266,7 @@ const ForestSeedCard = ({ seed, isMine, onEdit, friendsSavedCount = 0 }: Props) 
             >
               <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xl">{seed.author?.avatar_emoji || "🦊"}</span>
+                  <UserAvatar value={seed.author?.avatar_emoji} size={24} />
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-foreground truncate">{seed.author?.display_name || `@${seed.author?.username}`}</p>
                     <p className="text-[10px] text-muted-foreground">@{seed.author?.username}</p>

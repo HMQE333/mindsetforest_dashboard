@@ -7,6 +7,7 @@ import { CustomCategory } from "@/hooks/useOnboarding";
 import { useUserProfile, isValidUsername } from "@/hooks/useUserProfile";
 import { toast } from "sonner";
 import TaskCustomizationStep from "./TaskCustomizationStep";
+import { isPhotoAvatar } from "@/lib/avatar";
 
 const DEFAULT_ICONS = ["🧠", "💪", "🎨", "🔭", "👑", "📊", "✨", "⚙️"];
 const AVATAR_GROUPS: { id: string; label: string; emojis: string[] }[] = [
@@ -53,7 +54,7 @@ export default function OnboardingView({ onComplete }: Props) {
 
   // Seed avatar from existing profile when it lands.
   useEffect(() => {
-    if (profile?.avatar_emoji) {
+    if (profile?.avatar_emoji && !isPhotoAvatar(profile.avatar_emoji)) {
       setAvatarEmoji(profile.avatar_emoji);
       const grp = AVATAR_GROUPS.find(g => g.emojis.includes(profile.avatar_emoji!));
       if (grp) setAvatarGroup(grp.id);

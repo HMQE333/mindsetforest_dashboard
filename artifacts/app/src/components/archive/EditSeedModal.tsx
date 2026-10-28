@@ -8,6 +8,7 @@ import PillarIcon from "@/components/shared/PillarIcon";
 import { useFriends } from "@/hooks/useFriends";
 import { useForestState, type SeedWithAuthor } from "@/hooks/useForestState";
 import { Globe, Users, Target } from "lucide-react";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 interface Props {
   open: boolean;
@@ -103,7 +104,7 @@ const EditSeedModal = ({ open, seed, onClose }: Props) => {
                   return (
                     <button key={friend.user_id} onClick={() => toggleAud(friend.user_id)}
                       className={`w-full flex items-center gap-2 px-2 py-1 rounded-lg text-left ${picked ? "bg-primary/20 border border-primary/40" : "hover:bg-white/5"}`}>
-                      <span>{friend.avatar_emoji || "🦊"}</span>
+                      <UserAvatar value={friend.avatar_emoji} size={20} />
                       <span className="text-xs flex-1 truncate">@{friend.username}</span>
                       {picked && <span className="text-[10px] text-primary font-bold">✓</span>}
                     </button>

@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Copy, RefreshCw, Check, X, Trash2, Eye, EyeOff, Inbox, UserPlus, Users, ChevronLeft, FolderOpen, ChevronDown } from "lucide-react";
+import { Copy, RefreshCw, Check, X, Trash2, Eye, EyeOff, Inbox, UserPlus, Users, ChevronLeft, FolderOpen, ChevronDown, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useFriends } from "@/hooks/useFriends";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import { useUserProjects } from "@/hooks/useUserProjects";
 import AddFriendInput from "./AddFriendInput";
+import UserAvatar from "@/components/shared/UserAvatar";
+import { pruneAvatarPhotos, uploadAvatarPhoto } from "@/lib/avatar";
 
 interface FriendsPanelProps {
   open: boolean;
@@ -16,7 +18,27 @@ interface FriendsPanelProps {
 type Tab = "friends" | "requests" | "inbox";
 
 export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) {
-  const { profile, regenerateFriendCode } = useUserProfile();
+  const { profile, regenerateFriendCode, updateProfile } = useUserProfile();
+  const photoRef = useRef<HTMLInputElement>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Tap your avatar to set a profile photo (saved at once; Settings > Profile has the same).
+  const setPhoto = async (file: File | undefined) => {
+    if (!file || !profile) return;
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadAvatarPhoto(profile.user_id, file);
+      if (await updateProfile({ avatar_emoji: url })) {
+        toast.success("Profile photo saved");
+        void pruneAvatarPhotos(profile.user_id, url);
+      }
+    } catch (e) {
+      toast.error("Couldn't upload the photo", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setUploadingPhoto(false);
+      if (photoRef.current) photoRef.current.value = "";
+    }
+  };
   const f = useFriends();
   const { projects, projectKey } = useUserProjects();
   const [tab, setTab] = useState<Tab>("friends");
@@ -70,7 +92,20 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
         {profile && (
           <div className="px-5 py-3 border-b border-white/5 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={(e) => void setPhoto(e.target.files?.[0])} />
+              <button
+                onClick={() => photoRef.current?.click()}
+                disabled={uploadingPhoto}
+                title="Change profile photo"
+                aria-label="Change profile photo"
+                className="relative shrink-0 rounded-full ring-1 ring-white/15 hover:ring-primary/60 transition-all group"
+              >
+                <UserAvatar value={profile.avatar_emoji} size={44} />
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-background border border-white/20 flex items-center justify-center text-muted-foreground group-hover:text-foreground">
+                  {uploadingPhoto ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+                </span>
+              </button>
+              <div className="min-w-0 flex-1">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Your code</p>
                 <p className="text-lg font-bold text-foreground tracking-widest font-mono">{profile.friend_code}</p>
                 <p className="text-xs text-muted-foreground truncate">@{profile.username}</p>
@@ -130,7 +165,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                     onClick={() => setExpandedId(expanded ? null : friendship.id)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-all text-left"
                   >
-                    <span className="text-2xl">{friend.avatar_emoji || "🦊"}</span>
+                    <UserAvatar value={friend.avatar_emoji} size={30} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground truncate">{friend.display_name || `@${friend.username}`}</p>
                       <p className="text-[10px] text-muted-foreground truncate">@{friend.username}</p>
@@ -198,7 +233,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Incoming</p>
                   {f.incomingRequests.map(({ friendship, sender }) => (
                     <div key={friendship.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/20 border border-white/5">
-                      <span className="text-xl">{sender?.avatar_emoji || "🦊"}</span>
+                      <UserAvatar value={sender?.avatar_emoji} size={24} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-foreground truncate">{sender?.display_name || `@${sender?.username || "user"}`}</p>
                         <p className="text-[10px] text-muted-foreground truncate">@{sender?.username}</p>
@@ -218,7 +253,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Sent</p>
                   {f.outgoingRequests.map(({ friendship, recipient }) => (
                     <div key={friendship.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/20 border border-white/5">
-                      <span className="text-xl opacity-60">{recipient?.avatar_emoji || "🦊"}</span>
+                      <UserAvatar value={recipient?.avatar_emoji} size={24} className="opacity-60" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-muted-foreground truncate">@{recipient?.username || "user"}</p>
                         <p className="text-[10px] text-muted-foreground/70">Pending…</p>
@@ -241,7 +276,7 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
               return (
                 <div key={s.id} className="p-3 rounded-xl bg-muted/20 border border-white/5 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{s.senderProfile?.avatar_emoji || "🦊"}</span>
+                    <UserAvatar value={s.senderProfile?.avatar_emoji} size={20} />
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] text-muted-foreground">From @{s.senderProfile?.username || "friend"}</p>
                       <p className="text-sm font-bold text-foreground">{s.title}</p>

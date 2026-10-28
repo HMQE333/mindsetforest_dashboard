@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useForestState } from "@/hooks/useForestState";
 import { Ban, RotateCcw } from "lucide-react";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 interface AuthorRow {
   user_id: string;
@@ -51,7 +52,7 @@ const BlockedAuthorsList = () => {
           {authors.map((a) => (
             <div key={a.user_id}
               className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted/40 text-[11px] text-foreground">
-              <span className="text-base leading-none">{a.avatar_emoji || "🦊"}</span>
+              <UserAvatar value={a.avatar_emoji} size={18} />
               <span className="font-semibold truncate max-w-[120px]">
                 {a.display_name || `@${a.username}`}
               </span>

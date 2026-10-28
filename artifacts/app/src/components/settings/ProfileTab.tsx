@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Copy, Loader2, RefreshCw, X } from "lucide-react";
+import { Check, Copy, Loader2, RefreshCw, X, ImagePlus, Trash2 } from "lucide-react";
+
 import { z } from "zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUserProfile, isValidUsername } from "@/hooks/useUserProfile";
+import { useAuth } from "@/hooks/useAuth";
+import UserAvatar from "@/components/shared/UserAvatar";
+import { isPhotoAvatar, pruneAvatarPhotos, uploadAvatarPhoto } from "@/lib/avatar";
 
 const AVATAR_EMOJIS = [
   "🦊", "🐺", "🦉", "🐯", "🦁", "🐻", "🐼", "🐨", "🦄", "🐉", "🦅", "🦋",
@@ -35,6 +39,41 @@ export default function ProfileTab() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const { user } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  // The emoji to fall back to when the photo is removed.
+  const [lastEmoji, setLastEmoji] = useState("🦊");
+
+  /** A photo is saved at once (like friends see it), not with the Save button. */
+  const handlePhoto = async (file: File | undefined) => {
+    if (!file || !user) return;
+    if (file.size > 15 * 1024 * 1024) { toast.error("That picture is too big (max 15 MB)"); return; }
+    setUploading(true);
+    try {
+      const url = await uploadAvatarPhoto(user.id, file);
+      if (await updateProfile({ avatar_emoji: url })) {
+        if (!isPhotoAvatar(avatarEmoji)) setLastEmoji(avatarEmoji);
+        setAvatarEmoji(url);
+        toast.success("Profile photo saved");
+        void pruneAvatarPhotos(user.id, url);
+      }
+    } catch (e) {
+      toast.error("Couldn't upload the photo", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!user) return;
+    if (await updateProfile({ avatar_emoji: lastEmoji })) {
+      setAvatarEmoji(lastEmoji);
+      toast.success("Photo removed");
+      void pruneAvatarPhotos(user.id, null);
+    }
+  };
 
   // Seed from current profile
   useEffect(() => {
@@ -42,6 +81,7 @@ export default function ProfileTab() {
     setUsername(profile.username?.startsWith("user_") ? "" : profile.username || "");
     setDisplayName(profile.display_name || "");
     setAvatarEmoji(profile.avatar_emoji || "🦊");
+    if (!isPhotoAvatar(profile.avatar_emoji)) setLastEmoji(profile.avatar_emoji || "🦊");
   }, [profile?.username, profile?.display_name, profile?.avatar_emoji]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced availability check
@@ -126,9 +166,9 @@ export default function ProfileTab() {
             initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 18 }}
-            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-card/70 border border-white/15 text-5xl shadow-lg backdrop-blur-sm"
+            className="flex items-center justify-center w-20 h-20 rounded-2xl overflow-hidden bg-card/70 border border-white/15 text-5xl shadow-lg backdrop-blur-sm"
           >
-            {avatarEmoji}
+            {isPhotoAvatar(avatarEmoji) ? <img src={avatarEmoji} alt="" className="w-full h-full object-cover" /> : avatarEmoji}
           </motion.div>
           <div className="min-w-0 flex-1">
             <div className="text-xs uppercase tracking-wider text-muted-foreground/80">Your identity</div>
@@ -144,13 +184,27 @@ export default function ProfileTab() {
 
       {/* Avatar picker */}
       <div className="space-y-2">
-        <Label className="text-sm font-semibold text-foreground">Avatar</Label>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <Label className="text-sm font-semibold text-foreground">Avatar</Label>
+          <div className="flex items-center gap-2">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void handlePhoto(e.target.files?.[0])} />
+            <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading} className="gap-1.5">
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+              {isPhotoAvatar(avatarEmoji) ? "Change photo" : "Upload photo"}
+            </Button>
+            {isPhotoAvatar(avatarEmoji) && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => void removePhoto()} className="gap-1.5 text-muted-foreground" aria-label="Remove photo">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-8 gap-2">
           {AVATAR_EMOJIS.map((e) => (
             <button
               key={e}
               type="button"
-              onClick={() => setAvatarEmoji(e)}
+              onClick={() => { setAvatarEmoji(e); setLastEmoji(e); }}
               className={`aspect-square flex items-center justify-center text-2xl rounded-xl border transition-all ${
                 avatarEmoji === e
                   ? "border-primary bg-primary/15 scale-105 glow-sm"

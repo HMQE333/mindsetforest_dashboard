@@ -3,6 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Bell, Sprout, Droplet, BookmarkPlus, CheckCheck, Trash2 } from "lucide-react";
 import { useForestInbox } from "@/hooks/useForestInbox";
 import { motion, AnimatePresence } from "framer-motion";
+import UserAvatar from "@/components/shared/UserAvatar";
 
 const KIND_META = {
   friend_planted: { Icon: Sprout, color: "text-emerald-400", verb: "planted" },
@@ -76,7 +77,7 @@ const ForestInboxBell = () => {
                     isUnread ? "bg-primary/5" : ""
                   }`}
                 >
-                  <span className="text-base mt-0.5">{e.actor?.avatar_emoji || "🦊"}</span>
+                  <UserAvatar value={e.actor?.avatar_emoji} size={18} className="mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] text-foreground leading-snug">
                       <span className="font-bold">{e.actor?.display_name || `@${e.actor?.username || "Someone"}`}</span>
