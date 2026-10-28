@@ -8,6 +8,7 @@ import type { TypeTag } from "@/lib/archive-tags";
 import { cardView, noteTags } from "./archive-index";
 import { DeleteConfirmButton, type Armed } from "./DeleteConfirm";
 import { NoteTagChips } from "./TagChips";
+import MosaicFace from "./MosaicFace";
 import { describeSensitive, noteSensitivity } from "@/lib/sensitive-scan";
 
 /** How a press on a card was meant: Ctrl/Cmd toggles it in the selection, Shift selects up to it. */
@@ -50,6 +51,8 @@ interface Props {
   updateAvailable?: boolean;
   /** Re-sync a note saved from the Forest, by its seed id. */
   onResync?: (seedId: string) => void;
+  /** The mymind-style face: picture, video frame, quote or page instead of the text card. */
+  mosaic?: boolean;
 }
 
 /**
@@ -85,6 +88,7 @@ const ArchiveBlockCard = ({
   similarityScore,
   updateAvailable,
   onResync,
+  mosaic = false,
 }: Props) => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   // The lightbox mounts the first time it opens, not with every card.
@@ -141,8 +145,44 @@ const ArchiveBlockCard = ({
         draggable={draggable || undefined}
         onDragStart={draggable && onDragNote ? (e) => onDragNote(block, e) : undefined}
         onDragEnd={draggable ? onDragEndNote : undefined}
-        className={`relative glass-card p-4 space-y-2.5 cursor-pointer group transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${draggable ? "select-none" : ""} ${tone} ${block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
+        className={`relative ${mosaic ? `mb-3 break-inside-avoid rounded-xl ${selected || peeked ? "ring-2 ring-primary/70" : ""}` : "glass-card p-4 space-y-2.5"} cursor-pointer group transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${draggable ? "select-none" : ""} ${mosaic ? "" : tone} ${!mosaic && block.is_pinned ? "border-l-2 border-l-primary/50" : ""}`}
       >
+        {mosaic ? (
+          <>
+            <MosaicFace block={block} sensitive={sensitive.length > 0} onImage={openLightbox} />
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={selected ? "Unselect" : "Select"}
+              aria-pressed={selected}
+              onClick={(e) => { e.stopPropagation(); onToggleSelect(block.id); }}
+              className={`absolute left-2 top-2 z-[1] w-6 h-6 [@media(hover:none)]:w-7 [@media(hover:none)]:h-7 rounded-md border-2 flex items-center justify-center backdrop-blur-sm transition-opacity ${
+                selected
+                  ? "bg-primary border-primary text-primary-foreground opacity-100"
+                  : `border-white/60 bg-black/30 ${selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"}`
+              }`}
+            >
+              {selected && <span className="text-xs">✓</span>}
+            </button>
+            {(sensitive.length > 0 || block.is_pinned) && (
+              <span className="absolute left-10 top-2 z-[1] flex gap-1 text-[11px]">
+                {sensitive.length > 0 && <span className="px-1.5 py-0.5 rounded-md bg-amber-400/25 text-amber-100" title={`Looks like it holds: ${describeSensitive(sensitive)}`}>🔒</span>}
+                {block.is_pinned && <span className="px-1 py-0.5 rounded-md bg-black/40">📌</span>}
+              </span>
+            )}
+            <div className={`absolute right-2 top-2 z-[1] flex justify-end ${armed ? "" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:hidden"}`}>
+              <DeleteConfirmButton
+                variant="card"
+                armed={armed}
+                onArm={() => onArmDelete(block.id)}
+                onDisarm={onDisarmDelete}
+                onConfirm={() => onConfirmDelete(block)}
+                className={armed ? "" : "bg-background/70"}
+              />
+            </div>
+          </>
+        ) : (
+          <>
         <div className="flex items-start gap-3">
           <button
             type="button"
@@ -247,6 +287,8 @@ const ArchiveBlockCard = ({
             </button>
           )}
         </div>
+          </>
+        )}
       </article>
 
       {overlays && (<>

@@ -1,11 +1,18 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Download, ChevronLeft, ChevronRight, ImagePlus, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import ArchiveEditModal from "./ArchiveEditModal";
 import { blockImages } from "./archive-index";
+import { useRemembered } from "./remembered";
+import TagFolderChips, { inTagFolder } from "@/components/shared/TagFolderChips";
+import DateFilterRow from "@/components/shared/DateFilterRow";
+import { ALL_DATES, filterByDate, type DateFilter } from "@/lib/date-filter";
 import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
 
 
@@ -19,6 +26,8 @@ interface Props {
   loading: boolean;
   updateBlock: (id: string, updates: Partial<ArchiveBlock>) => Promise<unknown>;
   deleteBlock: (id: string) => Promise<unknown>;
+  /** New notes, one per uploaded picture. */
+  addBlock?: (block: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
 /** Every image in the notes; each note is read once per version (archive-index). */
@@ -28,7 +37,10 @@ function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
   return items;
 }
 
-const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props) => {
+const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock }: Props) => {
+  const { user } = useAuth();
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(0);
   const pillars = usePillars();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [filterPillar, setFilterPillar] = useState<string | null>(null);
@@ -37,9 +49,41 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
 
   const allImages = useMemo(() => extractImages(blocks), [blocks]);
 
-  const filtered = filterPillar
-    ? allImages.filter((img) => img.block.pillars.includes(filterPillar))
-    : allImages;
+  /** Each picture becomes its own note, in the folder being viewed. */
+  const upload = async (files: FileList | null) => {
+    const list = [...(files ?? [])].filter((f) => f.type.startsWith("image/") && f.size <= 10 * 1024 * 1024);
+    if (uploadRef.current) uploadRef.current.value = "";
+    if (!user || !addBlock || list.length === 0) {
+      if (files?.length) toast.error("Only pictures under 10 MB");
+      return;
+    }
+    setUploading(list.length);
+    let done = 0;
+    for (const file of list) {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error } = await supabase.storage.from("archive-images").upload(path, file);
+      if (!error) {
+        const url = supabase.storage.from("archive-images").getPublicUrl(path).data.publicUrl;
+        const name = file.name.replace(/\.[^.]+$/, "").slice(0, 60) || "Image";
+        if (await addBlock({ title: name, content: `[image] ${url}`, tags: folder ? [folder] : [], pillars: filterPillar ? [filterPillar] : [] })) done++;
+      }
+      setUploading((n) => n - 1);
+    }
+    setUploading(0);
+    if (done) toast.success(`${done} picture${done === 1 ? "" : "s"} added${folder ? ` to #${folder}` : ""}`);
+    if (done < list.length) toast.error(`${list.length - done} could not be uploaded`);
+  };
+  // Folders counted per note with images (a note with three pictures counts once).
+  const imageNoteTags = useMemo(() => [...new Map(allImages.map((i) => [i.block.id, i.block.tags ?? []])).values()], [allImages]);
+
+  const [folder, setFolder] = useRemembered("images.folder", "");
+  const [dateFilter, setDateFilter] = useRemembered<DateFilter>("images.date", ALL_DATES);
+  const filtered = useMemo(() => {
+    let l = filterPillar ? allImages.filter((img) => img.block.pillars.includes(filterPillar)) : allImages;
+    if (folder) l = l.filter((img) => inTagFolder(img.block.tags, folder));
+    return filterByDate(l, dateFilter, (img) => img.block.created_at);
+  }, [allImages, filterPillar, folder, dateFilter]);
 
   /** A note opened from under one of its images: the reader steps through the notes in the gallery's order. */
   const readNote = (block: ArchiveBlock) => {
@@ -106,7 +150,24 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock }: Props)
             </button>
           ))}
           <span className="ml-auto text-sm text-muted-foreground">{filtered.length} images</span>
+          {addBlock && (
+            <>
+              <input ref={uploadRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void upload(e.target.files)} />
+              <button
+                onClick={() => uploadRef.current?.click()}
+                disabled={uploading > 0}
+                className="text-xs px-3 py-1.5 rounded-lg font-semibold bg-muted/60 text-foreground hover:bg-primary/20 transition-all flex items-center gap-1.5 disabled:opacity-60"
+                title={folder ? `Each picture becomes a note in #${folder}` : "Each picture becomes a note"}
+              >
+                {uploading > 0 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                {uploading > 0 ? `Uploading ${uploading}…` : folder ? `Add to #${folder.split("/").pop()}` : "Add pictures"}
+              </button>
+            </>
+          )}
         </div>
+
+        <TagFolderChips tagLists={imageNoteTags} value={folder} onChange={setFolder} />
+        <DateFilterRow value={dateFilter} onChange={setDateFilter} />
 
         {/* Gallery grid */}
         {filtered.length === 0 ? (

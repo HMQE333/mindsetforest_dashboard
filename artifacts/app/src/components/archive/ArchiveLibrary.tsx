@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue, memo, Suspense, type DragEvent } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off, Download, Upload, FileText, FolderTree as FoldersIcon, Tags, CheckSquare, X, Loader2 } from "lucide-react";
+import { Link2Off, Download, Upload, FileText, FolderTree as FoldersIcon, Tags, CheckSquare, X, Loader2, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError } from "@/lib/archive-data";
 import { usePillars, type Pillar } from "@/hooks/usePillars";
@@ -356,6 +356,14 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
       description: "In Bitwarden: Tools > Import data > Bitwarden (csv). The file holds plain passwords: delete it after importing. The notes it came from are listed below.",
       duration: 12_000,
     });
+  };
+  // List or mosaic, remembered on this device.
+  const [mosaic, setMosaicState] = useState<boolean>(() => {
+    try { return localStorage.getItem("mf.libraryMosaic") === "1"; } catch { return false; }
+  });
+  const setMosaic = (on: boolean) => {
+    setMosaicState(on);
+    try { localStorage.setItem("mf.libraryMosaic", on ? "1" : "0"); } catch { /* private mode */ }
   };
   const [dateFilter, setDateFilter] = useRemembered<DateFilter>("library.date", ALL_DATES);
   const filtered = useMemo(() => {
@@ -957,6 +965,14 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           )}
           <span className="w-px h-4 bg-white/10" />
           <button
+            onClick={() => setMosaic(!mosaic)}
+            aria-pressed={mosaic}
+            className={toggleBtn(mosaic)}
+            title={mosaic ? "Mosaic: pictures, videos, quotes and pages as they look. Click for the list" : "Show notes as a mosaic: pictures, videos, quotes and pages as they look"}
+          >
+            <LayoutDashboard size={12} /> Mosaic
+          </button>
+          <button
             onClick={() => void saveArchiveFolders(!foldersOn)}
             onPointerEnter={() => void FolderTree.preload()}
             disabled={settingsLoading}
@@ -1094,7 +1110,12 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
               <p>{blocks.length === 0 ? "No blocks yet. Add some from the Inbox!" : folderName ? `No notes in ${folderName} match.` : "No blocks match your filters."}</p>
             </div>
           ) : (
-            <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 gap-3" onPointerEnter={preloadPeek} onFocus={preloadPeek}>
+            <div
+              ref={gridRef}
+              className={mosaic ? "columns-2 sm:columns-3 xl:columns-4 gap-3 [column-fill:_balance]" : "grid grid-cols-1 md:grid-cols-2 gap-3"}
+              onPointerEnter={preloadPeek}
+              onFocus={preloadPeek}
+            >
               {visible.map((block) => (
                 <ArchiveBlockCard
                   key={block.id}
@@ -1121,6 +1142,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
                   similarityScore={showScores ? similarityScores[block.id] : undefined}
                   updateAvailable={!!block.from_seed_id && !!availableUpdates[block.from_seed_id]}
                   onResync={resyncSeed}
+                  mosaic={mosaic}
                 />
               ))}
             </div>
