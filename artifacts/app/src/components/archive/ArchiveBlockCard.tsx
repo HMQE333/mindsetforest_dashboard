@@ -8,6 +8,7 @@ import type { TypeTag } from "@/lib/archive-tags";
 import { cardView, noteTags } from "./archive-index";
 import { DeleteConfirmButton, type Armed } from "./DeleteConfirm";
 import { NoteTagChips } from "./TagChips";
+import { describeSensitive, noteSensitivity } from "@/lib/sensitive-scan";
 
 /** How a press on a card was meant: Ctrl/Cmd toggles it in the selection, Shift selects up to it. */
 export interface CardPress {
@@ -89,6 +90,7 @@ const ArchiveBlockCard = ({
   // The lightbox mounts the first time it opens, not with every card.
   const [overlays, setOverlays] = useState(false);
   const view = cardView(block);
+  const sensitive = noteSensitivity(block.id, block.content);
   const tags = noteTags(block);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -159,16 +161,24 @@ const ArchiveBlockCard = ({
           </button>
           <div className="flex-1 min-w-0 pr-7">
             <div className="flex items-center gap-1.5">
-              <h4 className="min-w-0 truncate font-semibold text-sm">{view.title}</h4>
+              <h4 className={`min-w-0 truncate font-semibold text-sm ${sensitive.length ? "blur-[3px] group-hover:blur-none transition-[filter]" : ""}`}>{view.title}</h4>
               <span className="ml-auto flex flex-shrink-0 items-center gap-1">
                 {similarityScore !== undefined && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">{Math.round(similarityScore * 100)}%</span>
+                )}
+                {sensitive.length > 0 && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-400/15 text-amber-200 border border-amber-400/30"
+                    title={`Looks like it holds: ${describeSensitive(sensitive)}. A password manager (e.g. Bitwarden) is a safer place.`}
+                  >
+                    🔒
+                  </span>
                 )}
                 {block.is_pinned && <span className="text-xs" title="Pinned to the top" aria-label="Pinned">📌</span>}
                 {block.is_starred && <span className="text-xs text-amber-400" title="Bookmarked" aria-label="Bookmarked">★</span>}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground line-clamp-3 mt-1">
+            <p className={`text-xs text-muted-foreground line-clamp-3 mt-1 ${sensitive.length ? "blur-[3px] group-hover:blur-none transition-[filter]" : ""}`}>
               {/* Three lines show; the rest of a long block (a pasted list of links) stays out of the page. */}
               {view.preview}
             </p>

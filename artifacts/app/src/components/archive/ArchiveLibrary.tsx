@@ -39,6 +39,7 @@ import { NOTE_DRAG_TYPE, addToFolder, folderLabel, moveToFolder, removeFromFolde
 import { applyWithUndo, useSavedFolders } from "./folder-store";
 import { TYPE_CHIP, TYPE_ICONS, keyedPillars, tagText } from "./TagChips";
 import { usePillarToggle } from "./pillar-toggle";
+import { noteSensitivity } from "@/lib/sensitive-scan";
 
 // The peek and the tag queue render notes with the reader's Markdown renderer: code-split, fetched on idle.
 const ArchivePeek = lazyModule(() => import("./ArchivePeek"));
@@ -317,10 +318,25 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
 
   // Which notes match, in order: the regex and lower-casing work behind it is
   // done once per note (archive-index), not per note per key.
-  const filtered = useMemo(() => {
+  // Notes that look like they hold passwords or keys (read on this device, fixed patterns).
+  const sensitiveIds = useMemo(() => new Set(blocks.filter((b) => noteSensitivity(b.id, b.content).length > 0).map((b) => b.id)), [blocks]);
+  const [sensitiveOnly, setSensitiveOnly] = useState(false);
+  // "Hide" lasts on this device until the count grows.
+  const [sensitiveDismissed, setDismissedState] = useState<number>(() => {
+    try { return Number(localStorage.getItem("mf.sensitiveDismissed")) || 0; } catch { return 0; }
+  });
+  const setSensitiveDismissed = (n: number) => {
+    setDismissedState(n);
+    try { localStorage.setItem("mf.sensitiveDismissed", String(n)); } catch { /* private mode */ }
+  };
+  const filteredAll = useMemo(() => {
     if (smartSearch && semanticResults !== null) return filterRanked(semanticResults, blocks, { pillar: filterPillar, hideLinks, folder, type: typeFilter }, pending);
     return filterLibrary(blocks, { search: query, includeTags, pillar: filterPillar, hideLinks, sort: sortMode, folder, type: typeFilter });
   }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending]);
+  const filtered = useMemo(
+    () => (sensitiveOnly ? filteredAll.filter((b) => sensitiveIds.has(b.id)) : filteredAll),
+    [filteredAll, sensitiveOnly, sensitiveIds],
+  );
   const order = useMemo(() => filtered.map((b) => b.id), [filtered]);
 
   // The first cards render at once and the rest as the end of the list comes
@@ -943,6 +959,26 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           </button>
         </div>
       </div>
+
+      {/* Notes that look like they hold secrets: one quiet line, until he looks or hides it (it comes back when the count grows). */}
+      {sensitiveIds.size > 0 && (sensitiveOnly || sensitiveIds.size > sensitiveDismissed) && (
+        <div className="glass-card border-amber-400/30 bg-amber-400/[0.06] px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-amber-200 font-semibold">🔒 {sensitiveIds.size} note{sensitiveIds.size === 1 ? "" : "s"} look{sensitiveIds.size === 1 ? "s" : ""} like {sensitiveIds.size === 1 ? "it holds" : "they hold"} passwords, keys or card numbers.</span>
+          <span className="text-muted-foreground">Safer in a password manager (e.g. Bitwarden): copy them there, then delete them here.</span>
+          <span className="flex-1" />
+          <button
+            onClick={() => setSensitiveOnly((v) => !v)}
+            className={`px-2.5 py-1 rounded-full font-semibold transition-all ${sensitiveOnly ? "bg-amber-400/80 text-black" : "bg-amber-400/15 text-amber-200 hover:bg-amber-400/25"}`}
+          >
+            {sensitiveOnly ? "Show all notes" : "Show them"}
+          </button>
+          {!sensitiveOnly && (
+            <button onClick={() => setSensitiveDismissed(sensitiveIds.size)} className="px-2 py-1 rounded-full text-muted-foreground hover:text-foreground" title="Hide until another one appears">
+              Hide
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Video summaries that matched a smart search */}
       {smartSearch && videoResults.length > 0 && (

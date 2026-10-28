@@ -10,6 +10,7 @@ import { useForestState, type PlantInput } from "@/hooks/useForestState";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { Globe, Users, Target, X } from "lucide-react";
 import UserAvatar from "@/components/shared/UserAvatar";
+import { describeSensitive, scanSensitive } from "@/lib/sensitive-scan";
 
 interface Props {
   open: boolean;
@@ -66,8 +67,11 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
     });
   };
 
+  // A seed is shared: one that looks like it holds a password or key is not planted.
+  const secrets = single ? scanSensitive(`${title}\n${content}`) : [...new Set(blocks.flatMap((b) => scanSensitive(b.content)))];
   const canPlant =
     blocks.length > 0 &&
+    secrets.length === 0 &&
     !planting &&
     !(visibility === "custom" && audience.size === 0);
 
@@ -238,6 +242,11 @@ const PlantSeedModal = ({ open, blocks, onClose, onPlanted }: Props) => {
           )}
         </div>
 
+        {secrets.length > 0 && (
+          <p className="text-xs rounded-lg border border-amber-400/30 bg-amber-400/10 text-amber-200 px-3 py-2">
+            🔒 This looks like it holds a {describeSensitive(secrets)}. Remove it before sharing{single ? " (edit the text above)" : ""}.
+          </p>
+        )}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="w-3 h-3" /> Cancel
