@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Paperclip, Dice5 } from "lucide-react";
+import { Paperclip, Dice5, PencilLine, CalendarClock, Scissors, ArrowLeft } from "lucide-react";
 import { CATEGORIES, Mission } from "@/lib/dashboard-data";
 import { DashboardState, useDashboardState } from "@/hooks/useDashboardState";
 import { toast } from "sonner";
@@ -76,52 +76,48 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
       exit={{ opacity: 0, x: -30 }}
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
     >
-      {/* Header */}
+      {/* Header: one row at every width (phone, watch): back, icon, name, edit. */}
       <div
-        className="glass-card p-6 mb-6 flex items-center gap-5 flex-wrap justify-between"
+        className="glass-card p-3 sm:p-6 mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-4"
         style={{ borderColor: displayColor, borderWidth: 2 }}
       >
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={onBack}
-            className="glass-card px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground hover:-translate-x-1 transition-all"
-          >
-            ← Back
-          </button>
+        <button
+          onClick={onBack}
+          className="shrink-0 h-9 sm:h-10 min-w-9 sm:min-w-10 px-2 sm:px-4 rounded-xl border border-white/15 bg-white/[0.05] text-sm font-medium text-foreground/70 hover:text-foreground hover:bg-white/10 hover:-translate-x-0.5 transition-all flex items-center justify-center gap-1.5"
+          aria-label="Back"
+          title="Back"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          <span className="hidden sm:inline">Back</span>
+        </button>
+        <span className="shrink-0 hidden min-[260px]:inline-flex" style={{ filter: `drop-shadow(0 0 12px ${displayColor})` }}>
           {projectInfo ? (
-            <span
-              className="text-4xl"
-              style={{ filter: `drop-shadow(0 0 15px ${displayColor})` }}
-            >
-              {projectInfo.emoji}
-            </span>
+            <span className="text-3xl sm:text-4xl leading-none">{projectInfo.emoji}</span>
           ) : (
-            <span style={{ filter: `drop-shadow(0 0 15px ${displayColor})` }}>
-              <PillarIcon icon={displayIcon} iconUrl={displayIconUrl} size={48} />
-            </span>
+            <>
+              <span className="sm:hidden"><PillarIcon icon={displayIcon} iconUrl={displayIconUrl} size={34} /></span>
+              <span className="hidden sm:inline"><PillarIcon icon={displayIcon} iconUrl={displayIconUrl} size={48} /></span>
+            </>
           )}
-          <div>
-            <h2 className="text-2xl font-bold" style={{ color: displayColor }}>
-              {displayName}
-            </h2>
-            <p className="text-sm text-foreground/70">{displayTagline}</p>
-          </div>
+        </span>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg sm:text-2xl font-bold leading-tight truncate" style={{ color: displayColor }}>
+            {displayName}
+          </h2>
+          {displayTagline && <p className="text-xs sm:text-sm text-foreground/60 truncate">{displayTagline}</p>}
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onEdit}
-            className="px-3 py-2 rounded-xl border border-white/25 bg-white/[0.09] text-foreground hover:bg-primary/20 hover:border-primary/45 transition-all hover:-translate-y-0.5 backdrop-blur-lg"
-            title="Edit tasks"
-            aria-label="Edit tasks"
-          >
-            <span className="text-lg">✏️</span>
-          </button>
-        </div>
+        <button
+          onClick={onEdit}
+          className="shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-xl border border-white/20 bg-white/[0.07] flex items-center justify-center hover:bg-primary/20 hover:border-primary/45 transition-all"
+          title="Edit tasks"
+          aria-label="Edit tasks"
+        >
+          <PencilLine className="h-4 w-4 sm:h-[18px] sm:w-[18px] text-foreground/80" />
+        </button>
       </div>
 
       {/* Mission Cards */}
-      <div className="grid gap-5">
+      <div className="grid gap-3 sm:gap-5">
         {missions.map((baseMission, displayIdx) => {
           const index = baseMission.__originalIndex ?? displayIdx;
           const missionId = `${categoryId}-${index}`;
@@ -137,7 +133,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
           return (
             <motion.div
               key={missionId}
-              className={`glass-card p-6 transition-all duration-300 border-2 relative overflow-hidden ${
+              className={`glass-card p-4 sm:p-6 transition-all duration-300 border-2 relative overflow-hidden ${
                 isCompleted
                   ? "opacity-60 border-white/10"
                   : "hover:border-white/20 hover:translate-x-2 hover:shadow-lg"
@@ -155,9 +151,9 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   📅 <span>{formatDays(baseMission.daysOfWeek!)}</span>
                 </div>
               )}
-              <div className="flex justify-between items-start gap-4">
-                <div className={`flex-1 ${hasVariants || hasSchedule ? "pt-5" : ""}`}>
-                  <h4 className="text-lg font-semibold text-foreground mb-2">
+              <div className="flex flex-col min-[340px]:flex-row justify-between items-stretch min-[340px]:items-start gap-3 sm:gap-4">
+                <div className={`flex-1 min-w-0 ${hasVariants || hasSchedule ? "pt-5" : ""}`}>
+                  <h4 className="text-base sm:text-lg font-semibold text-foreground mb-1.5 sm:mb-2 [overflow-wrap:anywhere]">
                     {mission.title}
                     {!!baseMission.deferrals && !isCompleted && (
                       <span
@@ -168,8 +164,8 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                       </span>
                     )}
                   </h4>
-                  <p className="text-sm text-foreground/70 mb-3 leading-relaxed">{mission.description}</p>
-                  <div className="flex gap-4 text-sm">
+                  <p className="text-sm text-foreground/70 mb-2 sm:mb-3 leading-relaxed [overflow-wrap:anywhere]">{mission.description}</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                     {mission.duration && mission.duration !== "." && (
                       <span className="text-foreground/60 flex items-center gap-1">⏱️ {mission.duration}</span>
                     )}
@@ -179,7 +175,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-shrink-0">
                   {hasVariants && !isCompleted && (
                     <button
                       onClick={() => onReroll(categoryId, index)}
@@ -205,7 +201,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                       title="Move to tomorrow"
                       aria-label="Move to tomorrow"
                     >
-                      ↷
+                      <CalendarClock className="h-4 w-4" />
                     </button>
                   )}
                   {!isCompleted && (
@@ -218,7 +214,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                       {splittingIndex === index ? (
                         <span className="animate-spin text-xs">⏳</span>
                       ) : (
-                        "✂️"
+                        <Scissors className="h-4 w-4 text-foreground/70" />
                       )}
                     </button>
                   )}
@@ -246,7 +242,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                     onClick={() => { setDeciding(null); void handleSplit(index, mission); }}
                     className="px-3 py-1.5 rounded-lg border border-white/15 bg-white/5 hover:bg-primary/15 hover:border-primary/30 transition-all"
                   >
-                    ✂️ Make it smaller
+                    <Scissors className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />Make it smaller
                   </button>
                   <button
                     onClick={() => { setDeciding(null); removeMission(categoryId, index); toast(`Removed: ${mission.title}`, { className: "[overflow-wrap:anywhere]" }); }}
@@ -269,7 +265,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
 
       {snoozed.length > 0 && (
         <div className="mt-5 text-sm text-foreground/60 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span>↷ For tomorrow:</span>
+          <span className="inline-flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> For tomorrow:</span>
           {snoozed.map((m) => (
             <button
               key={m.__originalIndex}
