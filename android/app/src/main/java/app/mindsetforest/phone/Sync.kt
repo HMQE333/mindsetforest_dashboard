@@ -81,7 +81,12 @@ object Sync {
     private fun sendQueued(store: Store, api: SupabaseApi, core: SyncCore): CaptureResult {
         val result = core.sendCaptures(store.pendingCaptures)
         store.pendingCaptures = result.remaining
-        for (id in result.savedIds) api.embedBlock(id, store.accessToken)
+        for (id in result.savedIds) {
+            val video = result.videos[id]
+            // A reel's link: the server adds transcript and key points in the background (and the note is
+            // embedded again when the Archive next opens); anything else is indexed for search now.
+            if (video != null) api.transcribeVideo(id, video, store.accessToken) else api.embedBlock(id, store.accessToken)
+        }
         return result
     }
 

@@ -76,6 +76,20 @@ class SupabaseApi(private val url: String, private val anonKey: String) : Sessio
         }
     }
 
+    /** Best effort: ask the server to fill a saved reel's note with its transcript (it works in the background). */
+    fun transcribeVideo(blockId: String, link: String, accessToken: String) {
+        try {
+            request(
+                "POST",
+                "$url/functions/v1/social-transcript",
+                JSONObject().put("url", link).put("blockId", blockId).toString(),
+                mapOf("Authorization" to "Bearer $accessToken"),
+            )
+        } catch (_: Exception) {
+            // The link is saved either way; the web Inbox can transcribe it later.
+        }
+    }
+
     override fun dueReminders(until: Long, accessToken: String): List<Reminder> {
         val iso = URLEncoder.encode(java.time.Instant.ofEpochMilli(until).toString(), "UTF-8")
         val text = request(

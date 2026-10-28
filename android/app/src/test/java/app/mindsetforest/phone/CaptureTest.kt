@@ -59,4 +59,12 @@ class ReminderPlanTest {
         assertEquals(listOf("late", "now"), plan.now.map { it.id })
         assertEquals(listOf("soon"), plan.later.map { it.id })
     }
+
+    @Test
+    fun findsReelLinksInSharedText() {
+        assertEquals("https://www.instagram.com/reel/C9xYz12AbCd/?igsh=abc", socialVideoUrl("look https://www.instagram.com/reel/C9xYz12AbCd/?igsh=abc"))
+        assertEquals("https://vm.tiktok.com/ZMabc123/", socialVideoUrl("https://vm.tiktok.com/ZMabc123/"))
+        assertEquals(null, socialVideoUrl("https://instagram.com/someprofile"))
+        assertEquals(null, socialVideoUrl("plain text"))
+    }
 }

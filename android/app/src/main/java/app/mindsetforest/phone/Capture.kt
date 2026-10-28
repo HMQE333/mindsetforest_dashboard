@@ -32,6 +32,19 @@ fun buildCapture(text: String, source: String, subject: String = ""): Pair<Strin
     return title to (if (from.isNotEmpty()) "$content\n\nSource: $from" else content)
 }
 
+private val SOCIAL_VIDEO = Regex(
+    """https?://(?:www\.|m\.)?(?:instagram\.com/(?:reel|reels|p|tv)/[\w-]+|(?:vm\.)?tiktok\.com/\S+|(?:x|twitter)\.com/\w+/status/\d+|facebook\.com/\S*(?:reel|videos|watch)\S*|fb\.watch/\S+|youtube\.com/shorts/[\w-]+)\S*""",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
+ * The reel / short / video-post link in shared text, or null (the same links
+ * as the web app's lib/social-video.ts): such a note gets its transcript and
+ * key points from the social-transcript function after it is saved.
+ */
+fun socialVideoUrl(text: String): String? =
+    SOCIAL_VIDEO.find(text)?.value?.trimEnd(')', ']', '.', ',', ';', '!', '?', '\'', '"')
+
 /** The archive_blocks row as JSON, or null when there is nothing to save. */
 fun captureJson(c: PendingCapture, userId: String): String? {
     val (title, content) = buildCapture(c.text, c.source, c.subject) ?: return null

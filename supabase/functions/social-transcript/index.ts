@@ -127,45 +127,41 @@ async function summarize(transcript: string, caption: string) {
   }
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  const caller = await getUserClient(req);
-  if (!caller) return jsonResponse({ error: "Unauthorized" }, 401);
-  const body = await req.json().catch(() => ({}));
-  const url = typeof body?.url === "string" ? body.url.trim() : "";
-  const jobId = typeof body?.jobId === "string" && /^[\w-]{4,80}$/.test(body.jobId) ? body.jobId : null;
-  if (!SOCIAL.test(url)) return jsonResponse({ error: "Paste a link to an Instagram, TikTok, X, Facebook or YouTube video" }, 400);
+// deno-lint-ignore no-explicit-any
+type Result = { status: "done"; note: any } | { status: "pending"; jobId: string } | { error: string; code?: string; httpStatus: number };
 
+/** One step of reading a video: done, still pending at Supadata (jobId), or an error. */
+async function readVideo(url: string, jobId: string | null, userId: string): Promise<Result> {
   // 1. Instagram through Apify and our own speech model (cheapest); 2. Supadata for the rest, or when that fails.
   if (!jobId) {
     const found = await viaApify(url);
     if (found) {
-      const [summary, cover] = await Promise.all([summarize(found.transcript, found.caption), copyCover(found.coverUrl, caller.userId)]);
-      return jsonResponse({
+      const [summary, cover] = await Promise.all([summarize(found.transcript, found.caption), copyCover(found.coverUrl, userId)]);
+      return {
         status: "done",
         note: { url, platform: found.platform, author: found.author, title: summary?.title || found.caption.split("\n")[0].slice(0, 100) || "Saved video", points: summary?.points ?? [], transcript: found.transcript, caption: found.caption, cover, lang: "", duration: null, via: found.via },
-      });
+      };
     }
   }
   const key = Deno.env.get("SUPADATA_API_KEY");
-  if (!key) return jsonResponse({ error: "The video could not be read (no fallback service set up)" }, 502);
+  if (!key) return { error: "The video could not be read (no fallback service set up)", httpStatus: 502 };
 
   let transcript = "";
   let lang = "";
   if (jobId) {
     const r = await supa(`/transcript/${jobId}`, key);
-    if (r.body?.status === "queued" || r.body?.status === "active") return jsonResponse({ status: "pending", jobId });
-    if (r.body?.status !== "completed") return jsonResponse({ error: r.body?.error?.message || "The transcript could not be made" }, 502);
+    if (r.body?.status === "queued" || r.body?.status === "active") return { status: "pending", jobId };
+    if (r.body?.status !== "completed") return { error: r.body?.error?.message || "The transcript could not be made", httpStatus: 502 };
     const c = r.body.result?.content ?? r.body.content;
     transcript = typeof c === "string" ? c : Array.isArray(c) ? c.map((x: { text?: string }) => x.text ?? "").join(" ") : "";
     lang = r.body.result?.lang ?? r.body.lang ?? "";
   } else {
     const r = await supa(`/transcript?url=${encodeURIComponent(url)}&text=true&mode=auto`, key);
-    if (r.status === 202 || r.body?.jobId) return jsonResponse({ status: "pending", jobId: r.body.jobId });
+    if (r.status === 202 || r.body?.jobId) return { status: "pending", jobId: r.body.jobId };
     if (r.status === 206) transcript = "";
     else if (r.status !== 200) {
       const msg = r.status === 429 || r.status === 402 ? "The transcript service's limit is used up" : r.body?.message || "The transcript could not be made";
-      return jsonResponse({ error: msg, code: r.body?.error }, 502);
+      return { error: msg, code: r.body?.error, httpStatus: 502 };
     } else {
       transcript = typeof r.body.content === "string" ? r.body.content : "";
       lang = r.body.lang ?? "";
@@ -174,9 +170,9 @@ serve(async (req) => {
 
   const meta = (await supa(`/metadata?url=${encodeURIComponent(url)}`, key)).body ?? {};
   const caption = String(meta.description ?? meta.title ?? "").trim();
-  const [summary, cover] = await Promise.all([summarize(transcript, caption), copyCover(meta.media?.thumbnailUrl, caller.userId)]);
+  const [summary, cover] = await Promise.all([summarize(transcript, caption), copyCover(meta.media?.thumbnailUrl, userId)]);
 
-  return jsonResponse({
+  return {
     status: "done",
     note: {
       url,
@@ -191,5 +187,54 @@ serve(async (req) => {
       duration: meta.media?.duration ?? null,
       via: "supadata",
     },
-  });
+  };
+}
+
+/** The note's text, as the web Inbox writes it (lib/social-video.ts socialNoteContent). */
+// deno-lint-ignore no-explicit-any
+function noteContent(n: any, comment: string): string {
+  const parts: string[] = [];
+  if (comment.trim()) parts.push(comment.trim());
+  parts.push(n.url + (n.author ? ` (${n.author})` : ""));
+  if (n.cover) parts.push(`[image] ${n.cover}`);
+  if (n.points?.length) parts.push(`**Key points**\n${n.points.map((p: string) => `- ${p}`).join("\n")}`);
+  if (n.transcript) parts.push(`**Transcript**\n${n.transcript}`);
+  if (n.caption && n.caption !== n.title) parts.push(`**Caption**\n${n.caption}`);
+  return parts.join("\n\n");
+}
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const caller = await getUserClient(req);
+  if (!caller) return jsonResponse({ error: "Unauthorized" }, 401);
+  const body = await req.json().catch(() => ({}));
+  const url = typeof body?.url === "string" ? body.url.trim() : "";
+  const jobId = typeof body?.jobId === "string" && /^[\w-]{4,80}$/.test(body.jobId) ? body.jobId : null;
+  const blockId = typeof body?.blockId === "string" && /^[0-9a-f-]{36}$/i.test(body.blockId) ? body.blockId : null;
+  if (!SOCIAL.test(url)) return jsonResponse({ error: "Paste a link to an Instagram, TikTok, X, Facebook or YouTube video" }, 400);
+
+  // { url, blockId }: a note already saved (the phone app's Share) gets its transcript in the background.
+  if (blockId) {
+    const { data: row } = await caller.client.from("archive_blocks").select("id, content").eq("id", blockId).maybeSingle();
+    if (!row) return jsonResponse({ error: "Note not found" }, 404);
+    const work = (async () => {
+      let r = await readVideo(url, null, caller.userId);
+      for (let i = 0; "status" in r && r.status === "pending" && i < 60; i++) {
+        await new Promise((ok) => setTimeout(ok, 3000));
+        r = await readVideo(url, r.jobId, caller.userId);
+      }
+      if (!("status" in r) || r.status !== "done") { console.error("background transcript", JSON.stringify(r).slice(0, 300)); return; }
+      const comment = String(row.content ?? "").replace(url, "").replace(/\n*Source: .*$/s, "").trim();
+      await caller.client.from("archive_blocks").update({ title: r.note.title, content: noteContent(r.note, comment), source_url: url }).eq("id", blockId);
+    })();
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
+    else await work;
+    return jsonResponse({ status: "started" });
+  }
+
+  const r = await readVideo(url, jobId, caller.userId);
+  if ("error" in r) return jsonResponse({ error: r.error, code: r.code }, r.httpStatus);
+  return jsonResponse(r);
 });

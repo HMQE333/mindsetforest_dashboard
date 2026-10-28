@@ -24,8 +24,11 @@ interface SessionApi {
     fun dueReminders(until: Long, accessToken: String): List<Reminder>
 }
 
-/** Captures that went out (their ids, for search indexing) and the ones still waiting. */
-data class CaptureResult(val savedIds: List<String>, val remaining: List<PendingCapture>)
+/**
+ * Captures that went out (their ids, for search indexing) and the ones still
+ * waiting; `videos`: saved notes that are a reel's link (id -> link), for their transcript.
+ */
+data class CaptureResult(val savedIds: List<String>, val remaining: List<PendingCapture>, val videos: Map<String, String> = emptyMap())
 
 /** What a sync reads and writes between runs (Store; a fake in tests). */
 interface SyncState {
@@ -91,6 +94,7 @@ class SyncCore(
      */
     fun sendCaptures(queue: List<PendingCapture>): CaptureResult {
         val saved = ArrayList<String>()
+        val videos = LinkedHashMap<String, String>()
         if (queue.isEmpty()) return CaptureResult(saved, queue)
         var token = accessToken()
         for ((i, c) in queue.withIndex()) {
@@ -103,14 +107,17 @@ class SyncCore(
                     token = accessToken(force = true)
                     api.insertArchive(json, token)
                 }
-                if (id != null) saved += id
+                if (id != null) {
+                    saved += id
+                    socialVideoUrl(c.text)?.let { videos[id] = it }
+                }
             } catch (e: HttpError) {
-                if (e.code >= 500 || e.code == 429 || e.code == 401 || e.code == 403) return CaptureResult(saved, queue.drop(i))
+                if (e.code >= 500 || e.code == 429 || e.code == 401 || e.code == 403) return CaptureResult(saved, queue.drop(i), videos)
             } catch (e: IOException) {
-                return CaptureResult(saved, queue.drop(i))
+                return CaptureResult(saved, queue.drop(i), videos)
             }
         }
-        return CaptureResult(saved, emptyList())
+        return CaptureResult(saved, emptyList(), videos)
     }
 
     /** Reminders due from now until the alarm horizon (and any overdue). */
