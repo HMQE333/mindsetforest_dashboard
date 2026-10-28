@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Paperclip, Dice5, Plus, X } from "lucide-react";
+import { Paperclip, Dice5, Plus, X, PencilLine, Trash2, Lock, Repeat, Clock, Star, CalendarDays } from "lucide-react";
 import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
 import { useUserProjects } from "@/hooks/useUserProjects";
 
@@ -145,7 +145,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] flex items-stretch sm:items-center justify-center p-0 sm:p-4"
       style={{
         background: "radial-gradient(circle at top, rgba(129,140,248,0.18), transparent 55%), radial-gradient(circle at bottom, rgba(236,72,153,0.18), transparent 55%), rgba(3,7,18,0.92)",
         backdropFilter: "blur(10px)",
@@ -157,31 +157,28 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.95, y: 8 }}
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-[960px] max-h-[86vh] flex flex-col gap-4 p-5 rounded-3xl border border-white/15"
+        className="w-full max-w-[960px] h-[100dvh] sm:h-auto sm:max-h-[86vh] flex flex-col gap-3 sm:gap-4 p-3 sm:p-5 rounded-none sm:rounded-3xl border-0 sm:border border-white/15"
         style={{
           background: "radial-gradient(circle at top left, rgba(129,140,248,0.16), transparent 55%), radial-gradient(circle at bottom right, rgba(236,72,153,0.16), transparent 55%), #020617",
           boxShadow: "0 32px 80px rgba(15,23,42,0.95)",
         }}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 pb-1 border-b border-white/15">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xl"
-              style={{ background: "radial-gradient(circle at 30% 30%, #fef3c7, #f97316)" }}>
-              ✏️
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-foreground">Edit Tasks. {displayName}</h2>
-              <p className="text-xs text-foreground/60">Add, rename, remove or randomize missions. Changes are saved to your account.</p>
-            </div>
+        <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+          <div className="shrink-0 w-9 h-9 rounded-xl border border-white/20 bg-white/[0.07] flex items-center justify-center">
+            <PencilLine className="h-4 w-4 text-foreground/80" />
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 text-foreground/80 hover:bg-primary/30 transition-colors flex items-center justify-center">
-            ✕
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base sm:text-lg font-bold text-foreground truncate">Edit tasks <span className="text-foreground/40 font-medium">· {displayName}</span></h2>
+            <p className="hidden sm:block text-xs text-foreground/55">Add, rename, remove or randomize missions. Saved to your account.</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="shrink-0 w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-foreground/70 hover:bg-white/10 hover:text-foreground transition-colors flex items-center justify-center">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Mission List */}
-        <div className="flex-1 overflow-y-auto space-y-3 py-2 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-2.5 sm:space-y-3 py-1 pr-0.5 sm:pr-1 overscroll-contain">
           {buffer.length === 0 && (
             <p className="text-sm text-foreground/50 text-center py-5">No missions yet. Click "Add task" below.</p>
           )}
@@ -189,16 +186,25 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
             const hasVariants = !!(mission.variants && mission.variants.length > 0);
             const totalWeight = hasVariants ? mission.variants!.reduce((s, v) => s + (Number(v.weight) || 0), 0) : 0;
             return (
-              <div key={index} className="rounded-2xl border border-primary/40 p-3"
-                style={{ background: "radial-gradient(circle at top, rgba(129,140,248,0.18), transparent 60%), rgba(15,23,42,0.95)" }}>
-                <div className="grid grid-cols-[2.3fr_1.2fr] gap-3">
-                  <div className="flex flex-col gap-1">
+              <div key={index} className="rounded-2xl border border-white/10 hover:border-white/20 focus-within:border-primary/50 bg-white/[0.03] p-3 transition-colors">
+                <div className="grid grid-cols-1 sm:grid-cols-[2.3fr_1.2fr] gap-2.5 sm:gap-3">
+                  <div className="flex flex-col gap-1.5 min-w-0">
+                    <div className="flex items-center gap-2">
                     <input
-                      className="w-full rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm outline-none focus:border-primary/90 focus:ring-1 focus:ring-primary/70 disabled:opacity-50"
+                      className="flex-1 min-w-0 w-full rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm font-medium outline-none focus:border-primary/90 focus:ring-1 focus:ring-primary/70 disabled:opacity-50"
                       placeholder="Task title (slot label)"
                       value={mission.title}
                       onChange={e => updateField(index, "title", e.target.value)}
                     />
+                      <button
+                        onClick={() => deleteRow(index)}
+                        aria-label="Delete task"
+                        title="Delete task"
+                        className="shrink-0 w-9 h-9 rounded-full border border-white/15 bg-white/5 flex items-center justify-center text-foreground/60 hover:bg-destructive/25 hover:border-destructive/50 hover:text-destructive-foreground transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                     <textarea
                       className="w-full rounded-xl border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm outline-none focus:border-primary/90 resize-none min-h-[48px] disabled:opacity-50"
                       placeholder="Description"
@@ -219,51 +225,55 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                     )}
                   </div>
                   <div className="flex flex-col gap-2">
-                    <div className="grid grid-cols-[1.3fr_0.8fr_auto] gap-2 items-center">
-                      <input
-                        className="w-full rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm outline-none disabled:opacity-50"
-                        placeholder="Duration"
-                        value={mission.duration}
-                        onChange={e => updateField(index, "duration", e.target.value)}
-                        disabled={hasVariants}
-                      />
-                      <input
-                        type="number"
-                        className="w-full max-w-[80px] rounded-full border border-white/20 bg-background/80 text-foreground px-3 py-2 text-sm text-center outline-none disabled:opacity-50"
-                        value={mission.xp}
-                        min={1}
-                        max={500}
-                        onChange={e => updateField(index, "xp", Number(e.target.value) || 0)}
-                        disabled={hasVariants}
-                      />
-                      <button
-                        onClick={() => deleteRow(index)}
-                        className="px-2 py-1.5 rounded-full border border-destructive/80 bg-destructive/20 text-destructive-foreground text-sm hover:bg-destructive/40 transition-colors"
-                      >
-                        🗑
-                      </button>
+                    <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                      <label className="flex items-center gap-1.5 rounded-full border border-white/20 bg-background/80 px-3 focus-within:border-primary/90">
+                        <Clock className="h-3.5 w-3.5 shrink-0 text-foreground/45" />
+                        <input
+                          className="w-full min-w-0 bg-transparent text-foreground py-2 text-sm outline-none disabled:opacity-50"
+                          placeholder="Duration"
+                          value={mission.duration}
+                          onChange={e => updateField(index, "duration", e.target.value)}
+                          disabled={hasVariants}
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 rounded-full border border-white/20 bg-background/80 pl-2.5 pr-3 focus-within:border-primary/90" title="XP">
+                        <Star className="h-3.5 w-3.5 shrink-0 text-amber-300/80" />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          className="w-12 bg-transparent text-foreground py-2 text-sm text-center outline-none disabled:opacity-50"
+                          value={mission.xp}
+                          min={1}
+                          max={500}
+                          onChange={e => updateField(index, "xp", Number(e.target.value) || 0)}
+                          disabled={hasVariants}
+                        />
+                        <span className="text-[10px] font-semibold text-foreground/45">XP</span>
+                      </label>
                     </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-1 gap-2">
                     <button
                       onClick={() => togglePersistent(index)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                      className={`min-w-0 flex items-center justify-center sm:justify-start gap-2 px-3 py-2 sm:py-1.5 rounded-full text-xs font-medium transition-all border ${
                         mission.persistent
                           ? "border-primary/60 bg-primary/20 text-primary"
                           : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
                       }`}
                     >
-                      {mission.persistent ? "🔒 Stays after reset" : "🔄 Resets daily"}
+                      {mission.persistent ? <><Lock className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Stays after reset</span></> : <><Repeat className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Resets daily</span></>}
                     </button>
                     <button
                       onClick={() => toggleVariants(index)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                      className={`min-w-0 flex items-center justify-center sm:justify-start gap-2 px-3 py-2 sm:py-1.5 rounded-full text-xs font-medium transition-all border ${
                         hasVariants
                           ? "border-primary/60 bg-primary/20 text-primary"
                           : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
                       }`}
                     >
                       <Dice5 className="h-3.5 w-3.5" />
-                      {hasVariants ? `Variants on (${mission.variants!.length})` : "Enable random variants"}
+                      <span className="truncate">{hasVariants ? `Variants on (${mission.variants!.length})` : "Random variants"}</span>
                     </button>
+                    </div>
                   </div>
                 </div>
 
@@ -322,7 +332,7 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                             value={v.description}
                             onChange={e => updateVariant(index, vIdx, "description", e.target.value)}
                           />
-                          <div className="grid grid-cols-[1fr_80px_1fr] gap-1.5">
+                          <div className="grid grid-cols-2 sm:grid-cols-[1fr_80px_1fr] gap-1.5">
                             <input
                               className="w-full rounded-full border border-white/15 bg-background/80 text-foreground px-2 py-1 text-xs outline-none"
                               placeholder="Duration"
@@ -355,19 +365,19 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 pt-2 border-t border-primary/30">
-          <button onClick={addRow} className="px-4 py-2 rounded-full border border-white/20 bg-background/80 text-foreground text-sm hover:bg-primary/20 transition-colors">
-            ＋ Add task
+        <div className="flex items-center gap-2 sm:gap-3 pt-3 border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
+          <button onClick={addRow} className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-full border border-white/20 bg-background/80 text-foreground text-sm hover:bg-primary/20 transition-colors">
+            <Plus className="h-4 w-4" /> <span className="hidden min-[360px]:inline">Add task</span>
           </button>
           <div className="flex-1" />
-          <button onClick={onClose} className="px-4 py-2 rounded-full border border-white/20 bg-background/80 text-foreground text-sm hover:bg-primary/20 transition-colors">
+          <button onClick={onClose} className="hidden min-[400px]:block px-4 py-2 rounded-full border border-white/20 bg-background/80 text-foreground text-sm hover:bg-primary/20 transition-colors">
             Cancel
           </button>
           <button
             onClick={handleSave}
             className="px-4 py-2 rounded-full border border-primary gradient-purple text-primary-foreground text-sm font-bold glow-sm hover:-translate-y-0.5 transition-all"
           >
-            Save changes
+            Save<span className="hidden min-[360px]:inline"> changes</span>
           </button>
         </div>
       </motion.div>
@@ -403,8 +413,8 @@ function DayPicker({ days, onToggle, onSetAll, onWeekdays, onWeekends }: DayPick
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-foreground/50 font-semibold mr-1">Days:</span>
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+          <span className="hidden min-[360px]:inline text-[10px] uppercase tracking-wider text-foreground/50 font-semibold mr-1">Days</span>
           {DAY_LABELS.map((lbl, d) => {
             const on = active.includes(d);
             return (
@@ -412,7 +422,7 @@ function DayPicker({ days, onToggle, onSetAll, onWeekdays, onWeekends }: DayPick
                 key={d}
                 onClick={() => onToggle(d)}
                 title={DAY_FULL[d]}
-                className={`w-7 h-7 rounded-full text-[11px] font-bold transition-all border ${
+                className={`w-8 h-8 sm:w-7 sm:h-7 rounded-full text-[11px] font-bold transition-all border ${
                   on
                     ? "border-primary/60 bg-primary/25 text-primary"
                     : "border-white/15 bg-white/5 text-muted-foreground hover:border-white/25"
@@ -423,7 +433,7 @@ function DayPicker({ days, onToggle, onSetAll, onWeekdays, onWeekends }: DayPick
             );
           })}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             onClick={onSetAll}
             className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all border ${
@@ -450,7 +460,7 @@ function DayPicker({ days, onToggle, onSetAll, onWeekdays, onWeekends }: DayPick
           </button>
         </div>
       </div>
-      <p className="text-[10px] text-foreground/50 mt-1.5">📅 {label}</p>
+      {!isAll && !isWeekdays && !isWeekends && <p className="text-[10px] text-foreground/50 mt-1.5 flex items-center gap-1"><CalendarDays className="h-3 w-3" /> {label}</p>}
     </div>
   );
 }
