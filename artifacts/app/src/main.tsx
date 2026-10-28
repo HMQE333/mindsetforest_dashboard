@@ -3,6 +3,10 @@ import App from "./App.tsx";
 import "./index.css";
 import { whenIdle } from "@/lib/lazy-module";
 import { addEmojiStylesheet, emojiFontCached, loadEmojiFont } from "@/lib/emoji-font";
+import { takeSharedIntoInbox } from "@/lib/share-target";
+
+// Something shared to the app from a phone goes into the Archive Inbox first.
+takeSharedIntoInbox();
 
 // Fluent emoji (see lib/emoji-font.ts). A browser that has loaded them before
 // has the files cached: the stylesheet goes in now. On a first visit they load

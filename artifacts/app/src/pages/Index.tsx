@@ -26,6 +26,8 @@ import { useAssistant, useAssistantCurrentScope } from "@/hooks/useAssistant";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { matchesHotkey } from "@/lib/hotkeys";
 import type { ScopeId } from "@/lib/assistant-context";
+import { sharedOpenArchive } from "@/lib/share-target";
+import { setRemembered } from "@/components/archive/remembered";
 
 type Tab = "dashboard" | "tracker" | "paths" | "oracle" | "archive" | "library" | "cooking" | "finance" | "breathing" | "calendar" | "planning" | "health";
 
@@ -167,7 +169,12 @@ const Index = () => {
   const { needsOnboarding, loading: onboardingLoading, failed: onboardingFailed, retry: retryOnboarding, completeOnboarding } = useOnboarding();
   const quickCapture = useQuickCapture();
   const { preferences, savePreferences } = useUserSettings();
-  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  // Opened by "Share → MindsetForest": the Archive, on its Inbox (lib/share-target.ts).
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    if (!sharedOpenArchive()) return "dashboard";
+    setRemembered("archive.subView", "inbox");
+    return "archive";
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);

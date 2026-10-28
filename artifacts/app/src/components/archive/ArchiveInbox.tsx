@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Upload, X, Sparkles, MessageSquare, Hash, Save, Loader2, Copy } from "lucide-react";
+import { Upload, X, Sparkles, MessageSquare, Hash, Save, Loader2, Copy, Clapperboard } from "lucide-react";
 import {
   ArchiveSaveError,
   agoText,
@@ -17,6 +17,8 @@ import {
 import { isTypeTag, mergeTags, normaliseTag, parseInlineTags } from "@/lib/archive-tags";
 import { AI_ACTIONS, aiTooLong } from "@/lib/archive-ai";
 import { invokeFunction } from "@/lib/function-error";
+import { socialNoteContent, socialVideoUrl } from "@/lib/social-video";
+import { fetchSocialNote } from "@/lib/social-video-fetch";
 import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
 import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
 import { useHotkeys } from "@/hooks/useHotkeys";
@@ -51,7 +53,7 @@ const DRAFT_KEY = "archive-inbox-draft";
 /** "one" or "many": the last answer to "1 note or N notes?". */
 const SPLIT_KEY = "archive-inbox-split";
 
-type BusyAction = "clean" | "prompt" | "tag" | "save" | null;
+type BusyAction = "clean" | "prompt" | "tag" | "save" | "video" | null;
 
 /** The decision Save is waiting for, shown under the box. */
 type Pending =
@@ -97,6 +99,7 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
   const processing = busy !== null;
   const items = useMemo(() => splitInboxItems(text), [text]);
   const hasText = text.trim().length > 0;
+  const videoUrl = useMemo(() => socialVideoUrl(text), [text]);
 
   const updateText = useCallback((val: string) => {
     setText(val);
@@ -177,6 +180,27 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
     if (files.length === 0) return;
     for (const file of files) { const url = await uploadImage(file); if (url) insertImageUrl(url); }
   }, [uploadImage, insertImageUrl]);
+
+  // ---- Video -> note ----
+
+  /** A reel's link (and his words around it) becomes a note: key points, transcript, cover. */
+  const handleVideo = async () => {
+    if (!videoUrl || busy) return;
+    setBusy("video");
+    const id = toast.loading("Transcribing the video…");
+    try {
+      const n = await fetchSocialNote(videoUrl);
+      const comment = text.replace(videoUrl, "").trim();
+      const content = socialNoteContent(n, comment);
+      await addBlocks([{ title: n.title, content, source_url: n.url, pillars: [], directions: [], tags: mergeTags([], parseInlineTags(comment)) }]);
+      toast.success(n.transcript ? "Saved with transcript" : "Saved (the video has no speech)", { id, description: n.title });
+      clearDraft();
+    } catch (e) {
+      toast.error("Couldn't transcribe the video", { id, description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   // ---- Save ----
 
@@ -466,6 +490,17 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
             {busy === "prompt" ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
             Prompt
           </button>
+          {videoUrl && (
+            <button
+              onClick={() => void handleVideo()}
+              disabled={processing}
+              title="Save the video as a note with its key points and full transcript (Instagram, TikTok, X, Facebook, YouTube Shorts)"
+              className={`${actionBtn} text-foreground border-primary/40 bg-primary/10 hover:bg-primary/20`}
+            >
+              {busy === "video" ? <Loader2 size={13} className="animate-spin" /> : <Clapperboard size={13} />}
+              Transcribe
+            </button>
+          )}
           <button
             onClick={handleSave}
             disabled={!hasText || processing}
