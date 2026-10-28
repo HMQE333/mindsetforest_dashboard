@@ -53,6 +53,10 @@ interface Props {
   onResync?: (seedId: string) => void;
   /** The mymind-style face: picture, video frame, quote or page instead of the text card. */
   mosaic?: boolean;
+  /** He marked this note's text "not sensitive": no lock, no blur. */
+  checkedSafe?: boolean;
+  /** "Not sensitive": the lock's button. */
+  onMarkSafe?: (block: ArchiveBlock) => void;
 }
 
 /**
@@ -89,12 +93,14 @@ const ArchiveBlockCard = ({
   updateAvailable,
   onResync,
   mosaic = false,
+  checkedSafe = false,
+  onMarkSafe,
 }: Props) => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   // The lightbox mounts the first time it opens, not with every card.
   const [overlays, setOverlays] = useState(false);
   const view = cardView(block);
-  const sensitive = noteSensitivity(block.id, block.content);
+  const sensitive = checkedSafe ? [] : noteSensitivity(block.id, block.content);
   const tags = noteTags(block);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -166,7 +172,7 @@ const ArchiveBlockCard = ({
             </button>
             {(sensitive.length > 0 || block.is_pinned) && (
               <span className="absolute left-10 top-2 z-[1] flex gap-1 text-[11px]">
-                {sensitive.length > 0 && <span className="px-1.5 py-0.5 rounded-md bg-amber-400/25 text-amber-100" title={`Looks like it holds: ${describeSensitive(sensitive)}`}>🔒</span>}
+                {sensitive.length > 0 && <LockBadge kinds={describeSensitive(sensitive)} onSafe={onMarkSafe ? () => onMarkSafe(block) : undefined} className="bg-amber-400/25 text-amber-100" />}
                 {block.is_pinned && <span className="px-1 py-0.5 rounded-md bg-black/40">📌</span>}
               </span>
             )}
@@ -207,12 +213,7 @@ const ArchiveBlockCard = ({
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary">{Math.round(similarityScore * 100)}%</span>
                 )}
                 {sensitive.length > 0 && (
-                  <span
-                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-400/15 text-amber-200 border border-amber-400/30"
-                    title={`Looks like it holds: ${describeSensitive(sensitive)}. A password manager (e.g. Bitwarden) is a safer place.`}
-                  >
-                    🔒
-                  </span>
+                  <LockBadge kinds={describeSensitive(sensitive)} onSafe={onMarkSafe ? () => onMarkSafe(block) : undefined} className="text-[10px] font-semibold bg-amber-400/15 text-amber-200 border border-amber-400/30" />
                 )}
                 {block.is_pinned && <span className="text-xs" title="Pinned to the top" aria-label="Pinned">📌</span>}
                 {block.is_starred && <span className="text-xs text-amber-400" title="Bookmarked" aria-label="Bookmarked">★</span>}
@@ -315,5 +316,26 @@ const ArchiveBlockCard = ({
     </>
   );
 };
+
+/**
+ * The lock on a note that looks like it holds a password. Pressing it marks
+ * the note "not sensitive" (a false positive): the lock and blur go.
+ */
+function LockBadge({ kinds, onSafe, className }: { kinds: string; onSafe?: () => void; className: string }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      disabled={!onSafe}
+      onClick={(e) => { e.stopPropagation(); onSafe?.(); }}
+      title={`Looks like it holds: ${kinds}. A password manager (e.g. Bitwarden) is a safer place.${onSafe ? " Click if it holds nothing sensitive." : ""}`}
+      aria-label="Looks sensitive. Mark as not sensitive"
+      className={`group/lock inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md transition-colors enabled:hover:bg-emerald-500/25 enabled:hover:text-emerald-100 ${className}`}
+    >
+      <span className="group-hover/lock:hidden">🔒</span>
+      {onSafe && <span className="hidden group-hover/lock:inline text-[10px] font-semibold whitespace-nowrap">✓ Not sensitive</span>}
+    </button>
+  );
+}
 
 export default memo(ArchiveBlockCard);

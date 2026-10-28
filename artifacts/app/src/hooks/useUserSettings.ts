@@ -70,6 +70,8 @@ export interface UserPreferences {
   trackerXp?: TrackerXpConfig;
   /** Archive → Library shows its tags as a folder tree. Off unless true. */
   archiveFolders?: boolean;
+  /** Archive notes he marked "not sensitive" (false positives of the password check): id -> fingerprint of the text he checked. */
+  archiveNotSensitive?: Record<string, string>;
 }
 
 const DEFAULT_MODULES = ["dashboard", "tracker", "paths", "oracle", "archive", "projects", "library", "monthly-focus", "finance", "breathing", "health"];
@@ -467,6 +469,22 @@ export function useUserSettings() {
     }
   }, [user, loading, preferences, customCategories, persistOnboarding, setPreferences]);
 
+  /** Mark a note's flagged text as checked and harmless (fp set) or flag it again (fp null). */
+  const saveNotSensitive = useCallback(async (id: string, fp: string | null) => {
+    if (!user || loading) return;
+    const prev = preferences;
+    const map = { ...(preferences.archiveNotSensitive ?? {}) };
+    if (fp) map[id] = fp;
+    else delete map[id];
+    const next = { ...preferences, archiveNotSensitive: map };
+    setPreferences(next);
+    const { error } = await persistOnboarding(customCategories, next);
+    if (error) {
+      if (store.state.preferences === next) setPreferences(prev);
+      toast.error("Couldn't save that");
+    }
+  }, [user, loading, preferences, customCategories, persistOnboarding, setPreferences]);
+
   const saveEnabledModules = useCallback(async (modules: string[], order?: string[]) => {
     const newPrefs = { ...preferences, enabledModules: modules };
     if (order) newPrefs.moduleOrder = order;
@@ -515,6 +533,7 @@ export function useUserSettings() {
     saveKeybinds,
     savePreferences,
     saveArchiveFolders,
+    saveNotSensitive,
     resetMetricsToDefaults,
     resetRewardsToDefaults,
   };

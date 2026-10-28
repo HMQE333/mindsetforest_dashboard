@@ -83,3 +83,14 @@ export function noteSensitivity(id: string, content: string | null | undefined):
   cache.set(id, { content: c, kinds });
   return kinds;
 }
+
+/**
+ * A short fingerprint of a note's text. "Not sensitive" is kept with it, so
+ * a note edited afterwards (a real password added) is checked again.
+ */
+export function textFingerprint(text: string | null | undefined): string {
+  const t = String(text ?? "");
+  let h = 5381;
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return `${t.length.toString(36)}.${(h >>> 0).toString(36)}`;
+}

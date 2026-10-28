@@ -39,7 +39,7 @@ import { NOTE_DRAG_TYPE, addToFolder, folderLabel, moveToFolder, removeFromFolde
 import { applyWithUndo, useSavedFolders } from "./folder-store";
 import { TYPE_CHIP, TYPE_ICONS, keyedPillars, tagText } from "./TagChips";
 import { usePillarToggle } from "./pillar-toggle";
-import { noteSensitivity } from "@/lib/sensitive-scan";
+import { noteSensitivity, textFingerprint } from "@/lib/sensitive-scan";
 import DateFilterRow from "@/components/shared/DateFilterRow";
 import { ALL_DATES, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
 import { noteToItems, toBitwardenCsv } from "@/lib/bitwarden-export";
@@ -221,7 +221,7 @@ function PeekShell({ phone }: { phone: boolean }) {
 const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, onTrashRestored, addBlocks, selectedIds, toggleSelect, setSelection: setSelectionProp, semanticSearch, searchArchive, embedAll, onPlant, onAIAction, onOpen }: Props) => {
   const pillars = usePillars();
   const pillarById = useMemo(() => new Map(pillars.map((p) => [p.id, p])), [pillars]);
-  const { preferences, saveArchiveFolders, loading: settingsLoading } = useUserSettings();
+  const { preferences, saveArchiveFolders, saveNotSensitive, loading: settingsLoading } = useUserSettings();
   const foldersOn = !!preferences.archiveFolders;
   const phone = useIsMobile();
   // Notes deleted with their Undo still showing are out of every list here.
@@ -325,7 +325,23 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   // Which notes match, in order: the regex and lower-casing work behind it is
   // done once per note (archive-index), not per note per key.
   // Notes that look like they hold passwords or keys (read on this device, fixed patterns).
-  const sensitiveIds = useMemo(() => new Set(blocks.filter((b) => noteSensitivity(b.id, b.content).length > 0).map((b) => b.id)), [blocks]);
+  // Notes he checked and marked "not sensitive" stay unflagged while their text is unchanged.
+  const notSensitive = preferences.archiveNotSensitive;
+  const checkedSafe = useCallback((b: ArchiveBlock) => !!notSensitive && notSensitive[b.id] === textFingerprint(b.content), [notSensitive]);
+  const sensitiveIds = useMemo(
+    () => new Set(blocks.filter((b) => !checkedSafe(b) && noteSensitivity(b.id, b.content).length > 0).map((b) => b.id)),
+    [blocks, checkedSafe],
+  );
+  const markSafe = useCallback(
+    (b: ArchiveBlock) => {
+      void saveNotSensitive(b.id, textFingerprint(b.content));
+      toast("Marked as not sensitive", {
+        description: "The lock is gone for this note. If you edit it, it is checked again.",
+        action: { label: "Undo", onClick: () => void saveNotSensitive(b.id, null) },
+      });
+    },
+    [saveNotSensitive],
+  );
   const [sensitiveOnly, setSensitiveOnly] = useState(false);
   // "Hide" lasts on this device until the count grows.
   const [sensitiveDismissed, setDismissedState] = useState<number>(() => {
@@ -1155,6 +1171,8 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
                   updateAvailable={!!block.from_seed_id && !!availableUpdates[block.from_seed_id]}
                   onResync={resyncSeed}
                   mosaic={mosaic}
+                  checkedSafe={checkedSafe(block)}
+                  onMarkSafe={markSafe}
                 />
               ))}
             </div>
