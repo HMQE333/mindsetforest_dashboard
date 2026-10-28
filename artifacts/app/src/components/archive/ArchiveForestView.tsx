@@ -12,9 +12,10 @@ import ForestCollectionsView from "./ForestCollectionsView";
 import ForestDailyStack from "./ForestDailyStack";
 import BlockedAuthorsList from "./BlockedAuthorsList";
 import RecentAppreciationStrip from "./RecentAppreciationStrip";
-import { Sprout, Droplet, BookmarkPlus, Eye, Trophy, Leaf } from "lucide-react";
+import { Sprout, Droplet, BookmarkPlus, Eye, Trophy, Leaf, FolderTree } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRemembered } from "./remembered";
+import { folderNoteCounts, inFolder, isTypeTag, normaliseTag, tagPaths } from "@/lib/archive-tags";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
 type SubTab = "daily" | "discover" | "collections" | "mine";
@@ -111,8 +112,7 @@ const ArchiveForestView = () => {
     let l = list;
     if (filterPillar) l = l.filter((s) => s.pillars.includes(filterPillar));
     if (filterTag.trim()) {
-      const q = filterTag.trim().toLowerCase().replace(/^#/, "");
-      l = l.filter((s) => s.tags.some((t) => t.toLowerCase().includes(q)));
+      l = l.filter((s) => inForestFolder(s.tags, filterTag));
     }
     if (hideSaved) l = l.filter((s) => !s.iSaved);
     if (sort === "friends") l = l.filter((s) => friendIds.has(s.author_id));
@@ -150,8 +150,7 @@ const ArchiveForestView = () => {
     }
     if (filterPillar) list = list.filter((s) => s.pillars.includes(filterPillar));
     if (filterTag.trim()) {
-      const q = filterTag.trim().toLowerCase().replace(/^#/, "");
-      list = list.filter((s) => s.tags.some((t) => t.toLowerCase().includes(q)));
+      list = list.filter((s) => inForestFolder(s.tags, filterTag));
     }
     return [...list].sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
   }, [forest.mySeeds, search, filterPillar, filterTag]);
@@ -470,9 +469,11 @@ const ArchiveForestView = () => {
         </div>
 
         <div className="flex flex-wrap gap-1.5 items-center">
-          <Input value={filterTag} onChange={(e) => setFilterTag(e.target.value)}
-            placeholder="#tag…"
-            className="bg-background/50 border-white/10 h-7 text-[11px] w-24" />
+          <ForestFolders
+            seeds={tab === "discover" ? forest.discoverSeeds : forest.mySeeds}
+            value={filterTag}
+            onChange={setFilterTag}
+          />
           {(filterPillar || filterTag || hideSaved) && (
             <button onClick={() => { setFilterPillar(null); setFilterTag(""); setHideSaved(false); }}
               className="text-[11px] text-muted-foreground hover:text-foreground underline">
@@ -549,3 +550,51 @@ const ArchiveForestView = () => {
 };
 
 export default ArchiveForestView;
+
+/** The seed sits in the folder (a tag path, "projekty/rybiapaka"), or below it. Type tags are not folders. */
+function inForestFolder(tags: readonly string[], folder: string): boolean {
+  const f = normaliseTag(folder);
+  return !!f && tags.some((t) => inFolder(normaliseTag(t), f));
+}
+
+/**
+ * Tags as folders, like the Archive: the top-level folders with their seed
+ * counts; picking one shows a path back up and its sub-folders.
+ */
+function ForestFolders({ seeds, value, onChange }: { seeds: readonly SeedWithAuthor[]; value: string; onChange: (v: string) => void }) {
+  const current = normaliseTag(value);
+  const counts = useMemo(
+    () => folderNoteCounts(seeds.map((s) => s.tags.map(normaliseTag).filter((t) => t && !isTypeTag(t)))),
+    [seeds],
+  );
+  const children = useMemo(() => {
+    const depth = current ? current.split("/").length + 1 : 1;
+    return [...counts.entries()]
+      .filter(([p]) => p.split("/").length === depth && (!current || p.startsWith(`${current}/`)))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "pl"))
+      .slice(0, 24);
+  }, [counts, current]);
+  if (!current && children.length === 0) return null;
+  const crumbs = current ? tagPaths(current) : [];
+  const chip = "text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 max-w-[14rem]";
+  return (
+    <>
+      <span className="flex items-center gap-1 text-[11px] text-muted-foreground mr-0.5"><FolderTree className="h-3.5 w-3.5" /></span>
+      {current && (
+        <button onClick={() => onChange("")} className={`${chip} bg-muted/40 text-muted-foreground hover:text-foreground`}>All</button>
+      )}
+      {crumbs.map((p) => (
+        <button key={p} onClick={() => onChange(p)} className={`${chip} ${p === current ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-foreground/80 hover:text-foreground"}`}>
+          <span className="truncate">#{p.split("/").pop()}</span>
+          {p !== current && <span className="opacity-50">›</span>}
+        </button>
+      ))}
+      {children.map(([p, n]) => (
+        <button key={p} onClick={() => onChange(p)} className={`${chip} bg-muted/40 text-muted-foreground hover:text-foreground`} title={`#${p}`}>
+          <span className="truncate">#{p.split("/").pop()}</span>
+          <span className="opacity-60 text-[10px]">{n}</span>
+        </button>
+      ))}
+    </>
+  );
+}
