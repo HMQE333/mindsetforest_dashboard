@@ -42,6 +42,7 @@ import { usePillarToggle } from "./pillar-toggle";
 import { noteSensitivity } from "@/lib/sensitive-scan";
 import DateFilterRow from "@/components/shared/DateFilterRow";
 import { ALL_DATES, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
+import { noteToItems, toBitwardenCsv } from "@/lib/bitwarden-export";
 
 // The peek and the tag queue render notes with the reader's Markdown renderer: code-split, fetched on idle.
 const ArchivePeek = lazyModule(() => import("./ArchivePeek"));
@@ -335,6 +336,27 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     if (smartSearch && semanticResults !== null) return filterRanked(semanticResults, blocks, { pillar: filterPillar, hideLinks, folder, type: typeFilter }, pending);
     return filterLibrary(blocks, { search: query, includeTags, pillar: filterPillar, hideLinks, sort: sortMode, folder, type: typeFilter });
   }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending]);
+  /**
+   * The flagged notes as a Bitwarden CSV, downloaded on this device. Nothing
+   * is deleted: the list of those notes opens so he can check and remove them himself.
+   */
+  const exportForBitwarden = () => {
+    const notes = blocks.filter((b) => sensitiveIds.has(b.id));
+    const items = notes.flatMap((b) => noteToItems(cardView(b).title, b.content ?? ""));
+    const blob = new Blob([toBitwardenCsv(items)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bitwarden-import-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSensitiveOnly(true);
+    const logins = items.filter((i) => i.type === "login").length;
+    toast.success(`${logins} login${logins === 1 ? "" : "s"} and ${items.length - logins} secure note${items.length - logins === 1 ? "" : "s"} from ${notes.length} note${notes.length === 1 ? "" : "s"}`, {
+      description: "In Bitwarden: Tools > Import data > Bitwarden (csv). The file holds plain passwords: delete it after importing. The notes it came from are listed below.",
+      duration: 12_000,
+    });
+  };
   const [dateFilter, setDateFilter] = useRemembered<DateFilter>("library.date", ALL_DATES);
   const filtered = useMemo(() => {
     const dated = filterByDate(filteredAll, dateFilter, (b) => b.created_at);
@@ -970,6 +992,13 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           <span className="text-amber-200 font-semibold">🔒 {sensitiveIds.size} note{sensitiveIds.size === 1 ? "" : "s"} look{sensitiveIds.size === 1 ? "s" : ""} like {sensitiveIds.size === 1 ? "it holds" : "they hold"} passwords, keys or card numbers.</span>
           <span className="text-muted-foreground">Safer in a password manager (e.g. Bitwarden): copy them there, then delete them here.</span>
           <span className="flex-1" />
+          <button
+            onClick={exportForBitwarden}
+            className="px-2.5 py-1 rounded-full font-semibold bg-amber-400/15 text-amber-200 hover:bg-amber-400/25 transition-all"
+            title="Download a CSV for Bitwarden (Tools > Import data > Bitwarden (csv)). Notes are not deleted."
+          >
+            ⬇ Export for Bitwarden
+          </button>
           <button
             onClick={() => setSensitiveOnly((v) => !v)}
             className={`px-2.5 py-1 rounded-full font-semibold transition-all ${sensitiveOnly ? "bg-amber-400/80 text-black" : "bg-amber-400/15 text-amber-200 hover:bg-amber-400/25"}`}
