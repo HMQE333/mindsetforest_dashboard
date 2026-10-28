@@ -8,7 +8,6 @@ import { usePillars } from "@/hooks/usePillars";
 import { shortTitle, type ArchiveBlock } from "@/lib/archive-data";
 import { AI_ACTIONS } from "@/lib/archive-ai";
 import { ArchiveAIMenu, useArchiveAI } from "./ArchiveAIProvider";
-import ArchiveConfirmDialog from "./ArchiveConfirmDialog";
 import FolderPicker from "./FolderPicker";
 import { sameList, undoOnto } from "./folder-ops";
 import { readNoteLists } from "./folder-store";
@@ -108,7 +107,6 @@ export default function ArchiveSelectionBar({
 }) {
   const ai = useArchiveAI();
   const pillars = usePillars();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [suggesting, setSuggesting] = useState<readonly ArchiveBlock[] | null>(null);
   const [pillarOpen, setPillarOpen] = useState(false);
   // Read when the folder menu opens: the folder the Library shows at that moment.
@@ -142,7 +140,6 @@ export default function ArchiveSelectionBar({
 
   const doDelete = () => {
     const ids = selected.map((b) => b.id);
-    setConfirmDelete(false);
     deleteWithUndo(ids, deleteBlock, { label: one ? shortTitle(selected[0].title, 48) : undefined });
     onClear();
   };
@@ -236,28 +233,13 @@ export default function ArchiveSelectionBar({
           🌱 Plant {n}
         </button>
         </div>
-        <button type="button" onClick={() => setConfirmDelete(true)} className={`${btn} ml-auto border-destructive/30 bg-destructive/20 text-destructive hover:bg-destructive/30 sm:ml-0`}>
+        <button type="button" onClick={doDelete} title="Move to Trash (kept 7 days)" className={`${btn} ml-auto border-destructive/30 bg-destructive/20 text-destructive hover:bg-destructive/30 sm:ml-0`}>
           <Trash2 className="h-3.5 w-3.5" aria-hidden /> Delete
         </button>
         <button type="button" onClick={onClear} className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground" title="Clear the selection (Esc)">
           <X className="h-3.5 w-3.5" aria-hidden /> Clear
         </button>
       </motion.div>
-
-      <ArchiveConfirmDialog
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
-        title={one ? "Delete this note?" : `Delete ${n} notes?`}
-        description={
-          one ? (
-            <>“{shortTitle(selected[0]?.title)}” will be deleted. You can undo it for a few seconds.</>
-          ) : (
-            <>The {n} selected notes will be deleted. You can undo it for a few seconds.</>
-          )
-        }
-        confirmLabel={one ? "Delete" : `Delete ${n}`}
-        onConfirm={doDelete}
-      />
 
       <Dialog open={suggesting !== null} onOpenChange={(o) => !o && setSuggesting(null)}>
         <DialogContent className="glass-card w-[calc(100vw-1rem)] max-w-2xl max-h-[85vh] overflow-hidden border-white/10" lang="en">

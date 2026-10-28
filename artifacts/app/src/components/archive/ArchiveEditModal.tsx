@@ -8,7 +8,6 @@ import { usePillars } from "@/hooks/usePillars";
 import PillarIcon from "@/components/shared/PillarIcon";
 import { shortTitle, tagsFromInput, type ArchiveBlock } from "@/lib/archive-data";
 import TagLibraryPopover from "@/components/shared/TagLibraryPopover";
-import ArchiveConfirmDialog from "./ArchiveConfirmDialog";
 import { deleteWithUndo } from "./pending-deletes";
 import { keyedPillars } from "./TagChips";
 
@@ -34,7 +33,6 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
   const [relatedOpen, setRelatedOpen] = useState(false);
   const [relatedBlocks, setRelatedBlocks] = useState<ArchiveBlock[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   // Numbered as in the peek: 1-8 are his life areas (Uncategorized has no key).
   const keyed = useMemo(() => keyedPillars(allPillars), [allPillars]);
 
@@ -73,10 +71,10 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
   }, [keyed]);
 
   useEffect(() => {
-    if (!open || !block || confirmDelete) return;
+    if (!open || !block) return;
     window.addEventListener("keydown", handlePillarKey);
     return () => window.removeEventListener("keydown", handlePillarKey);
-  }, [open, block, confirmDelete, handlePillarKey]);
+  }, [open, block, handlePillarKey]);
 
   if (!block) return null;
 
@@ -93,9 +91,8 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
     onClose();
   };
 
-  // Confirmed: the note hides at once and the Undo toast shows; the delete is sent when it ends.
+  // The note hides at once and the Undo toast shows; the delete is sent when it ends.
   const handleDelete = () => {
-    setConfirmDelete(false);
     deleteWithUndo([block.id], onDelete, { label: shortTitle(block.title, 48) });
     onClose();
   };
@@ -199,16 +196,9 @@ const ArchiveEditModal = ({ block, open, onClose, onSave, onDelete, semanticSear
           )}
 
           <div className="flex flex-wrap gap-2 sm:gap-3 pt-2">
-            <Button variant="destructive" className="font-bold" onClick={() => setConfirmDelete(true)}>
+            <Button variant="destructive" className="font-bold" onClick={handleDelete} title="Move to Trash (kept 7 days)">
               🗑️ Delete
             </Button>
-            <ArchiveConfirmDialog
-              open={confirmDelete}
-              onOpenChange={setConfirmDelete}
-              title="Delete this note?"
-              description={<>“{shortTitle(block.title)}” will be deleted. You can undo it for a few seconds.</>}
-              onConfirm={handleDelete}
-            />
             <div className="flex-1" />
             <Button onClick={onClose} variant="outline" className="border-white/10 font-bold">
               Cancel

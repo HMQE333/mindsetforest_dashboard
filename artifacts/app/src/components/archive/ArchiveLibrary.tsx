@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue, memo, Suspense, type DragEvent } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off, Download, Upload, FileText, FolderTree as FoldersIcon, Tags, CheckSquare, X, Loader2, LayoutDashboard } from "lucide-react";
+import { Link2Off, Download, Upload, FileText, FolderTree as FoldersIcon, Tags, CheckSquare, X, Loader2, LayoutDashboard, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError } from "@/lib/archive-data";
 import { usePillars, type Pillar } from "@/hooks/usePillars";
@@ -43,6 +43,7 @@ import { noteSensitivity } from "@/lib/sensitive-scan";
 import DateFilterRow from "@/components/shared/DateFilterRow";
 import { ALL_DATES, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
 import { noteToItems, toBitwardenCsv } from "@/lib/bitwarden-export";
+const ArchiveTrash = lazyModule(() => import("./ArchiveTrash"));
 
 // The peek and the tag queue render notes with the reader's Markdown renderer: code-split, fetched on idle.
 const ArchivePeek = lazyModule(() => import("./ArchivePeek"));
@@ -59,6 +60,8 @@ interface Props {
   loading: boolean;
   updateBlock: (id: string, u: Partial<ArchiveBlock>) => Promise<unknown>;
   deleteBlock: (id: string) => Promise<unknown>;
+  /** The list again, after notes came back from the Trash. */
+  onTrashRestored?: () => void;
   addBlocks: (blocks: Partial<ArchiveBlock>[]) => Promise<unknown>;
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
@@ -215,7 +218,7 @@ function PeekShell({ phone }: { phone: boolean }) {
   );
 }
 
-const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, addBlocks, selectedIds, toggleSelect, setSelection: setSelectionProp, semanticSearch, searchArchive, embedAll, onPlant, onAIAction, onOpen }: Props) => {
+const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, onTrashRestored, addBlocks, selectedIds, toggleSelect, setSelection: setSelectionProp, semanticSearch, searchArchive, embedAll, onPlant, onAIAction, onOpen }: Props) => {
   const pillars = usePillars();
   const pillarById = useMemo(() => new Map(pillars.map((p) => [p.id, p])), [pillars]);
   const { preferences, saveArchiveFolders, loading: settingsLoading } = useUserSettings();
@@ -357,6 +360,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
       duration: 12_000,
     });
   };
+  const [trashOpen, setTrashOpen] = useState(false);
   // List or mosaic, remembered on this device.
   const [mosaic, setMosaicState] = useState<boolean>(() => {
     try { return localStorage.getItem("mf.libraryMosaic") === "1"; } catch { return false; }
@@ -721,7 +725,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
         openFull(block);
       } else if (e.key === "Delete") {
         e.preventDefault();
-        arm(block.id, s.peekId ? "peek" : "card", true);
+        confirmDelete(block);
       } else if (k === "e" && !e.shiftKey) {
         e.preventDefault();
         setEditBlock(block);
@@ -965,6 +969,14 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           )}
           <span className="w-px h-4 bg-white/10" />
           <button
+            onClick={() => setTrashOpen(true)}
+            onPointerEnter={() => void ArchiveTrash.preload()}
+            className={toggleBtn(false)}
+            title="Deleted notes, kept 7 days"
+          >
+            <Trash2 size={12} /> Trash
+          </button>
+          <button
             onClick={() => setMosaic(!mosaic)}
             aria-pressed={mosaic}
             className={toggleBtn(mosaic)}
@@ -1151,6 +1163,12 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           <div ref={sentinelRef} className="h-1" />
         </div>
       </div>
+
+      {trashOpen && (
+        <Suspense fallback={null}>
+          <ArchiveTrash open={trashOpen} onOpenChange={setTrashOpen} onRestored={() => onTrashRestored?.()} />
+        </Suspense>
+      )}
 
       <input
         ref={fileInputRef}

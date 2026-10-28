@@ -116,6 +116,11 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
     },
   });
 
+  // The Trash keeps 7 days: older entries go when the Archive loads.
+  useEffect(() => {
+    if (userId && live) void supabase.rpc("purge_archive_trash" as any, { ids: null });
+  }, [userId, live]);
+
   useEffect(() => {
     if (query.error) {
       console.error("fetch archive error:", query.error);
@@ -302,12 +307,10 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
 
   /** Resolves whether the block was deleted (a failure is toasted here). */
   const deleteBlock = useCallback(async (id: string): Promise<boolean> => {
-    const { error } = await supabase
-      .from("archive_blocks" as any)
-      .delete()
-      .eq("id", id);
+    // To the Trash (archive_trash, 7 days), not gone: see migration 20261030120000.
+    const { error } = await supabase.rpc("trash_archive_blocks" as any, { ids: [id] });
     if (error) {
-      toast.error("Failed to delete block");
+      toast.error("Couldn't move the note to the Trash");
       return false;
     }
     await setBlocks((prev) => prev.filter((b) => b.id !== id));

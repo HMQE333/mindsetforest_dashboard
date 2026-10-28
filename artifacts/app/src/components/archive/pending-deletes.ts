@@ -118,7 +118,7 @@ export function deleteWithUndo(ids: readonly string[], del: DeleteOne, opts: { l
   hide(fresh);
   const label = opts.label?.trim();
   const short = label && label.length > 48 ? `${label.slice(0, 47)}…` : label;
-  const title = fresh.length === 1 ? (short ? `Deleted "${short}"` : "Note deleted") : `${fresh.length} notes deleted`;
+  const title = fresh.length === 1 ? (short ? `Moved to Trash: "${short}"` : "Moved to Trash") : `${fresh.length} notes moved to Trash`;
   batch.toastId = toast(title, {
     id: `archive-delete-${++n}`,
     duration: delay,

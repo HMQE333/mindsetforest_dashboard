@@ -279,6 +279,7 @@ const ArchiveViewBody = () => {
             loading={archive.loading}
             updateBlock={archive.updateBlock}
             deleteBlock={archive.deleteBlock}
+            onTrashRestored={archive.fetchBlocks}
             addBlocks={archive.addBlocks}
             selectedIds={selectedIds}
             toggleSelect={toggleSelect}

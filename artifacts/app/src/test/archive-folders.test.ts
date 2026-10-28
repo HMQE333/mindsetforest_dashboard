@@ -169,7 +169,7 @@ describe("deleting with Undo", () => {
     deleteWithUndo(["x"], del, { label: "https://example.com/a-very-long-url-without-any-spaces-at-all-in-it" });
     expect(pendingDeletes().has("x")).toBe(true);
     expect(del).not.toHaveBeenCalled();
-    expect(toasts.calls[0].title).toMatch(/^Deleted "https:\/\/example.com\/.{20,}…"$/);
+    expect(toasts.calls[0].title).toMatch(/^Moved to Trash: "https:\/\/example.com\/.{20,}…"$/);
     expect(toasts.calls[0].opts.action.label).toBe("Undo");
     await vi.advanceTimersByTimeAsync(UNDO_MS - 1);
     expect(del).not.toHaveBeenCalled();
@@ -181,7 +181,7 @@ describe("deleting with Undo", () => {
   it("Undo shows the note again and nothing is sent", async () => {
     const del = vi.fn(async () => true);
     deleteWithUndo(["x", "y"], del);
-    expect(toasts.calls[0].title).toBe("2 notes deleted");
+    expect(toasts.calls[0].title).toBe("2 notes moved to Trash");
     toasts.calls[0].opts.action.onClick();
     expect(pendingDeletes().size).toBe(0);
     await vi.advanceTimersByTimeAsync(UNDO_MS * 2);

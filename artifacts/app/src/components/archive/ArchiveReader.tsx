@@ -176,7 +176,7 @@ export default function ArchiveReader({ snapshot, initialId, blocks, from, onClo
         k.remove();
       } else if (e.key === "Delete") {
         e.preventDefault();
-        k.del.arm(true);
+        k.remove();
       } else if (e.key === "Enter" && !onControl && k.sugg.visible && k.sugg.chips?.length) {
         e.preventDefault();
         void k.sugg.accept();

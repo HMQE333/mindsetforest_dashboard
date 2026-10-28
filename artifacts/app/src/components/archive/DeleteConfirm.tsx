@@ -120,11 +120,12 @@ export function DeleteConfirmButton({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onArm();
+        // One press: the note goes to the Trash for 7 days (and the toast can undo it), so nothing asks first.
+        onConfirm();
       }}
       tabIndex={variant === "card" ? -1 : undefined}
-      aria-label="Delete"
-      title="Delete (press twice)"
+      aria-label="Move to Trash"
+      title="Move to Trash (kept 7 days)"
       className={`inline-flex items-center justify-center rounded-lg px-1.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${size} ${className}`}
     >
       <Trash2 className="h-4 w-4" aria-hidden />
