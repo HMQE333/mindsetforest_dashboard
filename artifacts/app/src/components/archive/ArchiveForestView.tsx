@@ -16,6 +16,8 @@ import { Sprout, Droplet, BookmarkPlus, Eye, Trophy, Leaf, FolderTree } from "lu
 import { supabase } from "@/integrations/supabase/client";
 import { useRemembered } from "./remembered";
 import { folderNoteCounts, inFolder, isTypeTag, normaliseTag, tagPaths } from "@/lib/archive-tags";
+import DateFilterRow from "@/components/shared/DateFilterRow";
+import { ALL_DATES, filterByDate, type DateFilter } from "@/lib/date-filter";
 
 type DiscoverSort = "trending" | "newest" | "watered" | "saved" | "friends";
 type SubTab = "daily" | "discover" | "collections" | "mine";
@@ -28,6 +30,7 @@ const ArchiveForestView = () => {
   const [tab, setTab] = useRemembered<SubTab>("forest.tab", "daily");
   const [sort, setSort] = useRemembered<DiscoverSort>("forest.sort", "trending");
   const [search, setSearch] = useRemembered("forest.search", "");
+  const [dateFilter, setDateFilter] = useRemembered<DateFilter>("forest.date", ALL_DATES);
   const [smartSearch, setSmartSearch] = useState(false);
   const [semanticResults, setSemanticResults] = useState<SeedWithAuthor[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -115,6 +118,7 @@ const ArchiveForestView = () => {
       l = l.filter((s) => inForestFolder(s.tags, filterTag));
     }
     if (hideSaved) l = l.filter((s) => !s.iSaved);
+    l = filterByDate(l, dateFilter, (s) => s.published_at);
     if (sort === "friends") l = l.filter((s) => friendIds.has(s.author_id));
     return l;
   };
@@ -140,7 +144,7 @@ const ArchiveForestView = () => {
       return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forest.discoverSeeds, sort, search, filterPillar, filterTag, hideSaved, smartSearch, semanticResults, friendIds]);
+  }, [forest.discoverSeeds, sort, search, filterPillar, filterTag, hideSaved, smartSearch, semanticResults, friendIds, dateFilter]);
 
   const filteredMine = useMemo(() => {
     let list = forest.mySeeds;
@@ -152,8 +156,9 @@ const ArchiveForestView = () => {
     if (filterTag.trim()) {
       list = list.filter((s) => inForestFolder(s.tags, filterTag));
     }
+    list = filterByDate(list, dateFilter, (s) => s.published_at);
     return [...list].sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
-  }, [forest.mySeeds, search, filterPillar, filterTag]);
+  }, [forest.mySeeds, search, filterPillar, filterTag, dateFilter]);
 
   const list = tab === "discover" ? sortedDiscover : filteredMine;
 
@@ -468,14 +473,16 @@ const ArchiveForestView = () => {
           ))}
         </div>
 
+        <DateFilterRow value={dateFilter} onChange={setDateFilter} />
+
         <div className="flex flex-wrap gap-1.5 items-center">
           <ForestFolders
             seeds={tab === "discover" ? forest.discoverSeeds : forest.mySeeds}
             value={filterTag}
             onChange={setFilterTag}
           />
-          {(filterPillar || filterTag || hideSaved) && (
-            <button onClick={() => { setFilterPillar(null); setFilterTag(""); setHideSaved(false); }}
+          {(filterPillar || filterTag || hideSaved || dateFilter.preset !== "all") && (
+            <button onClick={() => { setFilterPillar(null); setFilterTag(""); setHideSaved(false); setDateFilter(ALL_DATES); }}
               className="text-[11px] text-muted-foreground hover:text-foreground underline">
               Clear filters
             </button>

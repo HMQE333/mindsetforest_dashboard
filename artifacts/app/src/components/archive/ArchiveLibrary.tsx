@@ -40,6 +40,8 @@ import { applyWithUndo, useSavedFolders } from "./folder-store";
 import { TYPE_CHIP, TYPE_ICONS, keyedPillars, tagText } from "./TagChips";
 import { usePillarToggle } from "./pillar-toggle";
 import { noteSensitivity } from "@/lib/sensitive-scan";
+import DateFilterRow from "@/components/shared/DateFilterRow";
+import { ALL_DATES, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
 
 // The peek and the tag queue render notes with the reader's Markdown renderer: code-split, fetched on idle.
 const ArchivePeek = lazyModule(() => import("./ArchivePeek"));
@@ -333,10 +335,11 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     if (smartSearch && semanticResults !== null) return filterRanked(semanticResults, blocks, { pillar: filterPillar, hideLinks, folder, type: typeFilter }, pending);
     return filterLibrary(blocks, { search: query, includeTags, pillar: filterPillar, hideLinks, sort: sortMode, folder, type: typeFilter });
   }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending]);
-  const filtered = useMemo(
-    () => (sensitiveOnly ? filteredAll.filter((b) => sensitiveIds.has(b.id)) : filteredAll),
-    [filteredAll, sensitiveOnly, sensitiveIds],
-  );
+  const [dateFilter, setDateFilter] = useRemembered<DateFilter>("library.date", ALL_DATES);
+  const filtered = useMemo(() => {
+    const dated = filterByDate(filteredAll, dateFilter, (b) => b.created_at);
+    return sensitiveOnly ? dated.filter((b) => sensitiveIds.has(b.id)) : dated;
+  }, [filteredAll, dateFilter, sensitiveOnly, sensitiveIds]);
   const order = useMemo(() => filtered.map((b) => b.id), [filtered]);
 
   // The first cards render at once and the rest as the end of the list comes
@@ -903,6 +906,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
         </div>
         <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
         {(!phone || moreFilters) && <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />}
+        {(!phone || moreFilters || isDateFiltered(dateFilter)) && <DateFilterRow value={dateFilter} onChange={setDateFilter} />}
         {(!phone || moreFilters) && !foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
         <div className={FILTER_ROW}>
           <button onClick={() => setHideLinks(!hideLinks)} className={toggleBtn(hideLinks)}>
@@ -1032,7 +1036,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
         )}
 
         <div className="min-w-0 space-y-3">
-          {(folderName || typeFilter) && (
+          {(folderName || typeFilter || isDateFiltered(dateFilter)) && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
               <span>
                 {filtered.length} note{filtered.length === 1 ? "" : "s"}
@@ -1044,6 +1048,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
                 onClick={() => {
                   setFolder(null);
                   setTypeFilter(null);
+                  setDateFilter(ALL_DATES);
                 }}
                 className="inline-flex items-center gap-0.5 rounded-full bg-muted/40 px-2 py-0.5 hover:text-foreground"
               >
