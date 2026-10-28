@@ -1,11 +1,11 @@
 /**
  * "Share → MindsetForest" on a phone (manifest.webmanifest share_target):
- * the app opens at /?share_url=…&share_text=…. What was shared goes into the
- * Archive Inbox draft (added to anything already there), the Archive opens on
- * the Inbox, and the address is cleaned. A reel's link then shows the Inbox's
- * Transcribe button.
+ * the app opens at /?share_url=…&share_text=…. What was shared is kept for
+ * the Archive Inbox, which saves it at once (a reel's link with its
+ * transcript), the Archive opens on the Inbox, and the address is cleaned.
+ * The Inbox draft he was typing is left alone.
  */
-const DRAFT_KEY = "archive-inbox-draft";
+const SHARED_KEY = "mf.sharedToInbox";
 const OPEN_KEY = "mf.openArchiveInbox";
 
 export function takeSharedIntoInbox(): void {
@@ -18,8 +18,7 @@ export function takeSharedIntoInbox(): void {
     // Apps put the link in text, url or both: each piece once.
     const pieces = [title, text, url].map((s) => s.trim()).filter(Boolean);
     const shared = pieces.filter((p, i) => !pieces.some((o, j) => j !== i && o.length > p.length && o.includes(p))).join("\n");
-    const draft = localStorage.getItem(DRAFT_KEY) ?? "";
-    localStorage.setItem(DRAFT_KEY, draft.trim() ? `${draft.trim()}\n\n${shared}` : shared);
+    localStorage.setItem(SHARED_KEY, shared);
     sessionStorage.setItem(OPEN_KEY, "1");
     window.history.replaceState(null, "", window.location.pathname + window.location.hash);
   } catch {
@@ -35,5 +34,16 @@ export function sharedOpenArchive(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** What was shared and not saved yet (taken once). */
+export function takeSharedText(): string | null {
+  try {
+    const t = localStorage.getItem(SHARED_KEY);
+    if (t) localStorage.removeItem(SHARED_KEY);
+    return t?.trim() || null;
+  } catch {
+    return null;
   }
 }

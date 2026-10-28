@@ -19,6 +19,7 @@ import { AI_ACTIONS, aiTooLong } from "@/lib/archive-ai";
 import { invokeFunction } from "@/lib/function-error";
 import { socialNoteContent, socialVideoUrl } from "@/lib/social-video";
 import { fetchSocialNote } from "@/lib/social-video-fetch";
+import { takeSharedText } from "@/lib/share-target";
 import { CREDENTIAL_MESSAGE, looksLikeCredential } from "@/lib/credential-check";
 import { formatHotkey, matchesHotkey } from "@/lib/hotkeys";
 import { useHotkeys } from "@/hooks/useHotkeys";
@@ -184,23 +185,52 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
   // ---- Video -> note ----
 
   /** A reel's link (and his words around it) becomes a note: key points, transcript, cover. */
-  const handleVideo = async () => {
-    if (!videoUrl || busy) return;
+  const handleVideo = () => {
+    if (videoUrl && !busy) void saveVideo(text, videoUrl, true);
+  };
+
+  /**
+   * Save `source` (a reel's link and any words around it) as a note with key
+   * points and transcript. From the box (`fromDraft`) the box clears on
+   * success; from a share, a failed transcript still saves the link as it is.
+   */
+  const saveVideo = async (source: string, url: string, fromDraft: boolean) => {
     setBusy("video");
     const id = toast.loading("Transcribing the video…");
+    const comment = source.replace(url, "").trim();
     try {
-      const n = await fetchSocialNote(videoUrl);
-      const comment = text.replace(videoUrl, "").trim();
-      const content = socialNoteContent(n, comment);
-      await addBlocks([{ title: n.title, content, source_url: n.url, pillars: [], directions: [], tags: mergeTags([], parseInlineTags(comment)) }]);
+      const n = await fetchSocialNote(url);
+      await addBlocks([{ title: n.title, content: socialNoteContent(n, comment), source_url: n.url, pillars: [], directions: [], tags: mergeTags([], parseInlineTags(comment)) }]);
       toast.success(n.transcript ? "Saved with transcript" : "Saved (the video has no speech)", { id, description: n.title });
-      clearDraft();
+      if (fromDraft) clearDraft();
     } catch (e) {
-      toast.error("Couldn't transcribe the video", { id, description: e instanceof Error ? e.message : undefined });
+      const reason = e instanceof Error ? e.message : undefined;
+      if (fromDraft) toast.error("Couldn't transcribe the video", { id, description: reason });
+      else {
+        await addBlocks([{ title: autoTitle(source), content: source, source_url: url, pillars: [], directions: [], tags: mergeTags([], parseInlineTags(source)) }]);
+        toast.warning("Saved the link without a transcript", { id, description: reason });
+      }
     } finally {
       setBusy(null);
     }
   };
+
+  // Shared from another app ("Share → MindsetForest", lib/share-target.ts): saved at once, the draft untouched.
+  useEffect(() => {
+    const shared = takeSharedText();
+    if (!shared) return;
+    const url = socialVideoUrl(shared);
+    if (url) {
+      void saveVideo(shared, url, false);
+      return;
+    }
+    void (async () => {
+      await addBlocks([{ title: autoTitle(shared), content: shared, pillars: [], directions: [], tags: mergeTags([], parseInlineTags(shared)) }]);
+      toast.success("Saved from share", { description: autoTitle(shared) });
+    })();
+    // Once, when the Inbox opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- Save ----
 
@@ -492,7 +522,7 @@ const ArchiveInbox = ({ addBlocks, existingTags = [], recent = [] }: Props) => {
           </button>
           {videoUrl && (
             <button
-              onClick={() => void handleVideo()}
+              onClick={handleVideo}
               disabled={processing}
               title="Save the video as a note with its key points and full transcript (Instagram, TikTok, X, Facebook, YouTube Shorts)"
               className={`${actionBtn} text-foreground border-primary/40 bg-primary/10 hover:bg-primary/20`}
