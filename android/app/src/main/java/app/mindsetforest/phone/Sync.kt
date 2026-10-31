@@ -58,7 +58,7 @@ object Sync {
         val now = System.currentTimeMillis()
 
         // 1. Text captured while offline (needs no usage access).
-        sendQueued(store, api, core)
+        sendQueued(context, store, api, core)
 
         // 2. Reminders as notifications. A missing table or a refused query must not stop the rest.
         try {
@@ -78,14 +78,20 @@ object Sync {
         return SyncResult.Done(rows)
     }
 
-    private fun sendQueued(store: Store, api: SupabaseApi, core: SyncCore): CaptureResult {
+    private fun sendQueued(context: Context, store: Store, api: SupabaseApi, core: SyncCore): CaptureResult {
         val result = core.sendCaptures(store.pendingCaptures)
         store.pendingCaptures = result.remaining
         for (id in result.savedIds) {
             val video = result.videos[id]
             // A reel's link: the server adds transcript and key points in the background (and the note is
             // embedded again when the Archive next opens); anything else is indexed for search now.
-            if (video != null) api.transcribeVideo(id, video, store.accessToken) else api.embedBlock(id, store.accessToken)
+            // A notification says when the transcript is in (TranscriptJob).
+            if (video != null) {
+                api.transcribeVideo(id, video, store.accessToken)
+                TranscriptJob.add(context, store, id, video)
+            } else {
+                api.embedBlock(id, store.accessToken)
+            }
         }
         return result
     }
@@ -103,7 +109,7 @@ object Sync {
         store.pendingCaptures = store.pendingCaptures + c
         val api = SupabaseApi(store.supabaseUrl, store.anonKey)
         return try {
-            val result = sendQueued(store, api, SyncCore(api, store))
+            val result = sendQueued(context, store, api, SyncCore(api, store))
             when {
                 result.remaining.isNotEmpty() -> CaptureOutcome.QUEUED
                 result.savedIds.isNotEmpty() -> CaptureOutcome.SAVED

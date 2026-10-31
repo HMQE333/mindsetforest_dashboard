@@ -25,8 +25,6 @@ import ComputerTimeWeek from "./ComputerTimeWeek";
 import ComputerTimeAllTime from "./ComputerTimeAllTime";
 import ComputerTimeFolders from "./ComputerTimeFolders";
 import ComputerTimeApps from "./ComputerTimeApps";
-import TrackerDownload from "./TrackerDownload";
-import PhoneDownload from "./PhoneDownload";
 import ComputerTimePrivacy from "./ComputerTimePrivacy";
 import TrackerDevicesDialog from "./TrackerDevicesDialog";
 import ComputerTimeTriage, { type TriageMemory } from "./ComputerTimeTriage";
@@ -100,7 +98,6 @@ export default function ComputerTime() {
   });
   // Loads start on the first expand and stay loaded afterwards.
   const [everExpanded, setEverExpanded] = useState(!collapsed);
-  const [showInstall, setShowInstall] = useState(false);
   const [storedRange] = useState(readStoredRange);
   const [preset, setPreset] = useState<Preset>(storedRange?.preset ?? "today");
   const [custom, setCustom] = useState<UsageRange>(() => storedRange?.custom ?? { from: addDays(todayKey(), -13), to: todayKey() });
@@ -432,34 +429,9 @@ export default function ComputerTime() {
               ) : usage.loading && usage.sessions.length === 0 ? (
                 <div className="py-10 text-center text-sm text-muted-foreground animate-pulse" role="status">Wczytywanie sesji…</div>
               ) : noDataAtAll ? (
-                <div className="space-y-3">
-                  <TrackerDownload />
-                  <PhoneDownload />
-                </div>
+                <DevicesHint />
               ) : (
                 <>
-                  <div className="flex justify-end -mt-1 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowInstall((v) => !v)}
-                      aria-expanded={showInstall}
-                      className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                    >
-                      {showInstall ? "Ukryj instalację" : "Dodaj komputer lub telefon"}
-                    </button>
-                  </div>
-                  {showInstall && (
-                    <div className="mb-5 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-xs text-foreground/80">
-                        <div className="font-semibold text-foreground mb-2">💻 Komputer (Windows)</div>
-                        <TrackerDownload compact />
-                      </div>
-                      <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-xs text-foreground/80">
-                        <div className="font-semibold text-foreground mb-2">📱 Telefon (Android)</div>
-                        <PhoneDownload compact />
-                      </div>
-                    </div>
-                  )}
                   {/* Tabs */}
                   <div className="flex flex-wrap gap-2 mb-5" role="tablist" aria-label="Widok">
                     {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
@@ -550,5 +522,18 @@ export default function ComputerTime() {
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+/** The one line Stats keeps about the apps: their downloads live in Settings → Apps & devices. */
+function DevicesHint() {
+  const open = () => window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: "settings", tab: "devices" } }));
+  return (
+    <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-3 text-sm text-foreground/80 flex flex-wrap items-center gap-2">
+      <span>Podłącz komputer albo telefon, żeby śledzić czas.</span>
+      <button type="button" onClick={open} className="font-semibold text-primary hover:underline underline-offset-2">
+        Ustawienia → Apps &amp; devices
+      </button>
+    </div>
   );
 }

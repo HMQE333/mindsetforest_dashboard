@@ -9,6 +9,7 @@ import { cardView, noteTags } from "./archive-index";
 import { DeleteConfirmButton, type Armed } from "./DeleteConfirm";
 import { NoteTagChips } from "./TagChips";
 import MosaicFace from "./MosaicFace";
+import { transcriptPending } from "@/lib/social-video";
 import { describeSensitive, noteSensitivity } from "@/lib/sensitive-scan";
 
 /** How a press on a card was meant: Ctrl/Cmd toggles it in the selection, Shift selects up to it. */
@@ -214,6 +215,9 @@ const ArchiveBlockCard = ({
                 )}
                 {sensitive.length > 0 && (
                   <LockBadge kinds={describeSensitive(sensitive)} onSafe={onMarkSafe ? () => onMarkSafe(block) : undefined} className="text-[10px] font-semibold bg-amber-400/15 text-amber-200 border border-amber-400/30" />
+                )}
+                {transcriptPending(block.content, block.created_at) && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-400/15 text-amber-200 animate-pulse" title="The server is writing this reel's transcript">⏳ transkrypt</span>
                 )}
                 {block.is_pinned && <span className="text-xs" title="Pinned to the top" aria-label="Pinned">📌</span>}
                 {block.is_starred && <span className="text-xs text-amber-400" title="Bookmarked" aria-label="Bookmarked">★</span>}

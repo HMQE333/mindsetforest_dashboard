@@ -61,13 +61,20 @@ charts work on phone time with no changes.
   `public.reminders` due within a day; overdue ones notify at once, the rest
   get an inexact alarm allowed while idle. A reminder notifies once per phone;
   tapping it opens the dashboard (its address comes with the setup link).
+- **Reel transcripts** (`Transcripts.kt`, `TranscriptJob.kt`): a shared
+  Instagram/TikTok/X/Facebook/Shorts link is saved at once and
+  `social-transcript` fills the note in the background. The phone remembers
+  the note and a one-off `JobScheduler` job looks at it after ~45 s, then
+  backing off; once the content has `**Transcript**` or `**Key points**` it
+  notifies "Transkrypt gotowy" (channel "Archive", tap opens the dashboard).
+  Still unfilled after 5 minutes, or deleted: dropped quietly.
 
 ## Permissions
 
 | What | Why | How it is granted |
 | --- | --- | --- |
 | Usage access (`PACKAGE_USAGE_STATS`) | time in apps | Settings -> Usage access; on Android 13+ a sideloaded app may first need App info -> ⋮ -> Allow restricted settings |
-| Notifications (`POST_NOTIFICATIONS`) | reminders | asked from the app's screen (Android 13+) |
+| Notifications (`POST_NOTIFICATIONS`) | reminders, "Transkrypt gotowy" | asked from the app's screen (Android 13+) |
 | Internet, boot | sync, the job survives a reboot | at install |
 
 ## Build
@@ -104,8 +111,8 @@ delete the file.
 
 - `./gradlew testReleaseUnitTest`: session building, the 04:00 split, the
   cursor, token refresh and sign-out rules, first-sync dedupe, and the HTTP
-  calls against a local server, captures and their queue, reminder planning
-  (31 tests).
+  calls against a local server, captures and their queue, reminder planning,
+  reel transcript checks (38 tests).
 - `.github/workflows/android.yml` runs them on every change under `android/`,
   then installs the APK on an Android 14 emulator and runs `smoke-test.sh`:
   first launch, the setup link, usage access, the "today" card listing time

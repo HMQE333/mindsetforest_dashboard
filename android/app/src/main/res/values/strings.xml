@@ -49,6 +49,8 @@
 
     <string name="reminders_channel">Przypomnienia</string>
     <string name="reminder_title">Przypomnienie</string>
+    <string name="archive_channel">Archive</string>
+    <string name="transcript_ready">Transkrypt gotowy</string>
     <string name="reminder_from">Wiadomość z %1$s</string>
 
     <string name="status">Synchronizacja</string>

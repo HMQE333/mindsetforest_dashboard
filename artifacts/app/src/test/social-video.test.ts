@@ -20,3 +20,20 @@ describe("socialNoteContent", () => {
     expect(c).toBe("my take\n\nhttps://instagram.com/reel/x (ann)\n\n[image] https://s/c.jpg\n\n**Key points**\n- a\n- b\n\n**Transcript**\nhello\n\n**Caption**\ncap");
   });
 });
+
+describe("reel note helpers", () => {
+  it("reads the duration after the link", async () => {
+    const { noteVideoDuration } = await import("@/lib/social-video");
+    expect(noteVideoDuration("hi\n\nhttps://instagram.com/reel/x (ann) · 0:42\n\n[image] y")).toBe("0:42");
+    expect(noteVideoDuration("https://instagram.com/reel/x · 2:05")).toBe("2:05");
+    expect(noteVideoDuration("https://instagram.com/reel/x (ann)")).toBeNull();
+  });
+  it("knows a transcript is on its way only for fresh bare reel links", async () => {
+    const { transcriptPending } = await import("@/lib/social-video");
+    const now = Date.parse("2026-10-31T12:00:00Z");
+    expect(transcriptPending("https://www.instagram.com/reel/abc/", "2026-10-31T11:58:00Z", now)).toBe(true);
+    expect(transcriptPending("https://www.instagram.com/reel/abc/", "2026-10-31T11:00:00Z", now)).toBe(false);
+    expect(transcriptPending("https://www.instagram.com/reel/abc/\n\n**Transcript**\nhi", "2026-10-31T11:59:00Z", now)).toBe(false);
+    expect(transcriptPending("https://example.com", "2026-10-31T11:59:00Z", now)).toBe(false);
+  });
+});

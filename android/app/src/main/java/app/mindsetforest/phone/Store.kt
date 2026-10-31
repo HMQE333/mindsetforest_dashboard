@@ -46,6 +46,13 @@ class Store(context: Context) : SyncState {
             prefs.edit().putString("pending_captures", encodeQueue(v)).commit()
         }
 
+    /** Saved reels whose transcript the server is still writing (TranscriptJob looks again). */
+    var pendingTranscripts: List<PendingTranscript>
+        get() = decodeTranscripts(prefs.getString("pending_transcripts", null))
+        set(v) {
+            prefs.edit().putString("pending_transcripts", encodeTranscripts(v)).commit()
+        }
+
     /** Reminders this phone already showed (newest last, capped). */
     val shownReminders: Set<String>
         get() = prefs.getString("shown_reminders", "").orEmpty().split(',').filter { it.isNotEmpty() }.toSet()

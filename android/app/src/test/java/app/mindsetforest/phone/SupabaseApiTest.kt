@@ -142,6 +142,17 @@ class SupabaseApiTest {
     }
 
     @Test
+    fun archiveNoteReadsOneRowOrNothing() {
+        reply = """[{"id":"b-1","title":"Reel","content":"**Transcript**\nhi"}]"""
+        assertEquals(ArchiveNote("b-1", "Reel", "**Transcript**\nhi"), api().archiveNote("b-1", "acc"))
+        assertEquals("GET", seen.last()["method"])
+        assertEquals("/rest/v1/archive_blocks?id=eq.b-1&select=id,title,content", seen.last()["uri"])
+        assertEquals("Bearer acc", seen.last()["auth"])
+        reply = "[]"
+        assertEquals(null, api().archiveNote("b-1", "acc"))
+    }
+
+    @Test
     fun errorsCarryTheStatusAndTheServersMessage() {
         status = 400
         reply = """{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}"""

@@ -170,10 +170,18 @@ const Index = () => {
   const quickCapture = useQuickCapture();
   const { preferences, savePreferences } = useUserSettings();
   // Opened by "Share → MindsetForest": the Archive, on its Inbox (lib/share-target.ts).
+  // ?open=archive (the phone's "Transkrypt gotowy" notification): the Archive Library.
   const [activeTab, setActiveTab] = useState<Tab>(() => {
-    if (!sharedOpenArchive()) return "dashboard";
-    setRemembered("archive.subView", "inbox");
-    return "archive";
+    if (sharedOpenArchive()) {
+      setRemembered("archive.subView", "inbox");
+      return "archive";
+    }
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("open") === "archive") {
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      setRemembered("archive.subView", "library");
+      return "archive";
+    }
+    return "dashboard";
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);

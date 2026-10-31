@@ -90,6 +90,18 @@ class SupabaseApi(private val url: String, private val anonKey: String) : Sessio
         }
     }
 
+    /** One note's title and content, or null when it is gone. */
+    fun archiveNote(id: String, accessToken: String): ArchiveNote? {
+        val text = request(
+            "GET",
+            "$url/rest/v1/archive_blocks?id=eq.${URLEncoder.encode(id, "UTF-8")}&select=id,title,content",
+            null,
+            mapOf("Authorization" to "Bearer $accessToken"),
+        )
+        val o = try { JSONArray(text).optJSONObject(0) } catch (_: Exception) { null } ?: return null
+        return ArchiveNote(o.optString("id"), o.optString("title"), o.optString("content"))
+    }
+
     override fun dueReminders(until: Long, accessToken: String): List<Reminder> {
         val iso = URLEncoder.encode(java.time.Instant.ofEpochMilli(until).toString(), "UTF-8")
         val text = request(

@@ -20,7 +20,7 @@ const APIFY = "https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-ge
 const TRANSCRIBE_MODEL = Deno.env.get("TRANSCRIBE_MODEL") || "openai/gpt-4o-transcribe";
 const MAX_VIDEO_BYTES = 24_000_000;
 
-interface Found { transcript: string; caption: string; author: string | null; title: string; coverUrl?: string; platform: string; via: string }
+interface Found { transcript: string; caption: string; author: string | null; title: string; coverUrl?: string; platform: string; via: string; duration: number | null }
 
 /**
  * Instagram the cheap way: Apify's Instagram scraper (about $0.002 a post,
@@ -59,7 +59,7 @@ async function viaApify(url: string): Promise<Found | null> {
       if (!stt.ok) { console.error("stt", stt.status, (await stt.text()).slice(0, 300)); return null; }
       transcript = String((await stt.json())?.text ?? "").trim();
     }
-    return { transcript, caption, author: it.ownerUsername ?? it.ownerFullName ?? null, title: "", coverUrl: it.displayUrl, platform: "instagram", via: "apify" };
+    return { transcript, caption, author: it.ownerUsername ?? it.ownerFullName ?? null, title: "", coverUrl: it.displayUrl, platform: "instagram", via: "apify", duration: Number(it.videoDuration) || null };
   } catch (e) {
     console.error("apify path", e);
     return null;
@@ -139,7 +139,7 @@ async function readVideo(url: string, jobId: string | null, userId: string): Pro
       const [summary, cover] = await Promise.all([summarize(found.transcript, found.caption), copyCover(found.coverUrl, userId)]);
       return {
         status: "done",
-        note: { url, platform: found.platform, author: found.author, title: summary?.title || found.caption.split("\n")[0].slice(0, 100) || "Saved video", points: summary?.points ?? [], transcript: found.transcript, caption: found.caption, cover, lang: "", duration: null, via: found.via },
+        note: { url, platform: found.platform, author: found.author, title: summary?.title || found.caption.split("\n")[0].slice(0, 100) || "Saved video", points: summary?.points ?? [], transcript: found.transcript, caption: found.caption, cover, lang: "", duration: found.duration, via: found.via },
       };
     }
   }
@@ -190,12 +190,15 @@ async function readVideo(url: string, jobId: string | null, userId: string): Pro
   };
 }
 
+/** 42 -> "0:42", 125 -> "2:05". */
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
 /** The note's text, as the web Inbox writes it (lib/social-video.ts socialNoteContent). */
 // deno-lint-ignore no-explicit-any
 function noteContent(n: any, comment: string): string {
   const parts: string[] = [];
   if (comment.trim()) parts.push(comment.trim());
-  parts.push(n.url + (n.author ? ` (${n.author})` : ""));
+  parts.push(n.url + (n.author ? ` (${n.author})` : "") + (n.duration ? ` · ${clock(n.duration)}` : ""));
   if (n.cover) parts.push(`[image] ${n.cover}`);
   if (n.points?.length) parts.push(`**Key points**\n${n.points.map((p: string) => `- ${p}`).join("\n")}`);
   if (n.transcript) parts.push(`**Transcript**\n${n.transcript}`);

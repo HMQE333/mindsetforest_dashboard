@@ -12,8 +12,9 @@ import KeybindsTab from "./KeybindsTab";
 import ProfileTab from "./ProfileTab";
 import ContextTab from "./ContextTab";
 import StatsXpTab from "./StatsXpTab";
+import DevicesTab from "./DevicesTab";
 
-type SettingsTab = "profile" | "context" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp";
+type SettingsTab = "profile" | "context" | "modules" | "theme" | "keybinds" | "categories" | "projects" | "metrics" | "rewards" | "stats-xp" | "devices";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile", label: "Profile", icon: "👤" },
@@ -26,6 +27,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "metrics", label: "Metrics", icon: "📊" },
   { id: "stats-xp", label: "Stats XP", icon: "✨" },
   { id: "rewards", label: "Rewards", icon: "🎁" },
+  { id: "devices", label: "Apps & devices", icon: "📲" },
 ];
 
 interface SettingsModalProps {
@@ -110,6 +112,7 @@ export default function SettingsModal({ open, onClose, initialTab }: SettingsMod
                 <div className="text-center py-10 text-muted-foreground animate-pulse">Loading...</div>
               ) : (
                 <>
+                  {activeTab === "devices" && <DevicesTab />}
                   {activeTab === "profile" && (
                     <ProfileTab />
                   )}

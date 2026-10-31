@@ -2,6 +2,7 @@ import { Play, Link2 } from "lucide-react";
 import type { ArchiveBlock } from "@/lib/archive-data";
 import { typeOf } from "@/lib/archive-tags";
 import { useLinkPreview } from "@/hooks/useLinkPreview";
+import { noteVideoDuration, socialVideoUrl, transcriptPending } from "@/lib/social-video";
 import { blockImages, blockUrls, cardView, classifyUrl, noteWithoutLinks } from "./archive-index";
 
 /**
@@ -30,17 +31,31 @@ export default function MosaicFace({ block, sensitive, onImage }: { block: Archi
   const view = cardView(block);
   const face = mosaicKind(block, sensitive);
   const preview = useLinkPreview(face.kind === "link" ? face.url : null);
+  // A saved reel: its cover plays the part of the video frame; a phone/tracker save may still be waiting for its transcript.
+  const reel = !sensitive && !!socialVideoUrl(block.content);
+  const duration = reel ? noteVideoDuration(block.content) : null;
+  const pending = reel && transcriptPending(block.content, block.created_at);
+  const pendingPill = pending ? (
+    <p className="mt-1.5 text-center text-[11px] text-amber-200/90 animate-pulse">⏳ transkrypt w drodze</p>
+  ) : null;
   const caption = (text: string | null | undefined) =>
     text ? <p className="px-1 pt-1.5 text-[12px] text-muted-foreground truncate text-center">{text}</p> : null;
 
   if (face.kind === "image") {
     return (
       <div>
-        <button type="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); onImage(face.url!); }} className="block w-full overflow-hidden rounded-xl bg-muted/40">
+        <button type="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); onImage(face.url!); }} className="relative block w-full overflow-hidden rounded-xl bg-muted/40">
           <img src={face.url} alt="" loading="lazy" decoding="async" className="w-full h-auto max-h-[28rem] object-cover" onError={(e) => (e.currentTarget.style.display = "none")} />
+          {reel && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <span className="w-11 h-11 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center"><Play className="h-5 w-5 text-white fill-white ml-0.5" /></span>
+            </span>
+          )}
+          {duration && <span className="pointer-events-none absolute bottom-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-black/65 text-white">{duration}</span>}
         </button>
         {view.imageCount > 1 && <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-black/60 text-white">+{view.imageCount - 1}</span>}
         {caption(view.title === "Image block" ? null : view.title)}
+        {pendingPill}
       </div>
     );
   }
@@ -80,6 +95,7 @@ export default function MosaicFace({ block, sensitive, onImage }: { block: Archi
           </div>
         </div>
         <p className="px-1 pt-1.5 text-[12px] text-muted-foreground truncate text-center flex items-center justify-center gap-1"><Link2 className="h-3 w-3 shrink-0" />{preview?.site || host}</p>
+        {pendingPill}
       </div>
     );
   }
