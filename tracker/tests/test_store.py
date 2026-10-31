@@ -138,3 +138,15 @@ def test_lone_surrogate_title_is_sanitized_before_sqlite():
     st.upsert_session(closed[0], "d")  # would raise UnicodeEncodeError unsanitized
     row = st.unsynced()[0]
     assert row.window_title == "Cats - YouTube - Google Chrome" and row.app_key == "Browser | YouTube"
+
+
+def test_read_kv_reads_another_process_db_read_only(tmp_path):
+    from mindsetforest_tracker.store import read_kv
+
+    path = tmp_path / "tracker.db"
+    assert read_kv(path, ["paused"]) == {}  # no tracker.db yet
+    store = Store(path)
+    store.set_kv("paused", "1")
+    store.set_kv("other", "x")
+    assert read_kv(path, ["paused", "tracking_since"]) == {"paused": "1"}
+    store.close()

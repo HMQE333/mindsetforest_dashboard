@@ -66,6 +66,10 @@
 >   zostaje obok jako `... (moja wersja <data>).md`, a wpis w `_SYSTEM/routine-log.md` o tym przypomina. Potem możesz je
 >   zmieniać dowolnie: zmienionego pliku tracker już nie nadpisze, a niezmieniony podmienia na nowszą wersję z aktualizacji
 >   (też z wpisem w `routine-log.md`).
+  Wersja 1.4.0: zapis skrótem do Archive pokazuje powiadomienie Windows z tytułem notatki i przyciskiem **Otwórz w Archive**,
+  z krótkim dźwiękiem i mignięciem ikonki (także przy wyciszonych powiadomieniach); link do rolki (Instagram, TikTok, X,
+  Facebook, YouTube Shorts) w zaznaczeniu albo w schowku dostaje kluczowe punkty i transkrypt; ciemne okno ustawień ze
+  statusem (**Śledzę od 9:12**, ostatni zapis do Archive), w menu ikonki te same linie.
 > - **Odinstalowanie**: Ustawienia Windows → Aplikacje → Zainstalowane aplikacje (Apps & features) → **MindsetForest Tracker** →
 >   Odinstaluj, albo **Ustawienia... → Odinstaluj...**. Vault i nagrania zostają zawsze; dane lokalne (`%APPDATA%\MindsetForest`)
 >   znikają tylko, jeśli to potwierdzisz.
@@ -402,7 +406,22 @@ tracker copies the selection the way Ctrl+C does and saves it as an Archive
 note (`archive_blocks`) under your account: the first 60 characters become
 the title, the window title (without the browser's name) is added as
 `Source:`, and the note is tagged `quick-capture` so it is easy to review.
-A balloon confirms it, and the note is indexed for semantic search.
+A Windows toast confirms it with the note's title and an **Otwórz w Archive**
+button (opens the dashboard), and the note is indexed for semantic search.
+A short system sound and a one-second purple flash of the tray tree confirm
+it even when Windows mutes notifications; a failed save (offline, signed out)
+plays a warning tone and says why. Without `winotify` (or off Windows) the
+old tray balloon is used. The tray menu and the settings window show the last
+save (*Ostatni zapis do Archive: ... (14:05)*).
+
+* Nothing selected? The text on the clipboard is saved instead, so a link
+  copied with "Copy link" works too.
+* A link to an Instagram reel/post, TikTok, X status, Facebook reel/video or
+  YouTube Short in the text (same pattern as the web app's
+  `src/lib/social-video.ts`) is sent to the `social-transcript` edge function
+  after the save, instead of being embedded. The server fills the note with
+  key points and the transcript in the background; the toast says
+  *Zapisano — transkrypt w drodze*.
 
 * The copied text stays on the clipboard. If the save fails (offline), paste
   it into the Archive inbox later; nothing is lost.

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import logging
 import logging.handlers
 import ntpath
@@ -23,17 +24,19 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import psutil
 
-from . import __version__, tray
+from . import __version__, notify, tray
 from .imports import ImportState, ImportWatcher
 from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror, write_study_prompts
 from .archive_capture import (
-    ArchiveClient, HotkeyListener, clean_source, foreground_title, parse_hotkey, read_selection,
+    ArchiveClient, HotkeyListener, clean_source, foreground_title, parse_hotkey, read_clipboard, read_selection,
+    social_video_url,
 )
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .capture import Sampler, default_sampler
@@ -164,6 +167,22 @@ class SingleInstance:
             pass
 
 
+# kv keys the setup window reads (store.read_kv) for its status block.
+KV_TRACKING_SINCE = "tracking_since"
+KV_PAUSED = "paused"
+KV_LAST_ARCHIVE = "last_archive"  # JSON {"title", "at"}
+
+
+@dataclass
+class CaptureResult:
+    """What a hotkey press did: the message for the toast, and the saved note when it worked."""
+
+    message: str
+    ok: bool = False
+    title: str | None = None
+    transcript: bool = False  # a reel link was handed to social-transcript
+
+
 class TrackerApp:
     """Runs the capture loop and answers the tray. Thread-safe via one lock."""
 
@@ -196,6 +215,8 @@ class TrackerApp:
         self._last_purge = 0.0
         self._login_notified = False
         self.archive = archive
+        self.started_at: float | None = None
+        self.last_archive = self._load_last_archive()
         self._private_keywords = list(config.private_keywords)
         # The save-to-Archive hotkey: config.json's until the dashboard sets one.
         self._hotkey_factory = hotkey_factory
@@ -236,6 +257,9 @@ class TrackerApp:
         if self.intake is not None:
             self.intake.start()
         self._thread.start()
+        self.started_at = self.clock()
+        self._save_kv(KV_TRACKING_SINCE, str(self.started_at))
+        self._save_kv(KV_PAUSED, "0")
         self.apply_capture_hotkey(self.config.capture_hotkey)
         log.info("Tracking started (device %s, %s)", self.device_id, self.config.device_name)
 
@@ -358,8 +382,12 @@ class TrackerApp:
     # -- TrayController ------------------------------------------------------
 
     def status_line(self) -> str:
+        return tray.tracking_line(self.started_at, self._paused)
+
+    def activity_line(self) -> str | None:
+        """What is in front and for how long; None while paused."""
         if self._paused:
-            return "Paused"
+            return None
         current = self.tracker.current
         if current is None:
             return "Nothing in front"
@@ -386,7 +414,26 @@ class TrackerApp:
                 for session in self.tracker.close_current(self.clock()):
                     self.store.upsert_session(session, self.device_id)
         log.info("Tracking %s", "paused" if self._paused else "resumed")
+        self._save_kv(KV_PAUSED, "1" if self._paused else "0")
         self._refresh_menu()
+
+    def archive_line(self) -> str | None:
+        last = self.last_archive
+        return tray.archive_line(last[0], last[1]) if last else None
+
+    def _load_last_archive(self) -> tuple[str, float] | None:
+        try:
+            data = json.loads(self.store.get_kv(KV_LAST_ARCHIVE) or "null")
+            return (str(data["title"]), float(data["at"])) if data else None
+        except (ValueError, KeyError, TypeError):
+            return None
+
+    def _save_kv(self, key: str, value: str) -> None:
+        """Status for the setup window; never worth failing a save or a pause over."""
+        try:
+            self.store.set_kv(key, value)
+        except Exception:
+            log.debug("Could not store %s", key, exc_info=True)
 
     def current_app_name(self) -> str | None:
         current = self.tracker.current
@@ -541,38 +588,68 @@ class TrackerApp:
         self._refresh_menu()
 
     def save_text(self, text: str | None, window_title: str) -> str:
-        """Save captured text as an Archive note; returns the balloon message.
+        """Save captured text as an Archive note; returns the balloon message."""
+        return self.save_capture(text, window_title).message
+
+    def save_capture(self, text: str | None, window_title: str) -> CaptureResult:
+        """Save captured text as an Archive note.
 
         The source line is the window title without the browser name, left
-        out for a window the tracker treats as private.
+        out for a window the tracker treats as private. A reel link in the
+        text goes to social-transcript (which also indexes the filled note)
+        instead of being embedded as it is.
         """
         if self.archive is None:
-            return "Saving to Archive is not set up (supabase_url in config.json)"
+            return CaptureResult("Saving to Archive is not set up (supabase_url in config.json)")
         if self.needs_login():
-            return "Sign in from the tray menu to save to Archive"
+            return CaptureResult("Sign in from the tray menu to save to Archive")
         if not text or not text.strip():
-            return "Nothing selected: select some text, then press the hotkey"
+            return CaptureResult("Nothing selected: select some text, then press the hotkey")
         source = "" if is_private(window_title, keywords=self._private_keywords) else clean_source(window_title)
         try:
             saved = self.archive.save(text, source)
         except AuthUnavailable as exc:
             log.warning("Save to Archive failed: %s", exc)
-            return "Couldn't save (no connection?). The text is still on your clipboard."
+            return CaptureResult("Couldn't save (no connection?). The text is still on your clipboard.")
         except AuthError:
-            return "Sign in again from the tray menu to save to Archive"
+            return CaptureResult("Sign in again from the tray menu to save to Archive")
         except SyncError as exc:
             log.warning("Save to Archive failed: %s", exc)
-            return "Couldn't save (no connection?). The text is still on your clipboard."
-        if saved and saved.get("id"):
-            threading.Thread(target=self.archive.embed, args=(saved["id"],), name="mf-embed", daemon=True).start()
+            return CaptureResult("Couldn't save (no connection?). The text is still on your clipboard.")
+        block_id = (saved or {}).get("id")
+        link = social_video_url(text)
+        if block_id and link:
+            threading.Thread(target=self.archive.transcribe, args=(link, block_id), name="mf-transcript",
+                             daemon=True).start()
+        elif block_id:
+            threading.Thread(target=self.archive.embed, args=(block_id,), name="mf-embed", daemon=True).start()
         title = (saved or {}).get("title") or "note"
-        log.info("Saved selection to Archive (%d chars)", len(text))
-        return f"Saved to Archive: {title}"
+        log.info("Saved selection to Archive (%d chars%s)", len(text), ", reel link" if link else "")
+        self.last_archive = (title, self.clock())
+        self._save_kv(KV_LAST_ARCHIVE, json.dumps({"title": title, "at": self.last_archive[1]}))
+        self._refresh_menu()
+        message = "Zapisano — transkrypt w drodze" if link and block_id else f"Saved to Archive: {title}"
+        return CaptureResult(message, ok=True, title=title, transcript=bool(link and block_id))
 
     def capture_selection(self) -> None:  # pragma: no cover - Windows only (hotkey thread)
         title = foreground_title()
-        message = self.save_text(read_selection(), title)
-        tray.notify(self.icon, message)
+        # Nothing selected (or an app that ignores Ctrl+C): a link copied a moment ago still counts.
+        text = read_selection()
+        if not text or not text.strip():
+            text = read_clipboard()
+        self.confirm_capture(self.save_capture(text, title))
+
+    def confirm_capture(self, result: CaptureResult) -> None:
+        """Sound and a tray flash at once (muted toasts included), then the toast or the balloon."""
+        notify.beep(result.ok)
+        if result.ok:
+            tray.flash(self.icon, self.is_paused)
+            heading = result.message if result.transcript else "Zapisano w Archive"
+            if notify.toast(heading, result.title or "", open_url=self.dashboard_url):
+                return
+        elif notify.toast("Nie zapisano w Archive", result.message):
+            return
+        tray.notify(self.icon, result.message)
 
     def on_sync_status(self, status: SyncStatus) -> None:
         self._mark_login(status)

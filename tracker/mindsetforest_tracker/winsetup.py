@@ -1415,6 +1415,8 @@ def self_test(out: Path, ops: WinOps) -> bool:
 
     check("tkinter", _check_tk)
     check("pystray", lambda: __import__("pystray"))
+    # The save-to-Archive toast; without it the tracker falls back to balloons, so prove it is bundled.
+    check("winotify", lambda: __import__("winotify") if sys.platform == "win32" else None)
     check("pillow", _check_pil)
     check("dpapi", _check_dpapi)
     check("certifi", _check_certifi)

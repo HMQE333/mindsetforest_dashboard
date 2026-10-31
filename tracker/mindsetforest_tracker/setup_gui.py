@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 
+import json
 import logging
 import ntpath
 import os
@@ -43,6 +44,8 @@ from .archive_capture import parse_hotkey
 from .auth import AuthError, AuthUnavailable, SupabaseAuth
 from .config import Config
 from .recordings import count_recordings
+from .store import read_kv
+from .tray import archive_line, tracking_line
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +83,19 @@ BROWSER_DOMAINS_HINT = ("Chrome, Edge, Brave: tracker czyta z paska adresu tylko
 VAULT_HINT = ("Tu trafią transkrypty, podsumowania wykładów i notatki; widać je też w dashboardzie (Archive). "
               "Pobrane transkrypcje i materiały (.txt, .vtt, .srt, .docx, .pdf) wrzucaj do folderu Import "
               "w vaulcie.")
+# The web app's dark theme, so the window looks like the dashboard it belongs to.
+BG = "#0a0b10"
+CARD = "#14161f"
+FIELD = "#1d2030"
+BORDER = "#2a2d3a"
+TEXT = "#e5e7eb"
+MUTED = "#9ca3af"
+ACCENT = "#8b5cf6"
+ACCENT_HOVER = "#7c3aed"
+ERROR = "#f87171"
+GOOD = "#4ade80"
+TRACKER_NOT_RUNNING = "Tracker nie działa (uruchomi się po zapisaniu)."
+
 RECORDINGS_COUNT_CAP = 1000  # counting a whole drive must not take long; shown as "999+"
 
 # -- hotkeys -------------------------------------------------------------------------
@@ -353,6 +369,29 @@ def vault_choices(default: Path, vaults: Iterable[winsetup.ObsidianVault], curre
             seen.add(key)
             out.append(p)
     return out
+
+
+def tracker_status_lines(kv: Mapping[str, str], running: bool) -> list[str]:
+    """The status block: ``Śledzę od 9:12`` (or paused, or not running) and the last Archive save.
+
+    ``kv`` is what the tracker keeps in tracker.db (main.KV_*), read by ``store.read_kv``.
+    """
+    lines: list[str] = []
+    if not running:
+        lines.append(TRACKER_NOT_RUNNING)
+    else:
+        try:
+            since = float(kv.get("tracking_since") or 0) or None
+        except ValueError:
+            since = None
+        lines.append(tracking_line(since, kv.get("paused") == "1"))
+    try:
+        last = json.loads(kv.get("last_archive") or "null")
+        line = archive_line(str(last["title"]), float(last["at"])) if last else None
+    except (ValueError, KeyError, TypeError):
+        line = None
+    lines.append(line or "Ostatni zapis do Archive: jeszcze nic")
+    return lines
 
 
 def initial_form(existing: Config | None, *, detected: Path, default_vault: Path, autostart: bool) -> dict[str, Any]:
@@ -632,14 +671,47 @@ class SetupWindow:
         self.font_hotkey = base.copy()
         self.font_hotkey.configure(weight="bold", size=_grow(base, 3))
         style = ttk.Style(self.root)
+        # clam is the built-in theme that honours colours everywhere (vista draws native grey buttons).
+        with suppress(tk.TclError):
+            style.theme_use("clam")
+        style.configure(".", background=BG, foreground=TEXT, fieldbackground=FIELD, bordercolor=BORDER,
+                        darkcolor=CARD, lightcolor=CARD, troughcolor=CARD, insertcolor=TEXT,
+                        selectbackground=ACCENT, selectforeground="#ffffff", focuscolor=ACCENT)
+        style.map(".", foreground=[("disabled", "#6b7280")])
+        style.configure("TFrame", background=BG)
+        style.configure("Card.TFrame", background=CARD, bordercolor=BORDER, relief="solid", borderwidth=1)
+        style.configure("TLabel", background=BG, foreground=TEXT)
+        style.configure("TButton", background=CARD, foreground=TEXT, bordercolor=BORDER, padding=(10, 4))
+        style.map("TButton", background=[("disabled", BG), ("pressed", BORDER), ("active", FIELD)])
+        style.configure("Accent.TButton", background=ACCENT, foreground="#ffffff", bordercolor=ACCENT)
+        style.map("Accent.TButton", background=[("disabled", BORDER), ("pressed", ACCENT_HOVER), ("active", ACCENT_HOVER)])
+        style.configure("TEntry", fieldbackground=FIELD, foreground=TEXT)
+        style.configure("TCombobox", fieldbackground=FIELD, foreground=TEXT, background=CARD, arrowcolor=TEXT)
+        style.map("TCombobox", fieldbackground=[("readonly", FIELD)])
+        style.configure("TCheckbutton", background=BG, foreground=TEXT, indicatorbackground=FIELD,
+                        indicatorforeground=TEXT)
+        style.map("TCheckbutton", background=[("active", BG)], indicatorbackground=[("selected", ACCENT)])
+        style.configure("TLabelframe", background=BG, bordercolor=BORDER)
+        style.configure("TLabelframe.Label", background=BG, foreground=TEXT)
+        style.configure("TSeparator", background=BORDER)
+        style.configure("Vertical.TScrollbar", background=CARD, arrowcolor=MUTED)
         style.configure("Title.TLabel", font=self.font_title)
         style.configure("Section.TLabel", font=self.font_section)
         style.configure("Bold.TLabel", font=self.font_bold)
-        style.configure("Hotkey.TLabel", font=self.font_hotkey)
-        style.configure("Hint.TLabel", foreground="#5f6368")
-        style.configure("Error.TLabel", foreground="#c62828")
-        style.configure("Routine.TLabelframe.Label", font=self.font_section, foreground="#1b5e20")
+        style.configure("Hotkey.TLabel", font=self.font_hotkey, foreground=ACCENT)
+        style.configure("Hint.TLabel", foreground=MUTED)
+        style.configure("Error.TLabel", foreground=ERROR)
+        style.configure("Routine.TLabelframe.Label", font=self.font_section, foreground=GOOD)
         style.configure("Box.TLabelframe.Label", font=self.font_section)
+        # The status card's labels sit on the card colour.
+        style.configure("Status.TLabel", background=CARD, foreground=MUTED)
+        style.configure("StatusBold.TLabel", background=CARD, foreground=TEXT, font=self.font_bold)
+        # Plain tk widgets (the routine prompt, dialogs, the combobox list) take colours from the option database.
+        for pattern, value in (("*Background", BG), ("*Foreground", TEXT), ("*Text.background", FIELD),
+                               ("*Text.foreground", TEXT), ("*Text.insertBackground", TEXT),
+                               ("*TCombobox*Listbox.background", FIELD), ("*TCombobox*Listbox.foreground", TEXT),
+                               ("*TCombobox*Listbox.selectBackground", ACCENT)):
+            self.root.option_add(pattern, value)
 
     def _set_icon(self) -> None:
         try:
@@ -655,7 +727,7 @@ class SetupWindow:
 
     def _build_scroller(self) -> None:
         """A canvas around the page, so small screens scroll, and a fixed bar under it for the buttons."""
-        bg = ttk.Style(self.root).lookup("TFrame", "background") or self.root.cget("background")
+        bg = BG
         self.root.configure(background=bg)
         self.canvas = tk.Canvas(self.root, highlightthickness=0, borderwidth=0, background=bg,
                                 width=self.px(560), height=self.px(400))
@@ -907,9 +979,9 @@ class SetupWindow:
     def _build_form(self) -> None:
         form = self.form = ttk.Frame(self.page)
         form.pack(fill="x")
-        ttk.Label(form, text="MindsetForest", style="Title.TLabel").pack(anchor="w")
-        tagline = INSTALL_TAGLINE if self.mode == "install" else SETTINGS_TAGLINE
-        ttk.Label(form, text=tagline, wraplength=self.wrap, justify="left").pack(anchor="w", pady=(self.px(2), 0))
+        self._header(form)
+        if self.mode == "settings":
+            self._status_block(form)
         if self.load_notes:
             self._hint(form, "Nie wszystko udało się wykryć automatycznie (" + "; ".join(self.load_notes)
                        + "). Sprawdź pola poniżej.", style="Error.TLabel").pack(anchor="w", pady=(self.px(6), 0))
@@ -919,11 +991,12 @@ class SetupWindow:
         self.url_var = self._var(self.initial["supabase_url"])
         self.key_var = self._var(self.initial["supabase_anon_key"])
         self.device_var = self._var(self.initial["device_name"])
+        # Account and hotkey together: the two things the tracker needs from the user before anything else.
         self._account_section(form)
+        self._hotkey_section(form)
         self._recordings_section(form)
         self._vault_section(form)
         self._routine_teaser(form)
-        self._hotkey_section(form)
         self.autostart_var = self._var(bool(self.initial["autostart"]), "bool")
         ttk.Checkbutton(form, text="Uruchamiaj przy starcie Windows", variable=self.autostart_var).pack(
             anchor="w", pady=(self.px(16), 0))
@@ -935,8 +1008,42 @@ class SetupWindow:
         self._bottom_buttons(self.footer)
         self._refresh_buttons()
 
+    def _header(self, parent: Any) -> None:
+        """The tray's tree, the name and the tagline, as the dashboard's top bar."""
+        head = ttk.Frame(parent)
+        head.pack(fill="x")
+        try:
+            from PIL import ImageTk
+
+            from .tray import make_icon_image
+
+            logo = ImageTk.PhotoImage(make_icon_image(self.px(44)), master=self.root)
+            self._keep.append(logo)
+            ttk.Label(head, image=logo).grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, self.px(10)))
+        except Exception:
+            log.debug("header logo unavailable", exc_info=True)
+        ttk.Label(head, text="MindsetForest", style="Title.TLabel").grid(row=0, column=1, sticky="sw")
+        tagline = INSTALL_TAGLINE if self.mode == "install" else SETTINGS_TAGLINE
+        ttk.Label(head, text=tagline, style="Hint.TLabel", wraplength=self.wrap - self.px(60), justify="left").grid(
+            row=1, column=1, sticky="nw")
+
+    def _status_block(self, parent: Any) -> None:
+        """What the running tracker is doing, read from its tracker.db (never written from here)."""
+        def running() -> bool:
+            pid = winsetup._lock_pid(self.data_dir)
+            return pid is not None and winsetup._pid_is_tracker(pid)
+
+        kv = self._try(lambda: read_kv(self.data_dir / "tracker.db", ("tracking_since", "paused", "last_archive")),
+                       {}, "Stan trackera")
+        lines = tracker_status_lines(kv, bool(self._try(running, False, "Stan trackera")))
+        card = ttk.Frame(parent, style="Card.TFrame", padding=self.px(12))
+        card.pack(fill="x", pady=(self.px(12), 0))
+        for i, line in enumerate(lines):
+            ttk.Label(card, text=line, style="StatusBold.TLabel" if i == 0 else "Status.TLabel",
+                      wraplength=self.wrap - self.px(30), justify="left").pack(anchor="w")
+
     def _account_section(self, parent: Any) -> None:
-        box = self._section(parent, "Konto")
+        box = self._section(parent, "Konto i skrót")
         px = self.px
         self.signed_in_frame = ttk.Frame(box)
         self.signed_in_frame.grid(row=0, column=0, sticky="ew")
@@ -1108,19 +1215,24 @@ class SetupWindow:
             row=1, column=0, sticky="w", pady=(self.px(4), 0))
 
     def _hotkey_section(self, parent: Any) -> None:
-        box = self._section(parent, "Skrót: zapisz zaznaczony tekst w Archive")
+        box = ttk.Frame(parent)  # under "Konto i skrót", no heading of its own
+        box.pack(fill="x", pady=(self.px(10), 0))
+        box.columnconfigure(0, weight=1)
+        ttk.Label(box, text="Zapisz zaznaczony tekst w Archive:", style="Bold.TLabel").grid(
+            row=0, column=0, columnspan=3, sticky="w")
         px = self.px
         self.hotkey_var = self._var(self.initial["hotkey"])
         self.hotkey_text = self._var(hotkey_label(self.initial["hotkey"]))
         self.hotkey_var.trace_add("write", lambda *_a: self.hotkey_text.set(hotkey_label(self.hotkey_var.get())))
-        ttk.Label(box, textvariable=self.hotkey_text, style="Hotkey.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(box, textvariable=self.hotkey_text, style="Hotkey.TLabel").grid(row=1, column=0, sticky="w")
         change = ttk.Button(box, text="Zmień...", command=self.capture_hotkey)
-        change.grid(row=0, column=1, padx=(px(8), 0))
+        change.grid(row=1, column=1, padx=(px(8), 0))
         off = ttk.Button(box, text="Wyłącz", command=lambda: self._set_hotkey(""))
-        off.grid(row=0, column=2, padx=(px(8), 0))
+        off.grid(row=1, column=2, padx=(px(8), 0))
         self.lock_while_busy += [change, off]
-        self._hint(box, "To samo ustawienie co w dashboardzie (Settings → Keybinds); zmiana działa w ciągu minuty.").grid(
-            row=1, column=0, columnspan=3, sticky="w", pady=(px(2), 0))
+        self._hint(box, "To samo ustawienie co w dashboardzie (Settings → Keybinds); zmiana działa w ciągu minuty. "
+                   "Link do rolki (Instagram, TikTok, X, YouTube Shorts) dostaje transkrypt.").grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(px(2), 0))
 
     def _advanced_section(self, parent: Any) -> None:
         px = self.px
@@ -1159,7 +1271,7 @@ class SetupWindow:
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=(px(6), 0))
         text = "Zainstaluj i uruchom" if self.mode == "install" else "Zapisz"
-        self.submit_button = ttk.Button(row, text=text, command=self.submit, default="active")
+        self.submit_button = ttk.Button(row, text=text, command=self.submit, default="active", style="Accent.TButton")
         self.submit_button.pack(side="right")
         cancel = ttk.Button(row, text="Anuluj", command=self.close)
         cancel.pack(side="right", padx=(0, px(8)))

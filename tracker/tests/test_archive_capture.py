@@ -3,7 +3,9 @@ import json
 import pytest
 import requests
 
-from mindsetforest_tracker.archive_capture import ArchiveClient, build_block, clean_source, parse_hotkey
+from mindsetforest_tracker.archive_capture import (
+    ArchiveClient, build_block, clean_source, parse_hotkey, social_video_url,
+)
 from mindsetforest_tracker.auth import AuthRequired, SupabaseAuth, Tokens
 from mindsetforest_tracker.config import load_config
 from mindsetforest_tracker.main import build_app
@@ -206,3 +208,96 @@ def test_sync_pulls_the_hotkey(tmp_path):
     worker.on_capture_hotkey = got.append
     worker.sync_once()
     assert got == ["alt+shift+x"]
+
+
+def test_social_video_url_matches_the_web_app():
+    found = {
+        "see https://www.instagram.com/reel/C9xYz_1-ab/?igsh=abc": "https://www.instagram.com/reel/C9xYz_1-ab/?igsh=abc",
+        "https://instagram.com/p/AbC123/.": "https://instagram.com/p/AbC123/",
+        "(https://vm.tiktok.com/ZMabc123/)": "https://vm.tiktok.com/ZMabc123/",
+        "https://www.tiktok.com/@user/video/7300000000000000000": "https://www.tiktok.com/@user/video/7300000000000000000",
+        "https://x.com/someone/status/1790000000000000000!": "https://x.com/someone/status/1790000000000000000",
+        "https://twitter.com/a_b/status/123?s=20": "https://twitter.com/a_b/status/123?s=20",
+        "https://m.facebook.com/reel/123456789": "https://m.facebook.com/reel/123456789",
+        "https://www.facebook.com/watch/?v=123": "https://www.facebook.com/watch/?v=123",
+        "https://fb.watch/abcDEF/": "https://fb.watch/abcDEF/",
+        "Shorts: https://youtube.com/shorts/dQw4w9WgXcQ?feature=share,": "https://youtube.com/shorts/dQw4w9WgXcQ?feature=share",
+    }
+    for text, url in found.items():
+        assert social_video_url(text) == url, text
+    for text in ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://instagram.com/someone",
+                 "https://x.com/someone", "https://example.com/reel/1", "", "no link here"):
+        assert social_video_url(text) is None, text
+
+
+def test_transcribe_calls_social_transcript(tmp_path):
+    http = FakeHttp(FakeResponse(200, {"status": "started"}))
+    client = ArchiveClient(URL, "anon", make_auth(tmp_path, http), http=http)
+    assert client.transcribe("https://x.com/a/status/1", "b1") is True
+    url, headers, body = http.calls[0]
+    assert url == f"{URL}/functions/v1/social-transcript"
+    assert headers["Authorization"] == "Bearer acc" and headers["Content-Type"] == "application/json"
+    assert body == {"url": "https://x.com/a/status/1", "blockId": "b1"}
+    failing = FakeHttp(requests.ConnectionError("offline"))
+    assert ArchiveClient(URL, "anon", make_auth(tmp_path, failing), http=failing).transcribe("u", "b1") is False
+
+
+def _signed_in_app(tmp_path, monkeypatch):
+    import threading
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"supabase_url": URL, "supabase_anon_key": "anon"}))
+    app = build_app(load_config(cfg_path), tmp_path)
+    app.auth.tokens = Tokens("acc", "ref", "user-1", 9e12, "a@b.c")
+
+    class Inline:  # run the background calls at once so the test can see them
+        def __init__(self, target, args=(), **_kw):
+            self.target, self.args = target, args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(threading, "Thread", Inline)
+    return app
+
+
+def test_a_reel_link_goes_to_social_transcript_not_embed(tmp_path, monkeypatch):
+    app = _signed_in_app(tmp_path, monkeypatch)
+    http = FakeHttp(FakeResponse(201, [{"id": "b9", "title": "Watch"}]))
+    app.archive.http = http
+    result = app.save_capture("Watch https://www.instagram.com/reel/XyZ123/ later", "Instagram - Google Chrome")
+    assert result.ok and result.transcript and result.message == "Zapisano — transkrypt w drodze"
+    assert [c[0].rsplit("/", 1)[-1] for c in http.calls] == ["archive_blocks?select=id,title", "social-transcript"]
+    assert http.calls[1][2] == {"url": "https://www.instagram.com/reel/XyZ123/", "blockId": "b9"}
+    assert app.archive_line().startswith("Ostatni zapis do Archive: Watch (")
+    app.store.close()
+
+
+def test_plain_text_is_embedded(tmp_path, monkeypatch):
+    app = _signed_in_app(tmp_path, monkeypatch)
+    http = FakeHttp(FakeResponse(201, [{"id": "b1", "title": "Plain"}]))
+    app.archive.http = http
+    result = app.save_capture("Plain https://example.com", "Page")
+    assert result.ok and not result.transcript and result.message == "Saved to Archive: Plain"
+    assert http.calls[1][0].endswith("/functions/v1/ai-embed-block")
+    assert http.calls[1][2] == {"action": "embed", "blockId": "b1"}
+    app.store.close()
+
+
+def test_confirm_capture_toasts_then_falls_back_to_the_balloon(tmp_path, monkeypatch):
+    from mindsetforest_tracker import main as main_mod
+    from mindsetforest_tracker.main import CaptureResult
+
+    app = _signed_in_app(tmp_path, monkeypatch)
+    toasts, balloons, beeps, flashes = [], [], [], []
+    monkeypatch.setattr(main_mod.notify, "beep", lambda ok=True: beeps.append(ok))
+    monkeypatch.setattr(main_mod.tray, "flash", lambda icon, paused: flashes.append(icon))
+    monkeypatch.setattr(main_mod.tray, "notify", lambda icon, msg: balloons.append(msg))
+    monkeypatch.setattr(main_mod.notify, "toast", lambda t, m, open_url=None: toasts.append((t, m, open_url)) or True)
+    app.confirm_capture(CaptureResult("Saved to Archive: Hi", ok=True, title="Hi"))
+    assert toasts == [("Zapisano w Archive", "Hi", app.dashboard_url)] and beeps == [True] and len(flashes) == 1
+    monkeypatch.setattr(main_mod.notify, "toast", lambda *a, **k: False)  # no winotify: the old balloon
+    app.confirm_capture(CaptureResult("Couldn't save (no connection?). The text is still on your clipboard."))
+    assert balloons == ["Couldn't save (no connection?). The text is still on your clipboard."] and beeps[-1] is False
+    assert len(flashes) == 1  # no flash for a failure
+    app.store.close()

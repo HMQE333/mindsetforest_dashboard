@@ -1,6 +1,7 @@
 """System tray icon (pystray) and the one tiny tkinter dialog for signing in.
 
-The tray is the tracker's everyday UI: a status line, Pause/Resume, "Don't
+The tray is the tracker's everyday UI: a status line ("Śledzę od 9:12"),
+what is in front, the last save to Archive, Pause/Resume, "Don't
 track <app>", "Ustawienia..." (the setup window, as its own process), "Open
 dashboard", "Sign in..." (only when no session is saved), a line naming the
 save-to-Archive hotkey and Quit. Everything it does goes through
@@ -10,8 +11,10 @@ optional imports so tests run on Linux.
 from __future__ import annotations
 
 import logging
+import threading
 import webbrowser
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -23,7 +26,7 @@ try:
     import pystray
 
     TRAY_AVAILABLE = True
-except ImportError:  # pragma: no cover
+except Exception:  # pragma: no cover - missing, or Linux with no display (Xlib raises on import)
     pystray = None
     TRAY_AVAILABLE = False
 
@@ -32,6 +35,8 @@ class TrayController(Protocol):
     dashboard_url: str
 
     def status_line(self) -> str: ...
+    def activity_line(self) -> str | None: ...
+    def archive_line(self) -> str | None: ...
     def sync_line(self) -> str: ...
     def is_paused(self) -> bool: ...
     def toggle_pause(self) -> None: ...
@@ -44,13 +49,21 @@ class TrayController(Protocol):
     def quit(self) -> None: ...
 
 
-def make_icon_image(size: int = 64, paused: bool = False) -> Image.Image:
-    """A small green tree on a dark disc (grey when paused)."""
+ACCENT = (139, 92, 246, 255)  # the web app's purple
+FLASH_SECONDS = 1.0
+
+
+def make_icon_image(size: int = 64, paused: bool = False, highlight: bool = False) -> Image.Image:
+    """A small green tree on a dark disc (grey when paused, on purple for ``highlight``).
+
+    The highlighted variant is the brief flash after a save to Archive: visible
+    in the tray even when Windows keeps the toast to itself.
+    """
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     s = size / 64
-    leaf = (120, 120, 120, 255) if paused else (76, 175, 80, 255)
-    draw.ellipse((2 * s, 2 * s, 62 * s, 62 * s), fill=(30, 41, 34, 255))
+    leaf = (120, 120, 120, 255) if paused else ((220, 252, 231, 255) if highlight else (76, 175, 80, 255))
+    draw.ellipse((2 * s, 2 * s, 62 * s, 62 * s), fill=ACCENT if highlight else (30, 41, 34, 255))
     draw.polygon([(32 * s, 10 * s), (14 * s, 36 * s), (50 * s, 36 * s)], fill=leaf)
     draw.polygon([(32 * s, 22 * s), (10 * s, 48 * s), (54 * s, 48 * s)], fill=leaf)
     draw.rectangle((28 * s, 46 * s, 36 * s, 56 * s), fill=(121, 85, 72, 255))
@@ -70,6 +83,48 @@ def format_duration(seconds: int) -> str:
     if seconds < 3600:
         return f"{seconds // 60}m {seconds % 60:02d}s"
     return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
+
+
+def clock_time(ts: float) -> str:
+    """``9:12`` (local time, no leading zero), as the owner writes times."""
+    t = datetime.fromtimestamp(ts)
+    return f"{t.hour}:{t.minute:02d}"
+
+
+def tracking_line(since: float | None, paused: bool) -> str:
+    """The tray's first line: ``Śledzę od 9:12``, or ``Wstrzymane``."""
+    if paused:
+        return "Wstrzymane"
+    return f"Śledzę od {clock_time(since)}" if since else "Śledzę"
+
+
+def archive_line(title: str | None, at: float | None, chars: int = 40) -> str | None:
+    """``Ostatni zapis do Archive: <title> (14:05)``, or None before the first save."""
+    if not title or not at:
+        return None
+    short = title if len(title) <= chars else title[: chars - 1].rstrip() + "…"
+    return f"Ostatni zapis do Archive: {short} ({clock_time(at)})"
+
+
+def flash(icon: Any, paused: Callable[[], bool], seconds: float = FLASH_SECONDS) -> None:
+    """Swap the tray image to the highlighted tree for a moment, then back."""
+    if icon is None:
+        return
+    try:
+        icon.icon = make_icon_image(highlight=True)
+    except Exception:  # pragma: no cover
+        log.debug("flash failed", exc_info=True)
+        return
+
+    def restore() -> None:
+        try:
+            icon.icon = make_icon_image(paused=paused())
+        except Exception:  # pragma: no cover
+            log.debug("flash restore failed", exc_info=True)
+
+    timer = threading.Timer(seconds, restore)
+    timer.daemon = True
+    timer.start()
 
 
 def build_icon(controller: TrayController) -> Any:
@@ -96,6 +151,10 @@ def build_icon(controller: TrayController) -> Any:
 
     menu = pystray.Menu(
         pystray.MenuItem(lambda _i: controller.status_line(), None, enabled=False),
+        pystray.MenuItem(lambda _i: controller.activity_line() or "", None, enabled=False,
+                         visible=lambda _i: bool(controller.activity_line())),
+        pystray.MenuItem(lambda _i: controller.archive_line() or "", None, enabled=False,
+                         visible=lambda _i: bool(controller.archive_line())),
         pystray.MenuItem(lambda _i: controller.sync_line(), None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(lambda _i: "Resume tracking" if controller.is_paused() else "Pause tracking", on_pause),

@@ -7,8 +7,8 @@
     settings window and the tracker itself (main.decide_action picks the mode),
     so everything the setup needs is bundled too: tkinter, pywin32 (shortcuts,
     DPAPI), pystray, Pillow, comtypes with its generated UI Automation
-    wrapper (browser_url.py reads the active tab's domain) and pypdf (PDFs
-    dropped into the vault's Import/ folder). build.bat runs
+    wrapper (browser_url.py reads the active tab's domain), pypdf (PDFs
+    dropped into the vault's Import/ folder) and winotify (toasts). build.bat runs
     this for a local build and CI
     (.github/workflows/tracker-windows.yml) runs it before the exe's
     --self-test, so a missing hidden import fails there and not on a user's PC.
@@ -51,6 +51,7 @@ $HiddenImports = @(
     'comtypes'             # UI Automation for the address bar; browser_url imports it on first use
     'comtypes.client'
     'pypdf'                # .pdf files in the vault's Import/ folder; imports.py imports it on first use
+    'winotify'             # save-to-Archive toasts; notify.py imports it optionally
 )
 
 function Invoke-Native {

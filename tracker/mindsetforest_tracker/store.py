@@ -226,6 +226,26 @@ class Store:
         return fresh
 
 
+def read_kv(path: Path | str, keys: Iterable[str]) -> dict[str, str]:
+    """Read some kv values from another process's tracker.db, read-only; {} when it cannot.
+
+    The setup window uses it for the tracker's status ("Śledzę od", last Archive save)
+    without a file of its own and without ever writing to the tracker's database.
+    """
+    keys = list(keys)
+    try:
+        if not Path(path).exists():
+            return {}
+        conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=1.0)
+        try:
+            marks = ",".join("?" * len(keys))
+            return dict(conn.execute(f"SELECT key, value FROM kv WHERE key IN ({marks})", keys).fetchall())
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return {}
+
+
 def _to_row(row: sqlite3.Row) -> SessionRow:
     return SessionRow(
         id=row["id"], device_id=row["device_id"], app=row["app"], app_key=row["app_key"],

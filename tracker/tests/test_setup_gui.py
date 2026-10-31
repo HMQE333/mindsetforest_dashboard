@@ -961,3 +961,15 @@ def _text(widget):
         return str(widget.cget("text"))
     except Exception:
         return ""
+
+
+def test_tracker_status_lines():
+    import json as _json
+    from datetime import datetime as _dt
+
+    at = _dt(2026, 10, 31, 9, 12).timestamp()
+    kv = {"tracking_since": str(at), "paused": "0", "last_archive": _json.dumps({"title": "Deep work", "at": at})}
+    assert setup_gui.tracker_status_lines(kv, True) == ["Śledzę od 9:12", "Ostatni zapis do Archive: Deep work (9:12)"]
+    assert setup_gui.tracker_status_lines({**kv, "paused": "1"}, True)[0] == "Wstrzymane"
+    assert setup_gui.tracker_status_lines({}, False) == [setup_gui.TRACKER_NOT_RUNNING,
+                                                         "Ostatni zapis do Archive: jeszcze nic"]

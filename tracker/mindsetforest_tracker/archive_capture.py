@@ -4,7 +4,11 @@ Select text anywhere (Chrome, a PDF, Word, a chat) and press the hotkey
 (``capture_hotkey`` in config.json, default Alt+Shift+S). The tracker copies
 the selection the way Ctrl+C does and saves it as an Archive note
 (``archive_blocks``) under the signed-in account, tagged ``quick-capture``,
-with the window title as its source. A balloon says what happened.
+with the window title as its source. A toast says what happened (notify.py).
+
+A link to a reel or short (Instagram, TikTok, X, Facebook, YouTube Shorts) in
+the text is handed to the ``social-transcript`` edge function after the save,
+which fills the note with key points and the transcript, as the web app does.
 
 The copied text stays on the clipboard, so a failed save (offline) loses
 nothing: paste it into the Archive inbox later.
@@ -44,6 +48,22 @@ MODIFIERS = {"alt": MOD_ALT, "ctrl": MOD_CONTROL, "control": MOD_CONTROL, "shift
 BROWSER_SUFFIX = re.compile(
     r"\s+[-–—]\s+(?:Google Chrome|Microsoft​?\s?Edge|Mozilla Firefox|Brave|Opera|Vivaldi|Chromium)\s*$"
 )
+
+# The web app's SOCIAL_VIDEO (artifacts/app/src/lib/social-video.ts), kept identical so the
+# same links get a transcript on both. re.ASCII: JavaScript's \w is ASCII-only.
+SOCIAL_VIDEO = re.compile(
+    r"https?://(?:www\.|m\.)?(?:instagram\.com/(?:reel|reels|p|tv)/[\w-]+|(?:vm\.)?tiktok\.com/\S+"
+    r"|(?:x|twitter)\.com/\w+/status/\d+|(?:facebook\.com/\S*(?:reel|videos|watch)\S*|fb\.watch/\S+)"
+    r"|youtube\.com/shorts/[\w-]+)\S*",
+    re.IGNORECASE | re.ASCII,
+)
+_TRAILING_PUNCT = re.compile(r"[)\].,;!?'\"]+$")
+
+
+def social_video_url(text: str) -> str | None:
+    """The first reel / short link in ``text``, without trailing punctuation (``socialVideoUrl``)."""
+    m = SOCIAL_VIDEO.search(text or "")
+    return _TRAILING_PUNCT.sub("", m.group(0)) if m else None
 
 
 def parse_hotkey(spec: str) -> tuple[int, int]:
@@ -95,6 +115,7 @@ class ArchiveClient:
         base = supabase_url.rstrip("/")
         self.url = f"{base}/rest/v1/{TABLE}?select=id,title"
         self.embed_url = f"{base}/functions/v1/ai-embed-block"
+        self.transcript_url = f"{base}/functions/v1/social-transcript"
         self.anon_key = anon_key
         self.auth = auth
         self.http = http or requests.Session()
@@ -131,6 +152,22 @@ class ArchiveClient:
                            json={"action": "embed", "blockId": block_id}, timeout=60)
         except Exception as exc:
             log.info("Embedding skipped for %s: %s", block_id, exc)
+
+    def transcribe(self, url: str, block_id: str) -> bool:
+        """Best effort: ask the server to fill the note from the video; True once it has started.
+
+        The function answers ``{"status": "started"}`` at once and writes the note in the
+        background, so the timeout only covers the hand-over.
+        """
+        try:
+            resp = self.http.post(self.transcript_url, headers={**self.auth.headers(), "Content-Type": "application/json"},
+                                  json={"url": url, "blockId": block_id}, timeout=60)
+            if resp.status_code in (200, 201, 202):
+                return True
+            log.info("Transcript not started for %s: HTTP %s %s", block_id, resp.status_code, resp.text[:200])
+        except Exception as exc:
+            log.info("Transcript skipped for %s: %s", block_id, exc)
+        return False
 
 
 # -- Windows -----------------------------------------------------------------
@@ -173,6 +210,24 @@ def read_selection(timeout: float = 1.0) -> str | None:  # pragma: no cover - Wi
     if user32.GetClipboardSequenceNumber() == before:
         return None
     for _ in range(10):  # another app may hold the clipboard for a moment
+        try:
+            win32clipboard.OpenClipboard()
+            try:
+                if not win32clipboard.IsClipboardFormatAvailable(CF_UNICODETEXT):
+                    return None
+                return win32clipboard.GetClipboardData(CF_UNICODETEXT)
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception:
+            time.sleep(0.05)
+    return None
+
+
+def read_clipboard() -> str | None:  # pragma: no cover - Windows only
+    """The clipboard's text as it is now (no Ctrl+C): the fallback when nothing is selected."""
+    import win32clipboard
+
+    for _ in range(10):
         try:
             win32clipboard.OpenClipboard()
             try:

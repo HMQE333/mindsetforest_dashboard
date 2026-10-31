@@ -60,7 +60,7 @@ def test_ticks_write_closed_sessions_and_flush_open(tmp_path):
     rows = {r.app: r for r in app.store.unsynced()}
     assert rows["Code"].seconds == 10
     assert rows["Spotify"].seconds == 50  # open session flushed at the 60 s mark (T0+60 - T0+10)
-    assert app.status_line().startswith("Spotify - ")
+    assert app.activity_line().startswith("Spotify - ")
     assert app.current_app_name() == "Spotify"
 
 
@@ -70,7 +70,7 @@ def test_pause_closes_session_and_records_nothing(tmp_path):
         app.tick(T0 + i)
     app.now["t"] = T0 + 5
     app.toggle_pause()
-    assert app.is_paused() and app.status_line() == "Paused" and app.current_app_name() is None
+    assert app.is_paused() and app.status_line() == "Wstrzymane" and app.activity_line() is None and app.current_app_name() is None
     for i in range(5, 10):
         app.tick(T0 + i)
     assert app.store.count() == 1 and app.tracker.current is None
@@ -803,3 +803,16 @@ def test_uninstall_deletes_the_program_only_after_the_last_dialog(tmp_path, monk
 def test_the_app_reports_its_device_name_once_signed_in(tmp_path):
     app = make_app(tmp_path, [])
     assert app.sync_worker.pending_device_name == ("dev-1", app.config.device_name)
+
+
+def test_tray_lines_and_flash_icon():
+    from datetime import datetime as _dt
+
+    from mindsetforest_tracker import tray
+
+    at = _dt(2026, 10, 31, 14, 5).timestamp()
+    assert tray.tracking_line(at, False) == "Śledzę od 14:05"
+    assert tray.tracking_line(at, True) == "Wstrzymane"
+    assert tray.archive_line(None, at) is None
+    assert tray.archive_line("x" * 80, at) == "Ostatni zapis do Archive: " + "x" * 39 + "… (14:05)"
+    assert tray.make_icon_image(highlight=True).getpixel((6, 32)) != tray.make_icon_image().getpixel((6, 32))

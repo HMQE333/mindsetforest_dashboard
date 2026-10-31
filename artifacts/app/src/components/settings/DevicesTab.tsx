@@ -6,7 +6,7 @@ import { useTrackerDevices } from "@/hooks/useTrackerDevices";
 import { deviceLabel, isPhone, type DeviceSummary } from "@/lib/tracker-devices";
 
 /** The versions in public/downloads (bump with each published build). */
-export const TRACKER_VERSION = "1.3";
+export const TRACKER_VERSION = "1.4";
 export const PHONE_VERSION = "1.4";
 
 /**
