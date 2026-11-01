@@ -25,6 +25,10 @@ expect() {
   else
     echo "FAIL: '$2' is not on the screen ($1). On screen:"
     grep -o 'text="[^"]*"' "$OUT/$1.xml" | grep -v 'text=""' || true
+    # A crash leaves the screen empty: keep and print why.
+    adb logcat -d -b crash > "$OUT/crash.txt" || true
+    adb logcat -d -t 400 > "$OUT/logcat.txt" || true
+    head -60 "$OUT/crash.txt" || true
     exit 1
   fi
 }
