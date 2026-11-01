@@ -31,16 +31,12 @@ interface Props {
 
 type Editing = { mode: "create" } | { mode: "edit"; preset: MissionPreset };
 
-/** "1 misja", "3 misje", "12 misji" - the Polish plural for card footers. */
-function misje(n: number): string {
-  if (n === 1) return "1 misja";
-  const last = n % 10;
-  const tens = n % 100;
-  if (last >= 2 && last <= 4 && (tens < 12 || tens > 14)) return `${n} misje`;
-  return `${n} misji`;
+/** "1 mission", "3 missions" - the plural for card footers. */
+function missionsLabel(n: number): string {
+  return n === 1 ? "1 mission" : `${n} missions`;
 }
 
-/** Per-key counts: pillars by name in CATEGORIES order, every project folder folded into "Projekty". */
+/** Per-key counts: pillars by name in CATEGORIES order, every project folder folded into "Projects". */
 function breakdown(map: MissionMap): string[] {
   const parts: string[] = [];
   for (const c of CATEGORIES) {
@@ -51,27 +47,27 @@ function breakdown(map: MissionMap): string[] {
   for (const [key, list] of Object.entries(map)) {
     if (key.startsWith("project-")) projects += list.length;
   }
-  if (projects > 0) parts.push(`Projekty ${projects}`);
+  if (projects > 0) parts.push(`Projects ${projects}`);
   return parts;
 }
 
-/** "dziś", "wczoraj", "3 dni temu" … measured on the app's 04:00 day boundary. */
+/** "today", "yesterday", "3 days ago" … measured on the app's 04:00 day boundary. */
 function relativeDay(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
   const days = daysBetween(dayKey(at), todayKey());
-  if (days <= 0) return "dziś";
-  if (days === 1) return "wczoraj";
-  if (days < 7) return `${days} dni temu`;
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
   if (days < 30) {
     const w = Math.floor(days / 7);
-    return w === 1 ? "tydzień temu" : `${w} tyg. temu`;
+    return w === 1 ? "a week ago" : `${w} weeks ago`;
   }
   if (days < 365) {
     const m = Math.floor(days / 30);
-    return m === 1 ? "miesiąc temu" : `${m} mies. temu`;
+    return m === 1 ? "a month ago" : `${m} months ago`;
   }
-  return at.toLocaleDateString("pl-PL");
+  return at.toLocaleDateString("en-US");
 }
 
 const gridVariants: Variants = {
@@ -111,7 +107,7 @@ function PresetCard({ preset, active, isFirst, isLast, onLoad, onUpdateFromCurre
         type="button"
         onClick={onLoad}
         aria-pressed={active}
-        title={`Załaduj „${preset.name}” (${misje(count)})`}
+        title={`Load “${preset.name}” (${missionsLabel(count)})`}
         className={cn(
           "group flex h-full w-full flex-col items-start gap-2 rounded-2xl border p-4 pr-11 text-left transition-all duration-300",
           "hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.06] hover:glow-sm",
@@ -125,7 +121,7 @@ function PresetCard({ preset, active, isFirst, isLast, onLoad, onUpdateFromCurre
           </span>
           {active && (
             <span className="rounded-full border border-primary/50 bg-primary/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
-              Aktywny
+              Active
             </span>
           )}
         </span>
@@ -133,17 +129,17 @@ function PresetCard({ preset, active, isFirst, isLast, onLoad, onUpdateFromCurre
         {preset.description ? (
           <span className="line-clamp-2 text-xs leading-snug text-muted-foreground">{preset.description}</span>
         ) : (
-          <span className="text-xs italic text-muted-foreground/50">Bez opisu</span>
+          <span className="text-xs italic text-muted-foreground/50">No description</span>
         )}
         <span className="mt-auto block w-full border-t border-white/5 pt-2 text-[11px] text-muted-foreground">
           <span className="line-clamp-2 leading-relaxed" title={breakdownText || undefined}>
-            <span className="font-medium text-foreground/80">{misje(count)}</span>
+            <span className="font-medium text-foreground/80">{missionsLabel(count)}</span>
             {parts.map((part) => (
               <span key={part}> · {part}</span>
             ))}
           </span>
           {preset.lastAppliedAt && (
-            <span className="mt-1 block text-[10px] text-muted-foreground/70">Ostatnio: {relativeDay(preset.lastAppliedAt)}</span>
+            <span className="mt-1 block text-[10px] text-muted-foreground/70">Last used: {relativeDay(preset.lastAppliedAt)}</span>
           )}
         </span>
       </button>
@@ -152,7 +148,7 @@ function PresetCard({ preset, active, isFirst, isLast, onLoad, onUpdateFromCurre
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label={`Opcje presetu ${preset.name}`}
+            aria-label={`Preset options for ${preset.name}`}
             onClick={(e) => e.stopPropagation()}
             className="absolute right-2.5 top-2.5 rounded-lg p-1.5 text-muted-foreground/70 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
@@ -160,13 +156,13 @@ function PresetCard({ preset, active, isFirst, isLast, onLoad, onUpdateFromCurre
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="text-xs" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuItem onSelect={onUpdateFromCurrent}>Aktualizuj z obecnych misji</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onRename}>Zmień nazwę lub emoji</DropdownMenuItem>
-          <DropdownMenuItem disabled={isFirst} onSelect={() => onMove(-1)}>Przesuń w lewo</DropdownMenuItem>
-          <DropdownMenuItem disabled={isLast} onSelect={() => onMove(1)}>Przesuń w prawo</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onUpdateFromCurrent}>Update from current missions</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onRename}>Rename or change emoji</DropdownMenuItem>
+          <DropdownMenuItem disabled={isFirst} onSelect={() => onMove(-1)}>Move left</DropdownMenuItem>
+          <DropdownMenuItem disabled={isLast} onSelect={() => onMove(1)}>Move right</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
-            Usuń
+            Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -218,7 +214,7 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
       if (editing.mode === "create") {
         const created = await createPreset({ name, emoji, description, missions: snapshotMissions(customMissions) });
         if (created) {
-          toast.success(`Zapisano preset „${created.name}” (${countMissions(created.missions)} misji)`);
+          toast.success(`Saved preset “${created.name}” (${missionsLabel(countMissions(created.missions))})`);
           setEditing(null);
         }
       } else {
@@ -234,7 +230,7 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
     if (!applying) return;
     onApply(missionsForApply(applying.missions));
     void markApplied(applying.id);
-    toast.success(`Załadowano „${applying.name}”`);
+    toast.success(`Loaded “${applying.name}”`);
     setApplying(null);
     setPickerOpen(false);
   };
@@ -242,13 +238,13 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
   const updateFromCurrent = async (preset: MissionPreset) => {
     const snap = snapshotMissions(customMissions);
     const ok = await updatePreset(preset.id, { missions: snap });
-    if (ok) toast.success(`Preset „${preset.name}” zaktualizowany z obecnych misji`);
+    if (ok) toast.success(`Preset “${preset.name}” updated from current missions`);
   };
 
   const confirmDelete = async () => {
     if (!deleting) return;
     const ok = await deletePreset(deleting.id);
-    if (ok) toast.success(`Usunięto preset „${deleting.name}”`);
+    if (ok) toast.success(`Deleted preset “${deleting.name}”`);
     setDeleting(null);
   };
 
@@ -256,15 +252,15 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
     return (
       <span
         role="status"
-        title="Uruchom migrację supabase/migrations/20260928190000_mission_presets.sql"
+        title="Run the migration supabase/migrations/20260928190000_mission_presets.sql"
         className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200"
       >
-        <span aria-hidden="true">⚠️</span> Presety wymagają migracji
+        <span aria-hidden="true">⚠️</span> Presets need a migration
       </span>
     );
   }
 
-  const triggerLabel = lastApplied ? `Presety misji – aktywny: ${lastApplied.name}` : "Presety misji";
+  const triggerLabel = lastApplied ? `Mission presets – active: ${lastApplied.name}` : "Mission presets";
 
   return (
     <>
@@ -297,10 +293,10 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
         <DialogContent className="max-h-[85vh] w-[calc(100%-1.5rem)] max-w-3xl gap-5 overflow-y-auto rounded-2xl border-white/10 bg-card/95 p-5 backdrop-blur-xl sm:rounded-2xl sm:p-6">
           <DialogHeader className="pr-8">
             <DialogTitle className="flex items-center gap-2">
-              <span aria-hidden="true">⚡</span> Presety misji
+              <span aria-hidden="true">⚡</span> Mission presets
             </DialogTitle>
             <DialogDescription>
-              Zapisane zestawy misji na różne tryby dnia. Kliknij kartę, aby załadować – nadpisze obecne misje na Home.
+              Saved mission sets for different kinds of day. Click a card to load it – it replaces the current missions on Home.
             </DialogDescription>
           </DialogHeader>
 
@@ -332,22 +328,22 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
               <button
                 type="button"
                 onClick={openCreate}
-                title="Zapisuje obecne misje ze wszystkich kategorii i projektów jako preset"
+                title="Saves the current missions from all categories and projects as a preset"
                 className="flex h-full min-h-[10rem] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 p-4 text-center text-muted-foreground transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.05] hover:text-foreground focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
                   <Plus className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <span className="text-sm font-semibold">Zapisz obecne jako preset</span>
-                <span className="text-[11px] text-muted-foreground/80">{misje(currentCount)} z obecnych kategorii i projektów</span>
+                <span className="text-sm font-semibold">Save current as preset</span>
+                <span className="text-[11px] text-muted-foreground/80">{missionsLabel(currentCount)} from current categories and projects</span>
               </button>
             </motion.div>
           </motion.div>
 
           {!loading && presets.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              Ustaw misje tak, jak chcesz je mieć w danym trybie (np. Monk mode, High energy day, Lock in), zapisz jako preset, potem
-              ładuj jednym kliknięciem. Załadowanie nadpisuje obecne misje.
+              Set up your missions the way you want them for a mode (e.g. Monk mode, High energy day, Lock in), save them as a preset, then
+              load them in one click. Loading replaces the current missions.
             </p>
           )}
         </DialogContent>
@@ -357,16 +353,16 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              Załadować {applying?.emoji} {applying?.name}?
+              Load {applying?.emoji} {applying?.name}?
             </DialogTitle>
             <DialogDescription>
               Nadpisze misje we wszystkich kategoriach i projektach ({applying ? countMissions(applying.missions) : 0} misji).
-              Dzisiejsze odhaczenia zostaną wyczyszczone, zdobyte dziś XP zostaje.
+              Today's check-offs will be cleared; XP earned today stays.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setApplying(null)}>Anuluj</Button>
-            <Button onClick={confirmApply}>Załaduj</Button>
+            <Button variant="ghost" onClick={() => setApplying(null)}>Cancel</Button>
+            <Button onClick={confirmApply}>Load</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -378,11 +374,11 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
             className="space-y-3"
           >
             <DialogHeader>
-              <DialogTitle>{editing?.mode === "create" ? "Zapisz obecne misje jako preset" : "Edytuj preset"}</DialogTitle>
+              <DialogTitle>{editing?.mode === "create" ? "Save current missions as a preset" : "Edit preset"}</DialogTitle>
               <DialogDescription>
                 {editing?.mode === "create"
-                  ? `Zapisze ${currentCount} misji ze wszystkich kategorii i projektów.`
-                  : "Nazwa i emoji. Same misje aktualizujesz opcją „Aktualizuj z obecnych misji”."}
+                  ? `Saves ${missionsLabel(currentCount)} from all categories and projects.`
+                  : "Name and emoji. To change the missions themselves, use “Update from current missions”."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-[4.5rem_1fr] gap-2">
@@ -391,25 +387,25 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
                 <Input id="preset-emoji" value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={8} className="text-center" />
               </div>
               <div>
-                <label htmlFor="preset-name" className="text-[11px] text-muted-foreground">Nazwa</label>
+                <label htmlFor="preset-name" className="text-[11px] text-muted-foreground">Name</label>
                 <Input
                   id="preset-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   maxLength={PRESET_NAME_MAX}
-                  placeholder="np. Monk mode"
+                  placeholder="e.g. Monk mode"
                   autoFocus
                   required
                 />
               </div>
             </div>
             <div>
-              <label htmlFor="preset-description" className="text-[11px] text-muted-foreground">Opis (opcjonalnie)</label>
-              <Input id="preset-description" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="Kiedy tego używasz" />
+              <label htmlFor="preset-description" className="text-[11px] text-muted-foreground">Description (optional)</label>
+              <Input id="preset-description" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="When you use it" />
             </div>
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Anuluj</Button>
-              <Button type="submit" disabled={busy || !name.trim()}>{editing?.mode === "create" ? "Zapisz preset" : "Zapisz"}</Button>
+              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button type="submit" disabled={busy || !name.trim()}>{editing?.mode === "create" ? "Save preset" : "Save"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -418,12 +414,12 @@ export default function MissionPresets({ customMissions, onApply, variant = "but
       <Dialog open={!!deleting} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Usunąć preset „{deleting?.name}”?</DialogTitle>
-            <DialogDescription>Obecne misje na Home zostają bez zmian. Tej operacji nie da się cofnąć.</DialogDescription>
+            <DialogTitle>Delete preset “{deleting?.name}”?</DialogTitle>
+            <DialogDescription>The current missions on Home stay as they are. This can't be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleting(null)}>Anuluj</Button>
-            <Button variant="destructive" onClick={() => void confirmDelete()}>Usuń</Button>
+            <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void confirmDelete()}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

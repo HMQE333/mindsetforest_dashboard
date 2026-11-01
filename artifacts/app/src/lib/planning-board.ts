@@ -72,7 +72,7 @@ export async function ensureBoard(userId: string): Promise<{ id: string } | { er
     .select("id")
     .single();
   if (createError || !created) {
-    return { error: `Nie udało się utworzyć tablicy „Inbox”${createError ? `: ${createError.message}` : ""}` };
+    return { error: `Couldn’t create the “Inbox” board${createError ? `: ${createError.message}` : ""}` };
   }
   rememberBoard(userId, created.id);
   try {

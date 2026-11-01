@@ -239,16 +239,16 @@ describe("addPlanningNodes", () => {
     expect(db.calls.find((c) => c.kind === "insert")!.payload).toEqual([expect.objectContaining({ parent_id: null, board_id: "b-open" })]);
   });
 
-  it("reports a failed insert or a missing board in Polish and fires nothing", async () => {
+  it("reports a failed insert or a missing board and fires nothing", async () => {
     db.fail = (op) => op.kind === "insert";
     const r = await addPlanningNodes("u1", [{ title: "A", ask: false }, { title: "B", ask: false }]);
-    expect(r).toEqual({ ok: false, error: "Nie udało się zapisać 2 węzły w Planning: boom" });
+    expect(r).toEqual({ ok: false, error: "Couldn't save 2 nodes in Planning: boom" });
     expect(events).toEqual([]);
 
     db.fail = null;
     db.calls = [];
-    board.ensure = { error: "Nie udało się utworzyć tablicy „Inbox”" };
-    expect(await addPlanningNodes("u1", [{ title: "A", ask: false }])).toEqual({ ok: false, error: "Nie udało się utworzyć tablicy „Inbox”" });
+    board.ensure = { error: "Couldn’t create the “Inbox” board" };
+    expect(await addPlanningNodes("u1", [{ title: "A", ask: false }])).toEqual({ ok: false, error: "Couldn’t create the “Inbox” board" });
     expect(db.calls.filter((c) => c.kind === "insert")).toHaveLength(0);
   });
 });
@@ -258,11 +258,11 @@ describe("complete_task", () => {
     db.rows = [node("q", { title: "Which channel do we push next month?", ask: true })];
     const r = await resolvePlanningCompletion("u1", { title: "which channel" });
     expect(r).toEqual({ ok: false, error: missingAnswerError("Which channel do we push next month?") });
-    expect(missingAnswerError("Q?")).toBe("„Q?” to otwarte pytanie: napisz, jaka jest odpowiedź, a wtedy je zamknę.");
+    expect(missingAnswerError("Q?")).toBe("“Q?” is an open question: tell me the answer and I'll settle it.");
     expect(await resolvePlanningCompletion("u1", { title: "which channel", outcome: "Creators" }))
       .toEqual({ ok: true, nodeId: "q", title: "Which channel do we push next month?", ask: true, parentTitle: null, drops: 0 });
     expect(await resolvePlanningCompletion("u1", { title: "missing" }))
-      .toEqual({ ok: false, error: "Nie znaleziono otwartego kroku ani pytania „missing” w Planning" });
+      .toEqual({ ok: false, error: "No open step or question “missing” in Planning" });
     expect(writes()).toHaveLength(0);
   });
 
@@ -287,7 +287,7 @@ describe("complete_task", () => {
   it("refuses an unanswered question at apply time too, and a node closed meanwhile", async () => {
     db.rows = [node("q", { title: "Which channel?", ask: true }), node("gone", { title: "Shipped", done: true })];
     expect(await completePlanningTask("u1", { title: "Which channel?" })).toEqual({ ok: false, error: missingAnswerError("Which channel?") });
-    expect(await completePlanningTask("u1", { title: "Shipped", nodeId: "gone" })).toEqual({ ok: false, error: "„Shipped” jest już zamknięte" });
+    expect(await completePlanningTask("u1", { title: "Shipped", nodeId: "gone" })).toEqual({ ok: false, error: "“Shipped” is already closed" });
     expect(writes()).toHaveLength(0);
   });
 
@@ -301,8 +301,8 @@ describe("complete_task", () => {
     const r = await resolvePlanningCompletion("u1", { title: "Ile to kosztuje?", outcome: "500 zł" });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toBe(
-      "„Ile to kosztuje?” pasuje do 2 otwartych węzłów w Planning: „Ile to kosztuje?” pod „Creators”, „Ile to kosztuje?” pod „Referral”. " +
-      "Napisz, o który chodzi (np. „Creators > Ile to kosztuje?”).",
+      "“Ile to kosztuje?” matches 2 open nodes in Planning: “Ile to kosztuje?” under “Creators”, “Ile to kosztuje?” under “Referral”. " +
+      "Say which one you mean (e.g. “Creators > Ile to kosztuje?”).",
     );
     expect(await resolvePlanningCompletion("u1", { title: "Referral > Ile to kosztuje?", outcome: "500 zł" }))
       .toEqual({ ok: true, nodeId: "c2", title: "Ile to kosztuje?", ask: true, parentTitle: "Referral", drops: 0 });

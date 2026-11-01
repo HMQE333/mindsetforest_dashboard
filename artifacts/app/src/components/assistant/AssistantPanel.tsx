@@ -273,9 +273,9 @@ const SUGGESTIONS = [
   { icon: "🔥", label: "How's my streak going?" },
   { icon: "🧘", label: "Summarize my breathing practice" },
   { icon: "✍️", label: "Save a quick note (e.g. \"save: idea about X\")" },
-  { icon: "🧘", label: "Włącz preset Monk mode" },
-  { icon: "✅", label: "Zrobiłem dzisiejszą misję z Body" },
-  { icon: "🧭", label: "Otwórz statystyki" },
+  { icon: "🧘", label: "Load the Monk mode preset" },
+  { icon: "✅", label: "I did today's Body mission" },
+  { icon: "🧭", label: "Open stats" },
 ];
 
 export default function AssistantPanel() {

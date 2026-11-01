@@ -110,7 +110,7 @@ function loadScopes(): ScopeId[] {
 /** Toast line saying where assistant-made planning rows landed. */
 function planningPlacement(board: PlanningBoardLabel): string {
   const name = `${board.emoji ? `${board.emoji} ` : ""}${board.name}`.trim();
-  return name ? `Tablica „${name}” w Planning` : "Na otwartej tablicy w Planning";
+  return name ? `Board “${name}” in Planning` : "On the open board in Planning";
 }
 
 /**
@@ -467,7 +467,7 @@ function useAssistantValue() {
           // a planning close that was refused says why, in the reply itself.
           const notes = [
             ...refused,
-            ...(broken ? ["Nie udało się odczytać proponowanych akcji. Poproś jeszcze raz, krócej."] : []),
+            ...(broken ? ["Couldn't read the proposed actions. Please ask again, more briefly."] : []),
           ];
           const display = notes.length > 0
             ? `${parsedText}\n\n${notes.map((n) => `(${n})`).join("\n")}`.trim()
@@ -479,13 +479,13 @@ function useAssistantValue() {
           if (dropped.length > 0) {
             const sections = Array.from(new Set(dropped.map((a) => ACTION_SCOPE[a.type]).filter((s): s is ScopeId => !!s)));
             toast.warning(
-              `Pominięto ${dropped.length === 1 ? "akcję" : `akcje (${dropped.length})`} spoza sekcji tej rozmowy: ${sections.map((s) => SCOPE_MAP[s]?.label ?? s).join(", ")}`,
-              { description: `${dropped.map(describeAction).join("\n")}\nPrzypnij ${sections.length === 1 ? "tę sekcję" : "te sekcje"} w Context i poproś jeszcze raz.` },
+              `Skipped ${dropped.length === 1 ? "an action" : `${dropped.length} actions`} outside this chat's sections: ${sections.map((s) => SCOPE_MAP[s]?.label ?? s).join(", ")}`,
+              { description: `${dropped.map(describeAction).join("\n")}\nPin ${sections.length === 1 ? "that section" : "those sections"} in Context and ask again.` },
             );
           }
           // A reply that was only an action block still gets a line of text,
           // never the raw block.
-          const fallback = pending.length > 0 ? "Proponuję te zmiany." : actions.length > 0 ? "Gotowe." : "Nic nie zostało zmienione.";
+          const fallback = pending.length > 0 ? "Here are the changes I suggest." : actions.length > 0 ? "Done." : "Nothing was changed.";
           final = {
             id: assistantId,
             role: "assistant",
@@ -556,14 +556,14 @@ function useAssistantValue() {
             const match = findMission(entries, action.title, action.categoryId);
             if (!match) {
               failed++;
-              toast.error(`Nie znaleziono misji „${action.title}”`);
+              toast.error(`Mission “${action.title}” not found`);
             } else if (match.done) {
               ok++;
-              toast(`„${match.title}” jest już odhaczone`);
+              toast(`“${match.title}” is already checked off`);
             } else {
               flushSync(() => completeMission(match.categoryId, match.index, match.xp));
               ok++;
-              toast.success(`Odhaczono „${match.title}” (+${match.xp} XP)`);
+              toast.success(`Checked off “${match.title}” (+${match.xp} XP)`);
             }
           } else if (action.type === "open_settings") {
             const detail = { module: "settings", tab: action.tab };
@@ -579,7 +579,7 @@ function useAssistantValue() {
             else { failed++; toast.error(r.error); }
           } else if (action.type === "toggle_module") {
             const r = await setModuleEnabled(user.id, action.module, action.enabled);
-            if (r.ok) { ok++; toast.success(`${action.enabled ? "Włączono" : "Ukryto"} moduł ${action.module}`); }
+            if (r.ok) { ok++; toast.success(`${action.enabled ? "Enabled" : "Hid"} module ${action.module}`); }
             else { failed++; toast.error(r.error); }
           } else if (
             action.type === "uncomplete_mission" ||
@@ -594,18 +594,18 @@ function useAssistantValue() {
             const match = findMission(pool, action.title, action.categoryId) ?? findMission(entries, action.title, action.categoryId);
             if (!match) {
               failed++;
-              toast.error(`Nie znaleziono misji „${action.title}”`);
+              toast.error(`Mission “${action.title}” not found`);
             } else if (action.type === "uncomplete_mission") {
               if (match.done) {
                 flushSync(() => uncompleteMission(match.categoryId, match.index, match.xp));
-                toast.success(`Odznaczono „${match.title}” (−${match.xp} XP)`);
+                toast.success(`Unchecked “${match.title}” (−${match.xp} XP)`);
               } else {
-                toast(`„${match.title}” nie była odhaczona`);
+                toast(`“${match.title}” wasn't checked off`);
               }
               ok++;
             } else if (action.type === "remove_mission") {
               flushSync(() => removeMission(match.categoryId, match.index));
-              toast.success(`Usunięto misję „${match.title}”`);
+              toast.success(`Deleted mission “${match.title}”`);
               ok++;
             } else {
               const custom = dash.customMissions[match.categoryId];
@@ -629,7 +629,7 @@ function useAssistantValue() {
                   match.categoryId,
                   list.map((m, i) => ({ ...(i === match.index ? updated : m), __originalIndex: i })),
                 ));
-                toast.success(`Zmieniono misję „${action.newTitle || match.title}”`);
+                toast.success(`Updated mission “${action.newTitle || match.title}”`);
                 ok++;
               }
             }
@@ -645,11 +645,11 @@ function useAssistantValue() {
             else {
               if (action.apply) flushSync(() => applyMissionPreset(missionsForApply(parseMissionMap(map))));
               ok++;
-              toast.success(`${r.updated ? "Zaktualizowano" : "Utworzono"} preset „${r.name}”${action.apply ? " i załadowano na Home" : ""}`);
+              toast.success(`${r.updated ? "Updated" : "Created"} preset “${r.name}”${action.apply ? " and loaded it on Home" : ""}`);
             }
           } else if (action.type === "save_preset") {
             const r = await saveCurrentAsPreset(user.id, { name: action.name, emoji: action.emoji }, dashboardRef.current.customMissions);
-            if (r.ok) { ok++; toast.success(r.updated ? `Zaktualizowano preset „${r.name}”` : `Zapisano preset „${r.name}”`); }
+            if (r.ok) { ok++; toast.success(r.updated ? `Updated preset “${r.name}”` : `Saved preset “${r.name}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "log_metric") {
             const r = await logMetricEntry(user.id, action.metric, action.value);
@@ -663,33 +663,33 @@ function useAssistantValue() {
             if (r.ok) {
               if (r.xp > 0) completeExternal(r.categoryId, r.xp);
               ok++;
-              toast.success(`${r.finished ? "Krok ukończony" : "Zalogowano dzień"}: ${r.stepTitle} · +${r.xp} XP`);
+              toast.success(`${r.finished ? "Step finished" : "Day logged"}: ${r.stepTitle} · +${r.xp} XP`);
             } else { failed++; toast.error(r.error); }
           } else if (action.type === "create_path") {
             const r = await createPath(user.id, { name: action.name, diagnosis: action.diagnosis, steps: action.steps });
-            if (r.ok) { ok++; toast.success(`Utworzono ścieżkę „${action.name}”`); }
+            if (r.ok) { ok++; toast.success(`Created path “${action.name}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "complete_task") {
             const r = await completePlanningTask(user.id, { title: action.title, outcome: action.outcome, nodeId: action.nodeId });
-            if (r.ok) { ok++; toast.success(r.ask ? `Pytanie zamknięte: „${r.title}” = ${action.outcome ?? ""}` : `Krok zrobiony: „${r.title}”`); }
+            if (r.ok) { ok++; toast.success(r.ask ? `Question settled: “${r.title}” = ${action.outcome ?? ""}` : `Step done: “${r.title}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_event") {
             const r = await addCalendarEvent(user.id, { title: action.title, date: action.date, time: action.time, notes: action.notes, tag: action.tag });
-            if (r.ok) { ok++; toast.success(`Dodano do kalendarza: ${action.date} ${action.title}`); }
+            if (r.ok) { ok++; toast.success(`Added to calendar: ${action.date} ${action.title}`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_book") {
             const r = await addBooks(user.id, action.books);
             if (r.ok) {
               ok++;
-              const skippedNote = r.skipped.length ? `Już na półce: ${r.skipped.join(", ")}` : undefined;
-              if (r.added.length === 0) toast.info("Te książki już są w Library", { description: skippedNote });
-              else toast.success(r.added.length === 1 ? `Dodano do Library: „${r.added[0]}”` : `Dodano ${r.added.length} książek do Library`, { description: skippedNote });
+              const skippedNote = r.skipped.length ? `Already on the shelf: ${r.skipped.join(", ")}` : undefined;
+              if (r.added.length === 0) toast.info("These books are already in Library", { description: skippedNote });
+              else toast.success(r.added.length === 1 ? `Added to Library: “${r.added[0]}”` : `Added ${r.added.length} books to Library`, { description: skippedNote });
             } else { failed++; toast.error(r.error); }
           } else if (action.type === "add_transaction") {
             const r = await addFinanceTransaction(user.id, {
               type: action.kind, amount: action.amount, title: action.title, category: action.category, date: action.date,
             });
-            if (r.ok) { ok++; toast.success(`${action.kind === "income" ? "Przychód" : "Wydatek"}: ${action.amount} · ${action.title}`); }
+            if (r.ok) { ok++; toast.success(`${action.kind === "income" ? "Income" : "Expense"}: ${action.amount} · ${action.title}`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "add_mission") {
             flushSync(() =>
@@ -711,7 +711,7 @@ function useAssistantValue() {
             const book = exact[0] ?? (partial.length === 1 ? partial[0] : undefined);
             if (!book) {
               failed++;
-              toast.error(`Nie znaleziono książki „${action.bookTitle}”`);
+              toast.error(`Book “${action.bookTitle}” not found`);
             } else {
               // The stretch goes into the reading log; without a first page it starts after the bookmark.
               const fromPage = Math.min(action.fromPage ?? nextFromPage(book.pages_read || 0), action.toPage);
@@ -737,7 +737,7 @@ function useAssistantValue() {
             flushSync(() => resetDay());
             ok++;
           } else if (action.type === "apply_preset") {
-            // Same write as the "Załaduj" chip on Home: replace every mission
+            // Same write as the "Load" chip on Home: replace every mission
             // list with the saved snapshot. Exact name first, then a unique
             // substring match so "monk" finds "Monk mode".
             const { data: rows } = await supabase
@@ -751,11 +751,11 @@ function useAssistantValue() {
             const match = exact[0] ?? (partial.length === 1 ? partial[0] : undefined);
             if (!match) {
               failed++;
-              toast.error(`Nie znaleziono presetu „${action.presetName}”`);
+              toast.error(`Preset “${action.presetName}” not found`);
             } else {
               flushSync(() => applyMissionPreset(missionsForApply(parseMissionMap(match.missions))));
               ok++;
-              toast.success(`Załadowano preset „${match.name}”`);
+              toast.success(`Loaded preset “${match.name}”`);
               await supabase
                 .from("mission_presets")
                 .update({ last_applied_at: new Date().toISOString() })
@@ -770,7 +770,7 @@ function useAssistantValue() {
             if (!r.ok) { failed++; toast.error(r.error); }
             else {
               ok++;
-              toast.success(`Dodano ${action.ask ? "pytanie" : "krok"} „${action.title}”`, { description: planningPlacement(r.board) });
+              toast.success(`Added ${action.ask ? "question" : "step"} “${action.title}”`, { description: planningPlacement(r.board) });
             }
           } else if (action.type === "add_note") {
             // Always auto-tag with "ainote"
@@ -838,7 +838,7 @@ function useAssistantValue() {
             if (!r.ok) { failed++; toast.error(r.error); }
             else {
               ok++;
-              toast.success(`Utworzono drzewo „${action.nodes[0].title}” (${nodesLabel(r.created)})`, { description: planningPlacement(r.board) });
+              toast.success(`Created tree “${action.nodes[0].title}” (${nodesLabel(r.created)})`, { description: planningPlacement(r.board) });
             }
           } else if (action.type === "extend_mindmap") {
             // Under the node attachTo names (the board open in Planning is
@@ -851,8 +851,8 @@ function useAssistantValue() {
             if (!r.ok) { failed++; toast.error(r.error); }
             else {
               ok++;
-              if (r.attachedTo) toast.success(`Dopięto ${nodesLabel(r.created)} pod „${r.attachedTo}”`, { description: planningPlacement(r.board) });
-              else toast.success(`Nie znaleziono „${action.attachTo}”, dodano ${nodesLabel(r.created)} jako nowe drzewo`, { description: planningPlacement(r.board) });
+              if (r.attachedTo) toast.success(`Attached ${nodesLabel(r.created)} under “${r.attachedTo}”`, { description: planningPlacement(r.board) });
+              else toast.success(`“${action.attachTo}” not found; added ${nodesLabel(r.created)} as a new tree`, { description: planningPlacement(r.board) });
             }
           }
         } catch {

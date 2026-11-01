@@ -88,11 +88,11 @@ export async function logMetricEntry(
 ): Promise<WriteResult<{ metric: TrackerMetric; xp: number }>> {
   const metrics = await loadMetrics(userId);
   const metric = metrics.find((m) => m.id === metricRef) ?? matchByName(metrics, metricRef, (m) => m.label);
-  if (!metric) return { ok: false, error: `Nie znaleziono metryki „${metricRef}”` };
+  if (!metric) return { ok: false, error: `Metric “${metricRef}” not found` };
 
   const date = todayKey();
   const { error } = await supabase.from("tracker_entries").insert({ user_id: userId, metric_id: metric.id, value, date });
-  if (error) return { ok: false, error: "Nie udało się zapisać wpisu" };
+  if (error) return { ok: false, error: "Couldn't save the entry" };
 
   const { data: onb } = await supabase.from("user_onboarding").select("preferences").eq("user_id", userId).maybeSingle();
   const raw = ((onb?.preferences as Record<string, unknown> | null)?.trackerXp ?? null) as Partial<TrackerXpConfig> | null;
@@ -115,14 +115,14 @@ export async function logPathStepToday(
   pathName: string,
 ): Promise<WriteResult<{ pathName: string; stepTitle: string; xp: number; categoryId: string | null; finished: boolean }>> {
   const target = await findPathByName(userId, pathName);
-  if (!target) return { ok: false, error: `Nie znaleziono ścieżki „${pathName}”` };
+  if (!target) return { ok: false, error: `Path “${pathName}” not found` };
 
   const [{ data: path }, { data: stepRows }] = await Promise.all([
     supabase.from("paths").select("*").eq("id", target.id).maybeSingle(),
     supabase.from("path_steps").select("*").eq("path_id", target.id),
   ]);
   const step = activeStep((stepRows as unknown as PathStep[]) || []);
-  if (!step) return { ok: false, error: `Ścieżka „${target.name}” nie ma aktywnego kroku` };
+  if (!step) return { ok: false, error: `Path “${target.name}” has no active step` };
 
   const date = todayKey();
   const { error } = await supabase
@@ -130,8 +130,8 @@ export async function logPathStepToday(
     .insert({ user_id: userId, step_id: step.id, path_id: target.id, date, xp: step.xp });
   if (error) {
     // Unique (step_id, date): already logged today. Anything else is a real failure.
-    if (error.code === "23505") return { ok: false, error: `„${step.title}” jest już zalogowane na dziś` };
-    return { ok: false, error: `Nie udało się zalogować „${step.title}”: ${error.message}` };
+    if (error.code === "23505") return { ok: false, error: `“${step.title}” is already logged for today` };
+    return { ok: false, error: `Couldn't log “${step.title}”: ${error.message}` };
   }
 
   const repsDone = step.reps_done + 1;
@@ -146,7 +146,7 @@ export async function logPathStepToday(
     // a retry is not refused as "already logged". No XP has been given yet.
     await supabase.from("path_step_logs").delete().eq("user_id", userId).eq("step_id", step.id).eq("date", date);
     notifyPathsChanged();
-    return { ok: false, error: `Nie udało się zapisać postępu „${step.title}”: ${stepError.message}` };
+    return { ok: false, error: `Couldn't save progress on “${step.title}”: ${stepError.message}` };
   }
   notifyPathsChanged();
   return {
@@ -182,7 +182,7 @@ export async function createPath(
     })
     .select("id")
     .single();
-  if (error || !data) return { ok: false, error: "Nie udało się utworzyć ścieżki" };
+  if (error || !data) return { ok: false, error: "Couldn't create the path" };
   if (input.steps.length > 0) {
     const rows = input.steps.map((s, i) => {
       const reps = Math.max(1, Math.round(s.days || 1));
@@ -202,7 +202,7 @@ export async function createPath(
       // A path without its steps is not what was confirmed, and leaving it
       // would make a retry create a second one with the same name.
       await supabase.from("paths").delete().eq("id", data.id).eq("user_id", userId);
-      return { ok: false, error: `Nie udało się zapisać kroków ścieżki „${input.name}”: ${stepsError.message}` };
+      return { ok: false, error: `Couldn't save the steps of path “${input.name}”: ${stepsError.message}` };
     }
   }
   notifyPathsChanged();
@@ -428,22 +428,20 @@ function parentTitleOf<T extends NodeRef>(n: T, rows: T[]): string | null {
   return up ? up.title : null;
 }
 
-/** Polish refusal for a complete_task title that fits several open nodes, naming where each one is. */
+/** Refusal for a complete_task title that fits several open nodes, naming where each one is. */
 export function ambiguousNodeError<T extends NodeRef>(title: string, candidates: T[], rows: T[]): string {
   const where = candidates.slice(0, 5).map((c) => {
     const p = parentTitleOf(c, rows);
-    return p ? `„${c.title}” pod „${p}”` : `„${c.title}” na górze planu`;
+    return p ? `“${c.title}” under “${p}”` : `“${c.title}” at the top of the plan`;
   });
   const first = candidates.find((c) => parentTitleOf(c, rows));
-  const example = first ? ` (np. „${parentTitleOf(first, rows)} > ${first.title}”)` : "";
-  return `„${splitParent(title).title}” pasuje do ${candidates.length} otwartych węzłów w Planning: ${where.join(", ")}${candidates.length > 5 ? ", …" : ""}. Napisz, o który chodzi${example}.`;
+  const example = first ? ` (e.g. “${parentTitleOf(first, rows)} > ${first.title}”)` : "";
+  return `“${splitParent(title).title}” matches ${candidates.length} open nodes in Planning: ${where.join(", ")}${candidates.length > 5 ? ", …" : ""}. Say which one you mean${example}.`;
 }
 
-/** "1 węzeł", "3 węzły", "5 węzłów". */
+/** "1 node", "3 nodes". */
 export function nodesLabel(n: number): string {
-  if (n === 1) return "1 węzeł";
-  const few = n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14);
-  return `${n} ${few ? "węzły" : "węzłów"}`;
+  return n === 1 ? "1 node" : `${n} nodes`;
 }
 
 /**
@@ -457,14 +455,14 @@ export async function addPlanningNodes(
   nodes: AssistantNode[],
   opts: { attachTo?: string; attachId?: string } = {},
 ): Promise<WriteResult<{ created: number; board: PlanningBoardLabel; attachedTo: string | null }>> {
-  if (nodes.length === 0) return { ok: false, error: "Brak węzłów do dodania" };
+  if (nodes.length === 0) return { ok: false, error: "No nodes to add" };
 
   let target: NodeRef | null = null;
   if (opts.attachTo || opts.attachId) {
     // select("*"): naming a column the database has not got yet would turn
     // "attach under X" into "X not found".
     const { data, error } = await supabase.from("planning_tasks").select("*").eq("user_id", userId).limit(2000);
-    if (error) return { ok: false, error: `Nie udało się odczytać planu: ${error.message}` };
+    if (error) return { ok: false, error: `Couldn't read the plan: ${error.message}` };
     const rows = (data || []) as unknown as NodeRef[];
     // The node the confirm card named; matched again by title only if it is gone.
     target = (opts.attachId ? rows.find((r) => r.id === opts.attachId) : undefined) ??
@@ -484,7 +482,7 @@ export async function addPlanningNodes(
 
   const rows = planAssistantNodes(nodes, { userId, boardId: board.id, parentId: target?.id ?? null });
   const { error } = await supabase.from("planning_tasks").insert(rows);
-  if (error) return { ok: false, error: `Nie udało się zapisać ${nodesLabel(rows.length)} w Planning: ${error.message}` };
+  if (error) return { ok: false, error: `Couldn't save ${nodesLabel(rows.length)} in Planning: ${error.message}` };
   emitAppEvent(PLANNING_TASKS_CHANGED_EVENT);
   return { ok: true, created: rows.length, board, attachedTo: target?.title ?? null };
 }
@@ -499,7 +497,7 @@ export async function resolveAttachTarget(
   attachTo: string,
 ): Promise<WriteResult<{ target: { id: string; title: string } | null }>> {
   const { data, error } = await supabase.from("planning_tasks").select("*").eq("user_id", userId).limit(2000);
-  if (error) return { ok: false, error: `Nie udało się odczytać planu: ${error.message}` };
+  if (error) return { ok: false, error: `Couldn't read the plan: ${error.message}` };
   const hit = findAttachTarget((data || []) as unknown as NodeRef[], attachTo, getRememberedBoard(userId));
   return { ok: true, target: hit ? { id: hit.id, title: hit.title } : null };
 }
@@ -559,9 +557,9 @@ function answerDrops(questionId: string, outcome: string, rows: Record<string, u
   return choice ? settleDrops(questionId, choice.id, nodes) : [];
 }
 
-/** Polish refusal for settling a question without its answer. */
+/** Refusal for settling a question without its answer. */
 export function missingAnswerError(title: string): string {
-  return `„${title}” to otwarte pytanie: napisz, jaka jest odpowiedź, a wtedy je zamknę.`;
+  return `“${title}” is an open question: tell me the answer and I'll settle it.`;
 }
 
 /**
@@ -574,11 +572,11 @@ export async function resolvePlanningCompletion(
   input: { title: string; outcome?: string },
 ): Promise<WriteResult<PlanningCompletionMatch>> {
   const { rows, error } = await readPlan(userId);
-  if (error) return { ok: false, error: `Nie udało się odczytać planu: ${error.message}` };
+  if (error) return { ok: false, error: `Couldn't read the plan: ${error.message}` };
   const m = matchOpenNodes(rows, input.title, getRememberedBoard(userId));
   if (m && "ambiguous" in m) return { ok: false, error: ambiguousNodeError(input.title, m.ambiguous, rows) };
   const node = m?.node;
-  if (!node) return { ok: false, error: `Nie znaleziono otwartego kroku ani pytania „${input.title}” w Planning` };
+  if (!node) return { ok: false, error: `No open step or question “${input.title}” in Planning` };
   const ask = !!node.ask;
   const outcome = input.outcome?.trim() || "";
   if (ask && !outcome) return { ok: false, error: missingAnswerError(node.title) };
@@ -604,30 +602,30 @@ export async function completePlanningTask(
 ): Promise<WriteResult<{ title: string; ask: boolean }>> {
   // The whole plan: a question's answer may name one of its options, whose siblings it then drops.
   const { rows, error } = await readPlan(userId);
-  if (error) return { ok: false, error: `Nie udało się odczytać planu: ${error.message}` };
+  if (error) return { ok: false, error: `Couldn't read the plan: ${error.message}` };
   let row: (NodeRef & Record<string, unknown>) | null = null;
   if (input.nodeId) {
     row = rows.find((r) => r.id === input.nodeId) ?? null;
     if (!row) {
       // Past the read limit, or gone: ask for that one row.
       const { data: one, error: oneError } = await supabase.from("planning_tasks").select("*").eq("user_id", userId).eq("id", input.nodeId).maybeSingle();
-      if (oneError) return { ok: false, error: `Nie udało się odczytać planu: ${oneError.message}` };
+      if (oneError) return { ok: false, error: `Couldn't read the plan: ${oneError.message}` };
       row = (one as unknown as (NodeRef & Record<string, unknown>) | null) ?? null;
     }
-    if (!row) return { ok: false, error: `„${input.title}” nie ma już w Planning` };
-    if (row.done) return { ok: false, error: `„${String(row.title)}” jest już zamknięte` };
+    if (!row) return { ok: false, error: `“${input.title}” is no longer in Planning` };
+    if (row.done) return { ok: false, error: `“${String(row.title)}” is already closed` };
   } else {
     const m = matchOpenNodes(rows, input.title, getRememberedBoard(userId));
     if (m && "ambiguous" in m) return { ok: false, error: ambiguousNodeError(input.title, m.ambiguous, rows) };
     row = m?.node ?? null;
-    if (!row) return { ok: false, error: `Nie znaleziono otwartego kroku ani pytania „${input.title}” w Planning` };
+    if (!row) return { ok: false, error: `No open step or question “${input.title}” in Planning` };
   }
 
   const title = String(row.title ?? input.title);
   // A row read before the open-loops migration has no `ask`: tick it the old way.
   if (!("ask" in row)) {
     const { error } = await supabase.from("planning_tasks").update({ done: true }).eq("id", String(row.id)).eq("user_id", userId);
-    if (error) return { ok: false, error: `Nie udało się zamknąć „${title}”` };
+    if (error) return { ok: false, error: `Couldn't close “${title}”` };
     emitAppEvent(PLANNING_TASKS_CHANGED_EVENT);
     return { ok: true, title, ask: false };
   }
@@ -645,10 +643,10 @@ export async function completePlanningTask(
     const { error: dropError } = await supabase.from("planning_tasks")
       .update({ done: true, dropped: true, closed_at: patch.closed_at })
       .eq("user_id", userId).in("id", ids);
-    if (dropError) return { ok: false, error: `Nie udało się zamknąć „${title}”: ${dropError.message}` };
+    if (dropError) return { ok: false, error: `Couldn't close “${title}”: ${dropError.message}` };
   }
   const { error: writeError } = await supabase.from("planning_tasks").update(patch).eq("id", node.id).eq("user_id", userId);
-  if (writeError) return { ok: false, error: `Nie udało się zamknąć „${title}”: ${writeError.message}` };
+  if (writeError) return { ok: false, error: `Couldn't close “${title}”: ${writeError.message}` };
   emitAppEvent(PLANNING_TASKS_CHANGED_EVENT);
   return { ok: true, title, ask };
 }
@@ -669,7 +667,7 @@ export async function addBooks(
   books: BookDraft[],
 ): Promise<WriteResult<{ added: string[]; skipped: string[] }>> {
   const { data, error: readError } = await supabase.from("user_books").select("title").eq("user_id", userId);
-  if (readError) return { ok: false, error: "Nie udało się odczytać biblioteki" };
+  if (readError) return { ok: false, error: "Couldn't read the library" };
   const have = new Set((data || []).map((b) => shelfKey(b.title)));
   const added: string[] = [];
   const skipped: string[] = [];
@@ -697,7 +695,7 @@ export async function addBooks(
   }
   if (rows.length > 0) {
     const { error } = await supabase.from("user_books").insert(rows);
-    if (error) return { ok: false, error: "Nie udało się dodać książek" };
+    if (error) return { ok: false, error: "Couldn't add the books" };
     emitAppEvent(LIBRARY_CHANGED_EVENT);
   }
   return { ok: true, added, skipped };
@@ -715,7 +713,7 @@ export async function addCalendarEvent(
   const { error } = await supabase
     .from("calendar_events")
     .insert({ user_id: userId, title, date: input.date, notes: input.notes || "", tag: input.tag || "" });
-  if (error) return { ok: false, error: "Nie udało się dodać wydarzenia" };
+  if (error) return { ok: false, error: "Couldn't add the event" };
   emitAppEvent(CALENDAR_EVENTS_CHANGED_EVENT);
   return { ok: true };
 }
@@ -739,7 +737,7 @@ export async function addFinanceTransaction(
     category: picked,
     date: input.date || todayKey(),
   });
-  if (error) return { ok: false, error: "Nie udało się dodać transakcji" };
+  if (error) return { ok: false, error: "Couldn't add the transaction" };
   emitAppEvent(FINANCE_CHANGED_EVENT);
   return { ok: true, category: picked };
 }
@@ -760,7 +758,7 @@ export async function createPresetFromMissions(
   applied: boolean,
 ): Promise<WriteResult<{ name: string; updated: boolean }>> {
   const name = normalizePresetName(input.name);
-  if (!name) return { ok: false, error: "Podaj nazwę presetu" };
+  if (!name) return { ok: false, error: "Give the preset a name" };
   const clean = parseMissionMap(missions) as unknown as never;
   const stamp = applied ? { last_applied_at: new Date().toISOString() } : {};
   const { data: existing } = await supabase.from("mission_presets").select("id").eq("user_id", userId).eq("name", name).maybeSingle();
@@ -775,7 +773,7 @@ export async function createPresetFromMissions(
         ...stamp,
       })
       .eq("id", existing.id);
-    if (error) return { ok: false, error: "Nie udało się zapisać presetu" };
+    if (error) return { ok: false, error: "Couldn't save the preset" };
   } else {
     const { count } = await supabase.from("mission_presets").select("id", { count: "exact", head: true }).eq("user_id", userId);
     const { error } = await supabase.from("mission_presets").insert({
@@ -787,7 +785,7 @@ export async function createPresetFromMissions(
       sort_order: count ?? 0,
       ...stamp,
     });
-    if (error) return { ok: false, error: "Nie udało się zapisać presetu" };
+    if (error) return { ok: false, error: "Couldn't save the preset" };
   }
   emitAppEvent(MISSION_PRESETS_CHANGED_EVENT);
   return { ok: true, name, updated: !!existing };
@@ -800,7 +798,7 @@ export async function saveCurrentAsPreset(
   customMissions: MissionMap,
 ): Promise<WriteResult<{ name: string; updated: boolean }>> {
   const name = normalizePresetName(input.name);
-  if (!name) return { ok: false, error: "Podaj nazwę presetu" };
+  if (!name) return { ok: false, error: "Give the preset a name" };
   const missions = snapshotMissions(customMissions) as unknown as never;
   const { data: existing } = await supabase.from("mission_presets").select("id").eq("user_id", userId).eq("name", name).maybeSingle();
   if (existing) {
@@ -808,7 +806,7 @@ export async function saveCurrentAsPreset(
       .from("mission_presets")
       .update({ missions, updated_at: new Date().toISOString(), ...(input.emoji ? { emoji: input.emoji } : {}) })
       .eq("id", existing.id);
-    if (error) return { ok: false, error: "Nie udało się zapisać presetu" };
+    if (error) return { ok: false, error: "Couldn't save the preset" };
   } else {
     const { count } = await supabase.from("mission_presets").select("id", { count: "exact", head: true }).eq("user_id", userId);
     const { error } = await supabase.from("mission_presets").insert({
@@ -819,7 +817,7 @@ export async function saveCurrentAsPreset(
       missions,
       sort_order: count ?? 0,
     });
-    if (error) return { ok: false, error: "Nie udało się zapisać presetu" };
+    if (error) return { ok: false, error: "Couldn't save the preset" };
   }
   emitAppEvent(MISSION_PRESETS_CHANGED_EVENT);
   return { ok: true, name, updated: !!existing };
@@ -832,11 +830,11 @@ export async function saveCurrentAsPreset(
 /** Merge keys into user_onboarding.preferences without clobbering the rest. */
 export async function patchPreferences(userId: string, patch: Record<string, unknown>): Promise<WriteResult> {
   const { data, error: readErr } = await supabase.from("user_onboarding").select("preferences").eq("user_id", userId).maybeSingle();
-  if (readErr) return { ok: false, error: "Nie udało się odczytać ustawień" };
+  if (readErr) return { ok: false, error: "Couldn't read settings" };
   const existing = (data?.preferences as Record<string, unknown>) || {};
   const merged = { ...existing, ...patch };
   const { error } = await supabase.from("user_onboarding").update({ preferences: merged as never }).eq("user_id", userId);
-  if (error) return { ok: false, error: "Nie udało się zapisać ustawień" };
+  if (error) return { ok: false, error: "Couldn't save settings" };
   emitAppEvent(USER_SETTINGS_CHANGED_EVENT);
   return { ok: true };
 }
