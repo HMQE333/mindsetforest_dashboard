@@ -29,6 +29,8 @@ import ComputerTimePrivacy from "./ComputerTimePrivacy";
 import TrackerDevicesDialog from "./TrackerDevicesDialog";
 import ComputerTimeTriage, { type TriageMemory } from "./ComputerTimeTriage";
 import { deviceLabel, pillActive, pillBase, pillIdle, relativeTime } from "./computer-time-shared";
+import { perDeviceSeconds, screenTimeSeconds } from "@/lib/screen-time";
+import { hoursLabel } from "@/lib/tracker-devices";
 
 /**
  * The "Komputer" section of the Stats page. Watch mode never reaches it:
@@ -161,6 +163,11 @@ export default function ComputerTime() {
     return { week, inRange };
   }, [usage.sessions, usage.classifications, device, range.from, range.to]);
 
+  // Only when the range has more than one device (with one, it equals the usual total).
+  const screen = useMemo(() => {
+    if (device !== ALL_DEVICES || new Set(inRange.sessions.map((x) => x.device_id)).size < 2) return null;
+    return { together: screenTimeSeconds(inRange.sessions), separately: perDeviceSeconds(inRange.sessions) };
+  }, [inRange, device]);
   const agg = useMemo(() => aggregateUsage(inRange.sessions, usage.classes, inRange.classifications), [inRange, usage.classes]);
   const weekAgg = useMemo(() => aggregateUsage(week.sessions, usage.classes, week.classifications), [week, usage.classes]);
 
@@ -432,6 +439,13 @@ export default function ComputerTime() {
                 <DevicesHint />
               ) : (
                 <>
+                  {/* Screen time on every device together (overlaps once): separate from everything per app and category. */}
+                  {screen && (
+                    <p className="text-xs text-muted-foreground mb-3" title="Minuty, w których kilka urządzeń było w użyciu naraz, liczą się raz">
+                      🖥️📱 Łącznie przed ekranem: <span className="font-semibold text-foreground">{hoursLabel(screen.together)}</span>
+                      <span className="opacity-70"> · urządzenia osobno: {hoursLabel(screen.separately)}</span>
+                    </p>
+                  )}
                   {/* Tabs */}
                   <div className="flex flex-wrap gap-2 mb-5" role="tablist" aria-label="Widok">
                     {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
