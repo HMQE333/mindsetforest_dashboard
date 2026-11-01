@@ -166,8 +166,11 @@ export default function ComputerTime() {
   // Only when the range has more than one device (with one, it equals the usual total).
   const screen = useMemo(() => {
     if (device !== ALL_DEVICES || new Set(inRange.sessions.map((x) => x.device_id)).size < 2) return null;
-    return { together: screenTimeSeconds(inRange.sessions), separately: perDeviceSeconds(inRange.sessions) };
-  }, [inRange, device]);
+    // Idle time counts where the class says so (watching), as in the totals below.
+    const countIdle = new Set(usage.classes.filter((c) => c.count_idle).map((c) => c.id));
+    const counted = (x: UsageSession, i: number) => !x.idle || countIdle.has(inRange.classifications[i]?.classId ?? "");
+    return { together: screenTimeSeconds(inRange.sessions, counted), separately: perDeviceSeconds(inRange.sessions, counted) };
+  }, [inRange, device, usage.classes]);
   const agg = useMemo(() => aggregateUsage(inRange.sessions, usage.classes, inRange.classifications), [inRange, usage.classes]);
   const weekAgg = useMemo(() => aggregateUsage(week.sessions, usage.classes, week.classifications), [week, usage.classes]);
 

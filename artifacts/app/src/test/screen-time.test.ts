@@ -21,3 +21,11 @@ describe("screenTimeSeconds", () => {
     expect(screenTimeSeconds([])).toBe(0);
   });
 });
+
+describe("idle that counts (watching)", () => {
+  it("counts idle sessions the predicate accepts", () => {
+    const list = [s("pc", "20:00", "21:00", true), s("android:x", "20:30", "21:30")];
+    expect(screenTimeSeconds(list, () => true)).toBe(90 * 60);
+    expect(screenTimeSeconds(list)).toBe(60 * 60);
+  });
+});
