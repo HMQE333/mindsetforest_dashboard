@@ -18,6 +18,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Clapperboard } from "lucide-react";
+import { socialVideoUrl } from "@/lib/social-video";
+import { invokeFunction } from "@/lib/function-error";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Pillar } from "@/hooks/usePillars";
 import { AI_ACTIONS, aiNoteTitle, aiTooLong, titleAfterReplace, type NoteAIAction } from "@/lib/archive-ai";
@@ -200,6 +203,7 @@ function PeekBody({
         </FolderPicker>
         <AIMenu block={block} onAIAction={onAIAction} onSuggest={sugg.ask} onUpdate={onUpdate} onSaveNew={onSaveNew} />
         {onPlant && <ToolButton label="Plant in the Forest" icon={Sprout} onClick={() => onPlant(block)} />}
+        <WorkshopButton block={block} />
         <span className="ml-auto">
           <DeleteConfirmButton variant="tool" armed={armed} onArm={onArm} onDisarm={onDisarm} onConfirm={onConfirmDelete} />
         </span>
@@ -515,3 +519,34 @@ const ToolButtonEl = forwardRef<HTMLButtonElement, { label: string; text?: strin
     );
   },
 );
+
+/**
+ * "Workshop" on a saved reel or Short: Gemini watches it as a video maker and
+ * a Workshop section (hook, structure, visuals, captions, pacing, three things
+ * to steal) is added to the note; the list's refresh brings it in.
+ */
+function WorkshopButton({ block }: { block: ArchiveBlock }) {
+  const url = socialVideoUrl(block.content);
+  const [asked, setAsked] = useState(false);
+  if (!url || !/instagram\.com\/|youtube\.com\/shorts\//i.test(url)) return null;
+  const running = asked || block.content.includes("_⏳ Gemini is watching the video…_");
+  const done = !running && block.content.includes("**Workshop**");
+  const start = async () => {
+    setAsked(true);
+    try {
+      await invokeFunction("social-transcript", { action: "workshop", url, blockId: block.id });
+      toast("Gemini is watching the reel", { description: "The Workshop section appears in the note in about a minute." });
+    } catch (e) {
+      toast.error("Couldn't start the Workshop", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      window.setTimeout(() => setAsked(false), 8000);
+    }
+  };
+  return (
+    <ToolButton
+      label={done ? "Workshop again (Gemini watches the reel for how it is made)" : "Workshop: Gemini watches the reel for how it is made"}
+      icon={running ? Loader2 : Clapperboard}
+      onClick={() => void start()}
+    />
+  );
+}

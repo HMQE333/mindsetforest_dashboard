@@ -18,8 +18,8 @@ android {
         applicationId = "app.mindsetforest.phone"
         minSdk = 28
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
 
     signingConfigs {
@@ -40,6 +40,10 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true // BuildConfig.VERSION_CODE for the update check
     }
 
     compileOptions {

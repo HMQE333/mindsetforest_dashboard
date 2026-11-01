@@ -6,8 +6,8 @@ import { useTrackerDevices } from "@/hooks/useTrackerDevices";
 import { deviceLabel, isPhone, type DeviceSummary } from "@/lib/tracker-devices";
 
 /** The versions in public/downloads (bump with each published build). */
-export const TRACKER_VERSION = "1.4";
-export const PHONE_VERSION = "1.4";
+export const TRACKER_VERSION = "1.5";
+export const PHONE_VERSION = "1.5";
 
 /**
  * Settings → Apps & devices: the Windows tracker and the Android app in one

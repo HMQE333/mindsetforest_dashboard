@@ -60,4 +60,18 @@
     <string name="sync_now">Synchronizuj teraz</string>
     <string name="syncing">Synchronizuję…</string>
     <string name="sync_done">Wysłano %1$d sesji.</string>
+
+    <string name="updates_channel">Aktualizacje</string>
+    <string name="update_ready">Aktualizacja gotowa — wersja %1$s</string>
+    <string name="update_tap">Dotknij, aby zainstalować.</string>
+    <string name="update_title">Aplikacja</string>
+    <string name="update_current">Wersja %1$s</string>
+    <string name="update_none">Masz najnowszą wersję.</string>
+    <string name="update_checking">Sprawdzam…</string>
+    <string name="update_failed">Nie udało się sprawdzić aktualizacji.</string>
+    <string name="update_available">Gotowa do instalacji: wersja %1$s</string>
+    <string name="update_check">Sprawdź aktualizacje</string>
+    <string name="update_install">Zainstaluj aktualizację</string>
+    <string name="update_allow">Aby aktualizacje instalowały się jednym dotknięciem, zezwól tej aplikacji na instalowanie nieznanych aplikacji, wróć i dotknij jeszcze raz.</string>
+    <string name="update_note">Nowe wersje pobierają się same w tle; wystarczy potwierdzić instalację.</string>
 </resources>

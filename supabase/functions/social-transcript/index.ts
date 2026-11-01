@@ -208,6 +208,80 @@ function noteContent(n: any, comment: string): string {
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
+// ---- Workshop: the reel watched as a video maker would (the same pass as ai-video-summary's workshop for YouTube) ----
+
+const WORKSHOP_MODEL = Deno.env.get("VIDEO_MODEL") || "google/gemini-2.5-flash";
+const WORKSHOP_PROMPT = `Watch this short vertical video (a reel or short) as a video maker studying the craft, not the topic. The reader records short videos and wants to learn from this one.
+You see about one frame per second: describe rhythm and editing qualitatively, never exact cut counts.
+
+Markdown, English, no em dashes, no preamble. Cite moments as [m:ss]. Leave out a section with nothing real in it. Use ### for section headings.
+
+### Hook (first 3 seconds)
+What happens, and why it stops the scroll or doesn't.
+### Structure and retention
+How it is built and what keeps people watching to the end (open loops, payoffs, pattern breaks, the loop back to the start).
+### Visual language
+Framing, camera, lighting, colour, setting.
+### Text and captions
+On-screen text, captions, their style, size, placement and timing.
+### Cuts and B-roll
+What is shown instead of the speaker, and why there.
+### Pacing and sound
+Tempo of speech and edits, music, trending audio, sound effects, silence.
+### Three things to steal
+Concrete, doable in a phone recording of under a minute.`;
+
+const WORKSHOP_HEAD = "**Workshop**";
+const WORKSHOP_PENDING = "_⏳ Gemini is watching the video…_";
+
+/** The note with its Workshop section set to `body` (added at the end, or replacing the old one). */
+function withWorkshop(content: string, body: string): string {
+  const at = content.indexOf(`\n\n${WORKSHOP_HEAD}\n`);
+  const base = at >= 0 ? content.slice(0, at) : content.trimEnd();
+  return `${base}\n\n${WORKSHOP_HEAD}\n${body.trim()}`;
+}
+
+/** What Gemini can watch: a YouTube Short's link as is; an Instagram reel's file (via Apify) as a data URL. */
+async function watchableVideo(url: string): Promise<string> {
+  if (/youtube\.com\/shorts\/|youtu\.be\//i.test(url)) return url;
+  if (!/instagram\.com\//i.test(url)) throw new Error("Workshop works for Instagram reels and YouTube Shorts.");
+  const token = Deno.env.get("APIFY_TOKEN");
+  if (!token) throw new Error("The video could not be fetched (Apify is not set up).");
+  const res = await fetch(`${APIFY}?timeout=90`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ directUrls: [url], resultsType: "posts", resultsLimit: 1, addParentData: false }),
+    signal: AbortSignal.timeout(110_000),
+  });
+  const items = await res.json().catch(() => null);
+  const videoUrl = Array.isArray(items) ? items[0]?.videoUrl : null;
+  if (!videoUrl) throw new Error("This post has no video Gemini could watch.");
+  const v = await fetch(videoUrl, { signal: AbortSignal.timeout(30_000) });
+  const buf = new Uint8Array(await v.arrayBuffer());
+  if (!v.ok || buf.length > MAX_VIDEO_BYTES) throw new Error("The video could not be downloaded (or is too large).");
+  let bin = "";
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return `data:video/mp4;base64,${btoa(bin)}`;
+}
+
+async function runWorkshop(url: string, title: string): Promise<string> {
+  const video = await watchableVideo(url);
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${Deno.env.get("OPENROUTER_API_KEY")}`, "Content-Type": "application/json", "X-Title": "MindsetForest" },
+    body: JSON.stringify({
+      model: WORKSHOP_MODEL,
+      temperature: 0.2,
+      max_tokens: 2500,
+      messages: [{ role: "user", content: [{ type: "text", text: `${WORKSHOP_PROMPT}\n\nTitle: ${title || "(unknown)"}` }, { type: "video_url", video_url: { url: video } }] }],
+    }),
+  });
+  const body = await res.json().catch(() => null);
+  const text = body?.choices?.[0]?.message?.content;
+  if (!res.ok || typeof text !== "string" || !text.trim()) throw new Error(`Gemini could not watch the video: ${String(body?.error?.message ?? res.status).slice(0, 200)}`);
+  return text.replace(/\s*[—–]\s*/g, ", ");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const caller = await getUserClient(req);
@@ -217,6 +291,28 @@ serve(async (req) => {
   const jobId = typeof body?.jobId === "string" && /^[\w-]{4,80}$/.test(body.jobId) ? body.jobId : null;
   const blockId = typeof body?.blockId === "string" && /^[0-9a-f-]{36}$/i.test(body.blockId) ? body.blockId : null;
   if (!SOCIAL.test(url)) return jsonResponse({ error: "Paste a link to an Instagram, TikTok, X, Facebook or YouTube video" }, 400);
+
+  // { action: "workshop", url, blockId }: Gemini watches the reel; the note gets a Workshop section (a placeholder at once).
+  if (body?.action === "workshop") {
+    if (!blockId) return jsonResponse({ error: "blockId required" }, 400);
+    const { data: row } = await caller.client.from("archive_blocks").select("id, title, content").eq("id", blockId).maybeSingle();
+    if (!row) return jsonResponse({ error: "Note not found" }, 404);
+    await caller.client.from("archive_blocks").update({ content: withWorkshop(String(row.content ?? ""), WORKSHOP_PENDING) }).eq("id", blockId);
+    const work = (async () => {
+      let section: string;
+      try {
+        section = await runWorkshop(url, String(row.title ?? ""));
+      } catch (e) {
+        section = `_Workshop failed: ${e instanceof Error ? e.message : "something went wrong"}_`;
+      }
+      // Read again: the note may have been edited while Gemini watched.
+      const { data: now } = await caller.client.from("archive_blocks").select("content").eq("id", blockId).maybeSingle();
+      if (now) await caller.client.from("archive_blocks").update({ content: withWorkshop(String(now.content ?? ""), section) }).eq("id", blockId);
+    })();
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
+    else await work;
+    return jsonResponse({ status: "started" });
+  }
 
   // { url, blockId }: a note already saved (the phone app's Share) gets its transcript in the background.
   if (blockId) {

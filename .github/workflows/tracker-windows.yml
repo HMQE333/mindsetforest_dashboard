@@ -4,7 +4,8 @@ name: Windows tracker
 # (MindsetForestSetup.exe), checks the frozen exe has everything it needs
 # (--self-test), then installs, upgrades and uninstalls it in throwaway folders.
 # A push to main publishes the exe to the tracker-latest release, the stable
-# URL the dashboard's download button points at.
+# URL the dashboard's download button points at, with tracker-latest.json (version,
+# sha256, url) that installed trackers poll to update themselves.
 
 on:
   push:
@@ -412,3 +413,27 @@ jobs:
             exit 1
           fi
           echo "Published https://github.com/${GH_REPO}/releases/download/${TAG}/MindsetForestSetup.exe (${size} bytes, sha256 ${sha})"
+
+      # The tracker's auto-update (updater.py) reads this every 12 hours: a newer version is
+      # downloaded, checked against sha256 and installed with --install --silent.
+      - name: Upload tracker-latest.json (auto-update manifest)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.test.outputs.version }}
+          TAG: tracker-latest
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # VERSION is mindsetforest_tracker.__version__, read from the package by the build step.
+          if ($env:VERSION -notmatch '^\d+(\.\d+)*$') { throw "version '$($env:VERSION)' from the build is not numeric" }
+          $exe = 'dist/MindsetForestSetup.exe'
+          $sha = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $url = (gh release view $env:TAG --json assets --jq '.assets[] | select(.name == "MindsetForestSetup.exe") | .url' | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $url) { throw 'No browser_download_url for MindsetForestSetup.exe on the release' }
+          $manifest = [ordered]@{ version = $env:VERSION; sha256 = $sha; url = $url } | ConvertTo-Json -Compress
+          # No BOM: the tracker parses it as plain UTF-8 JSON.
+          [IO.File]::WriteAllText((Join-Path $PWD 'tracker-latest.json'), $manifest, [Text.UTF8Encoding]::new($false))
+          gh release upload $env:TAG tracker-latest.json --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit code $LASTEXITCODE)" }
+          Write-Host "Published tracker-latest.json: $manifest"

@@ -86,5 +86,14 @@
             <TextView style="@style/Body" android:text="@string/capture_hint" />
             <Button android:id="@+id/syncNow" style="@style/Action" android:text="@string/sync_now" />
         </LinearLayout>
+
+        <!-- App version and self-update (UpdateJob.kt) -->
+        <LinearLayout style="@style/Card">
+            <TextView style="@style/CardTitle" android:text="@string/update_title" />
+            <TextView android:id="@+id/updateText" style="@style/Body" android:textColor="@color/text" />
+            <TextView style="@style/Body" android:text="@string/update_note" />
+            <Button android:id="@+id/updateInstall" style="@style/Action" android:text="@string/update_install" android:visibility="gone" />
+            <Button android:id="@+id/updateCheck" style="@style/Quiet" android:text="@string/update_check" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

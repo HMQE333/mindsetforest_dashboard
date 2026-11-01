@@ -10,6 +10,9 @@
     <!-- Lets the persisted sync job survive a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Self-update: hands a downloaded, verified APK to the system installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- App names for the dashboard (Android 11+ hides other apps otherwise). -->
     <queries>
         <intent>
@@ -84,5 +87,18 @@
             android:name=".TranscriptJob"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Checks the site for a newer APK about twice a day (UpdateJob.kt). -->
+        <service
+            android:name=".UpdateJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Gives the installer read access to the downloaded APK (a FileProvider without androidx). -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="${applicationId}.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

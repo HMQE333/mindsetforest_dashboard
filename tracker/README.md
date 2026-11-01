@@ -70,6 +70,12 @@
   z krótkim dźwiękiem i mignięciem ikonki (także przy wyciszonych powiadomieniach); link do rolki (Instagram, TikTok, X,
   Facebook, YouTube Shorts) w zaznaczeniu albo w schowku dostaje kluczowe punkty i transkrypt; ciemne okno ustawień ze
   statusem (**Śledzę od 9:12**, ostatni zapis do Archive), w menu ikonki te same linie.
+  Wersja 1.5.0: **tracker aktualizuje się sam**. Kilka minut po starcie i potem co 12 godzin sprawdza wydanie
+  `tracker-latest` na GitHubie; nowszą wersję pobiera, sprawdza jej SHA-256 i instaluje po cichu (`--install --silent`), gdy
+  nie używasz komputera od 10 minut albo zaraz po starcie, nigdy w trakcie zapisu do Archive. Instalator zamyka stary tracker
+  (sesja zostaje zapisana) i uruchamia nowy, a ten pokazuje powiadomienie **Zaktualizowano do <wersja>**. Wyłączysz to w menu
+  ikonki (**Aktualizuj automatycznie**) albo kluczem `"auto_update": false` w `config.json`. Wersję 1.5.0 trzeba raz
+  zainstalować ręcznie; kolejne przyjdą same.
 > - **Odinstalowanie**: Ustawienia Windows → Aplikacje → Zainstalowane aplikacje (Apps & features) → **MindsetForest Tracker** →
 >   Odinstaluj, albo **Ustawienia... → Odinstaluj...**. Vault i nagrania zostają zawsze; dane lokalne (`%APPDATA%\MindsetForest`)
 >   znikają tylko, jeśli to potwierdzisz.

@@ -2,7 +2,8 @@
 
 The tray is the tracker's everyday UI: a status line ("Śledzę od 9:12"),
 what is in front, the last save to Archive, Pause/Resume, "Don't
-track <app>", "Ustawienia..." (the setup window, as its own process), "Open
+track <app>", "Ustawienia..." (the setup window, as its own process),
+"Aktualizuj automatycznie" (a checkbox, config auto_update), "Open
 dashboard", "Sign in..." (only when no session is saved), a line naming the
 save-to-Archive hotkey and Quit. Everything it does goes through
 ``TrayController`` so the tray has no state of its own. pystray/tkinter are
@@ -46,6 +47,8 @@ class TrayController(Protocol):
     def sign_in(self, email: str, password: str) -> str | None: ...
     def capture_hint(self) -> str | None: ...
     def open_settings(self) -> None: ...
+    def auto_update_enabled(self) -> bool: ...
+    def toggle_auto_update(self) -> None: ...
     def quit(self) -> None: ...
 
 
@@ -161,6 +164,8 @@ def build_icon(controller: TrayController) -> Any:
         pystray.MenuItem(ignore_label, lambda _i, _it: controller.ignore_current_app(),
                          enabled=lambda _i: controller.current_app_name() is not None),
         pystray.MenuItem("Ustawienia...", lambda _i, _it: controller.open_settings()),
+        pystray.MenuItem("Aktualizuj automatycznie", lambda _i, _it: controller.toggle_auto_update(),
+                         checked=lambda _i: controller.auto_update_enabled()),
         pystray.MenuItem("Open dashboard", lambda _i, _it: webbrowser.open(controller.dashboard_url),
                          enabled=lambda _i: bool(controller.dashboard_url)),
         pystray.MenuItem("Sign in...", on_sign_in, visible=lambda _i: controller.needs_login()),

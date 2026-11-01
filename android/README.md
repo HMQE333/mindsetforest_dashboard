@@ -68,6 +68,18 @@ charts work on phone time with no changes.
   backing off; once the content has `**Transcript**` or `**Key points**` it
   notifies "Transkrypt gotowy" (channel "Archive", tap opens the dashboard).
   Still unfilled after 5 minutes, or deleted: dropped quietly.
+- **Self-update** (`Updates.kt`, `UpdateJob.kt`, `ApkProvider.kt`): a
+  persisted `JobScheduler` job, independent of sign-in, reads
+  `<site>/downloads/phone-version.json` about every 12 hours (site = the setup
+  link's address, else `https://www.hmqe.org/`). A higher `versionCode` than
+  the installed one is downloaded into `files/updates/`, its SHA-256 checked
+  (a mismatch is discarded, never offered), then "Aktualizacja gotowa — wersja
+  X" is posted on the "Aktualizacje" channel (skipped while notifications are
+  off; the app's screen still offers it). The tap opens the system installer
+  (one confirm, which Android always requires); until "Install unknown apps"
+  is allowed for this app it opens that switch instead. A verified download is
+  reused, and deleted once that version is installed. The screen's "Aplikacja"
+  card shows the version and has "Sprawdź aktualizacje".
 
 ## Permissions
 
@@ -75,6 +87,7 @@ charts work on phone time with no changes.
 | --- | --- | --- |
 | Usage access (`PACKAGE_USAGE_STATS`) | time in apps | Settings -> Usage access; on Android 13+ a sideloaded app may first need App info -> ⋮ -> Allow restricted settings |
 | Notifications (`POST_NOTIFICATIONS`) | reminders, "Transkrypt gotowy" | asked from the app's screen (Android 13+) |
+| Install unknown apps (`REQUEST_INSTALL_PACKAGES`) | self-update | the first update tap opens the switch |
 | Internet, boot | sync, the job survives a reboot | at install |
 
 ## Build
@@ -96,7 +109,15 @@ PKCS12 file, alias `mindsetforest`) and `MF_KEYSTORE_PASSWORD` select the
 release key; without them the build is signed with the local debug key. Such
 an APK installs and works, but Android only updates an installed app with an
 APK signed by the same key; otherwise uninstall first (then sign in again; the
-reinstall rule above keeps the data clean).
+reinstall rule above keeps the data clean). Self-update only works between
+APKs signed with the same (release) key.
+
+**Publishing a new APK must also update `phone-version.json`**, or phones
+never see it. After copying the signed APK, from the repo root:
+
+```bash
+f=artifacts/app/public/downloads/mindsetforest-phone.apk; v=android/app/build.gradle.kts; printf '{"versionCode": %s, "versionName": "%s", "sha256": "%s", "url": "/downloads/mindsetforest-phone.apk"}\n' "$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' $v)" "$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' $v)" "$(sha256sum $f | cut -d' ' -f1)" > artifacts/app/public/downloads/phone-version.json
+```
 
 The release key lives in the project's Supabase Vault
 (`android_release_keystore`, base64 PKCS12, alias `mindsetforest`, and

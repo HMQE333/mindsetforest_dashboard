@@ -816,3 +816,20 @@ def test_tray_lines_and_flash_icon():
     assert tray.archive_line(None, at) is None
     assert tray.archive_line("x" * 80, at) == "Ostatni zapis do Archive: " + "x" * 39 + "… (14:05)"
     assert tray.make_icon_image(highlight=True).getpixel((6, 32)) != tray.make_icon_image().getpixel((6, 32))
+
+
+def test_build_app_wires_the_updater_and_the_tray_checkbox(tmp_path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({}))
+    app = build_app(load_config(cfg_path), tmp_path, sampler=FakeSampler([]))
+    try:
+        assert app.updater is not None and app.updater.frozen is False  # tests run from the sources
+        assert app.updater.step() == "off"  # so nothing is ever fetched
+        assert app.auto_update_enabled() is True
+        app.toggle_auto_update()
+        assert app.auto_update_enabled() is False
+        assert json.loads(cfg_path.read_text())["auto_update"] is False
+        assert app.capture_busy() is False
+        assert app.updated_notice() is None  # first run of this version: nothing to announce
+    finally:
+        app.store.close()

@@ -1392,6 +1392,14 @@ def _check_imports() -> None:
     self_check()
 
 
+def _check_updater() -> None:
+    """Auto-update: the module and its manifest parser (GetLastInputInfo may fail on a session-less CI runner)."""
+    from . import updater
+
+    updater.parse_manifest({"version": __version__, "sha256": "0" * 64, "url": "https://example.com/x.exe"})
+    updater.idle_seconds()
+
+
 def _check_certifi() -> None:
     import certifi
 
@@ -1422,6 +1430,7 @@ def self_test(out: Path, ops: WinOps) -> bool:
     check("certifi", _check_certifi)
     check("uia", _check_uia)
     check("imports", _check_imports)
+    check("updater", _check_updater)
     check("shortcut", lambda: _check_shortcut(ops))
     check("registry_run", lambda: _check_run(ops))
     check("known_folders", lambda: _check_known_folders(ops))

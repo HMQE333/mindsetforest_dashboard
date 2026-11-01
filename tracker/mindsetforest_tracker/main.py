@@ -31,7 +31,7 @@ from typing import Any
 
 import psutil
 
-from . import __version__, notify, tray
+from . import __version__, notify, tray, updater
 from .imports import ImportState, ImportWatcher
 from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror, write_study_prompts
 from .archive_capture import (
@@ -224,6 +224,8 @@ class TrackerApp:
         self._hotkey_spec: str | None = None
         self._hotkey_lock = threading.Lock()
         self.intake: Any = None
+        self.updater: Any = None
+        self._captures = 0  # saves to Archive in flight: no update installs in the middle of one
         # Graceful quit when the setup asks (upgrade, settings saved, uninstall).
         self.quit_request = quit_request
         self.shutdown_event = threading.Event()  # set once quit() is done, whoever asked
@@ -261,6 +263,8 @@ class TrackerApp:
         self._save_kv(KV_TRACKING_SINCE, str(self.started_at))
         self._save_kv(KV_PAUSED, "0")
         self.apply_capture_hotkey(self.config.capture_hotkey)
+        if self.updater is not None:
+            self.updater.start()
         log.info("Tracking started (device %s, %s)", self.device_id, self.config.device_name)
 
     def _capture_loop(self) -> None:  # pragma: no cover - threads
@@ -366,6 +370,8 @@ class TrackerApp:
                 return
             self._closed = True
             self._stop.set()
+            if self.updater is not None:
+                self.updater.stop()
             if self._thread.is_alive() and threading.current_thread() is not self._thread:
                 self._thread.join(timeout=5)
             with self._lock:
@@ -599,6 +605,38 @@ class TrackerApp:
         text goes to social-transcript (which also indexes the filled note)
         instead of being embedded as it is.
         """
+        with self._lock:
+            self._captures += 1
+        try:
+            return self._save_capture(text, window_title)
+        finally:
+            with self._lock:
+                self._captures -= 1
+
+    def capture_busy(self) -> bool:
+        """A save to Archive is in flight (the updater waits for it)."""
+        return self._captures > 0
+
+    # -- auto-update (updater.py) -------------------------------------------
+
+    def auto_update_enabled(self) -> bool:
+        return bool(getattr(self.config, "auto_update", True))
+
+    def toggle_auto_update(self) -> None:
+        """The tray checkbox "Aktualizuj automatycznie": flips config.json's auto_update."""
+        self.config.auto_update = not self.auto_update_enabled()
+        log.info("Auto-update %s", "on" if self.config.auto_update else "off")
+        try:
+            save_config(self.config)
+        except OSError as exc:
+            log.warning("Could not save auto_update to config.json: %s", exc)
+        self._refresh_menu()
+
+    def updated_notice(self) -> str | None:
+        """"Zaktualizowano do <version>" once after an update (version kept in the kv table)."""
+        return updater.updated_message(self.store, __version__)
+
+    def _save_capture(self, text: str | None, window_title: str) -> CaptureResult:
         if self.archive is None:
             return CaptureResult("Saving to Archive is not set up (supabase_url in config.json)")
         if self.needs_login():
@@ -711,6 +749,9 @@ def build_app(config: Config, data_dir: Path, sampler: Sampler | None = None) ->
             # Transcripts dropped into <vault>/Import/ (a lecture platform, a course, YouTube captions).
             importer=ImportWatcher(vault, kos, ImportState.load(data_dir / "imports.json"), notify=notify),
         )
+    # Starts with the app; does nothing when running from the sources (not frozen).
+    app.updater = updater.Updater(version=__version__, store=store, enabled=app.auto_update_enabled,
+                                  busy=app.capture_busy)
     return app
 
 
@@ -1055,6 +1096,9 @@ def main(argv: list[str] | None = None) -> int:
                     return
                 if app.needs_login():
                     tray.notify(icon_ready, "Sign in from the tray menu to sync your computer time")
+                notice = app.updated_notice()
+                if notice and not notify.toast(updater.UPDATED_TITLE, notice):
+                    tray.notify(icon_ready, notice)
 
             icon.run(setup=setup)
         else:

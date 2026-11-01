@@ -72,13 +72,56 @@ class MainActivity : Activity() {
             render()
         }
         find<Button>(R.id.syncNow).setOnClickListener { syncNow() }
+        find<Button>(R.id.updateCheck).setOnClickListener { checkUpdate() }
+        find<Button>(R.id.updateInstall).setOnClickListener { UpdateJob.install(this) }
 
+        UpdateJob.schedule(this)
         handleSetupLink(intent)
+        handleInstall(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleSetupLink(intent)
+        handleInstall(intent)
+    }
+
+    /** The "Aktualizacja gotowa" notification's tap. */
+    private fun handleInstall(intent: Intent?) {
+        if (intent?.getBooleanExtra(UpdateJob.EXTRA_INSTALL, false) != true) return
+        intent.removeExtra(UpdateJob.EXTRA_INSTALL)
+        UpdateJob.install(this)
+    }
+
+    private var updateStatus: String? = null
+
+    private fun checkUpdate() {
+        val button = find<Button>(R.id.updateCheck)
+        button.isEnabled = false
+        updateStatus = getString(R.string.update_checking)
+        renderUpdate()
+        io.execute {
+            val result = try { UpdateJob.check(applicationContext, force = true) } catch (e: Exception) { UpdateJob.CheckResult.Failed }
+            runOnUiThread {
+                button.isEnabled = true
+                updateStatus = when (result) {
+                    UpdateJob.CheckResult.Failed -> getString(R.string.update_failed)
+                    UpdateJob.CheckResult.UpToDate -> getString(R.string.update_none)
+                    else -> null
+                }
+                renderUpdate()
+            }
+        }
+    }
+
+    private fun renderUpdate() {
+        val ready = UpdateJob.pending(this)
+        val lines = listOfNotNull(
+            getString(R.string.update_current, BuildConfig.VERSION_NAME),
+            ready?.let { getString(R.string.update_available, it.versionName) } ?: updateStatus,
+        )
+        find<TextView>(R.id.updateText).text = lines.joinToString("\n")
+        find<View>(R.id.updateInstall).visibility = if (ready != null) View.VISIBLE else View.GONE
     }
 
     override fun onResume() {
@@ -89,6 +132,7 @@ class MainActivity : Activity() {
             syncNow()
         }
         render()
+        renderUpdate()
         showToday()
     }
 

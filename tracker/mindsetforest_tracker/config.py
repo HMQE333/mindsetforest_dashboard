@@ -118,6 +118,8 @@ class Config:
     # Name a Chromium browser's tab by the domain in its address bar (UI Automation; only the
     # domain is kept, never the address). False: titles only, and no UI Automation at all.
     browser_domains: bool = True
+    # Install newer versions from the tracker-latest release by itself (tray: "Aktualizuj automatycznie").
+    auto_update: bool = True
     path: Path | None = field(default=None, compare=False)
 
     def is_ignored(self, app_name: str) -> bool:
@@ -197,6 +199,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg.vault_dir = os.path.expandvars(os.path.expanduser(str(cfg.vault_dir or "").strip()))
     cfg.session_gap_minutes = max(1.0, float(cfg.session_gap_minutes))
     cfg.browser_domains = _flag(cfg.browser_domains, True)
+    cfg.auto_update = _flag(cfg.auto_update, True)
     try:
         cfg.recordings_since = max(0.0, float(cfg.recordings_since or 0))
     except (TypeError, ValueError):

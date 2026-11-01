@@ -1114,9 +1114,9 @@ def test_self_test_writes_every_check(env):
     assert report["ok"] is ok and report["version"] == __version__
     checks = report["checks"]
     assert {"tkinter", "pystray", "pillow", "dpapi", "shortcut", "registry_run", "known_folders", "documents_dir",
-            "detect_bandicam_dir", "obsidian_vaults", "parse_hotkey", "uia", "imports"} <= set(checks)
+            "detect_bandicam_dir", "obsidian_vaults", "parse_hotkey", "uia", "imports", "updater"} <= set(checks)
     for name in ("dpapi", "shortcut", "registry_run", "known_folders", "documents_dir", "detect_bandicam_dir",
-                 "obsidian_vaults", "parse_hotkey", "uia", "imports"):
+                 "obsidian_vaults", "parse_hotkey", "uia", "imports", "updater"):
         assert checks[name] == "ok", (name, checks[name])
     assert env.ops.run == {} and env.ops.shortcuts  # test value removed again
     assert ok == all(v == "ok" for v in checks.values())

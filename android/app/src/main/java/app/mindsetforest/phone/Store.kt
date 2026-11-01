@@ -62,6 +62,17 @@ class Store(context: Context) : SyncState {
         prefs.edit().putString("shown_reminders", list.takeLast(300).joinToString(",")).apply()
     }
 
+    /** Self-update (UpdateJob): when the site was last asked, and the APK downloaded and verified. */
+    var updateCheckedAt: Long
+        get() = prefs.getLong("update_checked_at", 0)
+        set(v) = prefs.edit().putLong("update_checked_at", v).apply()
+
+    var readyUpdate: ReadyUpdate?
+        get() = decodeReadyUpdate(prefs.getString("ready_update", null))
+        set(v) {
+            prefs.edit().putString("ready_update", v?.let(::encodeReadyUpdate)).commit()
+        }
+
     var email: String
         get() = prefs.getString("email", "") ?: ""
         set(v) = prefs.edit().putString("email", v).apply()

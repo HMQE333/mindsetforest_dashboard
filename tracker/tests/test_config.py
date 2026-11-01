@@ -104,3 +104,11 @@ def test_browser_domains_default_round_trip_and_odd_values(tmp_path):
                           ("true", True), (1, True), (None, True), ("maybe", True), ([], True)):
         path.write_text(json.dumps({"browser_domains": raw}))
         assert load_config(path).browser_domains is expected, raw
+
+
+def test_auto_update_defaults_on_and_reads_odd_values(tmp_path):
+    path = tmp_path / "config.json"
+    assert load_config(path).auto_update is True
+    for raw, expected in ((False, False), ("false", False), ("off", False), (True, True), ("maybe", True)):
+        path.write_text(json.dumps({"auto_update": raw}))
+        assert load_config(path).auto_update is expected, raw
