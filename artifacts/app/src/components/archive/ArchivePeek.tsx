@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Clapperboard } from "lucide-react";
+import { Clapperboard, ScanText } from "lucide-react";
 import { socialVideoUrl } from "@/lib/social-video";
 import { invokeFunction } from "@/lib/function-error";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -34,7 +34,7 @@ import type { AIPreviewView } from "./ArchiveAIPreviewModal";
 import { DeleteConfirmButton, type Armed } from "./DeleteConfirm";
 import FolderPicker from "./FolderPicker";
 import { NoteText, useNoteText } from "./NoteText";
-import { noteTags } from "./archive-index";
+import { blockImages, noteTags } from "./archive-index";
 import { useNoteSuggestions } from "./note-suggestions";
 import { noteHeading, readingLabel } from "./reader-model";
 import { NoteTagChips, PillarRow, SuggestionChips, aiNote } from "./TagChips";
@@ -204,6 +204,7 @@ function PeekBody({
         <AIMenu block={block} onAIAction={onAIAction} onSuggest={sugg.ask} onUpdate={onUpdate} onSaveNew={onSaveNew} />
         {onPlant && <ToolButton label="Plant in the Forest" icon={Sprout} onClick={() => onPlant(block)} />}
         <WorkshopButton block={block} />
+        <ImageTextButton block={block} onUpdate={onUpdate} />
         <span className="ml-auto">
           <DeleteConfirmButton variant="tool" armed={armed} onArm={onArm} onDisarm={onDisarm} onConfirm={onConfirmDelete} />
         </span>
@@ -547,6 +548,48 @@ function WorkshopButton({ block }: { block: ArchiveBlock }) {
       label={done ? "Workshop again (Gemini watches the reel for how it is made)" : "Workshop: Gemini watches the reel for how it is made"}
       icon={running ? Loader2 : Clapperboard}
       onClick={() => void start()}
+    />
+  );
+}
+
+const IMAGE_TEXT_HEAD = "**Text from image**";
+
+/**
+ * "Read text" on a note with pictures (a screenshot, a photo of a page): a
+ * cheap vision model writes out the words in each picture (up to four) and a
+ * one-line description; it is saved into the note under "Text from image",
+ * so search and the AI see it too (the edit re-embeds the note).
+ */
+function ImageTextButton({ block, onUpdate }: { block: ArchiveBlock; onUpdate: UpdateBlock }) {
+  const images = blockImages(block);
+  const [busy, setBusy] = useState(false);
+  if (images.length === 0) return null;
+  const done = block.content.includes(IMAGE_TEXT_HEAD);
+  const read = async () => {
+    setBusy(true);
+    const id = toast.loading(images.length === 1 ? "Reading the picture…" : `Reading ${Math.min(4, images.length)} pictures…`);
+    try {
+      const parts: string[] = [];
+      for (const url of images.slice(0, 4)) {
+        const r = await invokeFunction<{ text: string }>("ai-image-text", { imageUrl: url });
+        parts.push(r.text.trim());
+      }
+      // Replace an earlier reading rather than stacking a second one.
+      const at = block.content.indexOf(`\n\n${IMAGE_TEXT_HEAD}\n`);
+      const base = at >= 0 ? block.content.slice(0, at) : block.content.trimEnd();
+      await onUpdate(block.id, { content: `${base}\n\n${IMAGE_TEXT_HEAD}\n${parts.join("\n\n---\n\n")}` });
+      toast.success("Text from the picture added to the note", { id });
+    } catch (e) {
+      toast.error("Couldn't read the picture", { id, description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <ToolButton
+      label={done ? "Read the text in the picture again" : "Read the text in the picture (adds it to the note, so search finds it)"}
+      icon={busy ? Loader2 : ScanText}
+      onClick={() => void (busy ? undefined : read())}
     />
   );
 }
