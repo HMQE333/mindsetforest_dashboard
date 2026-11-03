@@ -52,6 +52,7 @@ log = logging.getLogger(__name__)
 CLAUDE_DOWNLOAD_URL = "https://claude.ai/download"
 OBSIDIAN_DOWNLOAD_URL = "https://obsidian.md/download"
 DEFAULT_HOTKEY = "alt+shift+s"
+DEFAULT_SCREENSHOT_HOTKEY = "alt+shift+a"
 POLL_MS = 100
 
 INSTALL_TAGLINE = "Instalacja trackera: czas przed komputerem, zapis do Archive, nagrania do Obsidiana."
@@ -297,6 +298,18 @@ def validate(form: Mapping[str, Any]) -> list[Problem]:
             problem = hotkey_problem(hotkey)
             if problem:
                 warnings.append(f"Skrót {hotkey_label(hotkey)}: {problem}")
+    shot = str(form.get("screenshot_hotkey") or "")
+    if shot:
+        try:
+            parse_hotkey(shot)
+        except ValueError:
+            errors.append(f"Nieprawidłowy skrót zrzutu ekranu „{shot}”. Kliknij „Zmień...” i naciśnij nowy.")
+        else:
+            if shot.strip().lower() == hotkey.strip().lower():
+                errors.append("Skrót zrzutu ekranu musi być inny niż skrót zapisu tekstu.")
+            problem = hotkey_problem(shot)
+            if problem:
+                warnings.append(f"Skrót {hotkey_label(shot)}: {problem}")
     url = str(form.get("supabase_url") or "")
     if not url or not form.get("supabase_anon_key"):
         errors.append("Brakuje ustawień dashboardu (adres Supabase i klucz). Poczekaj, aż się pobiorą, "
@@ -404,7 +417,8 @@ def initial_form(existing: Config | None, *, detected: Path, default_vault: Path
         return {
             "supabase_url": "", "supabase_anon_key": "", "dashboard_url": winsetup.DEFAULT_SITE,
             "transcribe": True, "recordings_dir": str(detected), "vault_dir": str(default_vault),
-            "hotkey": DEFAULT_HOTKEY, "autostart": autostart, "device_name": socket.gethostname(),
+            "hotkey": DEFAULT_HOTKEY, "screenshot_hotkey": DEFAULT_SCREENSHOT_HOTKEY,
+            "autostart": autostart, "device_name": socket.gethostname(),
             "browser_domains": True,
         }
     return {
@@ -414,7 +428,9 @@ def initial_form(existing: Config | None, *, detected: Path, default_vault: Path
         "transcribe": bool(existing.recordings_dir),
         "recordings_dir": existing.recordings_dir or str(detected),
         "vault_dir": existing.vault_dir or str(default_vault),
-        "hotkey": existing.capture_hotkey, "autostart": autostart,
+        "hotkey": existing.capture_hotkey,
+        "screenshot_hotkey": getattr(existing, "screenshot_hotkey", DEFAULT_SCREENSHOT_HOTKEY),
+        "autostart": autostart,
         "device_name": existing.device_name or socket.gethostname(),
         "browser_domains": bool(getattr(existing, "browser_domains", True)),
     }
@@ -498,6 +514,7 @@ def choices_from_form(form: Mapping[str, Any]) -> winsetup.SetupChoices:
         push_hotkey=bool(form.get("push_hotkey", False)),
         include_existing=bool(form.get("include_existing", True)),
         browser_domains=bool(form.get("browser_domains", True)),
+        screenshot_hotkey=(str(form.get("screenshot_hotkey") or "") if "screenshot_hotkey" in form else None),
     )
 
 
@@ -944,6 +961,7 @@ class SetupWindow:
             "include_existing": self._include_existing(),
             "vault_dir": clean_path(self.vault_var.get()),
             "hotkey": self.hotkey_var.get(),
+            "screenshot_hotkey": self.shot_var.get(),
             # Any hotkey the user confirmed goes to the dashboard, even the one shown: the form may show
             # a value the account has since replaced (an old zip config.json), and re-picking it is a choice.
             "push_hotkey": self.hotkey_touched or hotkey_changed(self.hotkey_var.get(), self.initial["hotkey"]),
@@ -1233,6 +1251,20 @@ class SetupWindow:
         self._hint(box, "To samo ustawienie co w dashboardzie (Settings → Keybinds); zmiana działa w ciągu minuty. "
                    "Link do rolki (Instagram, TikTok, X, YouTube Shorts) dostaje transkrypt.").grid(
             row=2, column=0, columnspan=3, sticky="w", pady=(px(2), 0))
+        # The screenshot hotkey: this PC only (config.json), not the dashboard's.
+        ttk.Label(box, text="Zrzut ekranu do Archive:", style="Bold.TLabel").grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(px(10), 0))
+        self.shot_var = self._var(self.initial.get("screenshot_hotkey", DEFAULT_SCREENSHOT_HOTKEY))
+        self.shot_text = self._var(hotkey_label(self.shot_var.get()))
+        self.shot_var.trace_add("write", lambda *_a: self.shot_text.set(hotkey_label(self.shot_var.get())))
+        ttk.Label(box, textvariable=self.shot_text, style="Hotkey.TLabel").grid(row=4, column=0, sticky="w")
+        shot_change = ttk.Button(box, text="Zmień...", command=lambda: HotkeyDialog(self, self.shot_var.set))
+        shot_change.grid(row=4, column=1, padx=(px(8), 0))
+        shot_off = ttk.Button(box, text="Wyłącz", command=lambda: self.shot_var.set(""))
+        shot_off.grid(row=4, column=2, padx=(px(8), 0))
+        self.lock_while_busy += [shot_change, shot_off]
+        self._hint(box, "Zaznacz myszą fragment ekranu (Esc anuluje, samo kliknięcie = cały monitor). "
+                   "Tylko na tym komputerze.").grid(row=5, column=0, columnspan=3, sticky="w", pady=(px(2), 0))
 
     def _advanced_section(self, parent: Any) -> None:
         px = self.px

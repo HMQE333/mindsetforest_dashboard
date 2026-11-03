@@ -105,6 +105,9 @@ class Config:
     # Set by the setup window: the tracker pushes capture_hotkey to the dashboard once and
     # clears it (the dashboard's value wins at every sync, so a new choice must reach it).
     capture_hotkey_push: bool = False
+    # Global hotkey that saves a screenshot of a dragged region to the Archive ("" turns it off).
+    # Local to this PC (not synced with the dashboard); same rules as capture_hotkey.
+    screenshot_hotkey: str = "alt+shift+a"
     # Knowledge OS: MP3s in this folder are transcribed and written to the Obsidian vault, and
     # the vault's Knowledge/ and Sessions/ notes are copied to the dashboard. Empty
     # recordings_dir turns transcription off. Change vault_dir any time; new notes go there.
@@ -194,6 +197,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg.private_keywords = [str(k) for k in (cfg.private_keywords or [])]
     cfg.supabase_url = cfg.supabase_url.rstrip("/")
     cfg.capture_hotkey = str(cfg.capture_hotkey or "").strip().lower()
+    cfg.screenshot_hotkey = str(cfg.screenshot_hotkey or "").strip().lower()
     cfg.capture_hotkey_push = str(cfg.capture_hotkey_push).strip().lower() in ("true", "1")
     cfg.recordings_dir = os.path.expandvars(os.path.expanduser(str(cfg.recordings_dir or "").strip()))
     cfg.vault_dir = os.path.expandvars(os.path.expanduser(str(cfg.vault_dir or "").strip()))

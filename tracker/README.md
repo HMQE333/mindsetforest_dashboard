@@ -76,6 +76,10 @@
   (sesja zostaje zapisana) i uruchamia nowy, a ten pokazuje powiadomienie **Zaktualizowano do <wersja>**. Wyłączysz to w menu
   ikonki (**Aktualizuj automatycznie**) albo kluczem `"auto_update": false` w `config.json`. Wersję 1.5.0 trzeba raz
   zainstalować ręcznie; kolejne przyjdą same.
+  Wersja 1.6.0: **zrzut ekranu do Archive**. Wciśnij **Alt+Shift+A** (`screenshot_hotkey`), zaznacz myszą fragment
+  przyciemnionego ekranu (Esc anuluje, samo kliknięcie zapisuje cały monitor) i zrzut trafia do Archive jako notatka z obrazkiem,
+  tytułem okna jako źródłem i tagami `quick-capture`, `screenshot`. Działa też przy wstrzymanym śledzeniu; skrót zmienisz w
+  **Ustawienia...** (tylko na tym komputerze, nie w dashboardzie).
 > - **Odinstalowanie**: Ustawienia Windows → Aplikacje → Zainstalowane aplikacje (Apps & features) → **MindsetForest Tracker** →
 >   Odinstaluj, albo **Ustawienia... → Odinstaluj...**. Vault i nagrania zostają zawsze; dane lokalne (`%APPDATA%\MindsetForest`)
 >   znikają tylko, jeśli to potwierdzisz.
@@ -446,6 +450,25 @@ save (*Ostatni zapis do Archive: ... (14:05)*).
   once (RPC `set_tracker_capture_hotkey`); after that the dashboard's value
   wins as above. An untouched hotkey is never pushed, so installing on a
   second PC keeps the account's hotkey.
+
+### Screenshot to Archive
+
+Press **Alt+Shift+A** (`screenshot_hotkey` in `config.json`; *Zrzut ekranu do
+Archive* in the settings window; `""` turns it off). The screens dim (every
+monitor, DPI-aware) and the pointer becomes a crosshair: drag a rectangle,
+or click once to take the whole monitor under the pointer; Esc or a right
+click cancels. The region is grabbed after the overlay is gone, encoded as
+PNG (WebP at quality 85 when that is smaller) and uploaded to the public
+Storage bucket `archive-images` under `<user_id>/<timestamp>-<random>.png`,
+as the web app does. The note's title is *Zrzut ekranu – <window title>*
+(the window in front when you pressed the hotkey, or the time), its content
+`[image] <public url>` plus `Source:`, tagged `quick-capture` and
+`screenshot`; it is then indexed like a text capture. The same sound, tray
+flash and toast (*Zapisano zrzut w Archive*) confirm it; a failure shows
+*Nie zapisano zrzutu* and leaves the image on the clipboard. Screenshots are
+an explicit action, so they work while tracking is paused. Unlike
+`capture_hotkey`, this hotkey is local to the PC and not synced with the
+dashboard.
 
 ## Where data lands
 

@@ -6,7 +6,7 @@ import { useTrackerDevices } from "@/hooks/useTrackerDevices";
 import { deviceLabel, isPhone, type DeviceSummary } from "@/lib/tracker-devices";
 
 /** The versions in public/downloads (bump with each published build). */
-export const TRACKER_VERSION = "1.5";
+export const TRACKER_VERSION = "1.6";
 export const PHONE_VERSION = "1.5.1";
 
 /**
@@ -30,6 +30,7 @@ export default function DevicesTab() {
         features={[
           "Śledzi czas w aplikacjach i na stronach (Chrome, Edge)",
           "Alt+Shift+S zapisuje zaznaczony tekst do Archive; link do reela dostaje transkrypt",
+          "Alt+Shift+A: zrzut wybranego fragmentu ekranu prosto do Archive",
           "Działa w tle przy zegarze; pauza jednym kliknięciem",
         ]}
         devices={computers}

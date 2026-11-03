@@ -1114,9 +1114,9 @@ def test_self_test_writes_every_check(env):
     assert report["ok"] is ok and report["version"] == __version__
     checks = report["checks"]
     assert {"tkinter", "pystray", "pillow", "dpapi", "shortcut", "registry_run", "known_folders", "documents_dir",
-            "detect_bandicam_dir", "obsidian_vaults", "parse_hotkey", "uia", "imports", "updater"} <= set(checks)
+            "detect_bandicam_dir", "obsidian_vaults", "parse_hotkey", "uia", "imports", "updater", "screenshot"} <= set(checks)
     for name in ("dpapi", "shortcut", "registry_run", "known_folders", "documents_dir", "detect_bandicam_dir",
-                 "obsidian_vaults", "parse_hotkey", "uia", "imports", "updater"):
+                 "obsidian_vaults", "parse_hotkey", "uia", "imports", "updater", "screenshot"):
         assert checks[name] == "ok", (name, checks[name])
     assert env.ops.run == {} and env.ops.shortcuts  # test value removed again
     assert ok == all(v == "ok" for v in checks.values())
@@ -1183,3 +1183,17 @@ def test_a_zip_tracker_on_store_python_keeps_its_device_id_login_and_recordings(
     (env.data / "tracker.db").write_bytes(b"newer")
     assert winsetup.migrate_store_python_data(env.data) is None
     assert (env.data / "tracker.db").read_bytes() == b"newer"
+
+
+def test_screenshot_hotkey_in_setup(env):
+    data = env.data
+    assert merged_config(None, choices(env), data).screenshot_hotkey == "alt+shift+a"  # not asked: default
+    old = Config(screenshot_hotkey="ctrl+shift+f8")
+    assert merged_config(old, choices(env), data).screenshot_hotkey == "ctrl+shift+f8"  # silent upgrade keeps it
+    assert merged_config(old, choices(env, screenshot_hotkey=" Win+Shift+Z "), data).screenshot_hotkey == "win+shift+z"
+    assert merged_config(old, choices(env, screenshot_hotkey=""), data).screenshot_hotkey == ""
+    winsetup._validate(choices(env, screenshot_hotkey="alt+shift+a"))
+    with pytest.raises(SetupError):
+        winsetup._validate(choices(env, screenshot_hotkey="alt+enter"))
+    with pytest.raises(SetupError):
+        winsetup._validate(choices(env, screenshot_hotkey="alt+shift+s"))  # same as the text hotkey

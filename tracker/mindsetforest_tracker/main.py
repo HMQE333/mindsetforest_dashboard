@@ -31,7 +31,7 @@ from typing import Any
 
 import psutil
 
-from . import __version__, notify, tray, updater
+from . import __version__, notify, screenshot_capture, tray, updater
 from .imports import ImportState, ImportWatcher
 from .recordings import IntakeState, IntakeWorker, KosClient, VaultMirror, write_study_prompts
 from .archive_capture import (
@@ -44,7 +44,7 @@ from .config import DEFAULT_DASHBOARD_URL, LEGACY_DASHBOARD_URLS, Config, app_da
 from .privacy import is_private
 from .sessions import LOCKED_APP, SessionTracker, iso_utc
 from .store import Store
-from .sync import SyncClient, SyncError, SyncStatus, SyncWorker
+from .sync import SyncClient, SyncError, SyncRejected, SyncStatus, SyncWorker
 
 log = logging.getLogger("mindsetforest_tracker")
 PURGE_EVERY_SECONDS = 24 * 3600
@@ -223,6 +223,9 @@ class TrackerApp:
         self._hotkey_listener: Any = None
         self._hotkey_spec: str | None = None
         self._hotkey_lock = threading.Lock()
+        # The screenshot hotkey: config.json only (not synced with the dashboard).
+        self._screenshot_listener: Any = None
+        self._screenshot_spec: str | None = None
         self.intake: Any = None
         self.updater: Any = None
         self._captures = 0  # saves to Archive in flight: no update installs in the middle of one
@@ -263,6 +266,7 @@ class TrackerApp:
         self._save_kv(KV_TRACKING_SINCE, str(self.started_at))
         self._save_kv(KV_PAUSED, "0")
         self.apply_capture_hotkey(self.config.capture_hotkey)
+        self.apply_screenshot_hotkey(getattr(self.config, "screenshot_hotkey", ""))
         if self.updater is not None:
             self.updater.start()
         log.info("Tracking started (device %s, %s)", self.device_id, self.config.device_name)
@@ -378,6 +382,7 @@ class TrackerApp:
                 for session in self.tracker.close_current(self.clock()):
                     self.store.upsert_session(session, self.device_id)
             self.apply_capture_hotkey("")
+            self.apply_screenshot_hotkey("")
             if self.intake is not None:
                 self.intake.stop()
             self.sync_worker.stop()
@@ -541,9 +546,14 @@ class TrackerApp:
     # -- save selection to Archive ---------------------------------------------
 
     def capture_hint(self) -> str | None:
-        """Tray line naming the hotkey, or None when it is off."""
+        """Tray line naming the hotkeys (the screenshot one once registered), or None when both are off."""
+        if not self.archive:
+            return None
         hotkey = self._hotkey_spec if self._hotkey_spec is not None else self.config.capture_hotkey
-        return f"Save selection to Archive: {hotkey.title()}" if hotkey and self.archive else None
+        parts = [f"Save selection to Archive: {hotkey.title()}"] if hotkey else []
+        if self._screenshot_spec:
+            parts.append(f"Zrzut ekranu: {self._screenshot_spec.title()}")
+        return " · ".join(parts) or None
 
     def on_capture_hotkey(self, spec: str | None) -> None:
         """The dashboard's hotkey after a sync; None (never set there) falls back to config.json."""
@@ -591,6 +601,26 @@ class TrackerApp:
                 listener.start()
                 self._hotkey_listener = listener
         log.info("Save-to-Archive hotkey: %s", spec or "off")
+        self._refresh_menu()
+
+    def apply_screenshot_hotkey(self, spec: str) -> None:
+        """Switch the screenshot hotkey to ``spec`` ("" turns it off); no-op when unchanged."""
+        spec = (spec or "").strip().lower()
+        with self._hotkey_lock:
+            if spec == (self._screenshot_spec or ""):
+                return
+            if self._screenshot_listener is not None:
+                self._screenshot_listener.stop()
+                self._screenshot_listener = None
+            self._screenshot_spec = None
+            if spec and self.archive is not None and self._hotkey_factory is not None:
+                listener = self._hotkey_factory(spec, self.capture_screenshot,
+                                                on_fail=lambda msg: tray.notify(self.icon, msg),
+                                                setting="screenshot_hotkey")
+                listener.start()
+                self._screenshot_listener = listener
+                self._screenshot_spec = spec
+        log.info("Screenshot hotkey: %s", spec or "off")
         self._refresh_menu()
 
     def save_text(self, text: str | None, window_title: str) -> str:
@@ -668,6 +698,70 @@ class TrackerApp:
         self._refresh_menu()
         message = "Zapisano — transkrypt w drodze" if link and block_id else f"Saved to Archive: {title}"
         return CaptureResult(message, ok=True, title=title, transcript=bool(link and block_id))
+
+    def save_screenshot(self, image: Any, window_title: str) -> CaptureResult:
+        """Upload a grabbed image and save it as an Archive note (allowed while paused: an explicit action)."""
+        with self._lock:
+            self._captures += 1
+        try:
+            return self._save_screenshot(image, window_title)
+        finally:
+            with self._lock:
+                self._captures -= 1
+
+    def _save_screenshot(self, image: Any, window_title: str) -> CaptureResult:
+        if self.archive is None:
+            return CaptureResult("Zapis do Archive nie jest skonfigurowany (supabase_url w config.json)")
+        if self.needs_login() or not self.auth.user_id:
+            return CaptureResult("Zaloguj się z menu w zasobniku, żeby zapisywać do Archive")
+        source = "" if is_private(window_title, keywords=self._private_keywords) else clean_source(window_title)
+        try:
+            data, ext, content_type = screenshot_capture.encode_image(image)
+            url = screenshot_capture.upload_image(self.archive, self.config.supabase_url, data, content_type, ext)
+            saved = self.archive.insert(screenshot_capture.build_screenshot_block(
+                url, source, self.auth.user_id, self.clock()))
+        except AuthUnavailable as exc:
+            log.warning("Screenshot save failed: %s", exc)
+            return CaptureResult("Brak połączenia z serwerem. Spróbuj ponownie później.")
+        except AuthError:
+            return CaptureResult("Zaloguj się ponownie z menu w zasobniku, żeby zapisywać do Archive")
+        except SyncRejected as exc:
+            log.warning("Screenshot refused: %s", exc)
+            return CaptureResult(f"Serwer odrzucił zrzut ({exc.status}).")
+        except SyncError as exc:
+            log.warning("Screenshot save failed: %s", exc)
+            return CaptureResult("Brak połączenia z serwerem. Spróbuj ponownie później.")
+        block_id = (saved or {}).get("id")
+        if block_id:
+            threading.Thread(target=self.archive.embed, args=(block_id,), name="mf-embed", daemon=True).start()
+        title = (saved or {}).get("title") or "Zrzut ekranu"
+        log.info("Saved screenshot to Archive (%d bytes %s)", len(data), ext)
+        self.last_archive = (title, self.clock())
+        self._save_kv(KV_LAST_ARCHIVE, json.dumps({"title": title, "at": self.last_archive[1]}))
+        self._refresh_menu()
+        return CaptureResult(f"Saved to Archive: {title}", ok=True, title=title)
+
+    def capture_screenshot(self) -> None:  # pragma: no cover - Windows only (hotkey thread, overlay)
+        title = foreground_title()  # before the overlay takes the foreground
+        bbox = screenshot_capture.select_region()
+        if bbox is None:
+            return  # Esc: nothing to say
+        image = screenshot_capture.grab(bbox)
+        result = self.save_screenshot(image, title)
+        if not result.ok and screenshot_capture.copy_image(image):
+            result.message += " Zrzut jest w schowku."
+        self.confirm_screenshot(result)
+
+    def confirm_screenshot(self, result: CaptureResult) -> None:
+        """The text capture's feedback: sound, tray flash, then the toast (or the balloon)."""
+        notify.beep(result.ok)
+        if result.ok:
+            tray.flash(self.icon, self.is_paused)
+            if notify.toast("Zapisano zrzut w Archive", result.title or "", open_url=self.dashboard_url):
+                return
+        elif notify.toast("Nie zapisano zrzutu", result.message):
+            return
+        tray.notify(self.icon, result.message if not result.ok else f"Zapisano zrzut w Archive: {result.title}")
 
     def capture_selection(self) -> None:  # pragma: no cover - Windows only (hotkey thread)
         title = foreground_title()

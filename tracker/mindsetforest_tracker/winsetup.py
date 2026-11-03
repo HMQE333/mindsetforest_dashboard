@@ -655,6 +655,8 @@ class SetupChoices:
     include_existing: bool = True
     # Name browser tabs by their domain (config browser_domains). None keeps the config's (a silent upgrade).
     browser_domains: bool | None = None
+    # The screenshot hotkey (config only, not synced). None keeps the config's (a silent upgrade).
+    screenshot_hotkey: str | None = None
 
 
 def _same_folder_text(a: str, b: str) -> bool:
@@ -685,6 +687,8 @@ def merged_config(existing: Config | None, choices: SetupChoices, data_dir: Path
         cfg.device_name = choices.device_name.strip()
     if choices.browser_domains is not None:
         cfg.browser_domains = bool(choices.browser_domains)
+    if choices.screenshot_hotkey is not None:
+        cfg.screenshot_hotkey = choices.screenshot_hotkey.strip().lower()
     cfg.path = data_dir / CONFIG_FILE_NAME
     return cfg
 
@@ -820,6 +824,14 @@ def _validate(choices: SetupChoices) -> Path:
         except ValueError as exc:
             raise SetupError(f"Skrót {hotkey} jest nieprawidłowy: potrzebny Ctrl, Alt, Shift lub Win "
                              "i jedna litera, cyfra albo F1-F24 (np. alt+shift+s).") from exc
+    shot = (choices.screenshot_hotkey or "").strip().lower()
+    if shot:
+        try:
+            parse_hotkey(shot)
+        except ValueError as exc:
+            raise SetupError(f"Skrót zrzutu ekranu {shot} jest nieprawidłowy (np. alt+shift+a).") from exc
+        if shot == hotkey:
+            raise SetupError("Skrót zrzutu ekranu musi być inny niż skrót zapisu tekstu.")
     return _user_path(choices.vault_dir)
 
 
@@ -1406,6 +1418,16 @@ def _check_certifi() -> None:
     _require(Path(certifi.where()).is_file(), "certifi's CA bundle is missing (HTTPS would fail)")
 
 
+def _check_screenshot() -> None:
+    """The screenshot hotkey's pieces: ImageGrab is bundled and an image encodes to PNG/WebP."""
+    from PIL import Image, ImageGrab  # noqa: F401 - ImageGrab is what the hotkey grabs with
+
+    from .screenshot_capture import encode_image
+
+    data, ext, _ = encode_image(Image.new("RGB", (8, 8), (139, 92, 246)))
+    _require(bool(data) and ext in ("png", "webp"), "screenshot did not encode")
+
+
 def self_test(out: Path, ops: WinOps) -> bool:
     """Smoke checks for everything the frozen exe needs, written to ``out`` as JSON for CI.
 
@@ -1430,6 +1452,7 @@ def self_test(out: Path, ops: WinOps) -> bool:
     check("certifi", _check_certifi)
     check("uia", _check_uia)
     check("imports", _check_imports)
+    check("screenshot", _check_screenshot)
     check("updater", _check_updater)
     check("shortcut", lambda: _check_shortcut(ops))
     check("registry_run", lambda: _check_run(ops))

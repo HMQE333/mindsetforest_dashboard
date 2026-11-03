@@ -973,3 +973,22 @@ def test_tracker_status_lines():
     assert setup_gui.tracker_status_lines({**kv, "paused": "1"}, True)[0] == "Wstrzymane"
     assert setup_gui.tracker_status_lines({}, False) == [setup_gui.TRACKER_NOT_RUNNING,
                                                          "Ostatni zapis do Archive: jeszcze nic"]
+
+
+def test_screenshot_hotkey_in_the_form(tmp_path):
+    from mindsetforest_tracker.setup_gui import choices_from_form, initial_form
+
+    assert validate(_form(tmp_path, screenshot_hotkey="alt+shift+a")) == []
+    assert validate(_form(tmp_path, screenshot_hotkey="")) == []
+    errors, _ = _split(validate(_form(tmp_path, screenshot_hotkey="alt+shift+s")))
+    assert any("inny" in e for e in errors)
+    errors, _ = _split(validate(_form(tmp_path, screenshot_hotkey="q")))
+    assert errors
+    _, warnings = _split(validate(_form(tmp_path, screenshot_hotkey="ctrl+alt+k")))
+    assert any("AltGr" in str(w) for w in warnings)
+    assert choices_from_form(_form(tmp_path, screenshot_hotkey="alt+shift+a")).screenshot_hotkey == "alt+shift+a"
+    assert choices_from_form(_form(tmp_path)).screenshot_hotkey is None
+    fresh = initial_form(None, detected=tmp_path, default_vault=tmp_path, autostart=True)
+    assert fresh["screenshot_hotkey"] == "alt+shift+a"
+    saved = initial_form(Config(screenshot_hotkey="win+shift+z"), detected=tmp_path, default_vault=tmp_path, autostart=True)
+    assert saved["screenshot_hotkey"] == "win+shift+z"

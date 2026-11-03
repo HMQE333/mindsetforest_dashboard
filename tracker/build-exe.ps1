@@ -40,6 +40,7 @@ $HiddenImports = @(
     'pystray._win32'       # pystray chooses its backend at run time
     'PIL._tkinter_finder'  # loaded from C by Pillow's Tk glue
     'PIL.ImageTk'          # the setup window's icon
+    'PIL.ImageGrab'        # the screenshot hotkey; screenshot_capture imports it on first use
     'win32crypt'           # DPAPI for session.bin (auth.protect / unprotect)
     'win32com'             # WScript.Shell: Start menu shortcut, old Startup shortcut
     'win32com.client'
