@@ -126,6 +126,10 @@ class ArchiveClient:
         row = build_block(text, source, self.auth.user_id)
         if row is None:
             return None
+        return self.insert(row)
+
+    def insert(self, row: dict) -> dict:
+        """Insert one ``archive_blocks`` row (refreshing the login once); returns ``{"id", "title"}``."""
         for attempt in (1, 2):
             headers = {**self.auth.headers(), "Content-Type": "application/json", "Prefer": "return=representation"}
             try:
@@ -143,7 +147,7 @@ class ArchiveClient:
             if resp.status_code != 429 and 400 <= resp.status_code < 500:
                 raise SyncRejected(resp.status_code, resp.text)
             raise SyncError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-        return None  # pragma: no cover - the loop always returns or raises
+        raise AssertionError("unreachable")  # pragma: no cover - the loop always returns or raises
 
     def embed(self, block_id: str) -> None:
         """Best effort: index the note for semantic search, as the web app does."""
@@ -244,9 +248,11 @@ def read_clipboard() -> str | None:  # pragma: no cover - Windows only
 class HotkeyListener(threading.Thread):  # pragma: no cover - Windows only
     """Registers one global hotkey and calls ``on_press`` (on its own thread) when it fires."""
 
-    def __init__(self, spec: str, on_press: Callable[[], None], on_fail: Callable[[str], None] | None = None) -> None:
-        super().__init__(name="mf-hotkey", daemon=True)
+    def __init__(self, spec: str, on_press: Callable[[], None], on_fail: Callable[[str], None] | None = None,
+                 setting: str = "capture_hotkey") -> None:
+        super().__init__(name=f"mf-hotkey-{setting}", daemon=True)
         self.spec = spec
+        self.setting = setting
         self.on_press = on_press
         self.on_fail = on_fail
         self._thread_id = 0
@@ -265,14 +271,14 @@ class HotkeyListener(threading.Thread):  # pragma: no cover - Windows only
         try:
             mods, vk = parse_hotkey(self.spec)
         except ValueError as exc:
-            log.error("capture_hotkey: %s", exc)
+            log.error("%s: %s", self.setting, exc)
             if self.on_fail:
                 self.on_fail(f"Hotkey {self.spec!r} is not valid")
             return
         if not user32.RegisterHotKey(None, 1, mods | MOD_NOREPEAT, vk):
             log.error("Could not register %s (another app uses it?)", self.spec)
             if self.on_fail:
-                self.on_fail(f"{self.spec} is taken by another app; set capture_hotkey in config.json")
+                self.on_fail(f"{self.spec} is taken by another app; set {self.setting} in config.json")
             return
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
