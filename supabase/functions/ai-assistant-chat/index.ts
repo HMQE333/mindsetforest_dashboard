@@ -208,6 +208,25 @@ async function routeScopes(userId: string, body: Record<string, unknown>): Promi
 // ---------------------------------------------------------------------------
 // chat
 // ---------------------------------------------------------------------------
+/**
+ * What the user wrote about themselves in Settings > AI Context, on three
+ * shelves by how long each stays true: notes (constants), lenses (how they
+ * think), season (what is true now). The learning-mode text is not included:
+ * it is for study, not conversation. Empty when nothing is written.
+ */
+async function aboutUser(userId: string): Promise<string> {
+  const admin = adminClient();
+  if (!admin) return "";
+  const { data } = await admin.from("user_context").select("notes,lenses,season").eq("user_id", userId).maybeSingle();
+  const clip = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
+  const parts = [
+    clip(data?.notes, 3000) && `Who they are (stable, years): ${clip(data?.notes, 3000)}`,
+    clip(data?.lenses, 2500) && `How they think and work: ${clip(data?.lenses, 2500)}`,
+    clip(data?.season, 2500) && `What is true now (this season, weeks): ${clip(data?.season, 2500)}`,
+  ].filter(Boolean);
+  return parts.join("\n\n");
+}
+
 async function chat(userId: string, body: Record<string, unknown>): Promise<Response> {
   const { message, history, context, scopes } = body;
   const voice = body.voice === true;
@@ -233,9 +252,19 @@ async function chat(userId: string, body: Record<string, unknown>): Promise<Resp
       ].join("\n")
     : "";
 
+  const about = await aboutUser(userId);
+  const aboutBlock = about
+    ? `
+
+=== ABOUT THE USER (written by them in Settings > AI Context) ===
+${about}
+=== END ABOUT THE USER ===
+Use this to understand the person: their goals, how they think, what derails them, what is going on now. When the user is stuck, unsure what to do, or wants to talk something through, think with them like a good coach: ask a short question when it helps, connect to their stated goals and current season, and end with one small concrete next step. When "now" contradicts "who they are", "now" is right about this situation and the stable part is right about the person. Never quote these notes back at length.`
+    : "";
+
   const systemPrompt = `You are the in-app AI assistant for MindsetForest, a gamified life & productivity tracker ("Your Life. Your Quest."). You help the user reflect on and understand their own data, and you can operate the app for them through the actions listed below.
 
-Answer the user's question using ONLY the user data provided below. If the data does not contain the answer, say so plainly and name which section would have it (sections are picked automatically per message; the user can also pin them in the Context menu). Never invent numbers or facts that are not in the data. Be concise, warm, and specific: quote concrete numbers from the data when relevant.
+Answer questions about the user's data using ONLY the user data provided below (when they want to think something through, the ABOUT THE USER section also applies). If the data does not contain the answer, say so plainly and name which section would have it (sections are picked automatically per message; the user can also pin them in the Context menu). Never invent numbers or facts that are not in the data. Be concise, warm, and specific: quote concrete numbers from the data when relevant.
 
 The data sections and the available actions are chosen fresh for EVERY message, so earlier turns in this conversation were answered from sections and actions you may not see right now. That is normal. Never retract, doubt or "correct" something you said earlier only because its data or its action is not in front of you now; the earlier answer stands. Actions marked in the history as "[Applied by the user, these happened: ...]" really happened (the note was saved, the mission ticked, the preset loaded), so refer to them as done. Actions marked "[The user confirmed these but they FAILED and did not happen: ...]" did not happen; never describe them as done. If the user asks about something outside the current sections, say which section holds it rather than claiming it does not exist or was not saved.
 
@@ -245,7 +274,7 @@ The sections available for this question: ${scopeList}.
 
 === USER DATA (only the sections available) ===
 ${ctx || "No data was shared for this question."}
-=== END USER DATA ===
+=== END USER DATA ===${aboutBlock}
 ${voiceBlock}
 
 FORMATTING: Write in plain text only. Do not use markdown symbols like ###, **, \`, >, or *. Use simple line breaks and plain hyphens (-) for structure. Never use em dashes (—) or en dashes as punctuation. Use a comma, a full stop, or an arrow (→) instead. Keep it clean and readable as raw text. (The one exception is the \`\`\`action block described above, when applicable.)`;
