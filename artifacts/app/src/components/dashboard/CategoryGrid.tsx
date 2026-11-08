@@ -11,10 +11,64 @@ interface CategoryGridProps {
   projectCount?: number;
   categories?: Category[];
   showCompletionBadge?: boolean;
+  /** "grid": the cards; "list": one compact row per category with a progress bar. */
+  view?: "grid" | "list";
 }
 
-export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0, categories, showCompletionBadge = true }: CategoryGridProps) {
+export default function CategoryGrid({ getMissions, getCompletedCount, onSelectCategory, projectCount = 0, categories, showCompletionBadge = true, view = "grid" }: CategoryGridProps) {
   const cats = categories || CATEGORIES;
+  if (view === "list") {
+    return (
+      <div className="flex flex-col gap-2">
+        {cats.map((cat, i) => {
+          const missions = getMissions(cat.id);
+          const completed = getCompletedCount(cat.id);
+          const isAllDone = missions.length > 0 && completed === missions.length;
+          const pct = missions.length ? Math.round((completed / missions.length) * 100) : 0;
+          return (
+            <motion.button
+              key={cat.id}
+              type="button"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.02 * i, duration: 0.3 }}
+              onClick={() => onSelectCategory(cat.id)}
+              className="glass-card-hover w-full px-4 py-3 flex items-center gap-3 text-left relative overflow-hidden group"
+            >
+              <span className="shrink-0" style={{ filter: `drop-shadow(0 0 6px ${cat.color})` }}>
+                <PillarIcon icon={cat.icon} iconUrl={cat.iconUrl} size={30} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-2">
+                  <span className="font-semibold truncate" style={{ color: cat.color }}>{cat.name}</span>
+                  <span className="hidden sm:inline text-xs text-foreground/50 truncate">{cat.tagline}</span>
+                </span>
+                <span className="mt-1.5 block h-1.5 rounded-full bg-white/[0.07] overflow-hidden">
+                  <span className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${pct}%`, background: cat.color }} />
+                </span>
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-foreground/60 w-12 text-right">{completed}/{missions.length}</span>
+              <span className="shrink-0 w-5 flex justify-center">
+                {isAllDone && showCompletionBadge && <Check className="w-4 h-4" style={{ color: cat.color }} strokeWidth={3} />}
+              </span>
+            </motion.button>
+          );
+        })}
+        {projectCount > 0 && (
+          <button
+            type="button"
+            onClick={() => onSelectCategory("__projects__")}
+            className="glass-card-hover w-full px-4 py-3 flex items-center gap-3 text-left"
+          >
+            <span className="text-2xl shrink-0">📂</span>
+            <span className="flex-1 font-semibold" style={{ color: "#8B5CF6" }}>Projects</span>
+            <span className="text-xs text-foreground/60">{projectCount} project{projectCount !== 1 ? "s" : ""}</span>
+            <span className="w-5" />
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {cats.map((cat, i) => {

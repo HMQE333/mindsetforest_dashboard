@@ -24,6 +24,12 @@ import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
 import OfflineNotice from "@/components/OfflineNotice";
 import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
+import { LayoutGrid, LayoutList } from "lucide-react";
+
+const HOME_VIEWS = [
+  { id: "grid" as const, icon: LayoutGrid, label: "Grid" },
+  { id: "list" as const, icon: LayoutList, label: "List" },
+];
 
 // The review popup (with the screen-time palette it draws from) is its own
 // chunk: Home fetches it on idle when a review is due, and it mounts on first open.
@@ -32,6 +38,14 @@ const ReviewModal = lazyModule(() => import("@/components/review/ReviewModal"));
 export default function DashboardView() {
   const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, rerollMission, getMissions, getCompletedCount } = useDashboardState();
   const { todaySteps, todayLog, logStep, undoToday } = usePaths();
+  // Cards or a compact list, remembered on this device.
+  const [homeView, setHomeViewState] = useState<"grid" | "list">(() => {
+    try { return localStorage.getItem("mf.homeView") === "list" ? "list" : "grid"; } catch { return "grid"; }
+  });
+  const setHomeView = (v: "grid" | "list") => {
+    setHomeViewState(v);
+    try { localStorage.setItem("mf.homeView", v); } catch { /* private mode */ }
+  };
   const { projects, getProjectFromKey } = useUserProjects();
   const { history: weeklyHistory, saveDailySnapshot, fetchAllHistory } = useDailyCompletions();
   const { getCategories, preferences } = useUserSettings();
@@ -271,7 +285,22 @@ export default function DashboardView() {
                 onOpenPaths={() => window.dispatchEvent(new CustomEvent("lov:navigate-module", { detail: { module: "paths" } }))}
               />
             )}
+            <div className="flex justify-end gap-1 mb-2 px-1" role="group" aria-label="Home view">
+              {HOME_VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setHomeView(v.id)}
+                  title={v.label}
+                  aria-pressed={homeView === v.id}
+                  className={`p-1.5 rounded-md transition-all ${homeView === v.id ? "gradient-purple text-primary-foreground glow-sm" : "bg-muted/40 text-muted-foreground hover:text-foreground"}`}
+                >
+                  <v.icon size={14} />
+                </button>
+              ))}
+            </div>
             <CategoryGrid
+              view={homeView}
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
               onSelectCategory={setSelectedCategory}
