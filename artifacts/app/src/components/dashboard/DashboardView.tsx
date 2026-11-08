@@ -301,6 +301,9 @@ export default function DashboardView() {
             </div>
             <CategoryGrid
               view={homeView}
+              isDone={(cat, i) => state.completedMissions.has(`${cat}-${i}`)}
+              shownMission={(cat, m) => withVariant(m, state.rolledVariants[`${cat}-${m.__originalIndex}`])}
+              onComplete={handleComplete}
               getMissions={getMissions}
               getCompletedCount={getCompletedCount}
               onSelectCategory={setSelectedCategory}
