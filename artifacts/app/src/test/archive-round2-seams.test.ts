@@ -118,7 +118,7 @@ describe("one credential rule for the app and the edge function", () => {
   it("the embedding function skips such a note", () => {
     const fn = readFileSync(new URL("../../../../supabase/functions/ai-embed-block/index.ts", import.meta.url), "utf8");
     expect(fn).toContain('import { looksLikeCredential } from "../_shared/archive-tags.ts";');
-    expect(fn.match(/if \(looksLikeCredential\(text\.slice\(0, SECRET_SCAN_CHARS\)\)\)/g)).toHaveLength(2);
+    expect(fn.match(/if \(looksLikeCredential\(text\.slice\(0, SECRET_SCAN_CHARS\)\)\)/g)).toHaveLength(3); // notes one by one, all notes, pictures;
     expect(fn.indexOf("looksLikeCredential(text")).toBeLessThan(fn.indexOf("await getEmbedding(text)"));
   });
 

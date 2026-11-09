@@ -90,6 +90,10 @@ function refetchAfterWrites(qc: QueryClient, queryKey: readonly unknown[]) {
  * mounted on every screen): no fetch, no polling, the writes still land in the
  * cached list when the Archive has it.
  */
+/** A picture meaning search found: its note and its own score. */
+export interface PictureMatch { block_id: string; url: string; similarity: number }
+export interface ArchiveSearch { blocks: ArchiveBlock[]; videos: VideoMatch[]; images: PictureMatch[] }
+
 export function useArchiveState({ live = true }: { live?: boolean } = {}) {
   const { user } = useAuth();
   const userId = user?.id;
@@ -319,16 +323,28 @@ export function useArchiveState({ live = true }: { live?: boolean } = {}) {
   }, [userId, setBlocks]);
 
   /** Meaning search over notes, and over video summaries (which live with their link). */
-  const searchArchive = useCallback(async (query: string): Promise<{ blocks: ArchiveBlock[]; videos: VideoMatch[] }> => {
+  const searchArchive = useCallback(async (query: string): Promise<ArchiveSearch> => {
     try {
       const { data, error } = await supabase.functions.invoke("ai-embed-block", {
         body: { action: "search", query },
       });
       if (error) throw error;
-      return { blocks: (data?.results || []) as ArchiveBlock[], videos: (data?.videos || []) as VideoMatch[] };
+      const images = (data?.images || []) as PictureMatch[];
+      // A note found through one of its pictures joins the notes, marked, at that picture's score.
+      const blocks = [...((data?.results || []) as (ArchiveBlock & { similarity?: number; viaPicture?: boolean })[])];
+      const at = new Map(blocks.map((b, i) => [b.id, i]));
+      for (const m of images) {
+        const i = at.get(m.block_id);
+        if (i === undefined) {
+          at.set(m.block_id, blocks.length);
+          blocks.push({ id: m.block_id, similarity: m.similarity, viaPicture: true } as ArchiveBlock & { similarity: number; viaPicture: boolean });
+        }
+      }
+      blocks.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+      return { blocks, videos: (data?.videos || []) as VideoMatch[], images };
     } catch (e) {
       console.error("Semantic search error:", e);
-      return { blocks: [], videos: [] };
+      return { blocks: [], videos: [], images: [] };
     }
   }, []);
 

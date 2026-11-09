@@ -609,14 +609,18 @@ function ImageTextButton({ block, onUpdate }: { block: ArchiveBlock; onUpdate: U
 function PictureInsights({ block }: { block: ArchiveBlock }) {
   const { user } = useAuth();
   const meta = useImageMeta(user?.id);
-  const images = blockImages(block).filter((u) => /^https:\/\//.test(u)).slice(0, 4);
+  const images = blockImages(block).filter((u) => /^https:\/\//.test(u));
   const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
   if (!images.length) return null;
   const found = images.map((u) => meta.byUrl(u)).filter((m): m is ImageMeta => !!m);
   const busy = images.some((u) => meta.isAnalyzing(u));
   const runAll = async () => {
     for (const u of images) await meta.analyze(block.id, u);
   };
+  // Every picture is described; a long note shows the first few until "Show all".
+  const FEW = 3;
+  const listed = all ? found : found.slice(0, FEW);
   return (
     <section className="rounded-xl border border-white/10 bg-muted/20 p-3 text-xs" lang="en">
       <div className="flex items-center gap-2">
@@ -633,8 +637,9 @@ function PictureInsights({ block }: { block: ArchiveBlock }) {
         </span>
       </div>
       {found.length === 0 && !busy && <p className="mt-1 text-muted-foreground">Not analysed yet. It happens in the background while the Archive is open.</p>}
-      {found.map((m) => (
-        <div key={m.url} className="mt-2 space-y-1.5">
+      {listed.map((m) => (
+        <div key={m.url} className="mt-2 space-y-1.5 border-t border-white/5 pt-2 first-of-type:border-0">
+          {found.length > 1 && <img src={m.url} alt="" loading="lazy" className="h-10 w-10 rounded object-cover" />}
           {m.description && <p className="text-foreground/90">{m.kind && <span className="mr-1 rounded bg-muted/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{m.kind}</span>}{m.description}</p>}
           {(m.objects?.length || m.tags?.length) ? (
             <div className="flex flex-wrap gap-1">
@@ -651,6 +656,14 @@ function PictureInsights({ block }: { block: ArchiveBlock }) {
           {open && m.text_in_image && <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-background/40 p-2 font-sans text-[11px] text-foreground/80">{m.text_in_image}</pre>}
         </div>
       ))}
+      {found.length > FEW && (
+        <button type="button" onClick={() => setAll(!all)} className="mt-2 text-muted-foreground hover:text-foreground">
+          {all ? "Show fewer" : `Show all ${found.length} pictures`}
+        </button>
+      )}
+      {found.length > 0 && found.length < images.length && !busy && (
+        <p className="mt-1 text-muted-foreground">{images.length - found.length} of {images.length} pictures not analysed yet.</p>
+      )}
     </section>
   );
 }

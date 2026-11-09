@@ -15,6 +15,7 @@ import DateFilterRow from "@/components/shared/DateFilterRow";
 import { ALL_DATES, filterByDate, type DateFilter } from "@/lib/date-filter";
 import ColorFilterRow from "@/components/shared/ColorFilterRow";
 import { imageSearchText, useImageMeta } from "@/hooks/useImageMeta";
+import type { PictureMatch } from "@/hooks/useArchiveState";
 import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
 
 
@@ -31,7 +32,7 @@ interface Props {
   /** New notes, one per uploaded picture. */
   addBlock?: (block: Partial<ArchiveBlock>) => Promise<unknown>;
   /** Meaning search over the notes (the Library's); pictures it finds that the words did not are listed below. */
-  searchArchive?: (query: string) => Promise<{ blocks: ArchiveBlock[] }>;
+  searchArchive?: (query: string) => Promise<{ blocks: ArchiveBlock[]; images?: PictureMatch[] }>;
 }
 
 /** As in the Library: meaning search from 3 characters, not for "quoted" words, similarity 0.35 or more. */
@@ -91,39 +92,65 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
   const [hue, setHue] = useRemembered<string | null>("images.hue", null);
   const [find, setFind] = useState("");
   const hueSets = useMemo(() => new Map([...meta.rows].map(([url, m]) => [url, new Set(m.hues ?? [])])), [meta.version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const picturesPerNote = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const img of allImages) n.set(img.block.id, (n.get(img.block.id) ?? 0) + 1);
+    return n;
+  }, [allImages]);
   const filtered = useMemo(() => {
     let l = filterPillar ? allImages.filter((img) => img.block.pillars.includes(filterPillar)) : allImages;
     if (folder) l = l.filter((img) => inTagFolder(img.block.tags, folder));
     if (hue) l = l.filter((img) => hueSets.get(img.url)?.has(hue));
     const raw = find.trim();
     const q = (/^".+"$/.test(raw) ? raw.slice(1, -1) : raw).toLowerCase();
-    if (q) l = l.filter((img) => `${img.block.title} ${img.block.content} ${imageSearchText(meta.rows.has(img.url) ? [meta.rows.get(img.url)!] : [])}`.toLowerCase().includes(q));
+    // Each picture is matched by what it shows. The note's words count only for a note with one
+    // picture: a note with 30 photos does not bring all 30 because its text matched.
+    if (q) l = l.filter((img) => {
+      const own = imageSearchText(meta.rows.has(img.url) ? [meta.rows.get(img.url)!] : []);
+      const note = picturesPerNote.get(img.block.id) === 1 ? `${img.block.title} ${img.block.content}`.toLowerCase() : "";
+      return own.includes(q) || note.includes(q);
+    });
     return filterByDate(l, dateFilter, (img) => img.block.created_at);
-  }, [allImages, filterPillar, folder, dateFilter, hue, hueSets, find, meta.rows]);
+  }, [allImages, filterPillar, folder, dateFilter, hue, hueSets, find, meta.rows, picturesPerNote]);
 
-  // Meaning: notes the search finds by sense; their pictures not already shown go in "Similar in meaning".
-  const [senseIds, setSenseIds] = useState<string[] | null>(null);
+  // Meaning: pictures the search finds by their own embedding, plus the picture of a one-picture
+  // note found by its text; those not already shown go in "Similar in meaning", best first.
+  const [senseRank, setSenseRank] = useState<Map<string, number> | null>(null);
   useEffect(() => {
     const raw = find.trim();
-    if (!searchArchive || raw.length < MEANING_MIN_CHARS || /^".+"$/.test(raw)) { setSenseIds(null); return; }
+    if (!searchArchive || raw.length < MEANING_MIN_CHARS || /^".+"$/.test(raw)) { setSenseRank(null); return; }
     let live = true;
     const t = setTimeout(async () => {
-      const found = await searchArchive(raw).catch(() => ({ blocks: [] as ArchiveBlock[] }));
-      if (live) setSenseIds(found.blocks.filter((b) => ((b as { similarity?: number }).similarity ?? 1) >= RELATED_MIN).map((b) => b.id));
+      const found = await searchArchive(raw).catch(() => ({ blocks: [] as ArchiveBlock[], images: [] as PictureMatch[] }));
+      if (!live) return;
+      const score = new Map<string, number>(); // url -> similarity
+      for (const m of found.images ?? []) if (m.similarity >= RELATED_MIN) score.set(m.url, Math.max(score.get(m.url) ?? 0, m.similarity));
+      const notes = new Map<string, number>();
+      for (const b of found.blocks as (ArchiveBlock & { similarity?: number; viaPicture?: boolean })[]) {
+        if (!b.viaPicture && (b.similarity ?? 0) >= RELATED_MIN) notes.set(b.id, b.similarity ?? 0);
+      }
+      for (const img of allImagesRef.current) {
+        const s = notes.get(img.block.id);
+        if (s !== undefined && picturesPerNoteRef.current.get(img.block.id) === 1) score.set(img.url, Math.max(score.get(img.url) ?? 0, s));
+      }
+      setSenseRank(score);
     }, 500);
     return () => { live = false; clearTimeout(t); };
   }, [find, searchArchive]);
+  const allImagesRef = useRef(allImages);
+  allImagesRef.current = allImages;
+  const picturesPerNoteRef = useRef(picturesPerNote);
+  picturesPerNoteRef.current = picturesPerNote;
   const related = useMemo(() => {
-    if (!senseIds) return [];
+    if (!senseRank) return [];
     const shown = new Set(filtered.map((i) => i.url));
-    const rank = new Map(senseIds.map((id, i) => [id, i]));
-    let l = allImages.filter((img) => rank.has(img.block.id) && !shown.has(img.url));
+    let l = allImages.filter((img) => senseRank.has(img.url) && !shown.has(img.url));
     if (filterPillar) l = l.filter((img) => img.block.pillars.includes(filterPillar));
     if (folder) l = l.filter((img) => inTagFolder(img.block.tags, folder));
     if (hue) l = l.filter((img) => hueSets.get(img.url)?.has(hue));
     l = filterByDate(l, dateFilter, (img) => img.block.created_at);
-    return l.sort((a, b) => rank.get(a.block.id)! - rank.get(b.block.id)!);
-  }, [senseIds, filtered, allImages, filterPillar, folder, hue, hueSets, dateFilter]);
+    return l.sort((a, b) => senseRank.get(b.url)! - senseRank.get(a.url)!);
+  }, [senseRank, filtered, allImages, filterPillar, folder, hue, hueSets, dateFilter]);
   /** Both lists, for the lightbox's previous and next. */
   const gallery = useMemo(() => [...filtered, ...related], [filtered, related]);
 

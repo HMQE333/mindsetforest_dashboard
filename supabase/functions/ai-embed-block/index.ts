@@ -33,7 +33,7 @@ serve(async (req) => {
     }
     const userId = claimsData.claims.sub;
 
-    const { action, blockId, blockIds, query } = await req.json();
+    const { action, blockId, blockIds, query, url } = await req.json();
 
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
@@ -66,23 +66,32 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // What the note's pictures show (archive_image_meta, written by ai-image-analyze):
-    // embedded with the note so "a red car" finds a photo of one.
-    async function imageText(ids: string[]): Promise<Map<string, string>> {
-      const out = new Map<string, string>();
-      if (!ids.length) return out;
-      const { data } = await supabase.from("archive_image_meta" as any).select("block_id, kind, description, text_in_image, objects, tags, hues").in("block_id", ids);
-      for (const m of (data || []) as any[]) {
-        const part = [
-          `[picture${m.kind ? `: ${m.kind}` : ""}] ${m.description ?? ""}`,
-          m.objects?.length ? `Shows: ${m.objects.join(", ")}` : "",
-          m.tags?.length ? `Tags: ${m.tags.join(", ")}` : "",
-          m.hues?.length ? `Colours: ${m.hues.join(", ")}` : "",
-          m.text_in_image ? `Text in picture: ${String(m.text_in_image).slice(0, 1500)}` : "",
-        ].filter(Boolean).join("\n");
-        out.set(m.block_id, (out.get(m.block_id) ? out.get(m.block_id) + "\n\n" : "") + part);
+    /** One picture's searchable text (archive_image_meta), embedded on its own. */
+    const pictureText = (m: any) => [
+      `[picture${m.kind ? `: ${m.kind}` : ""}] ${m.description ?? ""}`,
+      m.objects?.length ? `Shows: ${m.objects.join(", ")}` : "",
+      m.tags?.length ? `Tags: ${m.tags.join(", ")}` : "",
+      m.hues?.length ? `Colours: ${m.hues.join(", ")}` : "",
+      m.text_in_image ? `Text in picture: ${String(m.text_in_image).slice(0, 3000)}` : "",
+    ].filter(Boolean).join("\n");
+
+    // Action: embed pictures (one id, or every analysed picture without an embedding).
+    if (action === "embed-images") {
+      let q = supabase.from("archive_image_meta" as any).select("id, kind, description, text_in_image, objects, tags, hues").eq("user_id", userId);
+      q = url ? q.eq("url", url) : blockId ? q.eq("block_id", blockId) : q.is("embedding", null);
+      const { data: metas, error } = await q.limit(200);
+      if (error) throw error;
+      let embedded = 0, skipped = 0;
+      for (const m of (metas || []) as any[]) {
+        const text = pictureText(m);
+        if (looksLikeCredential(text.slice(0, SECRET_SCAN_CHARS))) { skipped++; continue; }
+        try {
+          const embedding = await getEmbedding(text);
+          await serviceClient.from("archive_image_meta").update({ embedding: JSON.stringify(embedding) } as any).eq("id", m.id);
+          embedded++;
+        } catch (e) { console.error(`Failed to embed picture ${m.id}:`, e); }
       }
-      return out;
+      return new Response(JSON.stringify({ success: true, embedded, skipped }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Action: embed a single block
@@ -96,9 +105,7 @@ serve(async (req) => {
       if (error || !block) {
         return new Response(JSON.stringify({ error: "Block not found" }), { status: 404, headers: corsHeaders });
       }
-      const own = `${block.title}\n\n${block.content}`;
-      const pictures = (await imageText([block.id])).get(block.id);
-      const text = pictures ? `${own}\n\n${pictures}` : own;
+      const text = `${block.title}\n\n${block.content}`;
       // A note that looks like it holds a password, a PIN, a token or a key is not sent to the
       // embedding model: it simply has no embedding (semantic search and similar notes skip it).
       if (looksLikeCredential(text.slice(0, SECRET_SCAN_CHARS))) {
@@ -128,13 +135,11 @@ serve(async (req) => {
         .is("embedding" as any, null);
       if (error) throw error;
 
-      const pics = await imageText((blocks || []).map((b: any) => b.id));
       let embedded = 0;
       let skipped = 0;
       for (const block of (blocks || [])) {
         try {
-          const own = `${block.title}\n\n${block.content}`;
-          const text = pics.has(block.id) ? `${own}\n\n${pics.get(block.id)}` : own;
+          const text = `${block.title}\n\n${block.content}`;
           if (looksLikeCredential(text.slice(0, SECRET_SCAN_CHARS))) {
             skipped++;
             continue;
@@ -160,7 +165,7 @@ serve(async (req) => {
     if (action === "search" && query) {
       const queryEmbedding = await getEmbedding(query);
       const vector = JSON.stringify(queryEmbedding);
-      const [notes, videos] = await Promise.all([
+      const [notes, videos, images] = await Promise.all([
         serviceClient.rpc("search_archive_blocks", {
           query_embedding: vector,
           match_user_id: userId,
@@ -173,10 +178,16 @@ serve(async (req) => {
           match_threshold: 0.3,
           match_count: 8,
         }),
+        serviceClient.rpc("search_archive_images", {
+          query_embedding: vector,
+          match_user_id: userId,
+          match_threshold: 0.3,
+          match_count: 40,
+        }),
       ]);
       if (notes.error) throw notes.error;
 
-      return new Response(JSON.stringify({ results: notes.data || [], videos: videos.error ? [] : videos.data || [] }), {
+      return new Response(JSON.stringify({ results: notes.data || [], videos: videos.error ? [] : videos.data || [], images: images.error ? [] : images.data || [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

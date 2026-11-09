@@ -418,8 +418,12 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     if (!bySense || semanticResults === null) return [];
     const shown = new Set(filtered.map((b) => b.id));
     const shared = { pillar: filterPillar, hideLinks, folder, type: typeFilter, hue, imageHues: pictures.hues };
-    const ranked = filterRanked(semanticResults, blocks, shared, pending).filter(
-      (b) => !shown.has(b.id) && (similarityScores[b.id] ?? 1) >= RELATED_MIN && (withPictures || !pictures.text.has(b.id)) && (!sensitiveOnly || sensitiveIds.has(b.id)),
+    // Notes found through one of their pictures: only with Pictures on, and only notes loaded here.
+    const live = new Set(blocks.map((x) => x.id));
+    const viaPicture = (r: ArchiveBlock) => !!(r as { viaPicture?: boolean }).viaPicture;
+    const candidates = semanticResults.filter((r) => !viaPicture(r) || (withPictures && live.has(r.id)));
+    const ranked = filterRanked(candidates, blocks, shared, pending).filter(
+      (b) => !shown.has(b.id) && (similarityScores[b.id] ?? 1) >= RELATED_MIN && (!sensitiveOnly || sensitiveIds.has(b.id)),
     );
     return filterByDate(ranked, dateFilter, (b) => b.created_at).slice(0, RELATED_MAX);
   }, [bySense, semanticResults, filtered, filterPillar, hideLinks, folder, typeFilter, hue, pictures, blocks, pending, similarityScores, withPictures, sensitiveOnly, sensitiveIds, dateFilter]);

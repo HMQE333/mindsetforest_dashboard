@@ -7,8 +7,8 @@ import { corsHeaders, getUserClient, jsonResponse } from "../_shared/planner.ts"
  * { blockId, url, colors, hues } -> archive_image_meta row.
  * A cheap vision model writes the kind of picture, a description, the text in
  * it, the objects and a few tags; the palette comes from the browser (it is
- * exact and free there). Then the note is re-embedded so semantic search
- * finds it by what the picture shows. Signed-in owners of the note only.
+ * exact and free there). Then each picture of the note gets its own embedding,
+ * so meaning search finds the picture, not the whole note. Signed-in owners of the note only.
  */
 const MODEL = Deno.env.get("IMAGE_ANALYZE_MODEL") || "google/gemini-2.5-flash-lite";
 const HUES = new Set(["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "black", "white", "gray"]);
@@ -84,11 +84,11 @@ serve(async (req) => {
   const { data: saved, error } = await admin.from("archive_image_meta").upsert(row, { onConflict: "user_id,url" }).select().single();
   if (error) return jsonResponse({ error: error.message }, 500);
 
-  // Re-embed the note with what the picture shows (ai-embed-block reads the meta).
+  // The picture's own embedding, for meaning search over pictures (ai-embed-block writes it).
   await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-embed-block`, {
     method: "POST",
     headers: { Authorization: req.headers.get("Authorization")!, apikey: Deno.env.get("SUPABASE_ANON_KEY")!, "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "embed", blockId }),
+    body: JSON.stringify({ action: "embed-images", url }),
   }).catch(() => null);
 
   return jsonResponse({ meta: saved });
