@@ -13,6 +13,8 @@ import { useRemembered } from "./remembered";
 import TagFolderChips, { inTagFolder } from "@/components/shared/TagFolderChips";
 import DateFilterRow from "@/components/shared/DateFilterRow";
 import { ALL_DATES, filterByDate, type DateFilter } from "@/lib/date-filter";
+import ColorFilterRow from "@/components/shared/ColorFilterRow";
+import { imageSearchText, useImageMeta } from "@/hooks/useImageMeta";
 import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
 
 
@@ -79,11 +81,18 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
 
   const [folder, setFolder] = useRemembered("images.folder", "");
   const [dateFilter, setDateFilter] = useRemembered<DateFilter>("images.date", ALL_DATES);
+  const meta = useImageMeta(user?.id);
+  const [hue, setHue] = useRemembered<string | null>("images.hue", null);
+  const [find, setFind] = useState("");
+  const hueSets = useMemo(() => new Map([...meta.rows].map(([url, m]) => [url, new Set(m.hues ?? [])])), [meta.version]); // eslint-disable-line react-hooks/exhaustive-deps
   const filtered = useMemo(() => {
     let l = filterPillar ? allImages.filter((img) => img.block.pillars.includes(filterPillar)) : allImages;
     if (folder) l = l.filter((img) => inTagFolder(img.block.tags, folder));
+    if (hue) l = l.filter((img) => hueSets.get(img.url)?.has(hue));
+    const q = find.trim().toLowerCase();
+    if (q) l = l.filter((img) => `${img.block.title} ${imageSearchText(meta.rows.has(img.url) ? [meta.rows.get(img.url)!] : [])}`.toLowerCase().includes(q));
     return filterByDate(l, dateFilter, (img) => img.block.created_at);
-  }, [allImages, filterPillar, folder, dateFilter]);
+  }, [allImages, filterPillar, folder, dateFilter, hue, hueSets, find, meta.rows]);
 
   /** A note opened from under one of its images: the reader steps through the notes in the gallery's order. */
   const readNote = (block: ArchiveBlock) => {
@@ -168,6 +177,15 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
 
         <TagFolderChips tagLists={imageNoteTags} value={folder} onChange={setFolder} />
         <DateFilterRow value={dateFilter} onChange={setDateFilter} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <input
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            placeholder="🔍 What is in the picture: a dog, a receipt, text in it…"
+            className="h-8 min-w-[14rem] flex-1 rounded-lg border border-white/10 bg-background/50 px-3 text-xs outline-none focus:border-primary/60"
+          />
+          <ColorFilterRow hues={hueSets} value={hue} onChange={setHue} />
+        </div>
 
         {/* Gallery grid */}
         {filtered.length === 0 ? (

@@ -27,7 +27,7 @@ import type { ArchiveBlock } from "@/lib/archive-data";
 import type { NoteAIAction } from "@/lib/archive-ai";
 import { TYPE_INFO, TYPE_TAGS, tagTree, type TypeTag } from "@/lib/archive-tags";
 import { todayKey } from "@/lib/today";
-import { UNTAGGED, cardView, filterLibrary, filterRanked, isUntagged, tagStats, type SortMode, type TagStats, type TypeFilter } from "./archive-index";
+import { UNTAGGED, cardView, filterLibrary, filterRanked, mergeHybrid, isUntagged, tagStats, type SortMode, type TagStats, type TypeFilter } from "./archive-index";
 import { useRemembered } from "./remembered";
 import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
 import { canPrefetch, lazyModule, whenIdle } from "@/lib/lazy-module";
@@ -43,6 +43,9 @@ import { noteSensitivity, textFingerprint } from "@/lib/sensitive-scan";
 import DateFilterRow from "@/components/shared/DateFilterRow";
 import { ALL_DATES, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
 import { noteToItems, toBitwardenCsv } from "@/lib/bitwarden-export";
+import { useAuth } from "@/hooks/useAuth";
+import { blockImageIndex, useImageMeta } from "@/hooks/useImageMeta";
+import ColorFilterRow from "@/components/shared/ColorFilterRow";
 const ArchiveTrash = lazyModule(() => import("./ArchiveTrash"));
 
 // The peek and the tag queue render notes with the reader's Markdown renderer: code-split, fetched on idle.
@@ -241,7 +244,13 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   const [editBlock, setEditBlock] = useState<ArchiveBlock | null>(null);
   const [reading, setReading] = useState<ReaderRequest | null>(null);
   const [sortMode, setSortMode] = useRemembered<SortMode>("library.sort", "newest");
-  const [smartSearch, setSmartSearch] = useRemembered("library.smart", false);
+  // Search is keyword and meaning together; "Exact words" turns meaning off.
+  const [exactSearch, setExactSearch] = useRemembered("library.exact", false);
+  const smartSearch = !exactSearch;
+  const { user } = useAuth();
+  const imageMeta = useImageMeta(user?.id);
+  const pictures = useMemo(() => blockImageIndex(imageMeta.rows), [imageMeta.version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hue, setHue] = useRemembered<string | null>("library.hue", null);
   // The last Smart search's answer: coming back to the Library with the same query shows it at
   // once, without a second embedding call or keyword results reshuffling into the semantic order.
   const [lastHits, setLastHits] = useRemembered<SemanticHits | null>("library.semantic", null);
@@ -352,9 +361,11 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     try { localStorage.setItem("mf.sensitiveDismissed", String(n)); } catch { /* private mode */ }
   };
   const filteredAll = useMemo(() => {
-    if (smartSearch && semanticResults !== null) return filterRanked(semanticResults, blocks, { pillar: filterPillar, hideLinks, folder, type: typeFilter }, pending);
-    return filterLibrary(blocks, { search: query, includeTags, pillar: filterPillar, hideLinks, sort: sortMode, folder, type: typeFilter });
-  }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending]);
+    const shared = { pillar: filterPillar, hideLinks, folder, type: typeFilter, hue, imageHues: pictures.hues };
+    const keyword = filterLibrary(blocks, { ...shared, search: query, includeTags, sort: sortMode, imageText: pictures.text });
+    if (smartSearch && semanticResults !== null) return mergeHybrid(keyword, filterRanked(semanticResults, blocks, shared, pending));
+    return keyword;
+  }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending, hue, pictures]);
   /**
    * The flagged notes as a Bitwarden CSV, downloaded on this device. Nothing
    * is deleted: the list of those notes opens so he can check and remove them himself.
@@ -395,7 +406,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   // The first cards render at once and the rest as the end of the list comes
   // near, so a new search shows its top matches without building every card.
   const [limit, setLimit] = useState(CARDS_PAGE);
-  useEffect(() => setLimit(CARDS_PAGE), [query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter]);
+  useEffect(() => setLimit(CARDS_PAGE), [query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, hue]);
   const visible = useMemo(() => filtered.slice(0, limit), [filtered, limit]);
   const complete = limit >= filtered.length;
 
@@ -890,7 +901,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={smartSearch ? "🧠 Search blocks by meaning..." : "🔍 Search blocks..."}
+              placeholder={smartSearch ? "🔍 Search words, meaning, what is in pictures..." : "🔍 Exact words..."}
               className="bg-background/50 border-white/10"
             />
             {search && (
@@ -956,6 +967,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
         </div>
         <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
         {(!phone || moreFilters) && <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />}
+        {(!phone || moreFilters || hue) && pictures.hues.size > 0 && <ColorFilterRow hues={pictures.hues} value={hue} onChange={setHue} />}
         {(!phone || moreFilters || isDateFiltered(dateFilter)) && <DateFilterRow value={dateFilter} onChange={setDateFilter} />}
         {(!phone || moreFilters) && !foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
         <div className={FILTER_ROW}>
@@ -964,14 +976,15 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           </button>
           <span className="w-px h-4 bg-white/10" />
           <button
-            onClick={() => { setSmartSearch(!smartSearch); setSemanticResults(null); }}
+            onClick={() => { setExactSearch(!exactSearch); setSemanticResults(null); }}
+            title={exactSearch ? "Only notes with these exact words. Click to also find notes by meaning" : "Finds the words and notes that mean the same. Click for exact words only"}
             className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition-all ${
-              smartSearch
+              exactSearch
                 ? "gradient-purple text-primary-foreground glow-sm"
                 : "bg-muted/40 text-muted-foreground hover:text-foreground"
             }`}
           >
-            🧠 Smart Search {smartSearch ? "ON" : "OFF"}
+            {exactSearch ? "“ ” Exact words ON" : "“ ” Exact words"}
           </button>
           <button
             onClick={() => embedAll()}

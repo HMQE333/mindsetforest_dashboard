@@ -9,6 +9,7 @@ import type { RecordingFocus } from "./RecordingsView";
 import { useKosRecordings, useKosVault } from "@/hooks/useKnowledgeOS";
 import { useAssistant } from "@/hooks/useAssistant";
 import { useAuth } from "@/hooks/useAuth";
+import { useImageMeta } from "@/hooks/useImageMeta";
 import { useStudyPrompts } from "@/hooks/useStudyPrompts";
 import { groupSessions, type LectureSummary } from "@/lib/kos-vault";
 import { loadLectureRecordings } from "@/lib/lecture-tutor";
@@ -187,6 +188,10 @@ const ArchiveViewBody = () => {
 
   const linkCount = useMemo(() => countLinks(liveBlocks), [liveBlocks]);
   const imageCount = useMemo(() => countImages(liveBlocks), [liveBlocks]);
+  // Pictures not looked at yet are analysed in the background (two at a time) while the Archive is open.
+  const imageMeta = useImageMeta(user?.id);
+  const { analyzeMissing } = imageMeta;
+  useEffect(() => { if (imageCount) analyzeMissing(liveBlocks); }, [liveBlocks, imageCount, analyzeMissing, imageMeta.version]);
   const existingTags = useMemo(() => {
     const s = new Set<string>();
     for (const b of archive.blocks) (b.tags || []).forEach((t) => s.add(t));

@@ -18,7 +18,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Clapperboard, ScanText, Paperclip } from "lucide-react";
+import { Clapperboard, ScanText, Paperclip, Image as ImageIcon } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useImageMeta, type ImageMeta } from "@/hooks/useImageMeta";
 import FilePreview from "./FilePreview";
 import { noteFile } from "@/lib/file-kind";
 import { socialVideoUrl } from "@/lib/social-video";
@@ -235,6 +237,8 @@ function PeekBody({
       )}
 
       <PillarRow pillars={pillars} active={pillarsOn} onToggle={onTogglePillar} numbered={!phone} />
+
+      <PictureInsights block={block} />
 
       <NoteText model={text} className="p-3 sm:p-4" />
     </article>
@@ -594,6 +598,60 @@ function ImageTextButton({ block, onUpdate }: { block: ArchiveBlock; onUpdate: U
       icon={busy ? Loader2 : ScanText}
       onClick={() => void (busy ? undefined : read())}
     />
+  );
+}
+
+/**
+ * What the note's pictures show, from the background analysis: kind,
+ * description, objects and the palette. "Analyse" runs it now for a picture
+ * not looked at yet (or again).
+ */
+function PictureInsights({ block }: { block: ArchiveBlock }) {
+  const { user } = useAuth();
+  const meta = useImageMeta(user?.id);
+  const images = blockImages(block).filter((u) => /^https:\/\//.test(u)).slice(0, 4);
+  const [open, setOpen] = useState(false);
+  if (!images.length) return null;
+  const found = images.map((u) => meta.byUrl(u)).filter((m): m is ImageMeta => !!m);
+  const busy = images.some((u) => meta.isAnalyzing(u));
+  const runAll = async () => {
+    for (const u of images) await meta.analyze(block.id, u);
+  };
+  return (
+    <section className="rounded-xl border border-white/10 bg-muted/20 p-3 text-xs" lang="en">
+      <div className="flex items-center gap-2">
+        <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        <span className="font-semibold text-foreground">What's in the picture</span>
+        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        <span className="ml-auto flex gap-2">
+          {found.length > 0 && found.some((m) => m.text_in_image) && (
+            <button type="button" onClick={() => setOpen(!open)} className="text-muted-foreground hover:text-foreground">{open ? "Hide text" : "Text in it"}</button>
+          )}
+          <button type="button" disabled={busy} onClick={() => void runAll()} className="text-muted-foreground hover:text-foreground disabled:opacity-50">
+            {found.length ? "Analyse again" : "Analyse"}
+          </button>
+        </span>
+      </div>
+      {found.length === 0 && !busy && <p className="mt-1 text-muted-foreground">Not analysed yet. It happens in the background while the Archive is open.</p>}
+      {found.map((m) => (
+        <div key={m.url} className="mt-2 space-y-1.5">
+          {m.description && <p className="text-foreground/90">{m.kind && <span className="mr-1 rounded bg-muted/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{m.kind}</span>}{m.description}</p>}
+          {(m.objects?.length || m.tags?.length) ? (
+            <div className="flex flex-wrap gap-1">
+              {[...new Set([...(m.objects ?? []), ...(m.tags ?? [])])].slice(0, 16).map((t) => (
+                <span key={t} className="rounded-full bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">{t}</span>
+              ))}
+            </div>
+          ) : null}
+          {m.colors?.length > 0 && (
+            <div className="flex h-2.5 overflow-hidden rounded-full" title={m.colors.map((c) => `${c.hue ?? ""} ${Math.round(c.share * 100)}%`).join(", ")}>
+              {m.colors.map((c) => <span key={c.hex} style={{ background: c.hex, flexGrow: c.share }} />)}
+            </div>
+          )}
+          {open && m.text_in_image && <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-background/40 p-2 font-sans text-[11px] text-foreground/80">{m.text_in_image}</pre>}
+        </div>
+      ))}
+    </section>
   );
 }
 

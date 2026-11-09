@@ -9,6 +9,7 @@ import {
   countLinks,
   filterLibrary,
   filterRanked,
+  mergeHybrid,
   matchesQuery,
   noteWithoutLinks,
   previewText,
@@ -186,5 +187,25 @@ describe("archiveFingerprint", () => {
     const b = block({ updated_at: "2026-10-18T11:00:00.5+00:00" });
     expect(archiveFingerprint([a, b])).toBe("2:2026-10-18T11:00:00.5+00:00");
     expect(archiveFingerprint([])).toBe("0:");
+  });
+});
+
+describe("pictures in search", () => {
+  const base = { search: "", includeTags: false, pillar: null, hideLinks: false, sort: "newest" as const };
+  it("keyword search also matches what a picture shows", () => {
+    const a = block({ title: "Screenshot", content: "[image] https://x/a.png" });
+    const b = block({ title: "Other" });
+    const hits = filterLibrary([a, b], { ...base, search: "Golden Retriever", imageText: new Map([[a.id, "a golden retriever on grass"]]) });
+    expect(hits.map((h) => h.id)).toEqual([a.id]);
+  });
+  it("colour filter keeps notes with a picture of that colour", () => {
+    const a = block(), b = block();
+    const hits = filterLibrary([a, b], { ...base, hue: "red", imageHues: new Map([[a.id, new Set(["red"])], [b.id, new Set(["blue"])]]) });
+    expect(hits.map((h) => h.id)).toEqual([a.id]);
+  });
+  it("hybrid: both first in meaning order, then keyword-only, then meaning-only", () => {
+    const k1 = block(), k2 = block(), s1 = block(), both = block();
+    const out = mergeHybrid([k1, both, k2], [s1, both]);
+    expect(out.map((b) => b.id)).toEqual([both.id, k1.id, k2.id, s1.id]);
   });
 });

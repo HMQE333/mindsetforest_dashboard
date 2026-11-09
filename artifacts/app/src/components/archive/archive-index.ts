@@ -159,10 +159,10 @@ function haystack(b: ArchiveBlock) {
 }
 
 /** Keyword match on title and text (and tags when asked); `q` is already lower case. */
-export function matchesQuery(b: ArchiveBlock, q: string, includeTags = false): boolean {
+export function matchesQuery(b: ArchiveBlock, q: string, includeTags = false, extra?: string): boolean {
   if (!q) return true;
   const h = haystack(b);
-  return h.title.includes(q) || h.content.includes(q) || (includeTags && h.tags.some((t) => t.includes(q)));
+  return h.title.includes(q) || h.content.includes(q) || (includeTags && h.tags.some((t) => t.includes(q))) || (!!extra && extra.includes(q));
 }
 
 export const hasLink = (b: ArchiveBlock) => !!b.source_url || blockUrls(b).length > 0;
@@ -272,10 +272,18 @@ export interface LibraryFilter {
   /** A folder (the tag or anything below it), UNTAGGED, or null for every note. */
   folder?: string | null;
   type?: TypeFilter | null;
+  /** What each note's pictures show (lower case), matched by the keyword search too. */
+  imageText?: ReadonlyMap<string, string>;
+  /** A colour word: only notes with a picture of that colour. */
+  hue?: string | null;
+  imageHues?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** The filters every list shares: pillar, links, folder and type. */
-function passes(b: ArchiveBlock, f: Pick<LibraryFilter, "pillar" | "hideLinks" | "folder" | "type">): boolean {
+type SharedFilter = Pick<LibraryFilter, "pillar" | "hideLinks" | "folder" | "type" | "hue" | "imageHues">;
+
+function passes(b: ArchiveBlock, f: SharedFilter): boolean {
+  if (f.hue && !f.imageHues?.get(b.id)?.has(f.hue)) return false;
   if (f.pillar && !b.pillars.includes(f.pillar)) return false;
   if (f.folder && !inFolderFilter(b, f.folder)) return false;
   if (f.type && !matchesType(b, f.type)) return false;
@@ -288,7 +296,7 @@ const pinnedFirst = (list: ArchiveBlock[]) => [...list.filter((b) => b.is_pinned
 /** The Library's list for a keyword search, filters and sort: pinned notes first. */
 export function filterLibrary(blocks: ArchiveBlock[], f: LibraryFilter): ArchiveBlock[] {
   const q = f.search.trim().toLowerCase();
-  const list = blocks.filter((b) => passes(b, f) && matchesQuery(b, q, f.includeTags));
+  const list = blocks.filter((b) => passes(b, f) && matchesQuery(b, q, f.includeTags, f.imageText?.get(b.id)));
   const time = (b: ArchiveBlock) => Date.parse(b.created_at) || 0;
   if (f.sort === "oldest") list.sort((a, b) => time(a) - time(b));
   else if (f.sort === "az") list.sort((a, b) => a.title.localeCompare(b.title));
@@ -300,13 +308,27 @@ export function filterLibrary(blocks: ArchiveBlock[], f: LibraryFilter): Archive
 export function filterRanked(
   results: ArchiveBlock[],
   live: ArchiveBlock[],
-  f: Pick<LibraryFilter, "pillar" | "hideLinks" | "folder" | "type">,
+  f: SharedFilter,
   /** Notes to leave out (deleted, the Undo still open). */
   hidden?: ReadonlySet<string>,
 ): ArchiveBlock[] {
   const byId = new Map(live.map((b) => [b.id, b]));
   const list = results.map((r) => byId.get(r.id) ?? r).filter((b) => !hidden?.has(b.id) && passes(b, f));
   return pinnedFirst(list);
+}
+
+/**
+ * Keyword and meaning together. Notes that both find come first (in meaning
+ * order), then the other keyword hits in the chosen sort, then notes only
+ * meaning found, best first. Pinned notes lead, as everywhere.
+ */
+export function mergeHybrid(keyword: ArchiveBlock[], semantic: ArchiveBlock[]): ArchiveBlock[] {
+  const rank = new Map(semantic.map((b, i) => [b.id, i]));
+  const kwIds = new Set(keyword.map((b) => b.id));
+  const both = keyword.filter((b) => rank.has(b.id)).sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+  const kwOnly = keyword.filter((b) => !rank.has(b.id));
+  const semOnly = semantic.filter((b) => !kwIds.has(b.id));
+  return pinnedFirst([...both, ...kwOnly, ...semOnly]);
 }
 
 /** Distinct links across notes (the Links tab's count). */
