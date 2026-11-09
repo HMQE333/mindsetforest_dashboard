@@ -18,7 +18,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Clapperboard, ScanText } from "lucide-react";
+import { Clapperboard, ScanText, Paperclip } from "lucide-react";
+import FilePreview from "./FilePreview";
+import { noteFile } from "@/lib/file-kind";
 import { socialVideoUrl } from "@/lib/social-video";
 import { invokeFunction } from "@/lib/function-error";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -205,6 +207,7 @@ function PeekBody({
         {onPlant && <ToolButton label="Plant in the Forest" icon={Sprout} onClick={() => onPlant(block)} />}
         <WorkshopButton block={block} />
         <ImageTextButton block={block} onUpdate={onUpdate} />
+        <OpenFileButton block={block} />
         <span className="ml-auto">
           <DeleteConfirmButton variant="tool" armed={armed} onArm={onArm} onDisarm={onDisarm} onConfirm={onConfirmDelete} />
         </span>
@@ -591,5 +594,18 @@ function ImageTextButton({ block, onUpdate }: { block: ArchiveBlock; onUpdate: U
       icon={busy ? Loader2 : ScanText}
       onClick={() => void (busy ? undefined : read())}
     />
+  );
+}
+
+/** A kept file's note (from File Share): open the file in its own view. */
+function OpenFileButton({ block }: { block: ArchiveBlock }) {
+  const file = noteFile(block.content);
+  const [open, setOpen] = useState(false);
+  if (!file) return null;
+  return (
+    <>
+      <ToolButton label={`Open ${file.name}`} icon={Paperclip} onClick={() => setOpen(true)} />
+      <FilePreview file={open ? file : null} onClose={() => setOpen(false)} />
+    </>
   );
 }

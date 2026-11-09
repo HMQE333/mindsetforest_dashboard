@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Upload, File, Clock, X, Download, Copy, Check, RefreshCw } from "lucide-react";
+import { Upload, File, Clock, X, Download, Copy, Check, RefreshCw, Eye, Archive } from "lucide-react";
+import FilePreview from "./FilePreview";
+import { fileNoteContent } from "@/lib/file-kind";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -25,6 +27,8 @@ import {
 interface Props {
   /** The user's notes: a file whose link was pasted into one is never deleted for being old. */
   blocks?: ArchiveBlock[];
+  /** "Keep in Archive": the file becomes a note linking to it, so it is never deleted for being old. */
+  addBlock?: (block: Partial<ArchiveBlock>) => Promise<unknown>;
 }
 
 /** How often an open File Share tab reads the folder again (only while the page is visible). */
@@ -60,7 +64,9 @@ function announce(uid: string) {
  * hand. Each file lives 7 minutes; whichever device sees it past its time
  * deletes it, including uploads from before this version (file-share/<uid>/).
  */
-export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
+export default function FileShareView({ blocks = EMPTY_BLOCKS, addBlock }: Props) {
+  const [previewing, setPreviewing] = useState<SharedFile | null>(null);
+  const [keeping, setKeeping] = useState<string | null>(null);
   const { user } = useAuth();
   const uid = user?.id ?? null;
   const [files, setFiles] = useState<SharedFile[]>([]);
@@ -240,6 +246,18 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
     return () => clearTimeout(t);
   }, [copied]);
 
+  /** A note that links to the file: from then on it is kept (the list shows it under Kept). */
+  const keep = async (f: SharedFile) => {
+    if (!addBlock) return;
+    setKeeping(f.path);
+    try {
+      const ok = await addBlock({ title: f.name, content: fileNoteContent(f.name, publicUrl(f.path), f.mimetype), tags: ["file"], pillars: [] });
+      if (ok) toast.success(`"${f.name}" kept in the Archive`, { description: "It stays here under Kept, and the note links to it." });
+    } finally {
+      setKeeping(null);
+    }
+  };
+
   const download = (f: SharedFile) => {
     window.open(bucket().getPublicUrl(f.path, { download: f.name }).data.publicUrl, "_blank", "noopener");
   };
@@ -265,10 +283,12 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
         <div className="flex items-center gap-3">
           <File className="w-5 h-5 text-primary shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate" title={f.name}>{f.name}</p>
+            <button type="button" onClick={() => setPreviewing(f)} className="block max-w-full text-left text-sm font-semibold truncate hover:text-primary hover:underline underline-offset-2" title={`Open ${f.name}`}>
+              {f.name}
+            </button>
             <p className="text-[11px] text-muted-foreground">
               {formatSize(f.size)}
-              {kept && " · kept: a note links to it"}
+              {kept && " · kept in the Archive (a note links to it)"}
             </p>
           </div>
 
@@ -294,6 +314,26 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
               {isCopied ? <Check className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> : <Copy className="w-4 h-4 sm:w-3.5 sm:h-3.5" />}
               <span className="hidden sm:inline">{isCopied ? "Copied" : "Copy link"}</span>
             </button>
+            <button
+              onClick={() => setPreviewing(f)}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+              title="Open"
+              aria-label={`Open ${f.name}`}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            {!kept && addBlock && (
+              <button
+                onClick={() => void keep(f)}
+                disabled={keeping === f.path}
+                className="inline-flex items-center gap-1.5 p-1.5 sm:px-2.5 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+                title="Keep in Archive: a note links to the file and it is never deleted for being old"
+                aria-label={`Keep ${f.name} in the Archive`}
+              >
+                <Archive className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <span className="hidden sm:inline">Keep</span>
+              </button>
+            )}
             <button
               onClick={() => download(f)}
               className="p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
@@ -399,6 +439,10 @@ export default function FileShareView({ blocks = EMPTY_BLOCKS }: Props) {
         </div>
       )}
 
+      <FilePreview
+        file={previewing && { name: previewing.name, url: publicUrl(previewing.path), downloadUrl: bucket().getPublicUrl(previewing.path, { download: previewing.name }).data.publicUrl, size: previewing.size, mimetype: previewing.mimetype }}
+        onClose={() => setPreviewing(null)}
+      />
       {plan.active.length === 0 && plan.kept.length === 0 && !uploading && (
         <div className="text-center py-10 text-muted-foreground">
           <File className="w-8 h-8 mx-auto mb-2 opacity-40" />

@@ -329,7 +329,7 @@ const ArchiveViewBody = () => {
           {subView === "bookmarks" && (
             <ArchiveBookmarksView bookmarks={bookmarks} blocks={liveBlocks} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} />
           )}
-          {subView === "fileshare" && <FileShareView blocks={archive.blocks} />}
+          {subView === "fileshare" && <FileShareView blocks={archive.blocks} addBlock={archive.addBlock} />}
         </Suspense>
         </ChunkErrorBoundary>
       </div>
