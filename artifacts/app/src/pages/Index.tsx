@@ -472,8 +472,7 @@ const Index = () => {
           )}
 
           <h1 className="mb-2 text-4xl font-bold text-gradient-purple">MindsetForest</h1>
-          <p className="text-lg text-muted-foreground mb-4">Your Life. Your Quest.</p>
-          <p className="mx-auto mb-6 w-fit rounded-xl border border-primary/40 bg-primary/15 px-4 py-2 text-base font-bold text-foreground">💪 Jan, weź się do pracy!</p>
+          <p className="text-lg text-muted-foreground mb-6">Your Life. Your Quest.</p>
 
           {/* Tabs - Desktop: inline row, Mobile: tap-to-expand */}
           {isMobile ? (
