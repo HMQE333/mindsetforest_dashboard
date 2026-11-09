@@ -251,6 +251,9 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   const imageMeta = useImageMeta(user?.id);
   const pictures = useMemo(() => blockImageIndex(imageMeta.rows), [imageMeta.version]); // eslint-disable-line react-hooks/exhaustive-deps
   const [hue, setHue] = useRemembered<string | null>("library.hue", null);
+  // "Pictures" off: search reads only the notes' own words. Meaning-only hits on notes with
+  // analysed pictures are dropped then (their embedding carries the picture too).
+  const [withPictures, setWithPictures] = useRemembered("library.pictures", true);
   // The last Smart search's answer: coming back to the Library with the same query shows it at
   // once, without a second embedding call or keyword results reshuffling into the semantic order.
   const [lastHits, setLastHits] = useRemembered<SemanticHits | null>("library.semantic", null);
@@ -362,10 +365,14 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   };
   const filteredAll = useMemo(() => {
     const shared = { pillar: filterPillar, hideLinks, folder, type: typeFilter, hue, imageHues: pictures.hues };
-    const keyword = filterLibrary(blocks, { ...shared, search: query, includeTags, sort: sortMode, imageText: pictures.text });
-    if (smartSearch && semanticResults !== null) return mergeHybrid(keyword, filterRanked(semanticResults, blocks, shared, pending));
+    const keyword = filterLibrary(blocks, { ...shared, search: query, includeTags, sort: sortMode, imageText: withPictures ? pictures.text : undefined });
+    if (smartSearch && semanticResults !== null) {
+      const kw = new Set(keyword.map((b) => b.id));
+      const ranked = filterRanked(semanticResults, blocks, shared, pending).filter((b) => withPictures || kw.has(b.id) || !pictures.text.has(b.id));
+      return mergeHybrid(keyword, ranked);
+    }
     return keyword;
-  }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending, hue, pictures]);
+  }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending, hue, pictures, withPictures]);
   /**
    * The flagged notes as a Bitwarden CSV, downloaded on this device. Nothing
    * is deleted: the list of those notes opens so he can check and remove them himself.
@@ -985,6 +992,13 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
             }`}
           >
             {exactSearch ? "“ ” Exact words ON" : "“ ” Exact words"}
+          </button>
+          <button
+            onClick={() => setWithPictures(!withPictures)}
+            className={toggleBtn(withPictures)}
+            title={withPictures ? "Search also reads what is in the pictures. Click to search only the notes' words" : "Search ignores the pictures. Click to include what is in them"}
+          >
+            🖼️ Pictures {withPictures ? "ON" : "OFF"}
           </button>
           <button
             onClick={() => embedAll()}
