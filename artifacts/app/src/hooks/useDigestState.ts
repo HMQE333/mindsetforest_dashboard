@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import type { ArchiveBlock } from "@/lib/archive-data";
+import { worthReviewing } from "@/lib/digest-worth";
 
 interface BlockReview {
   id: string;
@@ -109,6 +110,8 @@ export function useDigestState(blocks: ArchiveBlock[]) {
     for (const block of blocks) {
       // Skip blocks already rated this session
       if (sessionRatings[block.id]) continue;
+      // A bare link or picture has nothing to remember: not a card.
+      if (!worthReviewing(block.title, block.content)) continue;
       const sorted = reviewsByBlock.get(block.id) ?? [];
 
       let isDue = false;
