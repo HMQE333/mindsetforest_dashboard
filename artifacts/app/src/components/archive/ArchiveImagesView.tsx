@@ -30,7 +30,13 @@ interface Props {
   deleteBlock: (id: string) => Promise<unknown>;
   /** New notes, one per uploaded picture. */
   addBlock?: (block: Partial<ArchiveBlock>) => Promise<unknown>;
+  /** Meaning search over the notes (the Library's); pictures it finds that the words did not are listed below. */
+  searchArchive?: (query: string) => Promise<{ blocks: ArchiveBlock[] }>;
 }
+
+/** As in the Library: meaning search from 3 characters, not for "quoted" words, similarity 0.35 or more. */
+const MEANING_MIN_CHARS = 3;
+const RELATED_MIN = 0.35;
 
 /** Every image in the notes; each note is read once per version (archive-index). */
 function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
@@ -39,7 +45,7 @@ function extractImages(blocks: ArchiveBlock[]): ImageItem[] {
   return items;
 }
 
-const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock }: Props) => {
+const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock, searchArchive }: Props) => {
   const { user } = useAuth();
   const uploadRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -89,10 +95,37 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
     let l = filterPillar ? allImages.filter((img) => img.block.pillars.includes(filterPillar)) : allImages;
     if (folder) l = l.filter((img) => inTagFolder(img.block.tags, folder));
     if (hue) l = l.filter((img) => hueSets.get(img.url)?.has(hue));
-    const q = find.trim().toLowerCase();
-    if (q) l = l.filter((img) => `${img.block.title} ${imageSearchText(meta.rows.has(img.url) ? [meta.rows.get(img.url)!] : [])}`.toLowerCase().includes(q));
+    const raw = find.trim();
+    const q = (/^".+"$/.test(raw) ? raw.slice(1, -1) : raw).toLowerCase();
+    if (q) l = l.filter((img) => `${img.block.title} ${img.block.content} ${imageSearchText(meta.rows.has(img.url) ? [meta.rows.get(img.url)!] : [])}`.toLowerCase().includes(q));
     return filterByDate(l, dateFilter, (img) => img.block.created_at);
   }, [allImages, filterPillar, folder, dateFilter, hue, hueSets, find, meta.rows]);
+
+  // Meaning: notes the search finds by sense; their pictures not already shown go in "Similar in meaning".
+  const [senseIds, setSenseIds] = useState<string[] | null>(null);
+  useEffect(() => {
+    const raw = find.trim();
+    if (!searchArchive || raw.length < MEANING_MIN_CHARS || /^".+"$/.test(raw)) { setSenseIds(null); return; }
+    let live = true;
+    const t = setTimeout(async () => {
+      const found = await searchArchive(raw).catch(() => ({ blocks: [] as ArchiveBlock[] }));
+      if (live) setSenseIds(found.blocks.filter((b) => ((b as { similarity?: number }).similarity ?? 1) >= RELATED_MIN).map((b) => b.id));
+    }, 500);
+    return () => { live = false; clearTimeout(t); };
+  }, [find, searchArchive]);
+  const related = useMemo(() => {
+    if (!senseIds) return [];
+    const shown = new Set(filtered.map((i) => i.url));
+    const rank = new Map(senseIds.map((id, i) => [id, i]));
+    let l = allImages.filter((img) => rank.has(img.block.id) && !shown.has(img.url));
+    if (filterPillar) l = l.filter((img) => img.block.pillars.includes(filterPillar));
+    if (folder) l = l.filter((img) => inTagFolder(img.block.tags, folder));
+    if (hue) l = l.filter((img) => hueSets.get(img.url)?.has(hue));
+    l = filterByDate(l, dateFilter, (img) => img.block.created_at);
+    return l.sort((a, b) => rank.get(a.block.id)! - rank.get(b.block.id)!);
+  }, [senseIds, filtered, allImages, filterPillar, folder, hue, hueSets, dateFilter]);
+  /** Both lists, for the lightbox's previous and next. */
+  const gallery = useMemo(() => [...filtered, ...related], [filtered, related]);
 
   /** A note opened from under one of its images: the reader steps through the notes in the gallery's order. */
   const readNote = (block: ArchiveBlock) => {
@@ -100,11 +133,11 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
     setReading(readerRequest(block, notes));
   };
 
-  const lightboxUrl = lightboxIndex !== null ? filtered[lightboxIndex]?.url : null;
+  const lightboxUrl = lightboxIndex !== null ? gallery[lightboxIndex]?.url : null;
 
   const goNext = useCallback(() => {
-    setLightboxIndex((i) => (i !== null && i < filtered.length - 1 ? i + 1 : i));
-  }, [filtered.length]);
+    setLightboxIndex((i) => (i !== null && i < gallery.length - 1 ? i + 1 : i));
+  }, [gallery.length]);
 
   const goPrev = useCallback(() => {
     setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i));
@@ -123,6 +156,64 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
     }
     return undefined;
   }, [lightboxIndex, handleKeyDown]);
+
+  const tile = (img: ImageItem, i: number) => {
+              const pillarColors = img.block.pillars
+                .map((p) => pillars.find((pl) => pl.id === p))
+                .filter(Boolean);
+              const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(img.block.title?.trim() || "")
+                ? "Image block"
+                : img.block.title || "Untitled";
+
+              return (
+                <motion.div
+                  key={`${img.block.id}-${img.url}-${i}`}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.03 }}
+                  className="break-inside-avoid glass-card overflow-hidden group"
+                >
+                  <button
+                    onClick={() => setLightboxIndex(i)}
+                    className="w-full block overflow-hidden"
+                  >
+                    <img
+                      src={img.url}
+                      alt=""
+                      className="w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      onError={(e) => (e.currentTarget.parentElement!.style.display = "none")}
+                    />
+                  </button>
+                  <div className="p-3 space-y-1.5">
+                    <button
+                      onClick={() => readNote(img.block)}
+                      onPointerEnter={preloadNoteReader}
+                      data-note-id={img.block.id}
+                      className="text-xs font-semibold text-foreground hover:text-primary transition-colors truncate block w-full text-left"
+                    >
+                      {displayTitle}
+                    </button>
+                    <div className="text-[10px] text-muted-foreground/60">
+                      {new Date(img.block.created_at).toLocaleDateString()}
+                    </div>
+                    {pillarColors.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {pillarColors.map((p) => (
+                          <span
+                            key={p!.id}
+                            className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5"
+                            style={{ backgroundColor: p!.color + "22", color: p!.color }}
+                          >
+                            <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={10} className="inline-block" />
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+  };
 
   if (loading) {
     return (
@@ -188,71 +279,21 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
         </div>
 
         {/* Gallery grid */}
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && related.length === 0 ? (
           <div className="text-center py-20">
             <span className="text-4xl mb-4 block">🖼️</span>
             <p className="text-muted-foreground">{allImages.length === 0 ? "No images yet" : "No images match your filter"}</p>
           </div>
         ) : (
-          <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
-            {filtered.map((img, i) => {
-              const pillarColors = img.block.pillars
-                .map((p) => pillars.find((pl) => pl.id === p))
-                .filter(Boolean);
-              const displayTitle = /^\[image\]\s*https?:\/\/\S+$/i.test(img.block.title?.trim() || "")
-                ? "Image block"
-                : img.block.title || "Untitled";
-
-              return (
-                <motion.div
-                  key={`${img.block.id}-${img.url}-${i}`}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="break-inside-avoid glass-card overflow-hidden group"
-                >
-                  <button
-                    onClick={() => setLightboxIndex(i)}
-                    className="w-full block overflow-hidden"
-                  >
-                    <img
-                      src={img.url}
-                      alt=""
-                      className="w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      onError={(e) => (e.currentTarget.parentElement!.style.display = "none")}
-                    />
-                  </button>
-                  <div className="p-3 space-y-1.5">
-                    <button
-                      onClick={() => readNote(img.block)}
-                      onPointerEnter={preloadNoteReader}
-                      data-note-id={img.block.id}
-                      className="text-xs font-semibold text-foreground hover:text-primary transition-colors truncate block w-full text-left"
-                    >
-                      {displayTitle}
-                    </button>
-                    <div className="text-[10px] text-muted-foreground/60">
-                      {new Date(img.block.created_at).toLocaleDateString()}
-                    </div>
-                    {pillarColors.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {pillarColors.map((p) => (
-                          <span
-                            key={p!.id}
-                            className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5"
-                            style={{ backgroundColor: p!.color + "22", color: p!.color }}
-                          >
-                            <PillarIcon icon={p!.icon} iconUrl={p!.iconUrl} size={10} className="inline-block" />
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
+          <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">{filtered.map((img, i) => tile(img, i))}</div>
+        )}
+        {related.length > 0 && (
+          <section className="space-y-2" aria-label="Similar in meaning">
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="h-px flex-1 bg-white/10" /> Similar in meaning ({related.length}) <span className="h-px flex-1 bg-white/10" />
+            </p>
+            <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">{related.map((img, i) => tile(img, filtered.length + i))}</div>
+          </section>
         )}
       </div>
 
@@ -273,14 +314,14 @@ const ArchiveImagesView = ({ blocks, loading, updateBlock, deleteBlock, addBlock
               <Download size={20} />
             </a>
             <span className="absolute top-5 left-4 z-10 text-sm text-white/60 font-medium">
-              {lightboxIndex + 1} / {filtered.length}
+              {lightboxIndex + 1} / {gallery.length}
             </span>
             {lightboxIndex > 0 && (
               <button onClick={(e) => { e.stopPropagation(); goPrev(); }} className="absolute left-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
                 <ChevronLeft size={24} />
               </button>
             )}
-            {lightboxIndex < filtered.length - 1 && (
+            {lightboxIndex < gallery.length - 1 && (
               <button onClick={(e) => { e.stopPropagation(); goNext(); }} className="absolute right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
                 <ChevronRight size={24} />
               </button>

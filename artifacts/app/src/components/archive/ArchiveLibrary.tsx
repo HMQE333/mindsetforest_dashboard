@@ -27,7 +27,7 @@ import type { ArchiveBlock } from "@/lib/archive-data";
 import type { NoteAIAction } from "@/lib/archive-ai";
 import { TYPE_INFO, TYPE_TAGS, tagTree, type TypeTag } from "@/lib/archive-tags";
 import { todayKey } from "@/lib/today";
-import { UNTAGGED, cardView, filterLibrary, filterRanked, mergeHybrid, isUntagged, tagStats, type SortMode, type TagStats, type TypeFilter } from "./archive-index";
+import { UNTAGGED, cardView, filterLibrary, filterRanked, isUntagged, tagStats, type SortMode, type TagStats, type TypeFilter } from "./archive-index";
 import { useRemembered } from "./remembered";
 import NoteReader, { preloadNoteReader, readerRequest, type ReaderRequest } from "./NoteReader";
 import { canPrefetch, lazyModule, whenIdle } from "@/lib/lazy-module";
@@ -90,6 +90,11 @@ interface Props {
 }
 
 /** Cards rendered at first, and added each time the end of the list comes near. */
+/** Meaning search starts at this many characters. */
+const MEANING_MIN_CHARS = 3;
+/** Notes found only by meaning need this similarity (0-1) to be listed; tune with real notes. */
+const RELATED_MIN = 0.35;
+const RELATED_MAX = 12;
 const CARDS_PAGE = 40;
 /** Tags the filter row shows before "+N more". */
 const TAG_ROW = 12;
@@ -286,10 +291,14 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   // The field shows every key at once; the list follows a moment later, when
   // React has time, so typing never waits for the cards.
   const query = useDeferredValue(search);
+  // "in quotes" = these exact words, no meaning search; the quotes are not part of the match.
+  const quoted = /^".+"$/.test(query.trim());
+  const words = quoted ? query.trim().slice(1, -1) : query;
+  const bySense = smartSearch && !quoted && query.trim().length >= MEANING_MIN_CHARS;
 
   // Semantic search debounce
   useEffect(() => {
-    if (!smartSearch || query.trim().length < 2) {
+    if (!bySense) {
       setSemanticResults(null);
       setVideoResults([]);
       setSimilarityScores({});
@@ -324,7 +333,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
       setLastHits({ query: query.trim(), blocks: results, videos, scores });
     }, 500);
     return () => clearTimeout(timer);
-  }, [query, smartSearch, semanticSearch, searchArchive, setLastHits]);
+  }, [query, bySense, semanticSearch, searchArchive, setLastHits]);
 
   // Counts for the type and tag rows, the folder tree and "Tag untagged": one pass per change of the notes.
   const stats = useMemo(() => tagStats(blocks), [blocks]);
@@ -365,14 +374,9 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   };
   const filteredAll = useMemo(() => {
     const shared = { pillar: filterPillar, hideLinks, folder, type: typeFilter, hue, imageHues: pictures.hues };
-    const keyword = filterLibrary(blocks, { ...shared, search: query, includeTags, sort: sortMode, imageText: withPictures ? pictures.text : undefined });
-    if (smartSearch && semanticResults !== null) {
-      const kw = new Set(keyword.map((b) => b.id));
-      const ranked = filterRanked(semanticResults, blocks, shared, pending).filter((b) => withPictures || kw.has(b.id) || !pictures.text.has(b.id));
-      return mergeHybrid(keyword, ranked);
-    }
-    return keyword;
-  }, [blocks, query, includeTags, filterPillar, hideLinks, sortMode, smartSearch, semanticResults, folder, typeFilter, pending, hue, pictures, withPictures]);
+    // The word matches stay put in the chosen sort; meaning only adds a separate "Similar in meaning" list below.
+    return filterLibrary(blocks, { ...shared, search: words, includeTags, sort: sortMode, imageText: withPictures ? pictures.text : undefined });
+  }, [blocks, words, includeTags, filterPillar, hideLinks, sortMode, folder, typeFilter, hue, pictures, withPictures]);
   /**
    * The flagged notes as a Bitwarden CSV, downloaded on this device. Nothing
    * is deleted: the list of those notes opens so he can check and remove them himself.
@@ -409,6 +413,16 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     return sensitiveOnly ? dated.filter((b) => sensitiveIds.has(b.id)) : dated;
   }, [filteredAll, dateFilter, sensitiveOnly, sensitiveIds]);
   const order = useMemo(() => filtered.map((b) => b.id), [filtered]);
+  /** Notes only meaning found: not among the word matches, close enough, the same filters applied. */
+  const related = useMemo(() => {
+    if (!bySense || semanticResults === null) return [];
+    const shown = new Set(filtered.map((b) => b.id));
+    const shared = { pillar: filterPillar, hideLinks, folder, type: typeFilter, hue, imageHues: pictures.hues };
+    const ranked = filterRanked(semanticResults, blocks, shared, pending).filter(
+      (b) => !shown.has(b.id) && (similarityScores[b.id] ?? 1) >= RELATED_MIN && (withPictures || !pictures.text.has(b.id)) && (!sensitiveOnly || sensitiveIds.has(b.id)),
+    );
+    return filterByDate(ranked, dateFilter, (b) => b.created_at).slice(0, RELATED_MAX);
+  }, [bySense, semanticResults, filtered, filterPillar, hideLinks, folder, typeFilter, hue, pictures, blocks, pending, similarityScores, withPictures, sensitiveOnly, sensitiveIds, dateFilter]);
 
   // The first cards render at once and the rest as the end of the list comes
   // near, so a new search shows its top matches without building every card.
@@ -785,7 +799,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
     if (foldersOn) void FolderTree.preload();
   }, [foldersOn]);
   const resyncSeed = useCallback((seedId: string) => void resync(seedId), [resync]);
-  const showScores = smartSearch && semanticResults !== null;
+  const showScores = bySense && semanticResults !== null;
 
   const openQueue = useCallback(() => {
     const ids = blocks
@@ -898,6 +912,38 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   const folderName = folder === UNTAGGED ? "Untagged" : folder ? `#${folder}` : null;
   const toggleBtn = (on: boolean) =>
     `text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 ${on ? "gradient-purple text-primary-foreground glow-sm" : "bg-muted/40 text-muted-foreground hover:text-foreground"}`;
+
+  const renderCard = (block: ArchiveBlock) => (
+                <ArchiveBlockCard
+                  key={block.id}
+                  block={block}
+                  pillars={pillarById}
+                  selected={selectedIds.has(block.id)}
+                  selecting={selecting}
+                  peeked={peekId === block.id}
+                  focused={tabStop === block.id}
+                  armed={armed?.id === block.id && armed.where === "card" ? armed : null}
+                  draggable={!!canDrag}
+                  activeFolder={folder}
+                  onPress={pressCard}
+                  onOpenFull={openFull}
+                  onToggleSelect={toggleOne}
+                  onArmDelete={armCard}
+                  onDisarmDelete={disarm}
+                  onConfirmDelete={confirmDelete}
+                  onFilterTag={filterTag}
+                  onFilterType={filterType}
+                  onFocusCard={setFocusId}
+                  onDragNote={dragNote}
+                  onDragEndNote={dragEnd}
+                  similarityScore={showScores ? similarityScores[block.id] : undefined}
+                  updateAvailable={!!block.from_seed_id && !!availableUpdates[block.from_seed_id]}
+                  onResync={resyncSeed}
+                  mosaic={mosaic}
+                  checkedSafe={checkedSafe(block)}
+                  onMarkSafe={markSafe}
+                />
+  );
 
   return (
     <div className="space-y-4">
@@ -1162,7 +1208,7 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <span className="text-3xl mb-2 block">📭</span>
-              <p>{blocks.length === 0 ? "No blocks yet. Add some from the Inbox!" : folderName ? `No notes in ${folderName} match.` : "No blocks match your filters."}</p>
+              <p>{blocks.length === 0 ? "No blocks yet. Add some from the Inbox!" : folderName ? `No notes in ${folderName} match.` : related.length ? "No note has these words. Notes similar in meaning are below." : "No blocks match your filters."}</p>
             </div>
           ) : (
             <div
@@ -1171,38 +1217,17 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
               onPointerEnter={preloadPeek}
               onFocus={preloadPeek}
             >
-              {visible.map((block) => (
-                <ArchiveBlockCard
-                  key={block.id}
-                  block={block}
-                  pillars={pillarById}
-                  selected={selectedIds.has(block.id)}
-                  selecting={selecting}
-                  peeked={peekId === block.id}
-                  focused={tabStop === block.id}
-                  armed={armed?.id === block.id && armed.where === "card" ? armed : null}
-                  draggable={!!canDrag}
-                  activeFolder={folder}
-                  onPress={pressCard}
-                  onOpenFull={openFull}
-                  onToggleSelect={toggleOne}
-                  onArmDelete={armCard}
-                  onDisarmDelete={disarm}
-                  onConfirmDelete={confirmDelete}
-                  onFilterTag={filterTag}
-                  onFilterType={filterType}
-                  onFocusCard={setFocusId}
-                  onDragNote={dragNote}
-                  onDragEndNote={dragEnd}
-                  similarityScore={showScores ? similarityScores[block.id] : undefined}
-                  updateAvailable={!!block.from_seed_id && !!availableUpdates[block.from_seed_id]}
-                  onResync={resyncSeed}
-                  mosaic={mosaic}
-                  checkedSafe={checkedSafe(block)}
-                  onMarkSafe={markSafe}
-                />
-              ))}
+              {visible.map(renderCard)}
             </div>
+          )}
+
+          {complete && related.length > 0 && (
+            <section className="space-y-2 pt-2" aria-label="Similar in meaning">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="h-px flex-1 bg-white/10" /> Similar in meaning ({related.length}) <span className="h-px flex-1 bg-white/10" />
+              </p>
+              <div className={mosaic ? "columns-2 sm:columns-3 xl:columns-4 gap-3" : "grid grid-cols-1 md:grid-cols-2 gap-3"}>{related.map(renderCard)}</div>
+            </section>
           )}
 
           <div ref={sentinelRef} className="h-1" />

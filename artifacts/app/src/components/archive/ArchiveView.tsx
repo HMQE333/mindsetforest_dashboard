@@ -327,7 +327,7 @@ const ArchiveViewBody = () => {
             <ArchiveLinksView blocks={liveBlocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} bookmarks={bookmarks} />
           )}
           {subView === "images" && (
-            <ArchiveImagesView blocks={liveBlocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} />
+            <ArchiveImagesView searchArchive={archive.searchArchive} blocks={liveBlocks} loading={archive.loading} updateBlock={archive.updateBlock} deleteBlock={archive.deleteBlock} addBlock={archive.addBlock} />
           )}
           {subView === "digest" && <ArchiveDigestView blocks={liveBlocks} />}
           {subView === "forest" && <ArchiveForestView />}
