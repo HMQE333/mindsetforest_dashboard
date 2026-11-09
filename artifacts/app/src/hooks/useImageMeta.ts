@@ -40,6 +40,8 @@ async function load(userId: string) {
   rows = new Map(((data ?? []) as unknown as ImageMeta[]).map((m) => [m.url, m]));
   ready = true;
   emit();
+  // Pictures analysed before they had their own embedding get one (only those without; once per session).
+  if (rows.size) void supabase.functions.invoke("ai-embed-block", { body: { action: "embed-images" } }).catch(() => null);
 }
 
 export async function analyzeImage(blockId: string, url: string): Promise<ImageMeta | null> {
