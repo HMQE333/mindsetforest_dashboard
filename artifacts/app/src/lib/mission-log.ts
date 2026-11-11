@@ -6,13 +6,14 @@ import type { MissionLink } from "@/lib/dashboard-data";
 
 /**
  * Saves the amount the user confirmed for a linked mission: an entry in the
- * Stats metric (with its Stats XP), or pages after the bookmark of a Library
+ * Stats metric (no second XP: the mission gave it), or pages after the bookmark of a Library
  * book (reading log + bookmark). Only ever called from a user's own "Save".
  */
 export async function saveMissionAmount(userId: string, link: MissionLink, value: number): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   if (!(value > 0)) return { ok: false, error: "Nothing to save" };
   if (link.kind === "metric") {
-    const r = await logMetricEntry(userId, link.metricId, value);
+    // The mission's tick already gave XP for this: the Stats entry is the measurement only.
+    const r = await logMetricEntry(userId, link.metricId, value, { xp: false });
     if (!r.ok) return { ok: false, error: r.error };
     return { ok: true, text: `+${value}${r.metric.unit ? ` ${r.metric.unit}` : ""} · ${r.metric.label}` };
   }

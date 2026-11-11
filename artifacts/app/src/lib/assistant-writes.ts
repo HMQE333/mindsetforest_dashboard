@@ -85,6 +85,8 @@ export async function logMetricEntry(
   userId: string,
   metricRef: string,
   value: number,
+  /** False when the action already earned XP elsewhere (a ticked Home mission): the entry is the measure only. */
+  opts: { xp?: boolean } = {},
 ): Promise<WriteResult<{ metric: TrackerMetric; xp: number }>> {
   const metrics = await loadMetrics(userId);
   const metric = metrics.find((m) => m.id === metricRef) ?? matchByName(metrics, metricRef, (m) => m.label);
@@ -94,6 +96,10 @@ export async function logMetricEntry(
   const { error } = await supabase.from("tracker_entries").insert({ user_id: userId, metric_id: metric.id, value, date });
   if (error) return { ok: false, error: "Couldn't save the entry" };
 
+  if (opts.xp === false) {
+    emitAppEvent(TRACKER_ENTRIES_CHANGED_EVENT);
+    return { ok: true, metric, xp: 0 };
+  }
   const { data: onb } = await supabase.from("user_onboarding").select("preferences").eq("user_id", userId).maybeSingle();
   const raw = ((onb?.preferences as Record<string, unknown> | null)?.trackerXp ?? null) as Partial<TrackerXpConfig> | null;
   const config = mergeConfig(raw, metrics);
