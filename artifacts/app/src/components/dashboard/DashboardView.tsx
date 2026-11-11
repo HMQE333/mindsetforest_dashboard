@@ -46,7 +46,19 @@ const ReviewModal = lazyModule(() => import("@/components/review/ReviewModal"));
 export default function DashboardView() {
   const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, rerollMission, getMissions, getCompletedCount, patchMission } = useDashboardState();
   const { user } = useAuth();
-  const [prompt, setPrompt] = useState<{ model: PromptModel; save: (value: number, complete: boolean) => void } | null>(null);
+  // Quiet cards wait in line: a new one never replaces one the user has not answered
+  // (a stopped timer's card holds a measured time). The first is shown.
+  type Prompt = { id: number; model: PromptModel; save: (value: number, complete: boolean) => void };
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const promptId = useRef(0);
+  const pushPrompt = useCallback((make: (id: number) => Omit<Prompt, "id">) => {
+    const id = ++promptId.current;
+    const p = { ...make(id), id };
+    setPrompts((q) => [...q, p]);
+  }, []);
+  const closePrompt = useCallback((id: number) => setPrompts((q) => q.filter((p) => p.id !== id)), []);
+  const prompt = prompts[0] ?? null;
+  const dismissPrompt = useCallback(() => { if (prompt) closePrompt(prompt.id); }, [prompt, closePrompt]);
   const runningTimer = useMissionTimer();
   const timerNow = useNow(!!runningTimer);
   const { todaySteps, todayLog, logStep, undoToday } = usePaths();
@@ -146,11 +158,11 @@ export default function DashboardView() {
     const planned = plannedMinutesOf(m);
     const value = timeUnit ? (planned ? minutesToMetricValue(planned, m.link.kind === "metric" ? m.link.unit : "") : 0) : parseAmount(m.title) ?? 0;
     const unit = m.link.kind === "book" ? "pages" : m.link.unit || "";
-    setPrompt({
-      model: { kind: "amount", title: m.title, target: m.link.label ?? (m.link.kind === "book" ? "book" : "Stats"), unit, value },
-      save: (v) => { setPrompt(null); void saveLinked(m, v); },
-    });
-  }, [shownMission, saveLinked]);
+    pushPrompt((id) => ({
+      model: { kind: "amount", title: m.title, target: m.link.label ?? (m.link.kind === "book" ? "book" : "Stats"), unit, value, step: timeUnit === "hours" ? 0.25 : undefined },
+      save: (v) => { closePrompt(id); void saveLinked(m, v); },
+    }));
+  }, [shownMission, saveLinked, pushPrompt, closePrompt]);
 
   const handleComplete = useCallback((categoryId: string, index: number, xp: number, opts?: { quiet?: boolean }) => {
     const prevLvl = state.currentLevel;
@@ -190,13 +202,22 @@ export default function DashboardView() {
     }, 150);
   }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories, soundOn, offerAmount]);
 
+  // Read at Save time, not when the card opened (the mission may have been ticked meanwhile).
+  const completedRef = useRef(state.completedMissions);
+  completedRef.current = state.completedMissions;
+  const handleCompleteRef = useRef(handleComplete);
+  handleCompleteRef.current = handleComplete;
+
   // Timer stopped (its card, the bar, or starting another): the quiet "how long?" card.
   useEffect(() => {
     const onStop = () => {
       const r = stopTimer();
       if (!r) return;
       const { categoryId, index, title } = r.timer;
-      const m = shownMission(categoryId, index);
+      // The list may have changed while it ran (edited, reordered, a new day): only the same
+      // mission gets the time, the link and the tick. Otherwise the card keeps just its title.
+      const found = shownMission(categoryId, index);
+      const m = found && found.title === title ? found : null;
       const planned = m ? plannedMinutesOf(m) : null;
       const s = suggestedMinutes(r.elapsedMin, r.hiddenMin, planned);
       const timeTarget = m?.link?.kind === "metric" && timeUnitOf(m.link.unit) ? m.link : null;
@@ -205,21 +226,23 @@ export default function DashboardView() {
         s.reason === "hidden" ? `The app was in the background for ~${formatMinutes(r.hiddenMin)}, so this starts lower. Your call.`
         : s.reason === "plan" ? `The timer ran far past the plan, so this starts at the plan. Your call.`
         : null;
-      setPrompt({
+      pushPrompt((id) => ({
         model: { kind: "time", title: m?.title ?? title, target: timeTarget?.label ?? null, elapsed: Math.round(r.elapsedMin), planned, value: s.value, hint, canComplete: !!m && !done },
         save: (minutes, complete) => {
-          setPrompt(null);
-          patchMission(categoryId, index, (x) => ({ ...x, timeLog: [...(x.timeLog ?? []), { d: todayKey(), planned: planned ?? undefined, actual: minutes }].slice(-30) }));
+          closePrompt(id);
+          if (m) patchMission(categoryId, index, (x) => (x.title === m.title || (x.variants?.some((v) => v.title === m.title) ?? false)
+            ? { ...x, timeLog: [...(x.timeLog ?? []), { d: todayKey(), planned: planned ?? undefined, actual: minutes }].slice(-30) }
+            : x));
           if (m && timeTarget) void saveLinked(m, minutesToMetricValue(minutes, timeTarget.unit));
           else toast(`${formatMinutes(minutes)} · ${m?.title ?? title}`, { duration: 2000 });
           // A time metric already got the minutes: the tick does not ask again.
-          if (m && complete && !done) handleComplete(categoryId, index, m.xp, { quiet: !!timeTarget });
+          if (m && complete && !completedRef.current.has(`${categoryId}-${index}`)) handleCompleteRef.current(categoryId, index, m.xp, { quiet: !!timeTarget });
         },
-      });
+      }));
     };
     window.addEventListener(MISSION_TIMER_STOP_EVENT, onStop);
     return () => window.removeEventListener(MISSION_TIMER_STOP_EVENT, onStop);
-  }, [shownMission, state.completedMissions, patchMission, saveLinked, handleComplete]);
+  }, [shownMission, state.completedMissions, patchMission, saveLinked, pushPrompt, closePrompt]);
 
   // Keyboard shortcuts
   const shortcutContext = selectedCategory === null ? "grid" as const
@@ -314,7 +337,7 @@ export default function DashboardView() {
         </div>
       )}
 
-      {prompt && <MissionPrompt model={prompt.model} onSave={prompt.save} onDismiss={() => setPrompt(null)} />}
+      {prompt && <MissionPrompt key={prompt.id} model={prompt.model} onSave={prompt.save} onDismiss={dismissPrompt} />}
 
       {/* Weekly Progress - moved to bottom */}
 

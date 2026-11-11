@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Minus, Plus, X } from "lucide-react";
 import { formatMinutes } from "@/lib/mission-amount";
 
@@ -9,7 +9,7 @@ import { formatMinutes } from "@/lib/mission-amount";
  * away and nothing is logged.
  */
 export type PromptModel =
-  | { kind: "amount"; title: string; target: string; unit: string; value: number }
+  | { kind: "amount"; title: string; target: string; unit: string; value: number; /** Step of −/+; hours use 0.25. */ step?: number }
   | {
       kind: "time";
       title: string;
@@ -34,18 +34,25 @@ interface Props {
 const AMOUNT_HIDE_MS = 15_000;
 
 export default function MissionPrompt({ model, onSave, onDismiss }: Props) {
-  const [value, setValue] = useState(model.value);
+  // The field keeps what is typed ("1.", ""); the number is read from it.
+  const [text, setText] = useState(String(model.value));
   const [complete, setComplete] = useState(model.kind === "time" && model.canComplete);
   const [touched, setTouched] = useState(false);
-  useEffect(() => { setValue(model.value); setTouched(false); }, [model]);
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+  useEffect(() => { setText(String(model.value)); setTouched(false); setComplete(model.kind === "time" && model.canComplete); }, [model]);
   useEffect(() => {
     if (model.kind !== "amount" || touched) return;
-    const t = setTimeout(onDismiss, AMOUNT_HIDE_MS);
+    const t = setTimeout(() => dismissRef.current(), AMOUNT_HIDE_MS);
     return () => clearTimeout(t);
-  }, [model, touched, onDismiss]);
+  }, [model, touched]);
 
-  const step = model.kind === "time" ? 5 : model.value >= 20 ? 5 : 1;
-  const set = (n: number) => { setTouched(true); setValue(Math.max(0, Math.round(n))); };
+  const step = model.kind === "time" ? 5 : model.step ?? (model.value >= 20 ? 5 : 1);
+  // Minutes are whole; amounts keep up to two decimals (1.25 h, 2.5 km).
+  const clean = (n: number) => Math.max(0, model.kind === "time" ? Math.round(n) : Math.round(n * 100) / 100);
+  const parsed = Number(text.replace(",", "."));
+  const value = Number.isFinite(parsed) ? clean(parsed) : 0;
+  const set = (n: number) => { setTouched(true); setText(String(clean(n))); };
   const chip = "rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-foreground/70 hover:bg-white/[0.12] hover:text-foreground";
 
   return (
@@ -67,8 +74,10 @@ export default function MissionPrompt({ model, onSave, onDismiss }: Props) {
           type="number"
           inputMode="numeric"
           min={0}
-          value={value}
-          onChange={(e) => set(Number(e.target.value) || 0)}
+          step={model.kind === "time" ? 1 : "any"}
+          value={text}
+          onChange={(e) => { setTouched(true); setText(e.target.value); }}
+          onBlur={() => setText(String(value))}
           className="w-16 rounded-lg border border-white/10 bg-background/60 px-2 py-1 text-center text-sm font-semibold text-foreground outline-none focus:border-primary/60"
           aria-label={model.kind === "time" ? "Minutes" : model.unit || "Amount"}
         />

@@ -9,6 +9,7 @@ import { useSyncExternalStore } from "react";
 export interface RunningTimer {
   categoryId: string;
   index: number;
+  /** The title shown when it started: on stop, the mission at `index` must still carry it. */
   title: string;
   startedAt: number;
   /** Milliseconds the page was hidden while the timer ran (a hint, not a deduction). */
