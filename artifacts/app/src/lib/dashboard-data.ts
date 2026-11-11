@@ -20,6 +20,15 @@ export interface Mission {
   snoozedUntil?: string;
   /** Times pushed since it was last done. */
   deferrals?: number;
+  /**
+   * Where the done amount goes (Settings metric or a Library book). On completion a quiet
+   * prompt offers the amount; nothing is logged unless the user saves it.
+   */
+  link?: MissionLink;
+  /** Planned minutes (from the duration text when not set); the timer compares against it. */
+  plannedMinutes?: number;
+  /** Recent timed runs: date, planned and the minutes the user said it took (last 30). */
+  timeLog?: MissionTimeEntry[];
   /** Internal: index into the original (unfiltered) mission list. Set by getMissions when filtering. */
   __originalIndex?: number;
 }
@@ -150,3 +159,9 @@ export const CATEGORIES: Category[] = [
     ],
   },
 ];
+
+/** A mission's target for its done amount: a Stats metric or pages of a Library book. */
+export type MissionLink = { kind: "metric"; metricId: string; label?: string; unit?: string } | { kind: "book"; bookId: string; label?: string };
+
+/** One timed run of a mission: the minutes the user settled on, against the plan. */
+export interface MissionTimeEntry { d: string; planned?: number; actual: number }

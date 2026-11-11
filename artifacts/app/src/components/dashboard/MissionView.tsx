@@ -1,3 +1,4 @@
+import MissionTimerButton from "./MissionTimerButton";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Paperclip, Dice5, PencilLine, CalendarClock, Scissors, ArrowLeft } from "lucide-react";
@@ -194,6 +195,7 @@ export default function MissionView({ categoryId, state, getMissions, onComplete
                       <Paperclip className="h-4 w-4 text-foreground/50 group-hover:text-foreground/80 transition-colors" />
                     </button>
                   )}
+                  {!isCompleted && <MissionTimerButton categoryId={categoryId} index={index} title={mission.title} />}
                   {!isCompleted && (
                     <button
                       onClick={() => (needsDecision(baseMission) ? setDeciding(deciding === index ? null : index) : defer(index, mission.title))}

@@ -647,6 +647,7 @@ function useDashboardStateValue() {
     deferMission,
     undeferMission,
     getCompletedCount,
+    patchMission: updateMissionAt,
   };
 }
 

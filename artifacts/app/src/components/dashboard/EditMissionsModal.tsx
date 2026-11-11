@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Paperclip, Dice5, Plus, X, PencilLine, Trash2, Lock, Repeat, Clock, Star, CalendarDays } from "lucide-react";
 import { CATEGORIES, Mission, MissionVariant } from "@/lib/dashboard-data";
 import { useUserProjects } from "@/hooks/useUserProjects";
+import MissionLinkPicker from "./MissionLinkPicker";
 
 interface EditMissionsModalProps {
   categoryId: string;
@@ -284,6 +285,11 @@ export default function EditMissionsModal({ categoryId, missions, onSave, onClos
                   onSetAll={() => setDays(index, undefined)}
                   onWeekdays={() => setDays(index, [1, 2, 3, 4, 5])}
                   onWeekends={() => setDays(index, [0, 6])}
+                />
+
+                <MissionLinkPicker
+                  value={mission.link}
+                  onChange={(link) => setBuffer(prev => prev.map((m, i) => (i === index ? { ...m, link } : m)))}
                 />
 
                 {hasVariants && (

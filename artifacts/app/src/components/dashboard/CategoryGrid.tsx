@@ -1,3 +1,4 @@
+import MissionTimerButton from "./MissionTimerButton";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CATEGORIES, Category } from "@/lib/dashboard-data";
@@ -82,7 +83,7 @@ export default function CategoryGrid({ getMissions, getCompletedCount, onSelectC
                         const m = shownMission ? shownMission(cat.id, base) : base;
                         const done = isDone!(cat.id, index);
                         return (
-                          <li key={index}>
+                          <li key={index} className="flex items-center gap-1">
                             <button
                               type="button"
                               disabled={done}
@@ -98,6 +99,7 @@ export default function CategoryGrid({ getMissions, getCompletedCount, onSelectC
                               <span className={`min-w-0 flex-1 text-sm truncate ${done ? "line-through" : ""}`}>{m.title}</span>
                               <span className="shrink-0 text-[11px] font-semibold" style={{ color: cat.color }}>+{m.xp} XP</span>
                             </button>
+                            {!done && <MissionTimerButton categoryId={cat.id} index={index} title={m.title} size="sm" />}
                           </li>
                         );
                       })}

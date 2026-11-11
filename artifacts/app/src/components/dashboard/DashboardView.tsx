@@ -24,7 +24,15 @@ import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
 import OfflineNotice from "@/components/OfflineNotice";
 import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
-import { LayoutGrid, LayoutList } from "lucide-react";
+import { LayoutGrid, LayoutList, Square, Timer } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import MissionPrompt, { type PromptModel } from "./MissionPrompt";
+import { MISSION_TIMER_STOP_EVENT, clock, requestTimerStop, useNow } from "./MissionTimerButton";
+import { cancelTimer, stopTimer, suggestedMinutes, useMissionTimer } from "@/lib/mission-timer";
+import { formatMinutes, minutesToMetricValue, parseAmount, plannedMinutesOf, timeUnitOf } from "@/lib/mission-amount";
+import { saveMissionAmount } from "@/lib/mission-log";
+import type { Mission } from "@/lib/dashboard-data";
 
 const HOME_VIEWS = [
   { id: "grid" as const, icon: LayoutGrid, label: "Grid" },
@@ -36,7 +44,11 @@ const HOME_VIEWS = [
 const ReviewModal = lazyModule(() => import("@/components/review/ReviewModal"));
 
 export default function DashboardView() {
-  const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, rerollMission, getMissions, getCompletedCount } = useDashboardState();
+  const { state, loading, loadFailed, retryLoad, completeMission, completeExternal, undoExternal, resetDay, saveCustomMissions, applyMissionPreset, addMission, splitMission, rerollMission, getMissions, getCompletedCount, patchMission } = useDashboardState();
+  const { user } = useAuth();
+  const [prompt, setPrompt] = useState<{ model: PromptModel; save: (value: number, complete: boolean) => void } | null>(null);
+  const runningTimer = useMissionTimer();
+  const timerNow = useNow(!!runningTimer);
   const { todaySteps, todayLog, logStep, undoToday } = usePaths();
   // Cards or a compact list, remembered on this device.
   const [homeView, setHomeViewState] = useState<"grid" | "list">(() => {
@@ -112,9 +124,38 @@ export default function DashboardView() {
   // Settings -> Modules -> sound on completion (on unless turned off).
   const soundOn = preferences.completionSound !== false;
 
-  const handleComplete = useCallback((categoryId: string, index: number, xp: number) => {
+  /** The mission as shown now (its rolled variant applied), by its position. */
+  const shownMission = useCallback((categoryId: string, index: number): Mission | null => {
+    const m = getMissions(categoryId).find((x, i) => (x.__originalIndex ?? i) === index);
+    return m ? withVariant(m, state.rolledVariants[`${categoryId}-${index}`]) : null;
+  }, [getMissions, state.rolledVariants]);
+
+  /** Saves a confirmed amount where the mission is linked; a quiet toast says where it went. */
+  const saveLinked = useCallback(async (m: Mission, value: number) => {
+    if (!user || !m.link) return;
+    const r = await saveMissionAmount(user.id, m.link, value);
+    if (r.ok) toast(r.text, { duration: 2500 });
+    else toast.error(r.error);
+  }, [user]);
+
+  /** After a tick on a linked mission: offer the amount from its words (never saved unasked). */
+  const offerAmount = useCallback((categoryId: string, index: number) => {
+    const m = shownMission(categoryId, index);
+    if (!m?.link) return;
+    const timeUnit = m.link.kind === "metric" ? timeUnitOf(m.link.unit) : null;
+    const planned = plannedMinutesOf(m);
+    const value = timeUnit ? (planned ? minutesToMetricValue(planned, m.link.kind === "metric" ? m.link.unit : "") : 0) : parseAmount(m.title) ?? 0;
+    const unit = m.link.kind === "book" ? "pages" : m.link.unit || "";
+    setPrompt({
+      model: { kind: "amount", title: m.title, target: m.link.label ?? (m.link.kind === "book" ? "book" : "Stats"), unit, value },
+      save: (v) => { setPrompt(null); void saveLinked(m, v); },
+    });
+  }, [shownMission, saveLinked]);
+
+  const handleComplete = useCallback((categoryId: string, index: number, xp: number, opts?: { quiet?: boolean }) => {
     const prevLvl = state.currentLevel;
     completeMission(categoryId, index, xp);
+    if (!opts?.quiet) offerAmount(categoryId, index);
     if (soundOn) playMissionSound();
 
     // Floating XP
@@ -147,7 +188,38 @@ export default function DashboardView() {
         if (soundOn && !levelledUp) playFanfareSound(0.25);
       }
     }, 150);
-  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories, soundOn]);
+  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories, soundOn, offerAmount]);
+
+  // Timer stopped (its card, the bar, or starting another): the quiet "how long?" card.
+  useEffect(() => {
+    const onStop = () => {
+      const r = stopTimer();
+      if (!r) return;
+      const { categoryId, index, title } = r.timer;
+      const m = shownMission(categoryId, index);
+      const planned = m ? plannedMinutesOf(m) : null;
+      const s = suggestedMinutes(r.elapsedMin, r.hiddenMin, planned);
+      const timeTarget = m?.link?.kind === "metric" && timeUnitOf(m.link.unit) ? m.link : null;
+      const done = state.completedMissions.has(`${categoryId}-${index}`);
+      const hint =
+        s.reason === "hidden" ? `The app was in the background for ~${formatMinutes(r.hiddenMin)}, so this starts lower. Your call.`
+        : s.reason === "plan" ? `The timer ran far past the plan, so this starts at the plan. Your call.`
+        : null;
+      setPrompt({
+        model: { kind: "time", title: m?.title ?? title, target: timeTarget?.label ?? null, elapsed: Math.round(r.elapsedMin), planned, value: s.value, hint, canComplete: !!m && !done },
+        save: (minutes, complete) => {
+          setPrompt(null);
+          patchMission(categoryId, index, (x) => ({ ...x, timeLog: [...(x.timeLog ?? []), { d: todayKey(), planned: planned ?? undefined, actual: minutes }].slice(-30) }));
+          if (m && timeTarget) void saveLinked(m, minutesToMetricValue(minutes, timeTarget.unit));
+          else toast(`${formatMinutes(minutes)} · ${m?.title ?? title}`, { duration: 2000 });
+          // A time metric already got the minutes: the tick does not ask again.
+          if (m && complete && !done) handleComplete(categoryId, index, m.xp, { quiet: !!timeTarget });
+        },
+      });
+    };
+    window.addEventListener(MISSION_TIMER_STOP_EVENT, onStop);
+    return () => window.removeEventListener(MISSION_TIMER_STOP_EVENT, onStop);
+  }, [shownMission, state.completedMissions, patchMission, saveLinked, handleComplete]);
 
   // Keyboard shortcuts
   const shortcutContext = selectedCategory === null ? "grid" as const
@@ -227,6 +299,22 @@ export default function DashboardView() {
         state={state}
         heroLayout={preferences.heroLayout}
       />
+
+      {runningTimer && (
+        <div className="mb-3 flex items-center justify-center">
+          <div className="flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-foreground/70">
+            <Timer className="h-3.5 w-3.5 text-primary" aria-hidden />
+            <span className="max-w-[14rem] truncate">{runningTimer.title}</span>
+            <span className="tabular-nums font-semibold text-foreground">{clock(timerNow - runningTimer.startedAt)}</span>
+            <button type="button" onClick={requestTimerStop} className="rounded-full p-0.5 hover:text-foreground" title="Stop" aria-label="Stop the timer">
+              <Square className="h-3 w-3 fill-current" />
+            </button>
+            <button type="button" onClick={cancelTimer} className="text-[10px] text-foreground/40 hover:text-foreground" title="Discard this timer">discard</button>
+          </div>
+        </div>
+      )}
+
+      {prompt && <MissionPrompt model={prompt.model} onSave={prompt.save} onDismiss={() => setPrompt(null)} />}
 
       {/* Weekly Progress - moved to bottom */}
 
