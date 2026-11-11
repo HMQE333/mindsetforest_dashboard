@@ -157,9 +157,10 @@ export default function DashboardView() {
     const timeUnit = m.link.kind === "metric" ? timeUnitOf(m.link.unit) : null;
     const planned = plannedMinutesOf(m);
     const value = timeUnit ? (planned ? minutesToMetricValue(planned, m.link.kind === "metric" ? m.link.unit : "") : 0) : parseAmount(m.title) ?? 0;
-    const unit = m.link.kind === "book" ? "pages" : m.link.unit || "";
+    const link = m.link;
+    const unit = link.kind === "book" ? "pages" : link.unit || "";
     pushPrompt((id) => ({
-      model: { kind: "amount", title: m.title, target: m.link.label ?? (m.link.kind === "book" ? "book" : "Stats"), unit, value, step: timeUnit === "hours" ? 0.25 : undefined },
+      model: { kind: "amount", title: m.title, target: link.label ?? (link.kind === "book" ? "book" : "Stats"), unit, value, step: timeUnit === "hours" ? 0.25 : undefined },
       save: (v) => { closePrompt(id); void saveLinked(m, v); },
     }));
   }, [shownMission, saveLinked, pushPrompt, closePrompt]);
