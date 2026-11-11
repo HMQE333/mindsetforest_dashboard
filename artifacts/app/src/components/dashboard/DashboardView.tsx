@@ -24,12 +24,12 @@ import ShortcutsPanel from "./ShortcutsPanel";
 import DashboardStats from "./DashboardStats";
 import OfflineNotice from "@/components/OfflineNotice";
 import { playFanfareSound, playMissionSound } from "@/lib/ui-sounds";
-import { LayoutGrid, LayoutList, Square, Timer } from "lucide-react";
+import { Check, LayoutGrid, LayoutList, Pause, Play, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import MissionPrompt, { type PromptModel } from "./MissionPrompt";
-import { MISSION_TIMER_STOP_EVENT, clock, requestTimerStop, useNow } from "./MissionTimerButton";
-import { cancelTimer, stopTimer, suggestedMinutes, useMissionTimer } from "@/lib/mission-timer";
+import { MISSION_TIMER_FINISH_EVENT, clock, requestTimerFinish, useNow } from "./MissionTimerButton";
+import { discardTimer, elapsedMs, finishTimer, pauseTimer, startTimer, suggestedMinutes, timerKey, useMissionTimers } from "@/lib/mission-timer";
 import { formatMinutes, minutesToMetricValue, parseAmount, plannedMinutesOf, timeUnitOf } from "@/lib/mission-amount";
 import { saveMissionAmount } from "@/lib/mission-log";
 import type { Mission } from "@/lib/dashboard-data";
@@ -59,8 +59,9 @@ export default function DashboardView() {
   const closePrompt = useCallback((id: number) => setPrompts((q) => q.filter((p) => p.id !== id)), []);
   const prompt = prompts[0] ?? null;
   const dismissPrompt = useCallback(() => { if (prompt) closePrompt(prompt.id); }, [prompt, closePrompt]);
-  const runningTimer = useMissionTimer();
-  const timerNow = useNow(!!runningTimer);
+  const timers = useMissionTimers();
+  const timerList = useMemo(() => Object.values(timers).sort((a, b) => (b.runningSince ?? 0) - (a.runningSince ?? 0)), [timers]);
+  const timerNow = useNow(timerList.some((t) => t.runningSince != null));
   const { todaySteps, todayLog, logStep, undoToday } = usePaths();
   // Cards or a compact list, remembered on this device.
   const [homeView, setHomeViewState] = useState<"grid" | "list">(() => {
@@ -165,10 +166,52 @@ export default function DashboardView() {
     }));
   }, [shownMission, saveLinked, pushPrompt, closePrompt]);
 
+  // Read at Save time, not when the card opened (the mission may have been ticked meanwhile).
+  const completedRef = useRef(state.completedMissions);
+  completedRef.current = state.completedMissions;
+  const handleCompleteRef = useRef<(categoryId: string, index: number, xp: number, opts?: { quiet?: boolean }) => void>(() => {});
+
+  /**
+   * Finish a mission's timer: the quiet "how long?" card with the total of all its pieces.
+   * Returns whether the minutes go to a time metric (then the tick does not ask again).
+   */
+  const openFinish = useCallback((categoryId: string, index: number, ticked: boolean): { timeTarget: boolean } | null => {
+    const r = finishTimer(categoryId, index);
+    if (!r) return null;
+    const { title } = r.timer;
+    // The list may have changed meanwhile (edited, reordered, a new day): only the same
+    // mission gets the time, the link and the tick. Otherwise the card keeps just its title.
+    const found = shownMission(categoryId, index);
+    const m = found && found.title === title ? found : null;
+    const planned = m ? plannedMinutesOf(m) : null;
+    const s = suggestedMinutes(r.elapsedMin, r.hiddenMin, planned);
+    const timeTarget = m?.link?.kind === "metric" && timeUnitOf(m.link.unit) ? m.link : null;
+    const done = ticked || completedRef.current.has(`${categoryId}-${index}`);
+    const hint =
+      s.reason === "hidden" ? `The app was in the background for ~${formatMinutes(r.hiddenMin)}, so this starts lower. Your call.`
+      : s.reason === "plan" ? `The timer ran far past the plan, so this starts at the plan. Your call.`
+      : null;
+    pushPrompt((id) => ({
+      model: { kind: "time", title: m?.title ?? title, target: timeTarget?.label ?? null, elapsed: Math.round(r.elapsedMin), planned, value: s.value, hint, canComplete: !!m && !done },
+      save: (minutes, complete) => {
+        closePrompt(id);
+        if (m) patchMission(categoryId, index, (x) => (x.title === m.title || (x.variants?.some((v) => v.title === m.title) ?? false)
+          ? { ...x, timeLog: [...(x.timeLog ?? []), { d: todayKey(), planned: planned ?? undefined, actual: minutes }].slice(-30) }
+          : x));
+        if (m && timeTarget) void saveLinked(m, minutesToMetricValue(minutes, timeTarget.unit));
+        else toast(`${formatMinutes(minutes)} · ${m?.title ?? title}`, { duration: 2000 });
+        if (m && complete && !completedRef.current.has(`${categoryId}-${index}`)) handleCompleteRef.current(categoryId, index, m.xp, { quiet: !!timeTarget });
+      },
+    }));
+    return { timeTarget: !!timeTarget };
+  }, [shownMission, pushPrompt, closePrompt, patchMission, saveLinked]);
+
   const handleComplete = useCallback((categoryId: string, index: number, xp: number, opts?: { quiet?: boolean }) => {
     const prevLvl = state.currentLevel;
     completeMission(categoryId, index, xp);
-    if (!opts?.quiet) offerAmount(categoryId, index);
+    // Ticked with time kept on its timer: that time is offered first (the minutes are the amount for a time metric).
+    const timed = opts?.quiet ? null : openFinish(categoryId, index, true);
+    if (!opts?.quiet && !timed?.timeTarget) offerAmount(categoryId, index);
     if (soundOn) playMissionSound();
 
     // Floating XP
@@ -201,49 +244,17 @@ export default function DashboardView() {
         if (soundOn && !levelledUp) playFanfareSound(0.25);
       }
     }, 150);
-  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories, soundOn, offerAmount]);
-
-  // Read at Save time, not when the card opened (the mission may have been ticked meanwhile).
-  const completedRef = useRef(state.completedMissions);
-  completedRef.current = state.completedMissions;
-  const handleCompleteRef = useRef(handleComplete);
+  }, [completeMission, state.currentLevel, state.currentXP, state.completedMissions, getMissions, categories, soundOn, offerAmount, openFinish]);
   handleCompleteRef.current = handleComplete;
 
-  // Timer stopped (its card, the bar, or starting another): the quiet "how long?" card.
   useEffect(() => {
-    const onStop = () => {
-      const r = stopTimer();
-      if (!r) return;
-      const { categoryId, index, title } = r.timer;
-      // The list may have changed while it ran (edited, reordered, a new day): only the same
-      // mission gets the time, the link and the tick. Otherwise the card keeps just its title.
-      const found = shownMission(categoryId, index);
-      const m = found && found.title === title ? found : null;
-      const planned = m ? plannedMinutesOf(m) : null;
-      const s = suggestedMinutes(r.elapsedMin, r.hiddenMin, planned);
-      const timeTarget = m?.link?.kind === "metric" && timeUnitOf(m.link.unit) ? m.link : null;
-      const done = state.completedMissions.has(`${categoryId}-${index}`);
-      const hint =
-        s.reason === "hidden" ? `The app was in the background for ~${formatMinutes(r.hiddenMin)}, so this starts lower. Your call.`
-        : s.reason === "plan" ? `The timer ran far past the plan, so this starts at the plan. Your call.`
-        : null;
-      pushPrompt((id) => ({
-        model: { kind: "time", title: m?.title ?? title, target: timeTarget?.label ?? null, elapsed: Math.round(r.elapsedMin), planned, value: s.value, hint, canComplete: !!m && !done },
-        save: (minutes, complete) => {
-          closePrompt(id);
-          if (m) patchMission(categoryId, index, (x) => (x.title === m.title || (x.variants?.some((v) => v.title === m.title) ?? false)
-            ? { ...x, timeLog: [...(x.timeLog ?? []), { d: todayKey(), planned: planned ?? undefined, actual: minutes }].slice(-30) }
-            : x));
-          if (m && timeTarget) void saveLinked(m, minutesToMetricValue(minutes, timeTarget.unit));
-          else toast(`${formatMinutes(minutes)} · ${m?.title ?? title}`, { duration: 2000 });
-          // A time metric already got the minutes: the tick does not ask again.
-          if (m && complete && !completedRef.current.has(`${categoryId}-${index}`)) handleCompleteRef.current(categoryId, index, m.xp, { quiet: !!timeTarget });
-        },
-      }));
+    const onFinish = (e: Event) => {
+      const d = (e as CustomEvent<{ categoryId: string; index: number }>).detail;
+      if (d) openFinish(d.categoryId, d.index, false);
     };
-    window.addEventListener(MISSION_TIMER_STOP_EVENT, onStop);
-    return () => window.removeEventListener(MISSION_TIMER_STOP_EVENT, onStop);
-  }, [shownMission, state.completedMissions, patchMission, saveLinked, pushPrompt, closePrompt]);
+    window.addEventListener(MISSION_TIMER_FINISH_EVENT, onFinish);
+    return () => window.removeEventListener(MISSION_TIMER_FINISH_EVENT, onFinish);
+  }, [openFinish]);
 
   // Keyboard shortcuts
   const shortcutContext = selectedCategory === null ? "grid" as const
@@ -324,17 +335,27 @@ export default function DashboardView() {
         heroLayout={preferences.heroLayout}
       />
 
-      {runningTimer && (
-        <div className="mb-3 flex items-center justify-center">
-          <div className="flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-foreground/70">
-            <Timer className="h-3.5 w-3.5 text-primary" aria-hidden />
-            <span className="max-w-[14rem] truncate">{runningTimer.title}</span>
-            <span className="tabular-nums font-semibold text-foreground">{clock(timerNow - runningTimer.startedAt)}</span>
-            <button type="button" onClick={requestTimerStop} className="rounded-full p-0.5 hover:text-foreground" title="Stop" aria-label="Stop the timer">
-              <Square className="h-3 w-3 fill-current" />
-            </button>
-            <button type="button" onClick={cancelTimer} className="text-[10px] text-foreground/40 hover:text-foreground" title="Discard this timer">discard</button>
-          </div>
+      {timerList.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-center gap-1.5">
+          {timerList.slice(0, 3).map((t) => {
+            const running = t.runningSince != null;
+            return (
+              <div key={timerKey(t.categoryId, t.index)} className={`flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs ${running ? "border-primary/30 bg-primary/[0.06] text-foreground/80" : "border-white/10 bg-white/[0.03] text-foreground/55"}`}>
+                <Timer className={`h-3.5 w-3.5 ${running ? "text-primary" : ""}`} aria-hidden />
+                <span className="max-w-[11rem] truncate">{t.title}</span>
+                <span className="tabular-nums font-semibold">{clock(elapsedMs(t, timerNow))}</span>
+                {t.firstDay && t.firstDay !== todayKey() && <span className="text-[10px] text-foreground/40">since {t.firstDay.slice(5)}</span>}
+                {running ? (
+                  <button type="button" onClick={() => pauseTimer(t.categoryId, t.index)} className="rounded-full p-0.5 hover:text-foreground" title="Pause (the time is kept)" aria-label="Pause"><Pause className="h-3 w-3 fill-current" /></button>
+                ) : (
+                  <button type="button" onClick={() => startTimer(t.categoryId, t.index, t.title, todayKey())} className="rounded-full p-0.5 hover:text-foreground" title="Go on" aria-label="Resume"><Play className="h-3 w-3" /></button>
+                )}
+                <button type="button" onClick={() => requestTimerFinish(t.categoryId, t.index)} className="flex items-center gap-0.5 rounded-full px-1 hover:text-foreground" title="Finish: save how long it took" aria-label="Finish"><Check className="h-3 w-3" /> finish</button>
+                <button type="button" onClick={() => discardTimer(t.categoryId, t.index)} className="text-[10px] text-foreground/35 hover:text-foreground" title="Discard this time">✕</button>
+              </div>
+            );
+          })}
+          {timerList.length > 3 && <span className="text-[11px] text-foreground/40">+{timerList.length - 3} paused</span>}
         </div>
       )}
 

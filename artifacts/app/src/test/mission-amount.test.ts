@@ -46,3 +46,33 @@ describe("suggestedMinutes", () => {
   it("takes off real background time", () => expect(suggestedMinutes(52, 14, 60)).toEqual({ value: 38, reason: "hidden" }));
   it("does not trust a timer left running far past the plan", () => expect(suggestedMinutes(600, 0, 30)).toEqual({ value: 30, reason: "plan" }));
 });
+
+import { discardTimer, elapsedMs, finishTimer, pauseTimer, startTimer, useMissionTimers } from "@/lib/mission-timer";
+void useMissionTimers;
+
+describe("mission timers remember pieces", () => {
+  it("adds pieces across pauses and finishes with the total", () => {
+    startTimer("mind", 0, "Read", "2026-11-11", 0);
+    pauseTimer("mind", 0, 10 * 60_000);
+    startTimer("mind", 0, "Read", "2026-11-11", 30 * 60_000);
+    const r = finishTimer("mind", 0, 45 * 60_000);
+    expect(r?.elapsedMin).toBe(25);
+    expect(finishTimer("mind", 0)).toBeNull();
+  });
+  it("starting another pauses the running one and keeps its time", () => {
+    startTimer("a", 0, "A", "d", 0);
+    startTimer("b", 1, "B", "d", 5 * 60_000);
+    const a = finishTimer("a", 0, 60 * 60_000);
+    expect(a?.elapsedMin).toBe(5);
+    const b = finishTimer("b", 1, 15 * 60_000);
+    expect(b?.elapsedMin).toBe(10);
+  });
+  it("a different mission at the same place starts fresh", () => {
+    startTimer("c", 2, "Old", "d", 0);
+    pauseTimer("c", 2, 60_000);
+    startTimer("c", 2, "New", "d", 120_000);
+    expect(finishTimer("c", 2, 180_000)?.elapsedMin).toBe(1);
+    discardTimer("c", 2);
+    expect(elapsedMs({ categoryId: "x", index: 0, title: "", accumulatedMs: 1000, runningSince: 0, hiddenMs: 0, hiddenSince: null, firstDay: "" }, 500)).toBe(1500);
+  });
+});
