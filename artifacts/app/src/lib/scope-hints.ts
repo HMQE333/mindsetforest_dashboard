@@ -69,15 +69,15 @@ export function annotateHistory(messages: HistoryMessage[]): { role: "user" | "a
     .filter((m) => !m.error)
     .map((m) => {
       if (m.role !== "assistant" || !m.actions || m.actions.length === 0) return { role: m.role, content: m.content };
-      const list = m.actions.map(describeAction).join("; ");
+      const list = m.actions.map((a) => describeAction(a)).join("; ");
       let marker: string;
       if (m.actionsResolved === "applied") {
         // Confirming is not the same as succeeding: only the actions that went
         // through are recorded as done, or the model later claims a failed one
         // happened. Replies saved before results were kept count as all done.
         const results = m.actionResults && m.actionResults.length === m.actions.length ? m.actionResults : null;
-        const done = m.actions.filter((_, i) => !results || results[i]).map(describeAction);
-        const failed = results ? m.actions.filter((_, i) => !results[i]).map(describeAction) : [];
+        const done = m.actions.filter((_, i) => !results || results[i]).map((a) => describeAction(a));
+        const failed = results ? m.actions.filter((_, i) => !results[i]).map((a) => describeAction(a)) : [];
         marker = [
           done.length > 0 ? `[Applied by the user, these happened: ${done.join("; ")}]` : "",
           failed.length > 0 ? `[The user confirmed these but they FAILED and did not happen: ${failed.join("; ")}]` : "",

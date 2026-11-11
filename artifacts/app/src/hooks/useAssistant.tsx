@@ -480,7 +480,7 @@ function useAssistantValue() {
             const sections = Array.from(new Set(dropped.map((a) => ACTION_SCOPE[a.type]).filter((s): s is ScopeId => !!s)));
             toast.warning(
               `Skipped ${dropped.length === 1 ? "an action" : `${dropped.length} actions`} outside this chat's sections: ${sections.map((s) => SCOPE_MAP[s]?.label ?? s).join(", ")}`,
-              { description: `${dropped.map(describeAction).join("\n")}\nPin ${sections.length === 1 ? "that section" : "those sections"} in Context and ask again.` },
+              { description: `${dropped.map((a) => describeAction(a)).join("\n")}\nPin ${sections.length === 1 ? "that section" : "those sections"} in Context and ask again.` },
             );
           }
           // A reply that was only an action block still gets a line of text,
@@ -652,7 +652,10 @@ function useAssistantValue() {
             if (r.ok) { ok++; toast.success(r.updated ? `Updated preset “${r.name}”` : `Saved preset “${r.name}”`); }
             else { failed++; toast.error(r.error); }
           } else if (action.type === "log_metric") {
-            const r = await logMetricEntry(user.id, action.metric, action.value);
+            // The same reply also ticks a mission linked to this metric: the tick gives the XP, the entry is the measure.
+            const tickedLinked = batchRef.current.some((x) => x.type === "complete_mission" && Object.values(dashboardRef.current.customMissions ?? {}).flat()
+              .some((mm) => mm.title.trim().toLowerCase() === x.title.trim().toLowerCase() && mm.link?.kind === "metric" && mm.link.metricId === action.metric));
+            const r = await logMetricEntry(user.id, action.metric, action.value, { xp: !tickedLinked });
             if (r.ok) {
               if (r.xp > 0) addXP(r.xp);
               ok++;
@@ -864,6 +867,8 @@ function useAssistantValue() {
     [user, addMission, applyMissionPreset, completeMission, uncompleteMission, removeMission, saveCustomMissions, completeExternal, addXP, resetDay, navigate, location.pathname],
   );
   const runActionRef = useRef(runAction);
+  /** The reply's whole list of actions while it is applied (one action can depend on another in the same reply). */
+  const batchRef = useRef<AssistantAction[]>([]);
   useEffect(() => { runActionRef.current = runAction; }, [runAction]);
 
   // Apply the confirmed actions of one reply, in order. Returns the summary
@@ -878,6 +883,7 @@ function useAssistantValue() {
 
       // Kept per action so the history records only what really happened.
       const results: boolean[] = [];
+      batchRef.current = msg.actions;
       for (const action of msg.actions) {
         results.push(await runActionRef.current(action));
       }

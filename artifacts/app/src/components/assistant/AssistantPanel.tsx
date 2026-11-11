@@ -13,7 +13,8 @@ import {
   type ScopeId,
   type ArchiveItemRef,
 } from "@/lib/assistant-context";
-import { describeAction, mindmapPreview, spokenReadBack } from "@/lib/assistant-actions";
+import { describeAction, mindmapPreview, spokenReadBack, type ActionNames } from "@/lib/assistant-actions";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { processVoiceTranscript } from "@/lib/voice-format";
 import { pickRecorderMime, transcribeBlob } from "@/lib/transcribe";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
@@ -191,6 +192,7 @@ function ScopeMenu({ isWatch }: { isWatch: boolean }) {
 }
 
 function ActionConfirm({ message }: { message: AssistantMessage }) {
+  const metrics = useUserSettings().getMetrics();
   const { applyActions, dismissActions } = useAssistant();
   const [applying, setApplying] = useState(false);
   const actions = message.actions;
@@ -211,6 +213,13 @@ function ActionConfirm({ message }: { message: AssistantMessage }) {
     );
   }
 
+  const names: ActionNames = {
+    metric: (ref) => {
+      const m = metrics.find((x) => x.id === ref) ?? metrics.find((x) => x.label.toLowerCase() === ref.trim().toLowerCase());
+      return m ? { label: m.label, unit: m.unit, icon: m.icon } : undefined;
+    },
+  };
+
   const handleApply = async () => {
     setApplying(true);
     await applyActions(message.id);
@@ -229,7 +238,7 @@ function ActionConfirm({ message }: { message: AssistantMessage }) {
           <li key={i} className="text-xs text-foreground/85">
             <div className="flex items-start gap-1.5">
               <span className="text-primary mt-0.5">•</span>
-              <span>{describeAction(a)}</span>
+              <span>{describeAction(a, names)}</span>
             </div>
             {preview && (
               <div className="ml-4 mt-1 text-[10px] text-muted-foreground font-mono whitespace-pre-wrap bg-black/20 rounded-lg px-2 py-1.5 border border-white/5 max-h-32 overflow-y-auto">

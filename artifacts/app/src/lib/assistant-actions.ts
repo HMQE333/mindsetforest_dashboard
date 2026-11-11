@@ -431,7 +431,9 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
         "title (string - copy the exact title from the \"Today's missions\" list in the context), " +
         "categoryId (optional - the id in parentheses after the pillar name). " +
         'Use when the user says they did / finished / completed a mission ("zrobiłem pompki", "I read my 20 pages"). ' +
-        "Never tick a mission that is already [x]; say it is done instead.",
+        "Never tick a mission that is already [x]; say it is done instead. " +
+        "A reported amount below what the mission's title asks is NOT the mission done: \"pracowałem 30 min\" does not finish \"2 h Deep Work\", " +
+        "\"5 pompek\" does not finish \"50 pompek\". Then only log the amount (log_metric) and say how much is left; tick it only if the user says it is done.",
     );
     specs.push(
       "- uncomplete_mission: untick a mission marked [x] today (takes its XP back). Fields: title (exact title from the list), categoryId (optional).",
@@ -457,7 +459,9 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
   if (scopes.includes("tracker")) {
     specs.push(
       "- log_metric: log a number for one of the user's Stats metrics today (awards Stats XP). Fields: metric (the metric id or its exact label from the \"Metrics you can log\" list), " +
-        'value (number in the metric\'s unit). Use when the user reports a measurable amount ("przeczytałem 30 stron", "3 hours of deep work").',
+        'value (number in the metric\'s unit: convert first, 30 min into an "h" metric is 0.5). Use when the user reports a measurable amount ("przeczytałem 30 stron", "3 hours of deep work"). ' +
+        "Pick the metric whose label means the activity; when none fits, log nothing and say which metric is missing. " +
+        "In your reply name the metric by its label and unit, never by its id.",
     );
   }
 
@@ -987,7 +991,10 @@ export function mindmapPreview(action: AssistantAction): string | null {
 }
 
 /** Human-readable one-liner describing an action for the confirm card. */
-export function describeAction(action: AssistantAction): string {
+/** Names for ids an action carries (a metric's label and unit), from the app's own lists. */
+export interface ActionNames { metric?: (ref: string) => { label: string; unit: string; icon?: string } | undefined }
+
+export function describeAction(action: AssistantAction, names: ActionNames = {}): string {
   if (action.type === "add_task") {
     return `Add ${action.ask ? "question" : "step"} to Planning: "${action.title}"${action.notes ? " (with a note)" : ""}`;
   }
@@ -1022,7 +1029,10 @@ export function describeAction(action: AssistantAction): string {
     return `${action.apply ? "Create and load" : "Create"} preset "${action.emoji ? `${action.emoji} ` : ""}${action.name}" (${n} missions)${action.apply ? ", replaces the missions on Home" : ""}`;
   }
   if (action.type === "save_preset") return `Save current missions as preset "${action.emoji ? `${action.emoji} ` : ""}${action.name}"`;
-  if (action.type === "log_metric") return `Log ${action.value} for "${action.metric}" today`;
+  if (action.type === "log_metric") {
+    const m = names.metric?.(action.metric);
+    return m ? `Stats · ${m.icon ? `${m.icon} ` : ""}${m.label}: +${action.value}${m.unit ? ` ${m.unit}` : ""} today` : `Stats · ${action.metric}: +${action.value} today`;
+  }
   if (action.type === "log_path_step") return `Log today on path "${action.pathName}" (active step)`;
   if (action.type === "create_path") return `Create path "${action.name}" (${action.steps.length} steps)`;
   if (action.type === "complete_task") {
