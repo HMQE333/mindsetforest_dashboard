@@ -727,6 +727,20 @@ function useAssistantValue() {
               if (error || !entry) failed++;
               else { ok++; window.dispatchEvent(new CustomEvent("library-changed")); }
             }
+          } else if (action.type === "add_reminder" && action.repeat) {
+            const rule = action.repeat;
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Warsaw";
+            const { error } = await supabase.from("reminder_series" as never).insert({
+              user_id: user.id, message: action.message, freq: rule.freq,
+              days: rule.freq === "weekly" ? rule.days : [], month_day: rule.freq === "monthly" ? rule.monthDay : null,
+              at_time: rule.time, tz,
+            } as never);
+            if (error) failed++;
+            else {
+              await supabase.rpc("roll_reminder_series" as never);
+              ok++;
+              window.dispatchEvent(new CustomEvent(REMINDERS_CHANGED_EVENT));
+            }
           } else if (action.type === "add_reminder") {
             const at = new Date(action.at);
             const { error } = await supabase.from("reminders").insert({ user_id: user.id, message: action.message, deliver_at: at.toISOString() });

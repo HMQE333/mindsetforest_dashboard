@@ -6,7 +6,7 @@ import { useReviewDue } from "@/hooks/useReviewDue";
 import { requestReview } from "@/hooks/useReview";
 import { monthName, useMonthlyFocus } from "@/hooks/useMonthlyFocus";
 import { useReminders } from "@/hooks/useReminders";
-import { QUICK_PICKS, formatWhen, timeUntil, toLocalInput } from "@/lib/reminders";
+import { QUICK_PICKS, WEEK_ORDER, dayShort, describeRepeat, formatWhen, timeUntil, toLocalInput, type RepeatRule } from "@/lib/reminders";
 import { buildInbox, unseen, type InboxItem, type InboxSettings } from "@/lib/inbox";
 import { playNotifySound } from "@/lib/ui-sounds";
 import { todayKey } from "@/lib/today";
@@ -40,16 +40,32 @@ const SETTING_ROWS: { key: keyof InboxSettings; label: string; hint: string }[] 
 ];
 
 /** Write a message to yourself and pick when it arrives: an hour from now or years away. */
-function ReminderComposer({ onAdd, onClose }: { onAdd: (message: string, at: Date) => Promise<boolean>; onClose: () => void }) {
+function ReminderComposer({ onAdd, onAddSeries, onClose }: { onAdd: (message: string, at: Date) => Promise<boolean>; onAddSeries: (message: string, rule: RepeatRule) => Promise<boolean>; onClose: () => void }) {
   const [message, setMessage] = useState("");
+  // Once, or repeating: every day, chosen weekdays, or a day of the month, at a time.
+  const [freq, setFreq] = useState<"once" | RepeatRule["freq"]>("once");
+  const [days, setDays] = useState<number[]>(() => [new Date().getDay()]);
+  const [monthDay, setMonthDay] = useState(() => new Date().getDate());
+  const [time, setTime] = useState("18:00");
   const [when, setWhen] = useState(() => toLocalInput(QUICK_PICKS.find((p) => p.id === "tomorrow")!.at(new Date())));
   const [picked, setPicked] = useState("tomorrow");
   const [saving, setSaving] = useState(false);
   const at = new Date(when);
-  const valid = message.trim() !== "" && !Number.isNaN(at.getTime()) && at.getTime() > Date.now();
+  const rule: RepeatRule | null =
+    freq === "daily" ? { freq, time } : freq === "weekly" ? { freq, days, time } : freq === "monthly" ? { freq, monthDay, time } : null;
+  const valid = message.trim() !== "" && (rule
+    ? /^\d{2}:\d{2}$/.test(time) && (rule.freq !== "weekly" || days.length > 0)
+    : !Number.isNaN(at.getTime()) && at.getTime() > Date.now());
   const save = async () => {
     if (!valid) return;
     setSaving(true);
+    if (rule) {
+      const ok = await onAddSeries(message, rule);
+      setSaving(false);
+      if (ok) { toast.success(`Repeating reminder: ${describeRepeat(rule)}`); onClose(); }
+      else toast.error("Couldn't save the reminder");
+      return;
+    }
     const ok = await onAdd(message, at);
     setSaving(false);
     if (ok) { toast.success(`Reminder set for ${formatWhen(at.toISOString())}`); onClose(); }
@@ -66,6 +82,43 @@ function ReminderComposer({ onAdd, onClose }: { onAdd: (message: string, at: Dat
         rows={3}
         className="w-full resize-none rounded-xl border border-white/10 bg-background/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
       />
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Repeat">
+        {([["once", "Once"], ["daily", "Every day"], ["weekly", "Weekly"], ["monthly", "Monthly"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={freq === id}
+            onClick={() => setFreq(id)}
+            className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${freq === id ? "border-primary/50 bg-primary/15 text-foreground" : "border-white/10 text-muted-foreground hover:text-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {freq !== "once" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {freq === "weekly" && WEEK_ORDER.map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={days.includes(d)}
+              onClick={() => setDays((v) => (v.includes(d) ? v.filter((x) => x !== d) : [...v, d]))}
+              className={`w-9 text-[11px] py-1 rounded-lg border transition-colors ${days.includes(d) ? "border-primary/50 bg-primary/15 text-foreground" : "border-white/10 text-muted-foreground hover:text-foreground"}`}
+            >
+              {dayShort(d)}
+            </button>
+          ))}
+          {freq === "monthly" && (
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              day
+              <input type="number" min={1} max={31} value={monthDay} onChange={(e) => setMonthDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))} className="w-12 rounded-lg border border-white/10 bg-background/50 px-1.5 py-1 text-xs text-foreground" />
+            </label>
+          )}
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="At" className="rounded-lg border border-white/10 bg-background/50 px-2 py-1 text-xs text-foreground [color-scheme:dark]" />
+          {rule && valid && <span className="text-[11px] text-muted-foreground">{describeRepeat(rule)}</span>}
+        </div>
+      )}
+      {freq === "once" && <>
       <div className="flex flex-wrap gap-1.5">
         {QUICK_PICKS.map((p) => (
           <button
@@ -88,6 +141,7 @@ function ReminderComposer({ onAdd, onClose }: { onAdd: (message: string, at: Dat
         />
         <span className="text-[11px] text-muted-foreground shrink-0">{Number.isNaN(at.getTime()) ? "" : timeUntil(at)}</span>
       </div>
+      </>}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} className="text-xs px-3 py-1.5 text-muted-foreground hover:text-foreground">Cancel</button>
         <button
@@ -219,7 +273,7 @@ export default function InboxBell({ settings, onSaveSettings, focusEnabled, frie
             <SheetDescription>What is waiting for you. + writes a reminder for any moment, even years ahead.</SheetDescription>
           </SheetHeader>
 
-          {composing && <ReminderComposer onAdd={reminders.add} onClose={() => setComposing(false)} />}
+          {composing && <ReminderComposer onAdd={reminders.add} onAddSeries={reminders.addSeries} onClose={() => setComposing(false)} />}
 
           {showSettings && (
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3 space-y-1">
@@ -305,17 +359,31 @@ export default function InboxBell({ settings, onSaveSettings, focusEnabled, frie
               </button>
               {showScheduled && (
                 <ul className="mt-2 space-y-2">
-                  {reminders.upcoming.map((r) => (
+                  {reminders.upcoming.map((r) => {
+                    const ser = r.seriesId ? reminders.series.find((x) => x.id === r.seriesId) : undefined;
+                    return (
                     <li key={r.id} className="flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-2.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-foreground/90 line-clamp-2">{r.message}</p>
-                        <p className="text-[11px] text-muted-foreground">{formatWhen(r.deliverAt)} · {timeUntil(new Date(r.deliverAt))}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {ser && <span className="text-primary/80">↻ {describeRepeat(ser.rule)} · next </span>}
+                          {formatWhen(r.deliverAt)} · {timeUntil(new Date(r.deliverAt))}
+                        </p>
                       </div>
-                      <button onClick={() => void reminders.remove(r.id)} className="p-1 text-muted-foreground hover:text-destructive" title="Delete" aria-label={`Delete reminder: ${r.message}`}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {ser ? (
+                        <>
+                          <button onClick={() => void reminders.dismiss(r.id)} className="px-1.5 py-1 text-[11px] text-muted-foreground hover:text-foreground" title="Skip only this time">Skip</button>
+                          <button onClick={() => void reminders.stopSeries(ser.id)} className="p-1 text-muted-foreground hover:text-destructive" title="Stop repeating" aria-label={`Stop repeating: ${r.message}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => void reminders.remove(r.id)} className="p-1 text-muted-foreground hover:text-destructive" title="Delete" aria-label={`Delete reminder: ${r.message}`}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </li>
-                  ))}
+                  );})}
                 </ul>
               )}
             </div>

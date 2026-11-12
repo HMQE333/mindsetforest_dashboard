@@ -1,3 +1,5 @@
+import type { RepeatRule } from "@/lib/reminders";
+import { describeRepeat } from "@/lib/reminders";
 import { CATEGORIES } from "@/lib/dashboard-data";
 import type { ScopeId } from "@/lib/assistant-context";
 import { parseLine } from "@/lib/planning-model";
@@ -80,7 +82,10 @@ export type AssistantAction =
        */
       type: "add_reminder";
       message: string;
+      /** First (or only) time; for a repeating one it may be empty. */
       at: string;
+      /** Repeats: every day, chosen weekdays (0 = Sunday) or a day of the month, at a time. */
+      repeat?: RepeatRule;
     }
   | {
       /** Open a section of the app. Harmless and instant, so it needs no confirm step. */
@@ -343,7 +348,9 @@ export function buildActionInstructions(scopes: ScopeId[]): string {
     "- add_reminder: schedule a reminder the user will find in the bell inbox at a given moment, any distance ahead " +
       '(in an hour, next Monday, in 5 years). Use it when they ask to be reminded or to leave a message for their future self ' +
       '("przypomnij mi jutro o 9", "message to me in 5 years"). Fields: message (string - their words, addressed to their future self), ' +
-      'at (local date-time "YYYY-MM-DDTHH:mm", worked out from Now in the context; 09:00 when they name a day but no time).',
+      'at (local date-time "YYYY-MM-DDTHH:mm", worked out from Now in the context; 09:00 when they name a day but no time). ' +
+      'For something that comes back ("co piątek o 18 zakupy w Auchan", "every morning", "1st of each month") add repeat: ' +
+      '{"freq": "daily"|"weekly"|"monthly", "days": [0-6, 0 = Sunday] (weekly), "monthDay": 1-31 (monthly), "time": "HH:mm"}; then at may be "".',
   );
   if (scopes.includes("library")) {
     specs.push(
@@ -796,7 +803,10 @@ function coerceAction(raw: unknown): AssistantAction | null {
     const message = typeof o.message === "string" ? o.message.trim() : "";
     const at = typeof o.at === "string" ? o.at.trim() : "";
     // Local "YYYY-MM-DDTHH:mm" (seconds and an offset are tolerated).
-    if (!message || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(at) || Number.isNaN(new Date(at).getTime())) return null;
+    const repeat = parseRepeat(o.repeat);
+    if (!message) return null;
+    if (repeat) return { type: "add_reminder", message: message.slice(0, 2000), at: "", repeat };
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(at) || Number.isNaN(new Date(at).getTime())) return null;
     return { type: "add_reminder", message: message.slice(0, 2000), at: at.slice(0, 25) };
   }
 
@@ -1064,6 +1074,7 @@ export function describeAction(action: AssistantAction, names: ActionNames = {})
   if (action.type === "log_reading") {
     return `Reading: "${action.bookTitle}" ${action.fromPage ? `pages ${action.fromPage}-${action.toPage}` : `up to page ${action.toPage}`}${action.date ? ` on ${action.date}` : ""}`;
   }
+  if (action.type === "add_reminder" && action.repeat) return `Repeating reminder, ${describeRepeat(action.repeat)}: "${action.message}"`;
   if (action.type === "add_reminder") {
     const when = new Date(action.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
     return `Reminder for ${when}: "${action.message}"`;
@@ -1114,4 +1125,21 @@ export function spokenReadBack(actions: AssistantAction[], lang: "pl-PL" | "en-U
 export const AUTO_APPLY_ACTIONS = new Set<ActionType>(["navigate", "open_settings", "set_theme"]);
 export function isAutoApply(action: AssistantAction): boolean {
   return AUTO_APPLY_ACTIONS.has(action.type);
+}
+
+/** A repeat rule from the model's JSON, or undefined when it is missing or malformed. */
+export function parseRepeat(v: unknown): RepeatRule | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const time = typeof o.time === "string" && /^\d{1,2}:\d{2}$/.test(o.time.trim()) ? o.time.trim().padStart(5, "0") : "09:00";
+  if (o.freq === "daily") return { freq: "daily", time };
+  if (o.freq === "weekly") {
+    const days = Array.isArray(o.days) ? [...new Set(o.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))] : [];
+    return days.length ? { freq: "weekly", days, time } : undefined;
+  }
+  if (o.freq === "monthly") {
+    const d = Number(o.monthDay);
+    return Number.isInteger(d) && d >= 1 && d <= 31 ? { freq: "monthly", monthDay: d, time } : undefined;
+  }
+  return undefined;
 }
