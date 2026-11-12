@@ -35,7 +35,7 @@ RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   s record;
   d date;
-  at timestamptz;
+  occ_at timestamptz;
   last_dom smallint;
   made integer := 0;
   horizon timestamptz := now() + interval '35 days';
@@ -52,10 +52,10 @@ BEGIN
       IF (s.freq = 'daily')
          OR (s.freq = 'weekly' AND extract(dow FROM d)::smallint = ANY (s.days))
          OR (s.freq = 'monthly' AND extract(day FROM d)::smallint = least(s.month_day, last_dom)) THEN
-        at := (d + s.at_time) AT TIME ZONE s.tz;
-        IF at > now() - interval '1 minute' THEN
+        occ_at := (d + s.at_time) AT TIME ZONE s.tz;
+        IF occ_at > now() - interval '1 minute' THEN
           INSERT INTO reminders (user_id, message, deliver_at, series_id)
-          VALUES (s.user_id, s.message, at, s.id)
+          VALUES (s.user_id, s.message, occ_at, s.id)
           ON CONFLICT (series_id, deliver_at) WHERE series_id IS NOT NULL DO NOTHING;
           IF FOUND THEN made := made + 1; END IF;
         END IF;
