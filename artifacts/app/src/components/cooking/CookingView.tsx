@@ -69,6 +69,7 @@ export default function CookingView() {
           recipes={cooking.recipes}
           onSave={async (r) => { await cooking.saveRecipe(r); }}
           onDelete={cooking.deleteRecipe}
+          onSaveBoxes={cooking.saveBoxes}
         />
       </div>
       <div className={activeTab === "ai" ? "" : "hidden"}>

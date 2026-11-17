@@ -19,6 +19,8 @@ export interface CookingRecipe {
   costPerServing: number | null;
   aiProcessedContent: string | null;
   photoUrl: string | null;
+  /** Prep boxes (lib/recipe-boxes.ts); null until laid out. */
+  boxes: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +59,7 @@ function mapRecipe(r: Record<string, unknown>): CookingRecipe {
     costPerServing: r.cost_per_serving as number | null,
     aiProcessedContent: r.ai_processed_content as string | null,
     photoUrl: (r.photo_url as string) || null,
+    boxes: r.boxes ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -137,6 +140,15 @@ export function useCookingState() {
     }
   }, [user]);
 
+  /** Saves only the prep boxes (the rest of the recipe is untouched). */
+  const saveBoxes = useCallback(async (id: string, boxes: unknown): Promise<boolean> => {
+    if (!user) return false;
+    setRecipes(prev => prev.map(r => r.id === id ? { ...r, boxes } : r));
+    const { error } = await (supabase as unknown as { from: (t: string) => { update: (r: object) => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => Promise<{ error: unknown }> } } } }).from("cooking_recipes").update({ boxes }).eq("id", id).eq("user_id", user.id);
+    if (error) { toast.error("Couldn't save the boxes"); return false; }
+    return true;
+  }, [user]);
+
   const deleteRecipe = useCallback(async (id: string) => {
     if (!user) return;
     const { error } = await (supabase as unknown as { from: (t: string) => { delete: () => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => Promise<{ error: unknown }> } } } }).from("cooking_recipes").delete().eq("id", id).eq("user_id", user.id);
@@ -202,7 +214,7 @@ export function useCookingState() {
 
   return {
     recipes, planEntries, ingredientCosts, loading,
-    saveRecipe, deleteRecipe,
+    saveRecipe, deleteRecipe, saveBoxes,
     savePlanEntry, deletePlanEntry,
     saveIngredientCost, deleteIngredientCost,
     reload: load,

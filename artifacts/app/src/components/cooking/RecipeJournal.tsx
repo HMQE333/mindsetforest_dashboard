@@ -1,3 +1,4 @@
+import RecipeBoxesModal from "./RecipeBoxesModal";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, Star, Trash2, Edit2, ChevronDown, ChevronUp, ImageIcon, X } from "lucide-react";
@@ -24,6 +25,7 @@ interface RecipeCardProps {
   recipe: CookingRecipe;
   onEdit: (r: CookingRecipe) => void;
   onDelete: (id: string) => void;
+  onSaveBoxes?: (id: string, boxes: unknown) => Promise<boolean>;
 }
 
 function PhotoLightbox({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
@@ -56,7 +58,8 @@ function PhotoLightbox({ url, title, onClose }: { url: string; title: string; on
   );
 }
 
-function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
+function RecipeCard({ recipe, onEdit, onDelete, onSaveBoxes }: RecipeCardProps) {
+  const [boxesOpen, setBoxesOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [lightbox, setLightbox] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
@@ -68,6 +71,9 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
     <>
     {lightbox && recipe.photoUrl && (
       <PhotoLightbox url={recipe.photoUrl} title={recipe.title} onClose={() => setLightbox(false)} />
+    )}
+    {boxesOpen && onSaveBoxes && (
+      <RecipeBoxesModal recipe={recipe} onSave={(b) => onSaveBoxes(recipe.id, b)} onClose={() => setBoxesOpen(false)} />
     )}
     <ShoppingPromptModal
       open={shoppingOpen}
@@ -126,6 +132,15 @@ function RecipeCard({ recipe, onEdit, onDelete }: RecipeCardProps) {
               )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              {onSaveBoxes && recipe.ingredients.trim() && (
+                <button
+                  onClick={() => setBoxesOpen(true)}
+                  title="Prep boxes: lay the ingredients out into numbered boxes, then cook box by box"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                >
+                  <span className="text-sm leading-none">📦</span>
+                </button>
+              )}
               <button
                 onClick={() => setShoppingOpen(true)}
                 title="Shopping prompt for ChatGPT"
@@ -190,9 +205,10 @@ interface RecipeJournalProps {
   recipes: CookingRecipe[];
   onSave: (r: Partial<CookingRecipe>) => Promise<void>;
   onDelete: (id: string) => void;
+  onSaveBoxes?: (id: string, boxes: unknown) => Promise<boolean>;
 }
 
-export default function RecipeJournal({ recipes, onSave, onDelete }: RecipeJournalProps) {
+export default function RecipeJournal({ recipes, onSave, onDelete, onSaveBoxes }: RecipeJournalProps) {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CookingRecipe | null>(null);
@@ -255,7 +271,7 @@ export default function RecipeJournal({ recipes, onSave, onDelete }: RecipeJourn
       ) : (
         <div className="space-y-3">
           {filtered.map(r => (
-            <RecipeCard key={r.id} recipe={r} onEdit={handleEdit} onDelete={onDelete} />
+            <RecipeCard key={r.id} recipe={r} onEdit={handleEdit} onDelete={onDelete} onSaveBoxes={onSaveBoxes} />
           ))}
         </div>
       )}
