@@ -15,7 +15,7 @@ export default function TrackerOverviewBar({ entries, streak }: TrackerOverviewB
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -20 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       className="text-center mb-10"
@@ -36,7 +36,7 @@ export default function TrackerOverviewBar({ entries, streak }: TrackerOverviewB
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 + i * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="glass-card px-6 py-4 text-center min-w-[120px]"

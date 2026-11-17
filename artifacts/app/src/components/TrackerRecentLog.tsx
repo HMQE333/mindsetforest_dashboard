@@ -23,7 +23,7 @@ export default function TrackerRecentLog({ entries }: TrackerRecentLogProps) {
 
   if (recent.length === 0) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-8 text-center">
+      <motion.div initial={false} animate={{ opacity: 1 }} className="glass-card p-8 text-center">
         <span className="text-4xl block mb-3">📝</span>
         <p className="text-muted-foreground text-sm">No entries yet. Click a stat card to log your first metric!</p>
       </motion.div>
@@ -31,7 +31,7 @@ export default function TrackerRecentLog({ entries }: TrackerRecentLogProps) {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-6">
+    <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-6">
       <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Recent Activity</h3>
       <div className="space-y-2">
         {recent.map((entry, i) => {
@@ -44,7 +44,7 @@ export default function TrackerRecentLog({ entries }: TrackerRecentLogProps) {
           return (
             <motion.div
               key={entry.id}
-              initial={{ opacity: 0, x: -10 }}
+              initial={false}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.04 }}
               className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-secondary/50 transition-colors"

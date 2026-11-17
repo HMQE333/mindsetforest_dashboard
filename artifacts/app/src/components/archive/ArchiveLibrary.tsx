@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue, memo, Suspense, type DragEvent } from "react";
 import { Input } from "@/components/ui/input";
-import { Link2Off, Download, Upload, FileText, FolderTree as FoldersIcon, Tags, CheckSquare, X, Loader2, LayoutDashboard, Trash2 } from "lucide-react";
+import { Link2Off, Download, Upload, FileText, FolderTree as FoldersIcon, Tags, CheckSquare, X, Loader2, LayoutDashboard, Trash2, SlidersHorizontal, ArrowDownUp, List, MoreHorizontal, RefreshCw } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { HUE_SWATCH, type Hue } from "@/lib/image-palette";
 import { toast } from "sonner";
 import { ARCHIVE_BLOCKS_CHANGED_EVENT, ArchiveSaveError } from "@/lib/archive-data";
 import { usePillars, type Pillar } from "@/hooks/usePillars";
@@ -41,7 +43,7 @@ import { TYPE_CHIP, TYPE_ICONS, keyedPillars, tagText } from "./TagChips";
 import { usePillarToggle } from "./pillar-toggle";
 import { noteSensitivity, textFingerprint } from "@/lib/sensitive-scan";
 import DateFilterRow from "@/components/shared/DateFilterRow";
-import { ALL_DATES, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
+import { ALL_DATES, DATE_PRESETS, filterByDate, isDateFiltered, type DateFilter } from "@/lib/date-filter";
 import { noteToItems, toBitwardenCsv } from "@/lib/bitwarden-export";
 import { useAuth } from "@/hooks/useAuth";
 import { blockImageIndex, useImageMeta } from "@/hooks/useImageMeta";
@@ -113,6 +115,10 @@ const announceChanged = () => window.dispatchEvent(new CustomEvent(ARCHIVE_BLOCK
  * A row of filter chips: on a phone one line that scrolls sideways (the four
  * rows wrapped took more than a screen above the first note), wrapped from sm.
  */
+const SORT_LABELS: Record<SortMode, string> = { newest: "Newest", oldest: "Oldest", az: "A-Z" };
+const dateFilterLabel = (f: DateFilter) =>
+  f.preset === "custom" ? `${f.from ?? "…"} – ${f.to ?? "…"}` : DATE_PRESETS.find((p) => p.id === f.preset)?.label ?? "Date";
+
 const FILTER_ROW = "flex items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible";
 
 /** The pillar filter row; its own component so typing in the search does not re-render it. */
@@ -151,6 +157,7 @@ const TypeFilterRow = memo(function TypeFilterRow({ stats, value, onChange }: { 
         const Icon = TYPE_ICONS[t];
         const n = stats.types.get(t) ?? 0;
         const on = value === t;
+        if (n === 0 && !on) return null;
         return (
           <button
             key={t}
@@ -917,6 +924,15 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
   const toggleBtn = (on: boolean) =>
     `text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 ${on ? "gradient-purple text-primary-foreground glow-sm" : "bg-muted/40 text-muted-foreground hover:text-foreground"}`;
 
+  /** What narrows the list now (besides the pillar row and the search), each with its own ✕. */
+  const activeFilters: { key: string; label: string; swatch?: string; clear: () => void }[] = [
+    ...(typeFilter ? [{ key: "type", label: typeFilter === "none" ? "No type" : TYPE_INFO[typeFilter].label, clear: () => setTypeFilter(null) }] : []),
+    ...(hue ? [{ key: "hue", label: hue, swatch: HUE_SWATCH[hue as Hue], clear: () => setHue(null) }] : []),
+    ...(isDateFiltered(dateFilter) ? [{ key: "date", label: dateFilterLabel(dateFilter), clear: () => setDateFilter(ALL_DATES) }] : []),
+    ...(folder && !foldersOn ? [{ key: "tag", label: folder === UNTAGGED ? "Untagged" : `#${folder}`, clear: () => setFolder(null) }] : []),
+    ...(hideLinks ? [{ key: "links", label: "No links", clear: () => setHideLinks(false) }] : []),
+  ];
+
   const renderCard = (block: ArchiveBlock) => (
                 <ArchiveBlockCard
                   key={block.id}
@@ -951,160 +967,141 @@ const ArchiveLibrary = ({ blocks: allBlocks, loading, updateBlock, deleteBlock, 
 
   return (
     <div className="space-y-4">
-      {/* Search & Filters */}
-      <div className="glass-card p-4 space-y-3">
-        <div className="flex flex-wrap gap-2">
-          <div className="relative min-w-[12rem] flex-1">
+      {/* Search & Filters: one bar; the filters fold away, what is on shows as chips. */}
+      <div className="glass-card p-3 sm:p-4 space-y-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[12rem] flex-1 basis-full sm:basis-auto">
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={smartSearch ? "🔍 Search words, meaning, what is in pictures..." : "🔍 Exact words..."}
-              className="bg-background/50 border-white/10"
+              placeholder={smartSearch ? "🔍 Search words, meaning, pictures..." : "🔍 Exact words..."}
+              className="bg-background/50 border-white/10 pr-28"
             />
-            {search && (
-              <button
-                onClick={() => { setSearch(""); setSemanticResults(null); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <button
-            onClick={() => setIncludeTags(!includeTags)}
-            className={`shrink-0 w-10 h-10 rounded-xl text-sm font-bold transition-all flex items-center justify-center ${
-              includeTags
-                ? "gradient-purple text-primary-foreground glow-sm"
-                : "bg-muted/40 text-muted-foreground hover:text-foreground"
-            }`}
-            title={includeTags ? "Tag search ON. Click to disable" : "Tag search OFF. Click to include tags"}
-          >
-            #
-          </button>
-          <div className="flex items-center gap-1">
-            {([
-              { id: "newest" as SortMode, label: "Newest" },
-              { id: "oldest" as SortMode, label: "Oldest" },
-              { id: "az" as SortMode, label: "A-Z" },
-            ]).map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSortMode(s.id)}
-                className={`text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap ${
-                  sortMode === s.id ? "gradient-purple text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {s.label}
-              </button>
-          ))}
-          </div>
-          {selectedIds.size > 0 || filtered.length > 0 ? (
-            <div className="flex items-center gap-1 ml-auto">
-              {phone && (
-                <button
-                  onClick={() => setMoreFilters(!moreFilters)}
-                  aria-expanded={moreFilters}
-                  className={`text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-all ${
-                    moreFilters || typeFilter || (folder && !foldersOn) ? "bg-primary/20 text-primary" : "bg-muted/40 text-muted-foreground hover:text-foreground"
-                  }`}
-                  title="Show type and tag filters"
-                >
-                  Filters{(typeFilter ? 1 : 0) + (folder && !foldersOn ? 1 : 0) ? ` (${(typeFilter ? 1 : 0) + (folder && !foldersOn ? 1 : 0)})` : ""} {moreFilters ? "▴" : "▾"}
-                </button>
+            {/* How the search reads: tags, exact words, pictures. Small toggles in the field. */}
+            <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+              {semanticLoading && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Searching" />}
+              {search && (
+                <button type="button" onClick={() => { setSearch(""); setSemanticResults(null); }} className="px-1.5 text-sm text-muted-foreground hover:text-foreground" aria-label="Clear the search">✕</button>
               )}
-              <button
-                onClick={() => setSelection(allSelected ? new Set([...selectedIds].filter((id) => !filtered.some((b) => b.id === id))) : new Set([...selectedIds, ...order]))}
-                className="text-[11px] px-2.5 py-1.5 rounded-lg font-semibold bg-muted/40 text-muted-foreground hover:text-foreground transition-all"
-                title="Ctrl+A selects every note shown, Esc clears"
+              {([
+                { on: includeTags, set: () => setIncludeTags(!includeTags), label: "#", title: includeTags ? "Searching tags too. Click to search only the notes" : "Also search tags" },
+                { on: exactSearch, set: () => { setExactSearch(!exactSearch); setSemanticResults(null); }, label: "“ ”", title: exactSearch ? "Exact words only. Click to also find notes by meaning" : "Exact words only (no meaning search)" },
+                { on: withPictures, set: () => setWithPictures(!withPictures), label: "🖼", title: withPictures ? "Search reads what is in the pictures. Click to leave pictures out" : "Search ignores pictures. Click to include them" },
+              ]).map((t) => (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={t.set}
+                  aria-pressed={t.on}
+                  title={t.title}
+                  className={`h-7 min-w-7 rounded-lg px-1.5 text-xs font-bold transition-colors ${t.on ? "bg-primary/25 text-primary" : "text-muted-foreground/60 hover:text-foreground"}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMoreFilters(!moreFilters)}
+            aria-expanded={moreFilters}
+            className={`flex h-9 items-center gap-1 rounded-xl px-3 text-xs font-semibold transition-colors ${moreFilters || activeFilters.length ? "bg-primary/20 text-primary" : "bg-muted/40 text-muted-foreground hover:text-foreground"}`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{activeFilters.length ? ` (${activeFilters.length})` : ""} {moreFilters ? "▴" : "▾"}
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" title={`Sort: ${SORT_LABELS[sortMode]}`} className="flex h-9 items-center gap-1 rounded-xl bg-muted/40 px-3 text-xs font-semibold text-muted-foreground hover:text-foreground">
+                <ArrowDownUp className="h-3.5 w-3.5" /> <span className="hidden min-[420px]:inline">{SORT_LABELS[sortMode]}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+                {(Object.keys(SORT_LABELS) as SortMode[]).map((m) => <DropdownMenuRadioItem key={m} value={m}>{SORT_LABELS[m]}</DropdownMenuRadioItem>)}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* How the notes are shown: list or mosaic, and the folder tree. */}
+          <div className="flex h-9 items-center rounded-xl bg-muted/40 p-0.5" role="group" aria-label="View">
+            <button type="button" onClick={() => setMosaic(false)} aria-pressed={!mosaic} title="List" className={`flex h-8 w-8 items-center justify-center rounded-lg ${!mosaic ? "bg-primary/25 text-primary" : "text-muted-foreground hover:text-foreground"}`}><List className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setMosaic(true)} aria-pressed={mosaic} title="Mosaic: pictures, videos, quotes and pages as they look" className={`flex h-8 w-8 items-center justify-center rounded-lg ${mosaic ? "bg-primary/25 text-primary" : "text-muted-foreground hover:text-foreground"}`}><LayoutDashboard className="h-4 w-4" /></button>
+            <button
+              type="button"
+              onClick={() => void saveArchiveFolders(!foldersOn)}
+              onPointerEnter={() => void FolderTree.preload()}
+              disabled={settingsLoading}
+              aria-pressed={foldersOn}
+              title={foldersOn ? "Folders on: your tags as a folder tree. Click to turn off" : "Show your tags as folders (a/b is a sub-folder) and drag notes onto them"}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-40 ${foldersOn ? "bg-primary/25 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <FoldersIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/40 text-muted-foreground hover:text-foreground" aria-label="More actions" title="More">
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                disabled={filtered.length === 0 && selectedIds.size === 0}
+                onSelect={() => setSelection(allSelected ? new Set([...selectedIds].filter((id) => !filtered.some((b) => b.id === id))) : new Set([...selectedIds, ...order]))}
               >
-                {allSelected ? (phone ? "☐ None" : "☐ Deselect All") : (phone ? "☑ All" : "☑ Select All")}
+                <CheckSquare className="mr-2 h-4 w-4" /> {allSelected ? "Deselect all" : "Select all shown"} <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+A</span>
+              </DropdownMenuItem>
+              {phone && (
+                <DropdownMenuItem onSelect={() => setSelectMode((m) => !m)}>
+                  <CheckSquare className="mr-2 h-4 w-4" /> {selectMode ? "Stop selecting" : "Select notes"}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem disabled={stats.untagged === 0} onSelect={openQueue} onPointerEnter={() => void ArchiveTagQueue.preload()}>
+                <Tags className="mr-2 h-4 w-4" /> Tag untagged <span className="ml-auto text-[10px] text-muted-foreground">{stats.untagged}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setTrashOpen(true)} onPointerEnter={() => void ArchiveTrash.preload()}>
+                <Trash2 className="mr-2 h-4 w-4" /> Trash <span className="ml-auto text-[10px] text-muted-foreground">7 days</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void embedAll()}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Re-index search
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
+
+        {moreFilters && (
+          <div className="space-y-2 rounded-xl border border-white/10 bg-background/30 p-2.5">
+            <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />
+            {pictures.hues.size > 0 && <ColorFilterRow hues={pictures.hues} value={hue} onChange={setHue} />}
+            <DateFilterRow value={dateFilter} onChange={setDateFilter} />
+            {!foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
+            <div className={FILTER_ROW}>
+              <button onClick={() => setHideLinks(!hideLinks)} className={toggleBtn(hideLinks)} aria-pressed={hideLinks}>
+                <Link2Off size={12} /> Hide links
               </button>
             </div>
-          ) : null}
-        </div>
-        <PillarFilter pillars={pillars} value={filterPillar} onChange={setFilterPillar} />
-        {(!phone || moreFilters) && <TypeFilterRow stats={stats} value={typeFilter} onChange={setTypeFilter} />}
-        {(!phone || moreFilters || hue) && pictures.hues.size > 0 && <ColorFilterRow hues={pictures.hues} value={hue} onChange={setHue} />}
-        {(!phone || moreFilters || isDateFiltered(dateFilter)) && <DateFilterRow value={dateFilter} onChange={setDateFilter} />}
-        {(!phone || moreFilters) && !foldersOn && <TagFilterRow stats={stats} value={folder} onChange={setFolder} />}
-        <div className={FILTER_ROW}>
-          <button onClick={() => setHideLinks(!hideLinks)} className={toggleBtn(hideLinks)}>
-            <Link2Off size={12} /> Hide Links
-          </button>
-          <span className="w-px h-4 bg-white/10" />
-          <button
-            onClick={() => { setExactSearch(!exactSearch); setSemanticResults(null); }}
-            title={exactSearch ? "Only notes with these exact words. Click to also find notes by meaning" : "Finds the words and notes that mean the same. Click for exact words only"}
-            className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition-all ${
-              exactSearch
-                ? "gradient-purple text-primary-foreground glow-sm"
-                : "bg-muted/40 text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {exactSearch ? "“ ” Exact words ON" : "“ ” Exact words"}
-          </button>
-          <button
-            onClick={() => setWithPictures(!withPictures)}
-            className={toggleBtn(withPictures)}
-            title={withPictures ? "Search also reads what is in the pictures. Click to search only the notes' words" : "Search ignores the pictures. Click to include what is in them"}
-          >
-            🖼️ Pictures {withPictures ? "ON" : "OFF"}
-          </button>
-          <button
-            onClick={() => embedAll()}
-            className="text-[11px] px-2.5 py-1 rounded-full font-bold bg-muted/40 text-muted-foreground hover:text-foreground transition-all"
-            title="Generate embeddings for all unembedded blocks"
-          >
-            🔄 Re-index
-          </button>
-          {semanticLoading && (
-            <span className="text-[11px] text-muted-foreground animate-pulse ml-1">Searching...</span>
-          )}
-          <span className="w-px h-4 bg-white/10" />
-          <button
-            onClick={() => setTrashOpen(true)}
-            onPointerEnter={() => void ArchiveTrash.preload()}
-            className={toggleBtn(false)}
-            title="Deleted notes, kept 7 days"
-          >
-            <Trash2 size={12} /> Trash
-          </button>
-          <button
-            onClick={() => setMosaic(!mosaic)}
-            aria-pressed={mosaic}
-            className={toggleBtn(mosaic)}
-            title={mosaic ? "Mosaic: pictures, videos, quotes and pages as they look. Click for the list" : "Show notes as a mosaic: pictures, videos, quotes and pages as they look"}
-          >
-            <LayoutDashboard size={12} /> Mosaic
-          </button>
-          <button
-            onClick={() => void saveArchiveFolders(!foldersOn)}
-            onPointerEnter={() => void FolderTree.preload()}
-            disabled={settingsLoading}
-            aria-pressed={foldersOn}
-            className={`${toggleBtn(foldersOn)} disabled:opacity-40`}
-            title={foldersOn ? "Folders ON: your tags as a folder tree. Click to turn off" : "Show your tags as folders (a/b is a sub-folder) and drag notes onto them"}
-          >
-            <FoldersIcon size={12} /> Folders
-          </button>
-          <button
-            onClick={openQueue}
-            onPointerEnter={() => void ArchiveTagQueue.preload()}
-            disabled={stats.untagged === 0}
-            className={`${toggleBtn(false)} disabled:opacity-40`}
-            title="Go through the notes in no folder, newest first, with suggested tags"
-          >
-            <Tags size={12} /> Tag untagged ({stats.untagged})
-          </button>
-          <button
-            onClick={() => setSelectMode((m) => !m)}
-            aria-pressed={selectMode}
-            className={`${toggleBtn(selectMode)} md:hidden`}
-            title="Taps select notes instead of opening them"
-          >
-            <CheckSquare size={12} /> Select
-          </button>
-        </div>
+          </div>
+        )}
+
+        {activeFilters.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
+            {activeFilters.map((f) => (
+              <button key={f.key} type="button" onClick={f.clear} className="flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-[11px] font-semibold text-primary hover:bg-primary/25" title="Remove this filter">
+                {f.swatch && <span className="h-2.5 w-2.5 rounded-full" style={{ background: f.swatch }} />}
+                {f.label} <X className="h-3 w-3" />
+              </button>
+            ))}
+            {activeFilters.length > 1 && (
+              <button type="button" onClick={() => activeFilters.forEach((f) => f.clear())} className="text-[11px] text-muted-foreground hover:text-foreground">Clear all</button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Notes that look like they hold secrets: one quiet line, until he looks or hides it (it comes back when the count grows). */}

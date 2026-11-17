@@ -55,7 +55,7 @@ export default function TrackerAchievements({ entries, onMilestone }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={false}
       animate={{ opacity: 1 }}
       transition={{ delay: 0.3 }}
       className="mt-8"
@@ -91,7 +91,7 @@ export default function TrackerAchievements({ entries, onMilestone }: Props) {
               {computed.map((badge, i) => (
                 <motion.div
                   key={badge.id}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.03 }}
                   className={`glass-card p-3 relative transition-all ${
@@ -129,7 +129,7 @@ export default function TrackerAchievements({ entries, onMilestone }: Props) {
                         className={`h-full rounded-full ${
                           badge.unlocked ? "bg-primary" : "bg-muted-foreground/40"
                         }`}
-                        initial={{ width: 0 }}
+                        initial={false}
                         animate={{ width: `${badge.percent}%` }}
                         transition={{ delay: i * 0.03 + 0.2, duration: 0.5 }}
                       />

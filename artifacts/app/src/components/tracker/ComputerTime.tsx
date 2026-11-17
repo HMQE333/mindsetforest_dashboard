@@ -269,7 +269,7 @@ export default function ComputerTime() {
   const noDataInRange = usage.tableReady && !usage.loading && inRange.sessions.length === 0 && usage.lastSync !== null;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
+    <motion.div initial={false} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
       <button
         onClick={toggleCollapsed}
         aria-expanded={!collapsed}

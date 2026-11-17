@@ -53,7 +53,7 @@ export default function TrackerStatCard({
 }: TrackerStatCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.85 }}
+      initial={false}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: index * 0.05, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className={`glass-card-hover p-6 cursor-pointer group ${colorMap[metric.colorVar] || ""} ${glowMap[metric.colorVar] || ""}`}

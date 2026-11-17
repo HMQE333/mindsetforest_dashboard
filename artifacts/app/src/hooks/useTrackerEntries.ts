@@ -12,10 +12,38 @@ export interface TrackerEntry {
   createdAt: string;
 }
 
+/**
+ * The last list read, per user: Stats shows it at once and refreshes behind
+ * it (memory for the session, the device's storage across reloads).
+ */
+const memory = new Map<string, TrackerEntry[]>();
+const CACHE_KEY = (uid: string) => `mf.trackerEntries.${uid}`;
+function cached(uid: string | undefined): TrackerEntry[] | null {
+  if (!uid) return null;
+  const m = memory.get(uid);
+  if (m) return m;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY(uid));
+    if (raw) { const list = JSON.parse(raw) as TrackerEntry[]; memory.set(uid, list); return list; }
+  } catch { /* unreadable or private mode: load from the server */ }
+  return null;
+}
+function remember(uid: string, list: TrackerEntry[]) {
+  memory.set(uid, list);
+  try { localStorage.setItem(CACHE_KEY(uid), JSON.stringify(list.slice(0, 5000))); } catch { /* full or private: memory only */ }
+}
+
 export function useTrackerEntries() {
   const { user } = useAuth();
-  const [entries, setEntries] = useState<TrackerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entries, setEntriesState] = useState<TrackerEntry[]>(() => cached(user?.id) ?? []);
+  const [loading, setLoading] = useState(() => !cached(user?.id));
+  const setEntries = useCallback((next: TrackerEntry[] | ((prev: TrackerEntry[]) => TrackerEntry[])) => {
+    setEntriesState((prev) => {
+      const list = typeof next === "function" ? next(prev) : next;
+      if (user) remember(user.id, list);
+      return list;
+    });
+  }, [user]);
 
   const fetchEntries = useCallback(async () => {
     if (!user) { setEntries([]); setLoading(false); return; }
@@ -37,7 +65,13 @@ export function useTrackerEntries() {
       );
     }
     setLoading(false);
-  }, [user]);
+  }, [user, setEntries]);
+
+  // Signed in after the first render: show that user's last list at once too.
+  useEffect(() => {
+    const c = cached(user?.id);
+    if (c) { setEntriesState(c); setLoading(false); }
+  }, [user?.id]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 

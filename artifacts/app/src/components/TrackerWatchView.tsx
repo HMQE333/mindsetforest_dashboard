@@ -26,7 +26,7 @@ export default function TrackerWatchView({ entries, streak, onAdd, metrics }: Tr
     <div className="min-h-screen bg-background flex flex-col items-center px-2 py-3">
       {/* Streak pill */}
       <motion.div
-        initial={{ opacity: 0, y: -10 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         className="bg-secondary/60 border border-white/10 rounded-full px-3 py-1 mb-3 text-xs font-bold text-foreground/80"
       >
@@ -40,7 +40,7 @@ export default function TrackerWatchView({ entries, streak, onAdd, metrics }: Tr
           return (
             <motion.button
               key={metric.id}
-              initial={{ opacity: 0, scale: 0.8 }}
+              initial={false}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.03 }}
               onClick={() => onAdd(metric.id)}

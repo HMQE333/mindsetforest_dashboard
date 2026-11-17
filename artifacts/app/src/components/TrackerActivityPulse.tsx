@@ -78,7 +78,7 @@ export default function TrackerActivityPulse({ entries }: TrackerActivityPulsePr
   }, [entries, months, CATS]);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
+    <motion.div initial={false} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-6 py-4 hover:bg-secondary/30 transition-colors"

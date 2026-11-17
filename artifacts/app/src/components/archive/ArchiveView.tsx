@@ -249,22 +249,24 @@ const ArchiveViewBody = () => {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       {/* Sub-nav */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Every tab on one row (scrolls sideways on a phone); counts quiet. */}
+      <div className="-mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] lg:flex-wrap lg:overflow-visible" role="tablist" aria-label="Archive">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
+            role="tab"
             onClick={() => { setSubView(item.id); clearSelection(); }}
             onPointerEnter={() => void PRELOAD[item.id]?.()}
-            aria-pressed={selected === item.id}
-            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-[color,background-color,box-shadow,transform] duration-150 active:scale-[0.97] ${
+            aria-selected={selected === item.id}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-[color,background-color,box-shadow,transform] duration-150 active:scale-[0.97] ${
               selected === item.id
                 ? "gradient-purple text-primary-foreground glow-sm"
-                : "text-muted-foreground hover:text-foreground glass-card"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/[0.05]"
             }`}
           >
-            {item.icon} {item.label}
+            <span aria-hidden>{item.icon}</span> {item.label}
             {item.count !== undefined && (
-              <span className="ml-1 opacity-70">({item.count})</span>
+              <span className={`ml-1 text-[11px] font-normal tabular-nums ${selected === item.id ? "opacity-80" : "opacity-50"}`}>{item.count >= 10000 ? `${Math.round(item.count / 1000)}k` : item.count >= 1000 ? `${(item.count / 1000).toFixed(1)}k` : item.count}</span>
             )}
           </button>
         ))}

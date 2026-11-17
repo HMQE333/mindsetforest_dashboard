@@ -17,7 +17,7 @@ export default function TrackerMiniChart({ data, color }: TrackerMiniChartProps)
         return (
           <div key={d.date} className="flex flex-col items-center flex-1 gap-1">
             <motion.div
-              initial={{ height: 0 }}
+              initial={false}
               animate={{ height: `${height}%` }}
               transition={{ delay: i * 0.05, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="w-full rounded-sm min-h-[2px]"

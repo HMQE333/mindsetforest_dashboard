@@ -119,7 +119,7 @@ if (typeof window !== "undefined" && hasStoredSession()) {
 // ones are prefetched on idle after Home is on screen. Without history, Archive
 // first (where notes are saved), then Library.
 const VISITS_KEY = "mf-module-visits";
-const PREFETCH_FALLBACK: Tab[] = ["archive", "library", "paths", "planning", "calendar", "finance", "health", "oracle", "cooking", "breathing", "tracker"];
+const PREFETCH_FALLBACK: Tab[] = ["tracker", "archive", "library", "paths", "planning", "calendar", "finance", "health", "oracle", "cooking", "breathing"];
 function readVisits(): Partial<Record<Tab, number>> {
   try {
     const v = JSON.parse(localStorage.getItem(VISITS_KEY) || "{}");

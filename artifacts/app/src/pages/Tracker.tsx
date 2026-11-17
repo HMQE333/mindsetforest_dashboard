@@ -101,7 +101,7 @@ export default function Tracker() {
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center justify-between mb-8"
         >
@@ -131,7 +131,7 @@ export default function Tracker() {
           return (
             <motion.div
               key={catId}
-              initial={{ opacity: 0 }}
+              initial={false}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 + catIndex * 0.05 }}
               className="mb-8"

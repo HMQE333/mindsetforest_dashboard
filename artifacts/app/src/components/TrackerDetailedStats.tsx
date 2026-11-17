@@ -52,7 +52,7 @@ export default function TrackerDetailedStats({ entries }: TrackerDetailedStatsPr
   const maxMonth = stats ? Math.max(1, ...stats.months.map((m) => m.value)) : 1;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
+    <motion.div initial={false} animate={{ opacity: 1 }} className="glass-card overflow-hidden mb-8">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-6 py-4 hover:bg-secondary/30 transition-colors"
