@@ -30,7 +30,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const kind: "daily" | "monthly" = body.kind === "monthly" ? "monthly" : "daily";
     const period = String(body.period || "").slice(0, 10);
-    const snapshot = JSON.stringify(body.snapshot ?? {}).slice(0, 12000);
+    const snapshot = JSON.stringify(readableTimes(body.snapshot ?? {})).slice(0, 12000);
     const moment: LocalMoment = body.moment || {};
     // This month's goals ("monthly focus"), set by the user in the monthly review.
     const focus: string[] = Array.isArray(body.focus)
@@ -70,6 +70,8 @@ Produce:
       ? " Today, make the forward-looking question about progress on one of this month's focus goals (named in the context), the one the numbers say least about."
       : ""}
 - For every question 2-4 suggestions: plausible answers IN THE USER'S VOICE (first person), max 10 words each, grounded in the data, different from each other; at least one may be the honest uncomfortable answer. The user taps one instead of writing from scratch, so make them specific, not generic ("Rest" is too vague; "YouTube in the evening instead of training" is right).
+
+Durations: always in hours and minutes as given ("5 h 17 min"), never in seconds.
 
 If the numbers are thin (little data), ask about what the data cannot show instead of inventing numbers. Never invent facts that are not in the numbers or the context.`;
 
@@ -131,3 +133,33 @@ ${recent ? `RECENT REVIEW ANSWERS (do not repeat these questions; follow up wher
     return jsonResponse({ error: message }, status);
   }
 });
+
+/** "5 h 17 min" / "42 min". */
+function hm(seconds: number): string {
+  const m = Math.round(seconds / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`;
+}
+
+/**
+ * The computer and sleep numbers arrive in seconds and minutes; the model
+ * repeats what it sees ("19,000 seconds"), so they go in as hours and minutes.
+ */
+// deno-lint-ignore no-explicit-any
+function readableTimes(snap: any): any {
+  const c = snap?.computer;
+  const out = { ...snap };
+  if (c && typeof c === "object") {
+    const kinds: Record<string, string> = {};
+    for (const [k, v] of Object.entries(c.byKind ?? {})) if (typeof v === "number" && v >= 60) kinds[k] = hm(v);
+    out.computer = {
+      total: typeof c.total === "number" ? hm(c.total) : c.total,
+      byKind: kinds,
+      unassigned: typeof c.unassigned === "number" ? hm(c.unassigned) : c.unassigned,
+      focusPercent: typeof c.focusRatio === "number" ? Math.round(c.focusRatio * 100) : null,
+      topApps: Array.isArray(c.topApps) ? c.topApps.map((a: { name: string; seconds: number; kind: string | null }) => ({ name: a.name, time: hm(a.seconds), kind: a.kind })) : [],
+    };
+  }
+  if (snap?.sleep && typeof snap.sleep.avgMinutes === "number") out.sleep = { ...snap.sleep, avgSleep: hm(snap.sleep.avgMinutes * 60), avgMinutes: undefined };
+  return out;
+}
