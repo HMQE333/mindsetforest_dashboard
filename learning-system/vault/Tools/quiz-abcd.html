@@ -1,0 +1,61 @@
+<!-- DATA: { "questions": [ { "q": "question", "options": ["A","B","C","D"], "correct": 0, "why": "why this answer", "idea": "idea from the map (optional)" } ] }
+     RESULT: { "score": n, "total": n, "answers": [ { "q", "chosen", "correct", "ok" } ] } -->
+<!doctype html>
+<html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { --bg:#0b0b10; --fg:#ececf1; --muted:#8b8d98; --card:#15151c; --line:#2a2a35; --ok:#22c55e; --bad:#ef4444; --accent:#a855f7; }
+  .light { --bg:#fafafa; --fg:#16161a; --muted:#6b6b76; --card:#fff; --line:#e4e4ea; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:24px 16px; }
+  .meta { color:var(--muted); font-size:13px; margin-bottom:8px; }
+  h2 { font-size:20px; margin:0 0 16px; }
+  button.opt { display:flex; gap:12px; width:100%; text-align:left; padding:12px 14px; margin:8px 0; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--fg); font:inherit; cursor:pointer; }
+  button.opt:hover:not(:disabled) { border-color:var(--accent); }
+  button.opt b { color:var(--muted); }
+  .ok { border-color:var(--ok)!important; background:color-mix(in srgb,var(--ok) 15%,var(--card))!important; }
+  .bad { border-color:var(--bad)!important; background:color-mix(in srgb,var(--bad) 15%,var(--card))!important; }
+  .why { margin-top:12px; padding:12px; border-radius:12px; background:var(--card); border:1px solid var(--line); }
+  .next { margin-top:16px; padding:10px 18px; border:0; border-radius:10px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  .score { font-size:40px; font-weight:700; }
+</style></head>
+<body><main id="app"></main>
+<script>
+  if (window.BOARD_THEME === "light") document.documentElement.classList.add("light");
+  const qs = (window.BOARD_DATA && window.BOARD_DATA.questions) || [{ q: "No questions were passed.", options: ["OK"], correct: 0, why: "" }];
+  const app = document.getElementById("app");
+  const answers = [];
+  let i = 0;
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function render() {
+    if (i >= qs.length) {
+      const score = answers.filter((a) => a.ok).length;
+      app.innerHTML = `<div class="meta">Done</div><div class="score">${score} / ${qs.length}</div>
+        ${answers.filter((a) => !a.ok).map((a) => `<div class="why"><b>${esc(a.q)}</b><br>Your answer: ${esc(a.chosen)}<br>Correct: ${esc(a.correct)}</div>`).join("")}`;
+      window.boardResult && window.boardResult({ score, total: qs.length, answers });
+      return;
+    }
+    const q = qs[i];
+    app.innerHTML = `<div class="meta">Question ${i + 1} of ${qs.length}${q.idea ? " · " + esc(q.idea) : ""}</div><h2>${esc(q.q)}</h2>` +
+      q.options.map((o, k) => `<button class="opt" data-k="${k}"><b>${"ABCDEF"[k]}</b><span>${esc(o)}</span></button>`).join("");
+    app.querySelectorAll(".opt").forEach((b) => b.onclick = () => choose(+b.dataset.k));
+  }
+  function choose(k) {
+    const q = qs[i];
+    const ok = k === q.correct;
+    answers.push({ q: q.q, idea: q.idea || null, chosen: q.options[k], correct: q.options[q.correct], ok });
+    app.querySelectorAll(".opt").forEach((b) => {
+      b.disabled = true;
+      if (+b.dataset.k === q.correct) b.classList.add("ok");
+      else if (+b.dataset.k === k) b.classList.add("bad");
+    });
+    app.insertAdjacentHTML("beforeend", (q.why ? `<div class="why">${esc(q.why)}</div>` : "") + `<button class="next">${i + 1 < qs.length ? "Next" : "Finish"}</button>`);
+    app.querySelector(".next").onclick = () => { i++; render(); };
+  }
+  document.addEventListener("keydown", (e) => {
+    const k = "abcdef".indexOf(e.key.toLowerCase());
+    const btn = app.querySelector(`.opt[data-k="${k}"]`);
+    if (btn && !btn.disabled) btn.click();
+    else if (e.key === "Enter") app.querySelector(".next")?.click();
+  });
+  render();
+</script></body></html>

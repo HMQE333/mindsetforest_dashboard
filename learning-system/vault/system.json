@@ -1,0 +1,25 @@
+{
+  "about": "A personal learning system. One folder. The vault is plain Markdown (open it in Obsidian). The MCP server enforces folders and fields.",
+  "folders": {
+    "me": { "known": "Me/Known.md", "philosophy": "Me/Philosophy.md", "profile": "Me/Profile.md", "teacher": "Me/Teacher.md" },
+    "subjects": "Subjects/<subject>/map.md",
+    "knowledge": "Knowledge/<subject>/<note>.md",
+    "styles": "Styles/<id>.md",
+    "tools": "Tools/<id>.html",
+    "sessions": "Sessions.md",
+    "log": "../data/log.jsonl (written only through log())"
+  },
+  "rules": [
+    "Call me() first. Read Me/Known.md and Me/Philosophy.md: they are the anchors.",
+    "Explain new things through anchors before anything else.",
+    "Every subject has a map (map tool). Order: what an idea needs comes first, then what unlocks most.",
+    "Use a style from Styles. Suggest one from its 'when'; the learner decides.",
+    "Prefer a saved tool on the board; write your own HTML only when none fits, then offer save_tool.",
+    "After every exercise: results() if the board was used, then log().",
+    "Only add to Me/Known.md what the learner confirmed in their own words.",
+    "Before teaching a subject, check history() for what is due for a check (3/7/30 days) and start with a short check.",
+    "End with end_session()."
+  ],
+  "session_start": ["me", "history", "map", "styles"],
+  "session_end": ["log", "end_session"]
+}

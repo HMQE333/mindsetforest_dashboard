@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Teaching board</title>
+<style>
+  :root { --bg: #0b0b10; --fg: #ececf1; --muted: #8b8d98; --line: #23232c; --accent: #a855f7; }
+  @media (prefers-color-scheme: light) { :root { --bg: #fafafa; --fg: #16161a; --muted: #6b6b76; --line: #e4e4ea; } }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  header b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header span { color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
+  .empty { flex: 1; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<header><span class="dot"></span><b id="title">Teaching board</b><span id="status">waiting</span></header>
+<div class="empty" id="empty">Nothing on the board yet.<br />The AI puts tests, models and diagrams here with show().</div>
+<iframe id="frame" hidden sandbox="allow-scripts allow-forms" title="Board"></iframe>
+<script>
+  // The board's page runs in a sandbox without access to this page or the computer.
+  // It reports with window.boardResult({...}); that reaches the server here.
+  const frame = document.getElementById("frame");
+  const theme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  let current = null;
+  const prelude = (data) => `<script>
+    window.BOARD_DATA = ${JSON.stringify(data ?? null).replace(/</g, "\\u003c")};
+    window.BOARD_THEME = ${JSON.stringify(theme)};
+    window.boardResult = (r) => parent.postMessage({ boardResult: r }, "*");
+  <\/script>`;
+  async function load() {
+    const b = await fetch("/api/board").then((r) => r.json()).catch(() => null);
+    if (!b || b.id === current) return;
+    current = b.id;
+    document.getElementById("title").textContent = b.title || "Board";
+    document.title = b.title || "Teaching board";
+    document.getElementById("empty").hidden = true;
+    frame.hidden = false;
+    frame.srcdoc = prelude(b.data) + b.html;
+    document.getElementById("status").textContent = b.tool ? `tool: ${b.tool}` : "custom";
+  }
+  addEventListener("message", (e) => {
+    if (e.source !== frame.contentWindow || !e.data || !("boardResult" in e.data)) return;
+    fetch("/api/result", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(e.data.boardResult) });
+    document.getElementById("status").textContent = "result sent ✓";
+  });
+  const es = new EventSource("/api/events");
+  es.onmessage = load;
+  es.onerror = () => { document.getElementById("status").textContent = "server offline"; };
+  es.onopen = load;
+  load();
+</script>
+</body>
+</html>
